@@ -54,7 +54,7 @@ export function AuditLogsPage() {
   const navigate = Route.useNavigate()
   const { page, event, user } = Route.useSearch()
 
-  const [userFilter, setUserFilter] = useState(user)
+  const [userFilter, setUserFilter] = useState<string>(user)
   const limit = 50
 
   const { data, isLoading } = useQuery({

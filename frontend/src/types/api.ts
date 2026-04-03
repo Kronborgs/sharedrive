@@ -17,6 +17,7 @@ export interface User {
   email: string
   display_name: string
   role: 'user' | 'admin'
+  is_admin: boolean
   is_active: boolean
   quota_bytes: number
   quota_used_bytes: number
@@ -90,8 +91,11 @@ export interface Share {
   id: string
   resource_id: string
   owner_id: string
-  grantee_type: 'user' | 'group'
+  grantee_type: 'user' | 'group' | 'link'
   grantee_id: string
+  grantee_email?: string | null
+  grantee_group_name?: string | null
+  token?: string | null
   can_view: boolean
   can_upload: boolean
   can_edit: boolean

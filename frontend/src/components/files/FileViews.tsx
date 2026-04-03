@@ -1,7 +1,7 @@
 import type { FileItem } from '@/types/api'
 import { getFileIcon, formatBytes, formatRelative, cn } from '@/lib/utils'
 import { MoreVertical, Folder } from 'lucide-react'
-import { useState, useRef } from 'react'
+import { useRef } from 'react'
 
 interface FileListProps {
   items: FileItem[]

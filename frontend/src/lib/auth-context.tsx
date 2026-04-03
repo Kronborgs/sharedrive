@@ -7,6 +7,7 @@ interface AuthContextValue {
   isLoading: boolean
   refetch: () => Promise<void>
   logout: () => Promise<void>
+  setUser: (u: User | null) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -45,7 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, refetch: fetchUser, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, refetch: fetchUser, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   )

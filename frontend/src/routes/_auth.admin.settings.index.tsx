@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { useForm } from 'react-hook-form'
+import { useForm, type UseFormRegister } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 
@@ -175,8 +175,7 @@ function Toggle({
   label: string
   description: string
   name: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  register: any
+  register: UseFormRegister<FormValues>
 }) {
   return (
     <label className="flex items-start gap-3 cursor-pointer">

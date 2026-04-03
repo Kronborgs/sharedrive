@@ -127,6 +127,7 @@ export interface Group {
   description: string
   created_by: string
   created_at: string
+  member_count?: number
 }
 
 // ── Tags ──────────────────────────────────────────────────────────────────────

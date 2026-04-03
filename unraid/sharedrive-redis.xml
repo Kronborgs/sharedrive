@@ -12,7 +12,7 @@
   <Category>Cloud: Tools:</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/unraid/sharedrive-redis.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/pics/logo.png</Icon>
+  <Icon>https://raw.githubusercontent.com/Kronborgs/sharedrive/master/pics/logo.png</Icon>
   <ExtraParams/>
   <!-- Disable persistence; cap memory at 128 MB with LRU eviction -->
   <PostArgs>redis-server --save "" --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru</PostArgs>

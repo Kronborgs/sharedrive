@@ -12,9 +12,8 @@
   <Category>Cloud: Tools:</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/unraid/sharedrive.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/pics/logo.png</Icon>
+  <Icon>https://raw.githubusercontent.com/Kronborgs/sharedrive/master/pics/logo.png</Icon>
   <!-- Also attach to the internal bridge so the app can reach postgres and redis -->
-  <ExtraParams>--network sharedrive-net</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <Requires>
@@ -95,24 +94,24 @@
     Target="POSTGRES_DB"
     Default="sharedrive"
     Mode=""
-    Description="PostgreSQL database name. Must match POSTGRES_DB in your sharedrive-postgres container."
+    Description="PostgreSQL database name. Must match the value set in sharedrive-postgres."
     Type="Variable"
     Display="always"
     Required="true"
     Mask="false"
-  >sharedrive</Config>
+  >privatedrive</Config>
 
   <Config
     Name="Postgres User"
     Target="POSTGRES_USER"
     Default="sharedrive"
     Mode=""
-    Description="PostgreSQL user. Must match POSTGRES_USER in your sharedrive-postgres container."
+    Description="PostgreSQL user. Must match the value set in sharedrive-postgres."
     Type="Variable"
     Display="always"
     Required="true"
     Mask="false"
-  >sharedrive</Config>
+  >privatedrive</Config>
 
   <Config
     Name="Postgres Password"

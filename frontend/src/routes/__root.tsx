@@ -11,9 +11,9 @@ export const Route = createRootRoute({
         throw redirect({ to: '/setup' })
       }
     } catch (err) {
-      // If it's the redirect, rethrow it
-      if (err && typeof err === 'object' && 'href' in err) throw err
-      // Otherwise allow render (health check may have failed — show error state)
+      // Re-throw router redirects (TanStack Router v1 uses _isRedirect)
+      if (err && typeof err === 'object' && ('_isRedirect' in err || 'href' in err)) throw err
+      // Otherwise allow render (network error — show error state)
     }
   },
   component: RootLayout,

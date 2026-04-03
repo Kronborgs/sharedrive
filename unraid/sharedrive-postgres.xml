@@ -1,0 +1,85 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>sharedrive-postgres</Name>
+  <Repository>postgres:16-alpine</Repository>
+  <Registry>https://hub.docker.com/_/postgres</Registry>
+  <Network>privatedrive-net</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Kronborgs/sharedrive/issues</Support>
+  <Project>https://github.com/Kronborgs/sharedrive</Project>
+  <Overview>PostgreSQL 16 database for Sharedrive. Deploy this container before starting the main sharedrive container. The database credentials here must match those set in your sharedrive .env file.</Overview>
+  <Category>Cloud: Tools:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/unraid/sharedrive-postgres.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/pics/logo.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <Requires>
+    Docker network "privatedrive-net" must exist. Create with: docker network create privatedrive-net
+  </Requires>
+
+  <!-- ── Timezone ───────────────────────────────────────────────────────── -->
+  <Config
+    Name="Timezone"
+    Target="TZ"
+    Default="Europe/Copenhagen"
+    Mode=""
+    Description="Container timezone."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  >Europe/Copenhagen</Config>
+
+  <!-- ── Database credentials ──────────────────────────────────────────── -->
+  <Config
+    Name="Database Name"
+    Target="POSTGRES_DB"
+    Default="privatedrive"
+    Mode=""
+    Description="PostgreSQL database name. Must match POSTGRES_DB in your sharedrive .env file."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >privatedrive</Config>
+
+  <Config
+    Name="Database User"
+    Target="POSTGRES_USER"
+    Default="privatedrive"
+    Mode=""
+    Description="PostgreSQL user. Must match POSTGRES_USER in your sharedrive .env file."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >privatedrive</Config>
+
+  <Config
+    Name="Database Password"
+    Target="POSTGRES_PASSWORD"
+    Default=""
+    Mode=""
+    Description="PostgreSQL password. Must match POSTGRES_PASSWORD in your sharedrive .env file. Use a strong, unique password."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="true"
+  ></Config>
+
+  <!-- ── Volume ────────────────────────────────────────────────────────── -->
+  <Config
+    Name="Data Directory"
+    Target="/var/lib/postgresql/data"
+    Default="/mnt/user/appdata/sharedrive/postgres"
+    Mode="rw"
+    Description="Path on the host where PostgreSQL data files are stored. This directory must persist across container restarts."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >/mnt/user/appdata/sharedrive/postgres</Config>
+</Container>

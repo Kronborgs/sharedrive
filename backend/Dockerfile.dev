@@ -1,0 +1,14 @@
+# syntax=docker/dockerfile:1
+# Backend dev image with Air live-reload
+FROM golang:1.23-alpine
+
+RUN apk add --no-cache git curl && \
+    go install github.com/air-verse/air@latest
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Air config is at backend/.air.toml
+CMD ["air", "-c", ".air.toml"]

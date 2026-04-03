@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>sharedrive</Name>
+  <Repository>ghcr.io/kronborgs/sharedrive:latest</Repository>
+  <Registry>https://github.com/Kronborgs/sharedrive/pkgs/container/sharedrive</Registry>
+  <Network>cloudflare</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Kronborgs/sharedrive/issues</Support>
+  <Project>https://github.com/Kronborgs/sharedrive</Project>
+  <Overview>Sharedrive — self-hosted private file drive with user management, per-user quotas, file sharing, admin dashboard, audit logging, and Cloudflare tunnel support. Requires sharedrive-postgres and sharedrive-redis to be running first.</Overview>
+  <Category>Cloud: Tools:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/unraid/sharedrive.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/pics/logo.png</Icon>
+  <!-- Also attach to the internal bridge so the app can reach postgres and redis -->
+  <ExtraParams>--network privatedrive-net</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <Requires>
+    1. Docker network "cloudflare" must already exist (shared with your cloudflared container).
+    2. Docker network "privatedrive-net" must exist. Create with: docker network create privatedrive-net
+    3. sharedrive-postgres container must be running.
+    4. sharedrive-redis container must be running.
+    5. Copy .env.example to the config path below, rename to .env, and fill in all values before starting.
+  </Requires>
+
+  <!-- ── Timezone ───────────────────────────────────────────────────────── -->
+  <Config
+    Name="Timezone"
+    Target="TZ"
+    Default="Europe/Copenhagen"
+    Mode=""
+    Description="Container timezone. See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones for valid values."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  >Europe/Copenhagen</Config>
+
+  <!-- ── Volumes ───────────────────────────────────────────────────────── -->
+  <Config
+    Name="Config File (.env)"
+    Target="/app/.env"
+    Default="/mnt/user/appdata/sharedrive/config/.env"
+    Mode="ro"
+    Description="Full path to the .env configuration file on the host. Copy .env.example from the repo, rename to .env, and fill in all required values before starting the container."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >/mnt/user/appdata/sharedrive/config/.env</Config>
+
+  <Config
+    Name="Files Storage"
+    Target="/data/files"
+    Default="/mnt/user/files/sharedrive"
+    Mode="rw"
+    Description="Path on the host where uploaded files will be stored. Ensure this directory exists and has sufficient free space."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >/mnt/user/files/sharedrive</Config>
+
+  <Config
+    Name="Backups Storage"
+    Target="/data/backups"
+    Default="/mnt/user/backups/sharedrive"
+    Mode="rw"
+    Description="Path on the host where exported backup archives will be stored."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >/mnt/user/backups/sharedrive</Config>
+</Container>

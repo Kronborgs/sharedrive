@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>sharedrive-redis</Name>
+  <Repository>redis:7-alpine</Repository>
+  <Registry>https://hub.docker.com/_/redis</Registry>
+  <Network>privatedrive-net</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Kronborgs/sharedrive/issues</Support>
+  <Project>https://github.com/Kronborgs/sharedrive</Project>
+  <Overview>Redis 7 in-memory store for Sharedrive. Used for rate limiting counters and session management. Data is intentionally ephemeral — no persistence is required and no volume is needed.</Overview>
+  <Category>Cloud: Tools:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/unraid/sharedrive-redis.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/pics/logo.png</Icon>
+  <ExtraParams/>
+  <!-- Disable persistence; cap memory at 128 MB with LRU eviction -->
+  <PostArgs>redis-server --save "" --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru</PostArgs>
+  <CPUset/>
+  <Requires>
+    Docker network "privatedrive-net" must exist. Create with: docker network create privatedrive-net
+  </Requires>
+
+  <!-- ── Timezone ───────────────────────────────────────────────────────── -->
+  <Config
+    Name="Timezone"
+    Target="TZ"
+    Default="Europe/Copenhagen"
+    Mode=""
+    Description="Container timezone."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  >Europe/Copenhagen</Config>
+</Container>

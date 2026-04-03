@@ -1,0 +1,72 @@
+services:
+
+  app:
+    image: privatedrive:latest
+    container_name: privatedrive-app
+    restart: unless-stopped
+    # No port exposure — traffic arrives via shared Cloudflare tunnel network
+    volumes:
+      - /mnt/user/appdata/privatedrive/config/.env:/app/.env:ro
+      - /mnt/user/files/privatedrive:/data/files:rw
+      - /mnt/user/backups/privatedrive:/data/backups:rw
+    environment:
+      TZ: ${TZ:-Europe/Copenhagen}
+    env_file:
+      - /mnt/user/appdata/privatedrive/config/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/v1/system/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - privatedrive-net
+      - cloudflare   # shared Cloudflare tunnel network on Unraid
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: privatedrive-postgres
+    restart: unless-stopped
+    volumes:
+      - /mnt/user/appdata/privatedrive/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-privatedrive}
+      POSTGRES_USER: ${POSTGRES_USER:-privatedrive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-privatedrive}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - privatedrive-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: privatedrive-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+        --save ""
+        --appendonly no
+        --maxmemory 128mb
+        --maxmemory-policy allkeys-lru
+    # No volume — Redis is intentionally ephemeral (rate limiting counters only)
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - privatedrive-net
+
+networks:
+  privatedrive-net:
+    driver: bridge
+  cloudflare:
+    external: true
+    name: ${CLOUDFLARE_NETWORK_NAME:-cloudflare}

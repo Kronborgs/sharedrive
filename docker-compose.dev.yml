@@ -1,0 +1,76 @@
+services:
+
+  app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    container_name: privatedrive-app-dev
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/src
+      - ./data/files:/data/files
+      - ./data/backups:/data/backups
+      - ./.env:/app/.env:ro
+    env_file:
+      - .env
+    environment:
+      GO_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - privatedrive-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: privatedrive-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_BASE: http://localhost:8080
+    networks:
+      - privatedrive-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: privatedrive-postgres-dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"  # expose locally for DB tools
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: privatedrive
+      POSTGRES_USER: privatedrive
+      POSTGRES_PASSWORD: devpassword
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U privatedrive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - privatedrive-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: privatedrive-redis-dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"  # expose locally for redis-cli
+    command: redis-server --save "" --appendonly no
+    networks:
+      - privatedrive-net
+
+networks:
+  privatedrive-net:
+    driver: bridge

@@ -1,0 +1,33 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"chat.tools.terminal.autoApprove": {
+			"/^Get-Command go -ErrorAction SilentlyContinue; \\$env:PATH -split ';' \\| Where-Object \\{ \\$_ -like \"\\*go\\*\" \\}$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			"/^go build \\./\\.\\.\\. 2>&1 \\| head -80$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			"/^Get-Command go -ErrorAction SilentlyContinue; Test-Path \"C:\\\\Program Files\\\\Go\\\\bin\\\\go\\.exe\"; Test-Path \"C:\\\\Go\\\\bin\\\\go\\.exe\"$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			"/^New-Item -ItemType Directory -Force \"x:\\\\sharedrive\\\\frontend\\\\public\" \\| Out-Null; Copy-Item \"x:\\\\sharedrive\\\\pics\\\\logo\\.png\" \"x:\\\\sharedrive\\\\frontend\\\\public\\\\logo\\.png\" -Force; Copy-Item \"x:\\\\sharedrive\\\\pics\\\\logo_name\\.png\" \"x:\\\\sharedrive\\\\frontend\\\\public\\\\logo_name\\.png\" -Force; Get-ChildItem \"x:\\\\sharedrive\\\\frontend\\\\public\"$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			"New-Item": true,
+			"Out-Null": true,
+			"git add": true,
+			"git init": true,
+			"git remote": true,
+			"git config": true
+		}
+	}
+}

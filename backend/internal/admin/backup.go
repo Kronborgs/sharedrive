@@ -81,19 +81,19 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export users")
 		return
 	}
-	if data.Groups, err = queryRows(`SELECT id, name, owner_id, created_at, updated_at FROM groups`); err != nil {
+	if data.Groups, err = queryRows(`SELECT id, name, description, created_by, created_at FROM groups`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export groups")
 		return
 	}
-	if data.GroupMembers, err = queryRows(`SELECT group_id, user_id, created_at FROM group_members`); err != nil {
+	if data.GroupMembers, err = queryRows(`SELECT group_id, user_id, added_at FROM group_members`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export group_members")
 		return
 	}
-	if data.Tags, err = queryRows(`SELECT id, name, color, owner_id, created_at FROM tags`); err != nil {
+	if data.Tags, err = queryRows(`SELECT id, name, color, created_by, created_at FROM tags`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export tags")
 		return
 	}
-	if data.Files, err = queryRows(`SELECT id, parent_id, owner_id, name, is_folder, mime_type, size_bytes, storage_key, deleted_at, created_at, updated_at FROM files`); err != nil {
+	if data.Files, err = queryRows(`SELECT id, parent_id, owner_id, name, is_folder, mime_type, size_bytes, storage_path, checksum_sha256, deleted_at, created_at, updated_at FROM files`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export files")
 		return
 	}
@@ -101,15 +101,15 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export file_tags")
 		return
 	}
-	if data.Shares, err = queryRows(`SELECT id, file_id, grantor_id, grantee_id, grantee_type, permissions, token_hash, link_label, download_limit, download_count, expires_at, created_at, updated_at FROM shares`); err != nil {
+	if data.Shares, err = queryRows(`SELECT id, resource_id, owner_id, grantee_type, grantee_id, can_view, can_upload, can_edit, can_delete, can_reshare, created_by, expires_at, revoked_at, created_at FROM shares`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export shares")
 		return
 	}
-	if data.TOTPCreds, err = queryRows(`SELECT id, user_id, secret_enc, backup_codes, confirmed_at, created_at FROM totp_credentials`); err != nil {
+	if data.TOTPCreds, err = queryRows(`SELECT id, user_id, encrypted_secret, backup_codes, confirmed_at, created_at FROM totp_credentials`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export totp_credentials")
 		return
 	}
-	if data.AppPasswords, err = queryRows(`SELECT id, user_id, label, password_hash, created_at, last_used_at, revoked_at FROM app_passwords`); err != nil {
+	if data.AppPasswords, err = queryRows(`SELECT id, user_id, name, password_hash, scope, last_used_at, revoked_at, created_at FROM app_passwords`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export app_passwords")
 		return
 	}
@@ -247,23 +247,22 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 			"bandwidth_limit_bytes_per_day": true, "webdav_enabled": true, "invited_by": true,
 			"last_login_at": true, "created_at": true, "updated_at": true,
 		},
-		"groups":       {"id": true, "name": true, "owner_id": true, "created_at": true, "updated_at": true},
-		"group_members": {"group_id": true, "user_id": true, "created_at": true},
-		"tags":          {"id": true, "name": true, "color": true, "owner_id": true, "created_at": true},
+		"groups":        {"id": true, "name": true, "description": true, "created_by": true, "created_at": true},
+		"group_members": {"group_id": true, "user_id": true, "added_at": true},
+		"tags":          {"id": true, "name": true, "color": true, "created_by": true, "created_at": true},
 		"files": {
 			"id": true, "parent_id": true, "owner_id": true, "name": true, "is_folder": true,
-			"mime_type": true, "size_bytes": true, "storage_key": true,
+			"mime_type": true, "size_bytes": true, "storage_path": true, "checksum_sha256": true,
 			"deleted_at": true, "created_at": true, "updated_at": true,
 		},
 		"file_tags": {"file_id": true, "tag_id": true},
 		"shares": {
-			"id": true, "file_id": true, "grantor_id": true, "grantee_id": true,
-			"grantee_type": true, "permissions": true, "token_hash": true, "link_label": true,
-			"download_limit": true, "download_count": true, "expires_at": true,
-			"created_at": true, "updated_at": true,
+			"id": true, "resource_id": true, "owner_id": true, "grantee_type": true, "grantee_id": true,
+			"can_view": true, "can_upload": true, "can_edit": true, "can_delete": true, "can_reshare": true,
+			"created_by": true, "expires_at": true, "revoked_at": true, "created_at": true,
 		},
-		"totp_credentials": {"id": true, "user_id": true, "secret_enc": true, "backup_codes": true, "confirmed_at": true, "created_at": true},
-		"app_passwords":    {"id": true, "user_id": true, "label": true, "password_hash": true, "created_at": true, "last_used_at": true, "revoked_at": true},
+		"totp_credentials": {"id": true, "user_id": true, "encrypted_secret": true, "backup_codes": true, "confirmed_at": true, "created_at": true},
+		"app_passwords":    {"id": true, "user_id": true, "name": true, "password_hash": true, "scope": true, "last_used_at": true, "revoked_at": true, "created_at": true},
 	}
 
 	// allowedTables is the set of tables that may be targeted during import.

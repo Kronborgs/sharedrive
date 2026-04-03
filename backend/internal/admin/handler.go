@@ -30,14 +30,16 @@ func NewHandler(db *pgxpool.Pool, cfg *config.Config) *Handler {
 // ─── System Settings ─────────────────────────────────────────────────────────
 
 type settingsResponse struct {
-	AppName          string `json:"app_name"`
-	OnboardingDone   bool   `json:"onboarding_complete"`
-	DefaultQuotaGB   int64  `json:"default_quota_gb"`
-	SMTPHost         string `json:"smtp_host"`
-	SMTPPort         int    `json:"smtp_port"`
-	SMTPUser         string `json:"smtp_user"`
-	SMTPFrom         string `json:"smtp_from"`
-	SMTPTLSMode      string `json:"smtp_tls_mode"`
+	SiteName           string `json:"site_name"`
+	AllowRegistrations bool   `json:"allow_registrations"`
+	RequireInvite      bool   `json:"require_invite"`
+	DefaultQuotaBytes  int64  `json:"default_quota_bytes"`
+	MaxUploadBytes     int64  `json:"max_upload_bytes"`
+	SMTPHost           string `json:"smtp_host"`
+	SMTPPort           int    `json:"smtp_port"`
+	SMTPUsername       string `json:"smtp_username"`
+	SMTPFromAddress    string `json:"smtp_from_address"`
+	SMTPTls            bool   `json:"smtp_tls"`
 }
 
 func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
@@ -58,37 +60,45 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		kv[k] = v
 	}
 
-	defaultQuota := int64(0)
+	defaultQuota := int64(10 * 1 << 30) // 10 GB default
 	if s, ok := kv["default_quota_bytes"]; ok {
 		defaultQuota, _ = strconv.ParseInt(s, 10, 64)
+	}
+	maxUpload := int64(5 * 1 << 30) // 5 GB default
+	if s, ok := kv["max_upload_bytes"]; ok {
+		maxUpload, _ = strconv.ParseInt(s, 10, 64)
 	}
 	smtpPort := 587
 	if s, ok := kv["smtp_port"]; ok {
 		smtpPort, _ = strconv.Atoi(s)
 	}
-	onboardingDone := kv["onboarding_complete"] == "true"
 
 	httputil.Respond(w, http.StatusOK, settingsResponse{
-		AppName:        kv["app_name"],
-		OnboardingDone: onboardingDone,
-		DefaultQuotaGB: defaultQuota / (1 << 30),
-		SMTPHost:       kv["smtp_host"],
-		SMTPPort:       smtpPort,
-		SMTPUser:       kv["smtp_user"],
-		SMTPFrom:       kv["smtp_from"],
-		SMTPTLSMode:    kv["smtp_tls_mode"],
+		SiteName:           kv["app_name"],
+		AllowRegistrations: kv["allow_registrations"] == "true",
+		RequireInvite:      kv["require_invite"] == "true",
+		DefaultQuotaBytes:  defaultQuota,
+		MaxUploadBytes:     maxUpload,
+		SMTPHost:           kv["smtp_host"],
+		SMTPPort:           smtpPort,
+		SMTPUsername:       kv["smtp_user"],
+		SMTPFromAddress:    kv["smtp_from"],
+		SMTPTls:            kv["smtp_tls"] == "starttls",
 	})
 }
 
 type updateSettingsRequest struct {
-	AppName        *string `json:"app_name"`
-	DefaultQuotaGB *int64  `json:"default_quota_gb"`
-	SMTPHost       *string `json:"smtp_host"`
-	SMTPPort       *int    `json:"smtp_port"`
-	SMTPUser       *string `json:"smtp_user"`
-	SMTPPassword   *string `json:"smtp_password"`
-	SMTPFrom       *string `json:"smtp_from"`
-	SMTPTLSMode    *string `json:"smtp_tls_mode"`
+	SiteName           *string `json:"site_name"`
+	AllowRegistrations *bool   `json:"allow_registrations"`
+	RequireInvite      *bool   `json:"require_invite"`
+	DefaultQuotaBytes  *int64  `json:"default_quota_bytes"`
+	MaxUploadBytes     *int64  `json:"max_upload_bytes"`
+	SMTPHost           *string `json:"smtp_host"`
+	SMTPPort           *int    `json:"smtp_port"`
+	SMTPUsername       *string `json:"smtp_username"`
+	SMTPPassword       *string `json:"smtp_password"`
+	SMTPFromAddress    *string `json:"smtp_from_address"`
+	SMTPTls            *bool   `json:"smtp_tls"`
 }
 
 func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -110,11 +120,28 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.AppName != nil {
-		upsert("app_name", *req.AppName)
+	if req.SiteName != nil {
+		upsert("app_name", *req.SiteName)
 	}
-	if req.DefaultQuotaGB != nil {
-		upsert("default_quota_bytes", strconv.FormatInt(*req.DefaultQuotaGB*(1<<30), 10))
+	if req.AllowRegistrations != nil {
+		if *req.AllowRegistrations {
+			upsert("allow_registrations", "true")
+		} else {
+			upsert("allow_registrations", "false")
+		}
+	}
+	if req.RequireInvite != nil {
+		if *req.RequireInvite {
+			upsert("require_invite", "true")
+		} else {
+			upsert("require_invite", "false")
+		}
+	}
+	if req.DefaultQuotaBytes != nil {
+		upsert("default_quota_bytes", strconv.FormatInt(*req.DefaultQuotaBytes, 10))
+	}
+	if req.MaxUploadBytes != nil {
+		upsert("max_upload_bytes", strconv.FormatInt(*req.MaxUploadBytes, 10))
 	}
 	if req.SMTPHost != nil {
 		upsert("smtp_host", *req.SMTPHost)
@@ -122,17 +149,21 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if req.SMTPPort != nil {
 		upsert("smtp_port", strconv.Itoa(*req.SMTPPort))
 	}
-	if req.SMTPUser != nil {
-		upsert("smtp_user", *req.SMTPUser)
+	if req.SMTPUsername != nil {
+		upsert("smtp_user", *req.SMTPUsername)
 	}
 	if req.SMTPPassword != nil {
 		upsert("smtp_password", *req.SMTPPassword)
 	}
-	if req.SMTPFrom != nil {
-		upsert("smtp_from", *req.SMTPFrom)
+	if req.SMTPFromAddress != nil {
+		upsert("smtp_from", *req.SMTPFromAddress)
 	}
-	if req.SMTPTLSMode != nil {
-		upsert("smtp_tls_mode", *req.SMTPTLSMode)
+	if req.SMTPTls != nil {
+		if *req.SMTPTls {
+			upsert("smtp_tls", "starttls")
+		} else {
+			upsert("smtp_tls", "none")
+		}
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -177,18 +208,20 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 	m := mail.NewMsg()
 	_ = m.From(kv["smtp_from"])
 	_ = m.To(req.To)
-	m.Subject("PrivateDrive SMTP Test")
-	m.SetBodyString(mail.TypeTextPlain, "This is a test email from PrivateDrive.")
+	m.Subject("Sharedrive SMTP Test")
+	m.SetBodyString(mail.TypeTextPlain, "This is a test email from your Sharedrive instance.")
 
 	opts := []mail.Option{
 		mail.WithPort(port),
 		mail.WithUsername(kv["smtp_user"]),
 		mail.WithPassword(kv["smtp_password"]),
 	}
-	switch kv["smtp_tls_mode"] {
+	switch kv["smtp_tls"] {
 	case "tls":
 		opts = append(opts, mail.WithSSL())
-	case "none":
+	case "starttls":
+		opts = append(opts, mail.WithTLSPolicy(mail.TLSMandatory))
+	default:
 		opts = append(opts, mail.WithTLSPolicy(mail.NoTLS))
 	}
 	c, err := mail.NewClient(host, opts...)

@@ -217,7 +217,7 @@ func (s *Server) buildRouter() *chi.Mux {
 
 			r.Get("/api/v1/admin/settings", s.handleAdminGetSettings)
 			r.Patch("/api/v1/admin/settings", s.handleAdminUpdateSettings)
-			r.Post("/api/v1/admin/settings/smtp/test", s.handleAdminSMTPTest)
+			r.Post("/api/v1/admin/settings/smtp-test", s.handleAdminSMTPTest)
 
 			r.Get("/api/v1/admin/backup", s.handleAdminListBackups)
 			r.Post("/api/v1/admin/backup", s.handleAdminExport)

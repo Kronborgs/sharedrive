@@ -37,26 +37,26 @@
   <Config
     Name="Database Name"
     Target="POSTGRES_DB"
-    Default="privatedrive"
+    Default="sharedrive"
     Mode=""
     Description="PostgreSQL database name. Must match POSTGRES_DB in your sharedrive .env file."
     Type="Variable"
     Display="always"
     Required="true"
     Mask="false"
-  >privatedrive</Config>
+  >sharedrive</Config>
 
   <Config
     Name="Database User"
     Target="POSTGRES_USER"
-    Default="privatedrive"
+    Default="sharedrive"
     Mode=""
     Description="PostgreSQL user. Must match POSTGRES_USER in your sharedrive .env file."
     Type="Variable"
     Display="always"
     Required="true"
     Mask="false"
-  >privatedrive</Config>
+  >sharedrive</Config>
 
   <Config
     Name="Database Password"

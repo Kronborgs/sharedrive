@@ -15,11 +15,12 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		h.Set("Content-Security-Policy",
 			"default-src 'self'; "+
-				"script-src 'self'; "+
+				// Allow Cloudflare Insights beacon (injected by Cloudflare tunnel/proxy)
+				"script-src 'self' https://static.cloudflareinsights.com 'sha256-lha+JPoREIX1ySkzWVp1ml6GoP5RWj5Rr9XtE8ts59Q='; "+
 				"style-src 'self' 'unsafe-inline'; "+
 				"img-src 'self' data: blob:; "+
 				"font-src 'self'; "+
-				"connect-src 'self' wss: ws:; "+
+				"connect-src 'self' wss: ws: https://cloudflareinsights.com; "+
 				"worker-src blob:; "+
 				"frame-ancestors 'none';",
 		)

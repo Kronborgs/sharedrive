@@ -93,26 +93,26 @@
   <Config
     Name="Postgres Database"
     Target="POSTGRES_DB"
-    Default="privatedrive"
+    Default="sharedrive"
     Mode=""
-    Description="PostgreSQL database name. Must match the value set in sharedrive-postgres."
+    Description="PostgreSQL database name. Must match POSTGRES_DB in your sharedrive-postgres container."
     Type="Variable"
     Display="always"
     Required="true"
     Mask="false"
-  >privatedrive</Config>
+  >sharedrive</Config>
 
   <Config
     Name="Postgres User"
     Target="POSTGRES_USER"
-    Default="privatedrive"
+    Default="sharedrive"
     Mode=""
-    Description="PostgreSQL user. Must match the value set in sharedrive-postgres."
+    Description="PostgreSQL user. Must match POSTGRES_USER in your sharedrive-postgres container."
     Type="Variable"
     Display="always"
     Required="true"
     Mask="false"
-  >privatedrive</Config>
+  >sharedrive</Config>
 
   <Config
     Name="Postgres Password"
@@ -195,18 +195,6 @@
   <!-- SMTP is configured in the Admin → Settings panel after first run. -->
 
   <Config
-    Name="Default User Quota (bytes)"
-    Target="DEFAULT_QUOTA_BYTES"
-    Default="10737418240"
-    Mode=""
-    Description="Default storage quota for new users, in bytes. Default is 10 GB (10737418240)."
-    Type="Variable"
-    Display="advanced"
-    Required="false"
-    Mask="false"
-  >10737418240</Config>
-
-  <Config
     Name="WebDAV Enabled"
     Target="WEBDAV_ENABLED"
     Default="true"
@@ -217,18 +205,6 @@
     Required="false"
     Mask="false"
   >true</Config>
-
-  <Config
-    Name="Open Registration"
-    Target="REGISTRATION_OPEN"
-    Default="false"
-    Mode=""
-    Description="Allow anyone to register an account. Set to true only if you want public sign-up."
-    Type="Variable"
-    Display="advanced"
-    Required="false"
-    Mask="false"
-  >false</Config>
 
   <Config
     Name="Require TOTP for Admins"

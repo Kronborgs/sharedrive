@@ -9,10 +9,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/jackc/pgx/v5/pgxpool"
+	mail "github.com/wneessen/go-mail"
 	"github.com/rs/zerolog/log"
 
 	"github.com/yourname/privatedrive/internal/config"
@@ -46,18 +49,23 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"required": required})
 }
 
+// setupSMTP is the nested SMTP block sent by the setup wizard.
+type setupSMTP struct {
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	FromAddress string `json:"from_address"`
+	TLS         bool   `json:"tls"`
+}
+
 // setupRequest is the body accepted by POST /api/v1/system/onboarding.
 type setupRequest struct {
-	SiteName    string `json:"site_name"`
-	AdminEmail  string `json:"admin_email"`
-	AdminName   string `json:"admin_name"`
-	AdminPass   string `json:"admin_password"`
-	SMTPHost    string `json:"smtp_host"`
-	SMTPPort    int    `json:"smtp_port"`
-	SMTPUser    string `json:"smtp_user"`
-	SMTPPass    string `json:"smtp_password"`
-	SMTPFrom    string `json:"smtp_from"`
-	SMTPTLS     string `json:"smtp_tls"`
+	SiteName  string     `json:"site_name"`
+	AdminEmail string    `json:"admin_email"`
+	AdminName  string    `json:"admin_display_name"`
+	AdminPass  string    `json:"admin_password"`
+	SMTP       *setupSMTP `json:"smtp"`
 }
 
 // Setup runs first-time setup: creates the admin account and marks onboarding complete.
@@ -124,29 +132,32 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store SMTP settings if provided.
-	smtpSettings := map[string]string{}
-	if req.SMTPHost != "" {
-		smtpSettings["smtp_host"] = req.SMTPHost
-		smtpSettings["smtp_port"] = "587"
-		smtpSettings["smtp_user"] = req.SMTPUser
-		smtpSettings["smtp_from"] = req.SMTPFrom
-		smtpSettings["smtp_tls"] = req.SMTPTLS
-		if req.SMTPPort != 0 {
-			smtpSettings["smtp_port"] = http.StatusText(req.SMTPPort) // won't be used — we persist int as text
+	if req.SMTP != nil && req.SMTP.Host != "" {
+		tlsMode := "none"
+		if req.SMTP.TLS {
+			tlsMode = "starttls"
 		}
-	}
-	for k, v := range smtpSettings {
-		_, _ = tx.Exec(ctx,
-			`INSERT INTO system_settings (key, value) VALUES ($1, $2)
-			 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
-			k, v,
-		)
+		smtpSettings := map[string]string{
+			"smtp_host":     req.SMTP.Host,
+			"smtp_port":     strconv.Itoa(req.SMTP.Port),
+			"smtp_user":     req.SMTP.Username,
+			"smtp_password": req.SMTP.Password,
+			"smtp_from":     req.SMTP.FromAddress,
+			"smtp_tls":      tlsMode,
+		}
+		for k, v := range smtpSettings {
+			_, _ = tx.Exec(ctx,
+				`INSERT INTO system_settings (key, value) VALUES ($1, $2)
+				 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+				k, v,
+			)
+		}
 	}
 
 	// Mark setup complete.
 	_, err = tx.Exec(ctx,
-		`UPDATE system_settings SET value = 'true', updated_at = now()
-		 WHERE key = 'onboarding_complete'`,
+		`INSERT INTO system_settings (key, value) VALUES ('onboarding_complete', 'true')
+		 ON CONFLICT (key) DO UPDATE SET value = 'true', updated_at = now()`,
 	)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
@@ -159,6 +170,73 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.Respond(w, http.StatusCreated, map[string]bool{"ok": true})
+}
+
+// TestSMTP tests SMTP connectivity during setup, before onboarding is complete.
+// POST /api/v1/system/onboarding/smtp-test
+func (h *Handler) TestSMTP(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Host        string `json:"host"`
+		Port        int    `json:"port"`
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+		FromAddress string `json:"from_address"`
+		ToAddress   string `json:"to_address"`
+		TLS         bool   `json:"tls"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Host == "" || req.ToAddress == "" || req.FromAddress == "" {
+		httputil.RespondError(w, http.StatusBadRequest, "host, from_address and to_address are required")
+		return
+	}
+	if req.Port == 0 {
+		req.Port = 587
+	}
+
+	var opts []mail.Option
+	opts = append(opts, mail.WithPort(req.Port))
+	opts = append(opts, mail.WithTimeout(15*time.Second))
+	if req.TLS {
+		opts = append(opts, mail.WithTLSPolicy(mail.TLSMandatory))
+	} else {
+		opts = append(opts, mail.WithTLSPolicy(mail.NoTLS))
+	}
+	if req.Username != "" {
+		opts = append(opts,
+			mail.WithUsername(req.Username),
+			mail.WithPassword(req.Password),
+			mail.WithSMTPAuth(mail.SMTPAuthPlain),
+		)
+	}
+
+	client, err := mail.NewClient(req.Host, opts...)
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, fmt.Sprintf("SMTP client error: %v", err))
+		return
+	}
+
+	msg := mail.NewMsg()
+	if err := msg.From(req.FromAddress); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, fmt.Sprintf("invalid from address: %v", err))
+		return
+	}
+	if err := msg.To(req.ToAddress); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, fmt.Sprintf("invalid to address: %v", err))
+		return
+	}
+	msg.Subject("Sharedrive — SMTP test")
+	msg.SetBodyString(mail.TypeTextPlain, "This is an SMTP connectivity test from your Sharedrive setup wizard.")
+
+	if err := client.DialAndSend(msg); err != nil {
+		log.Warn().Err(err).Str("host", req.Host).Msg("onboarding: SMTP test failed")
+		httputil.RespondError(w, http.StatusBadGateway, fmt.Sprintf("Failed to send: %v", err))
+		return
+	}
+
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // RestoreSetup restores a backup during first-run setup (before onboarding is complete).

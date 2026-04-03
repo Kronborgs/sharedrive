@@ -127,6 +127,7 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Get("/api/v1/system/onboarding-status", s.onboarding.Status)
 	r.Post("/api/v1/system/onboarding", s.onboarding.Setup)
 	r.Post("/api/v1/system/onboarding/restore", s.onboarding.RestoreSetup)
+	r.Post("/api/v1/system/onboarding/smtp-test", s.onboarding.TestSMTP)
 	// Legacy alias used by frontend
 	r.Post("/api/v1/setup", s.onboarding.Setup)
 

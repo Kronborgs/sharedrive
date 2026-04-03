@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { Check, ChevronRight, Upload } from 'lucide-react'
+import { Check, ChevronRight, Mail, Upload } from 'lucide-react'
 
 export const Route = createFileRoute('/setup/')({
   component: SetupPage,
@@ -264,10 +264,41 @@ function Step3({
   onNext: (v: Step3Values) => void
   submitting: boolean
 }) {
-  const { register, handleSubmit, watch, setValue } = useForm<Step3Values>({
+  const { register, handleSubmit, watch, getValues } = useForm<Step3Values>({
     defaultValues: { smtp_port: 587, smtp_tls: true, skip: false },
   })
   const skip = watch('skip')
+  const [testing, setTesting] = useState(false)
+  const [testTo, setTestTo] = useState('')
+
+  const handleTestEmail = async () => {
+    const v = getValues()
+    if (!v.smtp_host || !v.smtp_from_address) {
+      toast.error('Fill in host and from address first')
+      return
+    }
+    if (!testTo) {
+      toast.error('Enter a recipient address for the test')
+      return
+    }
+    setTesting(true)
+    try {
+      await api.post('/api/v1/system/onboarding/smtp-test', {
+        host: v.smtp_host,
+        port: v.smtp_port,
+        username: v.smtp_username,
+        password: v.smtp_password,
+        from_address: v.smtp_from_address,
+        to_address: testTo,
+        tls: v.smtp_tls,
+      })
+      toast.success('Test email sent successfully!')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Test failed')
+    } finally {
+      setTesting(false)
+    }
+  }
 
   return (
     <form onSubmit={handleSubmit(onNext)} className="space-y-4">
@@ -309,6 +340,29 @@ function Step3({
             <input type="checkbox" {...register('smtp_tls')} className="rounded border-zinc-300 text-brand-600" />
             <span className="text-sm text-zinc-700 dark:text-slate-300">Use TLS/STARTTLS</span>
           </label>
+
+          {/* Test email */}
+          <div className="border-t border-zinc-100 dark:border-[#2d3148] pt-3 space-y-2">
+            <p className="text-xs text-muted">Send a test email to verify your settings:</p>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={testTo}
+                onChange={e => setTestTo(e.target.value)}
+                className={inputClass}
+                placeholder="your@email.com"
+              />
+              <button
+                type="button"
+                onClick={handleTestEmail}
+                disabled={testing}
+                className="flex items-center gap-1.5 shrink-0 px-3 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] disabled:opacity-50 transition-colors"
+              >
+                <Mail size={13} />
+                {testing ? 'Sending…' : 'Test'}
+              </button>
+            </div>
+          </div>
         </>
       )}
 

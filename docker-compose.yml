@@ -1,18 +1,27 @@
 services:
 
   app:
-    image: privatedrive:latest
-    container_name: privatedrive-app
+    image: ghcr.io/kronborgs/sharedrive:latest
+    container_name: sharedrive
     restart: unless-stopped
-    # No port exposure — traffic arrives via shared Cloudflare tunnel network
     volumes:
-      - /mnt/user/appdata/privatedrive/config/.env:/app/.env:ro
-      - /mnt/user/files/privatedrive:/data/files:rw
-      - /mnt/user/backups/privatedrive:/data/backups:rw
+      - /mnt/user/files/sharedrive:/data/files:rw
+      - /mnt/user/backups/sharedrive:/data/backups:rw
     environment:
       TZ: ${TZ:-Europe/Copenhagen}
-    env_file:
-      - /mnt/user/appdata/privatedrive/config/.env
+      APP_BASE_URL: ${APP_BASE_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      POSTGRES_HOST: sharedrive-postgres
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-privatedrive}
+      POSTGRES_USER: ${POSTGRES_USER:-privatedrive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
+      REDIS_ADDR: sharedrive-redis:6379
+      SESSION_SECRET: ${SESSION_SECRET}
+      BACKUP_HMAC_SECRET: ${BACKUP_HMAC_SECRET}
+      TOTP_ENCRYPT_KEY: ${TOTP_ENCRYPT_KEY}
+      DEVICE_TRUST_SECRET: ${DEVICE_TRUST_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -24,15 +33,15 @@ services:
       timeout: 5s
       retries: 3
     networks:
-      - privatedrive-net
+      - sharedrive-net
       - cloudflare   # shared Cloudflare tunnel network on Unraid
 
   postgres:
     image: postgres:16-alpine
-    container_name: privatedrive-postgres
+    container_name: sharedrive-postgres
     restart: unless-stopped
     volumes:
-      - /mnt/user/appdata/privatedrive/postgres:/var/lib/postgresql/data
+      - /mnt/user/appdata/sharedrive/postgres:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-privatedrive}
       POSTGRES_USER: ${POSTGRES_USER:-privatedrive}
@@ -43,11 +52,11 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - privatedrive-net
+      - sharedrive-net
 
   redis:
     image: redis:7-alpine
-    container_name: privatedrive-redis
+    container_name: sharedrive-redis
     restart: unless-stopped
     command: >
       redis-server
@@ -55,17 +64,16 @@ services:
         --appendonly no
         --maxmemory 128mb
         --maxmemory-policy allkeys-lru
-    # No volume — Redis is intentionally ephemeral (rate limiting counters only)
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3
     networks:
-      - privatedrive-net
+      - sharedrive-net
 
 networks:
-  privatedrive-net:
+  sharedrive-net:
     driver: bridge
   cloudflare:
     external: true

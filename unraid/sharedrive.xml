@@ -191,81 +191,8 @@
     Mask="true"
   ></Config>
 
-  <!-- ══ SMTP (optional) ════════════════════════════════════════════════ -->
-
-  <Config
-    Name="SMTP Host"
-    Target="SMTP_HOST"
-    Default=""
-    Mode=""
-    Description="SMTP server hostname for outbound email (password resets, invitations). Leave blank to disable email."
-    Type="Variable"
-    Display="always"
-    Required="false"
-    Mask="false"
-  ></Config>
-
-  <Config
-    Name="SMTP Port"
-    Target="SMTP_PORT"
-    Default="587"
-    Mode=""
-    Description="SMTP server port."
-    Type="Variable"
-    Display="advanced"
-    Required="false"
-    Mask="false"
-  >587</Config>
-
-  <Config
-    Name="SMTP Username"
-    Target="SMTP_USER"
-    Default=""
-    Mode=""
-    Description="SMTP login username."
-    Type="Variable"
-    Display="advanced"
-    Required="false"
-    Mask="false"
-  ></Config>
-
-  <Config
-    Name="SMTP Password"
-    Target="SMTP_PASSWORD"
-    Default=""
-    Mode=""
-    Description="SMTP login password."
-    Type="Variable"
-    Display="advanced"
-    Required="false"
-    Mask="true"
-  ></Config>
-
-  <Config
-    Name="SMTP From Address"
-    Target="SMTP_FROM"
-    Default=""
-    Mode=""
-    Description="Sender address shown in outbound emails, e.g. noreply@yourdomain.com"
-    Type="Variable"
-    Display="advanced"
-    Required="false"
-    Mask="false"
-  ></Config>
-
-  <Config
-    Name="SMTP TLS Mode"
-    Target="SMTP_TLS"
-    Default="starttls"
-    Mode=""
-    Description="TLS mode for SMTP: starttls (port 587), tls (port 465), or none."
-    Type="Variable"
-    Display="advanced"
-    Required="false"
-    Mask="false"
-  >starttls</Config>
-
   <!-- ══ FEATURES ═══════════════════════════════════════════════════════ -->
+  <!-- SMTP is configured in the Admin → Settings panel after first run. -->
 
   <Config
     Name="Default User Quota (bytes)"

@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { Check, ChevronRight } from 'lucide-react'
+import { Check, ChevronRight, Upload } from 'lucide-react'
 
 export const Route = createFileRoute('/setup/')({
   component: SetupPage,
@@ -50,6 +50,32 @@ function SetupPage() {
   const [s1, setS1] = useState<Step1Values | null>(null)
   const [s2, setS2] = useState<Step2Values | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [restoring, setRestoring] = useState(false)
+  const [restoreFile, setRestoreFile] = useState<File | null>(null)
+
+  const handleRestore = async () => {
+    if (!restoreFile) return
+    setRestoring(true)
+    try {
+      const formData = new FormData()
+      formData.append('backup', restoreFile)
+      const r = await fetch('/api/v1/system/onboarding/restore', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+      if (!r.ok) {
+        const data = await r.json() as { error?: string }
+        throw new Error(data.error ?? 'Restore failed')
+      }
+      toast.success('Restore complete! Redirecting to login…')
+      setTimeout(() => void navigate({ to: '/login' }), 1200)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Restore failed')
+    } finally {
+      setRestoring(false)
+    }
+  }
 
   const submit = async (s3: Step3Values) => {
     if (!s1 || !s2) return
@@ -90,7 +116,7 @@ function SetupPage() {
 
         {/* Steps indicator */}
         <div className="flex items-center justify-center gap-2 mb-6">
-          {STEPS.map((label, i) => (
+          {STEPS.map((_label, i) => (
             <div key={i} className="flex items-center gap-2">
               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
                 i < step
@@ -107,7 +133,15 @@ function SetupPage() {
         </div>
 
         <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-2xl p-6 shadow-sm">
-          {step === 0 && <Step1 onNext={v => { setS1(v); setStep(1) }} />}
+          {step === 0 && (
+            <Step1
+              onNext={v => { setS1(v); setStep(1) }}
+              restoreFile={restoreFile}
+              onRestoreFileChange={setRestoreFile}
+              onRestore={handleRestore}
+              restoring={restoring}
+            />
+          )}
           {step === 1 && <Step2 onBack={() => setStep(0)} onNext={v => { setS2(v); setStep(2) }} />}
           {step === 2 && <Step3 onBack={() => setStep(1)} onNext={submit} submitting={submitting} />}
         </div>
@@ -118,24 +152,64 @@ function SetupPage() {
 
 // ─── Step 1: Site name ───────────────────────────────────────────
 
-function Step1({ onNext }: { onNext: (v: Step1Values) => void }) {
+function Step1({
+  onNext,
+  restoreFile,
+  onRestoreFileChange,
+  onRestore,
+  restoring,
+}: {
+  onNext: (v: Step1Values) => void
+  restoreFile: File | null
+  onRestoreFileChange: (f: File | null) => void
+  onRestore: () => void
+  restoring: boolean
+}) {
   const { register, handleSubmit, formState: { errors } } = useForm<Step1Values>({
     resolver: zodResolver(step1Schema),
     defaultValues: { site_name: 'PrivateDrive' },
   })
   return (
-    <form onSubmit={handleSubmit(onNext)} className="space-y-5">
-      <div>
-        <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100 mb-1">Site configuration</h2>
-        <p className="text-sm text-muted">Give your PrivateDrive instance a name.</p>
+    <div className="space-y-5">
+      <form onSubmit={handleSubmit(onNext)} className="space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100 mb-1">Site configuration</h2>
+          <p className="text-sm text-muted">Give your PrivateDrive instance a name.</p>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Site name</label>
+          <input {...register('site_name')} className={inputClass} placeholder="My Private Drive" />
+          {errors.site_name && <p className="text-xs text-red-500">{errors.site_name.message}</p>}
+        </div>
+        <button type="submit" className={btnClass}>Continue</button>
+      </form>
+
+      {/* Restore from backup */}
+      <div className="border-t border-zinc-100 dark:border-[#2d3148] pt-4 space-y-3">
+        <p className="text-xs text-muted text-center">— or restore from a previous backup —</p>
+        <label className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors w-full">
+          <Upload size={14} className="shrink-0 text-zinc-400" />
+          <span className="truncate text-zinc-600 dark:text-slate-400">
+            {restoreFile ? restoreFile.name : 'Choose backup file (.json.gz)…'}
+          </span>
+          <input
+            type="file"
+            accept=".gz,.json.gz"
+            className="sr-only"
+            onChange={e => onRestoreFileChange(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        {restoreFile && (
+          <button
+            onClick={onRestore}
+            disabled={restoring}
+            className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+          >
+            {restoring ? 'Restoring…' : 'Restore from backup'}
+          </button>
+        )}
       </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Site name</label>
-        <input {...register('site_name')} className={inputClass} placeholder="My Private Drive" />
-        {errors.site_name && <p className="text-xs text-red-500">{errors.site_name.message}</p>}
-      </div>
-      <button type="submit" className={btnClass}>Continue</button>
-    </form>
+    </div>
   )
 }
 

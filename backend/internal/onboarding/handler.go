@@ -1,7 +1,13 @@
 package onboarding
 
 import (
+	"compress/gzip"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -9,17 +15,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 
+	"github.com/yourname/privatedrive/internal/config"
 	"github.com/yourname/privatedrive/internal/httputil"
 )
 
 // Handler handles setup wizard endpoints.
 type Handler struct {
-	db *pgxpool.Pool
+	db  *pgxpool.Pool
+	cfg *config.Config
 }
 
 // New creates an onboarding Handler.
-func New(db *pgxpool.Pool) *Handler {
-	return &Handler{db: db}
+func New(db *pgxpool.Pool, cfg *config.Config) *Handler {
+	return &Handler{db: db, cfg: cfg}
 }
 
 // Status responds with whether first-run setup is still required.
@@ -152,3 +160,175 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 
 	httputil.Respond(w, http.StatusCreated, map[string]bool{"ok": true})
 }
+
+// RestoreSetup restores a backup during first-run setup (before onboarding is complete).
+// POST /api/v1/system/onboarding/restore
+func (h *Handler) RestoreSetup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Guard: only allow when setup is not yet complete.
+	var currentVal string
+	_ = h.db.QueryRow(ctx,
+		`SELECT value FROM system_settings WHERE key = 'onboarding_complete'`,
+	).Scan(&currentVal)
+	if currentVal == "true" {
+		httputil.RespondError(w, http.StatusConflict, "setup already completed — use Admin → Backup to restore")
+		return
+	}
+
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "failed to parse form")
+		return
+	}
+	f, _, err := r.FormFile("backup")
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "missing 'backup' file field")
+		return
+	}
+	defer f.Close()
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "file is not valid gzip")
+		return
+	}
+	defer gz.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(gz, 512<<20))
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "failed to decompress backup")
+		return
+	}
+
+	// We share the same envelope structure as admin/backup.go.
+	var env struct {
+		Version string `json:"version"`
+		HMAC    string `json:"hmac"`
+		Data    any    `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid backup JSON")
+		return
+	}
+
+	// Verify HMAC
+	dataJSON, err := json.Marshal(env.Data)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to verify backup")
+		return
+	}
+	mac := hmac.New(sha256.New, []byte(h.cfg.BackupHMACSecret))
+	mac.Write(dataJSON)
+	expectedSig := hex.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(env.HMAC), []byte(expectedSig)) {
+		httputil.RespondError(w, http.StatusBadRequest, "backup HMAC verification failed — wrong BACKUP_HMAC_SECRET or corrupted file")
+		return
+	}
+
+	// Re-parse data as the full typed structure.
+	type backupData struct {
+		Users          []map[string]any `json:"users"`
+		Groups         []map[string]any `json:"groups"`
+		GroupMembers   []map[string]any `json:"group_members"`
+		Tags           []map[string]any `json:"tags"`
+		Files          []map[string]any `json:"files"`
+		FileTags       []map[string]any `json:"file_tags"`
+		Shares         []map[string]any `json:"shares"`
+		TOTPCreds      []map[string]any `json:"totp_credentials"`
+		AppPasswords   []map[string]any `json:"app_passwords"`
+		SystemSettings []map[string]any `json:"system_settings"`
+	}
+	dataBytes, _ := json.Marshal(env.Data)
+	var data backupData
+	if err := json.Unmarshal(dataBytes, &data); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid backup data")
+		return
+	}
+
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to begin transaction")
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	for _, stmt := range []string{
+		`DELETE FROM file_tags`,
+		`DELETE FROM shares`,
+		`DELETE FROM app_passwords`,
+		`DELETE FROM totp_credentials`,
+		`DELETE FROM group_members`,
+		`DELETE FROM tags`,
+		`DELETE FROM files`,
+		`DELETE FROM groups`,
+		`DELETE FROM sessions`,
+		`DELETE FROM device_trust_tokens`,
+		`DELETE FROM password_reset_tokens`,
+		`DELETE FROM invitation_tokens`,
+		`DELETE FROM users`,
+		`DELETE FROM system_settings`,
+	} {
+		if _, err := tx.Exec(ctx, stmt); err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to clear table: %v", err))
+			return
+		}
+	}
+
+	insertRows := func(table string, rows []map[string]any) error {
+		for _, row := range rows {
+			cols := make([]string, 0, len(row))
+			placeholders := make([]string, 0, len(row))
+			vals := make([]any, 0, len(row))
+			i := 1
+			for col, val := range row {
+				cols = append(cols, col)
+				placeholders = append(placeholders, fmt.Sprintf("$%d", i))
+				vals = append(vals, val)
+				i++
+			}
+			q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, strings.Join(cols, ", "), strings.Join(placeholders, ", "))
+			if _, err := tx.Exec(ctx, q, vals...); err != nil {
+				return fmt.Errorf("insert into %s: %w", table, err)
+			}
+		}
+		return nil
+	}
+
+	for _, step := range []struct {
+		table string
+		rows  []map[string]any
+	}{
+		{"system_settings", data.SystemSettings},
+		{"users", data.Users},
+		{"groups", data.Groups},
+		{"group_members", data.GroupMembers},
+		{"tags", data.Tags},
+		{"files", data.Files},
+		{"file_tags", data.FileTags},
+		{"shares", data.Shares},
+		{"totp_credentials", data.TOTPCreds},
+		{"app_passwords", data.AppPasswords},
+	} {
+		if err := insertRows(step.table, step.rows); err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("restore failed: %v", err))
+			return
+		}
+	}
+
+	// Ensure onboarding is marked complete after restore.
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO system_settings (key, value) VALUES ('onboarding_complete', 'true')
+		 ON CONFLICT (key) DO UPDATE SET value = 'true', updated_at = now()`,
+	); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to mark setup complete")
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to commit restore")
+		return
+	}
+
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+

@@ -57,7 +57,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		db:             db,
 		redis:          rdb,
 		authHandler:    authHandler,
-		onboarding:     onboarding.New(db),
+		onboarding:     onboarding.New(db, cfg),
 		userHandler:    user.NewHandler(db, auditSvc),
 		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc),
 		sharesHandler:  shares.NewHandler(db),
@@ -121,6 +121,9 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Get("/api/v1/system/health", s.handleHealth)
 	r.Get("/api/v1/system/onboarding-status", s.onboarding.Status)
 	r.Post("/api/v1/system/onboarding", s.onboarding.Setup)
+	r.Post("/api/v1/system/onboarding/restore", s.onboarding.RestoreSetup)
+	// Legacy alias used by frontend
+	r.Post("/api/v1/setup", s.onboarding.Setup)
 
 	// ── Auth endpoints (no session required) ──────────────────────────────
 	r.Post("/api/v1/auth/login", s.authHandler.Login)

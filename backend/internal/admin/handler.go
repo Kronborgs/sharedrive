@@ -634,12 +634,4 @@ func (h *Handler) DeleteTag(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// ─── Backup stubs ────────────────────────────────────────────────────────────
 
-func (h *Handler) Export(w http.ResponseWriter, _ *http.Request) {
-	httputil.RespondError(w, http.StatusNotImplemented, "backup export is not yet implemented")
-}
-
-func (h *Handler) Import(w http.ResponseWriter, _ *http.Request) {
-	httputil.RespondError(w, http.StatusNotImplemented, "backup import is not yet implemented")
-}

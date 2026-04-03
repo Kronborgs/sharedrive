@@ -210,8 +210,9 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Patch("/api/v1/admin/settings", s.handleAdminUpdateSettings)
 			r.Post("/api/v1/admin/settings/smtp/test", s.handleAdminSMTPTest)
 
-			r.Get("/api/v1/admin/backup/export", s.handleAdminExport)
-			r.Post("/api/v1/admin/backup/import", s.handleAdminImport)
+			r.Get("/api/v1/admin/backup", s.handleAdminListBackups)
+			r.Post("/api/v1/admin/backup", s.handleAdminExport)
+			r.Post("/api/v1/admin/backup/restore", s.handleAdminImport)
 
 			r.Post("/api/v1/admin/support-access/{id}/end", s.handleAdminEndSupportAccess)
 		})
@@ -347,6 +348,7 @@ func (s *Server) handleAdminRemoveWhitelist(w http.ResponseWriter, r *http.Reque
 func (s *Server) handleAdminGetSettings(w http.ResponseWriter, r *http.Request)       { s.adminHandler.GetSettings(w, r) }
 func (s *Server) handleAdminUpdateSettings(w http.ResponseWriter, r *http.Request)    { s.adminHandler.UpdateSettings(w, r) }
 func (s *Server) handleAdminSMTPTest(w http.ResponseWriter, r *http.Request)          { s.adminHandler.SMTPTest(w, r) }
+func (s *Server) handleAdminListBackups(w http.ResponseWriter, r *http.Request)        { s.adminHandler.ListBackups(w, r) }
 func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request)            { s.adminHandler.Export(w, r) }
 func (s *Server) handleAdminImport(w http.ResponseWriter, r *http.Request)            { s.adminHandler.Import(w, r) }
 func (s *Server) handleAdminEndSupportAccess(w http.ResponseWriter, r *http.Request)  { s.supportHandler.End(w, r) }

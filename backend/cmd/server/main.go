@@ -87,7 +87,7 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to initialise auth handler")
 	}
 
-	srv := server.New(cfg, pool, rdb, authHandler, auditSvc)
+	srv := server.New(cfg, pool, rdb, authHandler, auditSvc, Version, BuildDate)
 	if err := srv.Start(ctx); err != nil {
 		log.Fatal().Err(err).Msg("server error")
 	}

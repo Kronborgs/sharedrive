@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { APP_VERSION } from '@/version'
 import type { AuditLog, User, PaginatedResponse } from '@/types/api'
 import { formatDate, formatBytes } from '@/lib/utils'
 
@@ -18,6 +19,13 @@ function AdminDashboard() {
     queryKey: ['admin', 'audit-logs', 'recent'],
     queryFn: ({ signal }) =>
       api.get<PaginatedResponse<AuditLog>>('/api/v1/admin/audit-logs?limit=10', signal),
+  })
+
+  const { data: versionInfo } = useQuery({
+    queryKey: ['system', 'version'],
+    queryFn: ({ signal }) =>
+      api.get<{ version: string; build_date: string }>('/api/v1/system/version', signal),
+    staleTime: Infinity,
   })
 
   const totalUsers = users?.total ?? 0
@@ -72,6 +80,22 @@ function AdminDashboard() {
             ))
           )}
         </div>
+      </div>
+
+      {/* System version */}
+      <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl px-4 py-3 flex flex-wrap gap-x-8 gap-y-1 items-center">
+        <span className="text-xs text-muted font-medium uppercase tracking-wide">System</span>
+        <span className="text-xs text-zinc-700 dark:text-slate-300 font-mono">
+          frontend&nbsp;<span className="text-zinc-500 dark:text-slate-500">{APP_VERSION}</span>
+        </span>
+        <span className="text-xs text-zinc-700 dark:text-slate-300 font-mono">
+          backend&nbsp;<span className="text-zinc-500 dark:text-slate-500">{versionInfo?.version ?? '…'}</span>
+        </span>
+        {versionInfo?.build_date && (
+          <span className="text-xs text-zinc-700 dark:text-slate-300 font-mono">
+            built&nbsp;<span className="text-zinc-500 dark:text-slate-500">{versionInfo.build_date}</span>
+          </span>
+        )}
       </div>
     </div>
   )

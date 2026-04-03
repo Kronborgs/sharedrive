@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -149,6 +150,30 @@ func Load() (*Config, error) {
 	cfg := &Config{}
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("config unmarshal: %w", err)
+	}
+
+	// Override with direct env reads — viper's AutomaticEnv+Unmarshal does not
+	// reliably populate fields that have no SetDefault when using uppercase keys.
+	envStrings := map[*string]string{
+		&cfg.SessionSecret:     "SESSION_SECRET",
+		&cfg.BackupHMACSecret:  "BACKUP_HMAC_SECRET",
+		&cfg.TOTPEncryptKey:    "TOTP_ENCRYPT_KEY",
+		&cfg.DeviceTrustSecret: "DEVICE_TRUST_SECRET",
+		&cfg.PostgresPassword:  "POSTGRES_PASSWORD",
+		&cfg.PostgresHost:      "POSTGRES_HOST",
+		&cfg.PostgresDB:        "POSTGRES_DB",
+		&cfg.PostgresUser:      "POSTGRES_USER",
+		&cfg.RedisAddr:         "REDIS_ADDR",
+		&cfg.AppBaseURL:        "APP_BASE_URL",
+		&cfg.SMTPHost:          "SMTP_HOST",
+		&cfg.SMTPUser:          "SMTP_USER",
+		&cfg.SMTPPassword:      "SMTP_PASSWORD",
+		&cfg.SMTPFrom:          "SMTP_FROM",
+	}
+	for ptr, key := range envStrings {
+		if val := os.Getenv(key); val != "" {
+			*ptr = val
+		}
 	}
 
 	// Parse comma-separated CORS origins

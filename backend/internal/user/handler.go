@@ -17,7 +17,6 @@ import (
 
 	"github.com/yourname/privatedrive/internal/audit"
 	"github.com/yourname/privatedrive/internal/httputil"
-	"github.com/yourname/privatedrive/internal/middleware"
 )
 
 // Handler provides HTTP handlers for admin user management.
@@ -75,7 +74,7 @@ type createUserRequest struct {
 // Create handles POST /api/v1/admin/users — creates an invitation token.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	actor := middleware.UserFromContext(ctx)
+	actor := UserFromContext(ctx)
 
 	var req createUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -125,7 +124,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	h.auditSvc.Log(ctx, audit.Event{
 		Type:      audit.EventUserCreated,
 		ActorID:   &actor.ID,
-		IPAddress: middleware.ClientIP(r),
+		IPAddress: r.RemoteAddr,
 		Metadata:  map[string]any{"email": req.Email, "role": req.Role},
 	})
 	httputil.Respond(w, http.StatusCreated, map[string]string{"invite_token": token})
@@ -142,7 +141,7 @@ type updateUserRequest struct {
 // Update handles PATCH /api/v1/admin/users/{id}
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	actor := middleware.UserFromContext(ctx)
+	actor := UserFromContext(ctx)
 	id := chi.URLParam(r, "id")
 
 	var req updateUserRequest
@@ -189,7 +188,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	h.auditSvc.Log(ctx, audit.Event{
 		Type:      audit.EventUserActivated,
 		ActorID:   &actor.ID,
-		IPAddress: middleware.ClientIP(r),
+		IPAddress: r.RemoteAddr,
 		Metadata:  map[string]any{"target_user_id": id},
 	})
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
@@ -198,7 +197,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 // Deactivate handles DELETE /api/v1/admin/users/{id} — sets is_active = false.
 func (h *Handler) Deactivate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	actor := middleware.UserFromContext(ctx)
+	actor := UserFromContext(ctx)
 	id := chi.URLParam(r, "id")
 
 	if _, err := h.db.Exec(ctx,
@@ -218,7 +217,7 @@ func (h *Handler) Deactivate(w http.ResponseWriter, r *http.Request) {
 	h.auditSvc.Log(ctx, audit.Event{
 		Type:      audit.EventUserDeactivated,
 		ActorID:   &actor.ID,
-		IPAddress: middleware.ClientIP(r),
+		IPAddress: r.RemoteAddr,
 		Metadata:  map[string]any{"target_user_id": id},
 	})
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
@@ -261,7 +260,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 // ResetPassword handles POST /api/v1/admin/users/{id}/reset-password — admin sets a new password directly.
 func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	actor := middleware.UserFromContext(ctx)
+	actor := UserFromContext(ctx)
 	id := chi.URLParam(r, "id")
 
 	var body struct {
@@ -285,7 +284,7 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	h.auditSvc.Log(ctx, audit.Event{
 		Type:      audit.EventPasswordChanged,
 		ActorID:   &actor.ID,
-		IPAddress: middleware.ClientIP(r),
+		IPAddress: r.RemoteAddr,
 		Metadata:  map[string]any{"target_user_id": id, "admin_action": true},
 	})
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
@@ -306,7 +305,7 @@ func hashToken(raw string) string {
 // Reinvite handles POST /api/v1/admin/users/{id}/invite — resends an invite email.
 func (h *Handler) Reinvite(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	actor := middleware.UserFromContext(ctx)
+	actor := UserFromContext(ctx)
 	targetID := chi.URLParam(r, "id")
 
 	// Get the target user's email
@@ -337,7 +336,7 @@ func (h *Handler) Reinvite(w http.ResponseWriter, r *http.Request) {
 			"target_email": email,
 			"target_id":    targetID,
 		},
-		IPAddress: middleware.ClientIP(r),
+		IPAddress: r.RemoteAddr,
 	})
 
 	httputil.Respond(w, http.StatusOK, map[string]any{

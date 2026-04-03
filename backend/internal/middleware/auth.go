@@ -15,15 +15,16 @@ const (
 )
 
 // WithUser stores the authenticated user in the request context.
+// Delegates to user.WithUser so that the user package itself can retrieve it
+// without creating a circular import.
 func WithUser(ctx context.Context, u *user.User) context.Context {
-	return context.WithValue(ctx, sessionUserKey, u)
+	return user.WithUser(ctx, u)
 }
 
 // UserFromContext retrieves the authenticated user from context. Returns nil if
 // not authenticated.
 func UserFromContext(ctx context.Context) *user.User {
-	u, _ := ctx.Value(sessionUserKey).(*user.User)
-	return u
+	return user.UserFromContext(ctx)
 }
 
 // WithSupportMode marks the request context as an admin support-access session.

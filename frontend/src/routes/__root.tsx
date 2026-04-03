@@ -1,4 +1,4 @@
-import { createRootRoute, Outlet, redirect } from '@tanstack/react-router'
+import { createRootRoute, isRedirect, Outlet, redirect } from '@tanstack/react-router'
 import { api } from '@/lib/api'
 import type { OnboardingStatus } from '@/types/api'
 
@@ -11,8 +11,9 @@ export const Route = createRootRoute({
         throw redirect({ to: '/setup' })
       }
     } catch (err) {
-      // Re-throw router redirects (TanStack Router v1 uses _isRedirect)
-      if (err && typeof err === 'object' && ('_isRedirect' in err || 'href' in err)) throw err
+      // Re-throw router redirects — in TanStack Router v1.82+ redirect() returns
+      // a Response object; use the official isRedirect() guard.
+      if (isRedirect(err)) throw err
       // Otherwise allow render (network error — show error state)
     }
   },

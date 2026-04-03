@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { Check, ChevronRight, Mail, Upload } from 'lucide-react'
+import { Check, CheckCircle2, ChevronRight, Mail, Upload, XCircle } from 'lucide-react'
 
 export const Route = createFileRoute('/setup/')({
   component: SetupPage,
@@ -270,18 +270,20 @@ function Step3({
   const skip = watch('skip')
   const [testing, setTesting] = useState(false)
   const [testTo, setTestTo] = useState('')
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
 
   const handleTestEmail = async () => {
     const v = getValues()
     if (!v.smtp_host || !v.smtp_from_address) {
-      toast.error('Fill in host and from address first')
+      setTestResult({ ok: false, msg: 'Fill in host and from address first' })
       return
     }
     if (!testTo) {
-      toast.error('Enter a recipient address for the test')
+      setTestResult({ ok: false, msg: 'Enter a recipient address for the test' })
       return
     }
     setTesting(true)
+    setTestResult(null)
     try {
       await api.post('/api/v1/system/onboarding/smtp-test', {
         host: v.smtp_host,
@@ -292,9 +294,19 @@ function Step3({
         to_address: testTo,
         tls: v.smtp_tls,
       })
-      toast.success('Test email sent successfully!')
+      setTestResult({ ok: true, msg: `Test email sent to ${testTo}` })
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Test failed')
+      const raw = err instanceof Error ? err.message : 'Test failed'
+      // Surface the most useful part of common SMTP errors
+      let msg = raw
+      if (raw.includes('535') || raw.includes('534') || raw.includes('InvalidSecondFactor') || raw.includes('password')) {
+        msg = 'Authentication failed — check your username and password (Gmail requires an App Password)'
+      } else if (raw.includes('connection refused') || raw.includes('dial')) {
+        msg = 'Could not connect — check host and port'
+      } else if (raw.includes('certificate') || raw.includes('tls')) {
+        msg = 'TLS error — try toggling the TLS/STARTTLS setting'
+      }
+      setTestResult({ ok: false, msg })
     } finally {
       setTesting(false)
     }
@@ -348,7 +360,7 @@ function Step3({
               <input
                 type="email"
                 value={testTo}
-                onChange={e => setTestTo(e.target.value)}
+                onChange={e => { setTestTo(e.target.value); setTestResult(null) }}
                 className={inputClass}
                 placeholder="your@email.com"
               />
@@ -362,6 +374,18 @@ function Step3({
                 {testing ? 'Sending…' : 'Test'}
               </button>
             </div>
+            {testResult && (
+              <div className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
+                testResult.ok
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                  : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+              }`}>
+                {testResult.ok
+                  ? <CheckCircle2 size={13} className="shrink-0 mt-0.5" />
+                  : <XCircle size={13} className="shrink-0 mt-0.5" />}
+                <span>{testResult.msg}</span>
+              </div>
+            )}
           </div>
         </>
       )}

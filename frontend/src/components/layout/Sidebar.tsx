@@ -29,7 +29,7 @@ interface NavItem {
 
 const mainNav: NavItem[] = [
   { to: '/files',   label: 'My Files',     icon: <Files size={16} />,   exact: true },
-  { to: '/shared',  label: 'Shared',        icon: <Share2 size={16} /> },
+  { to: '/shares',  label: 'Shared',        icon: <Share2 size={16} /> },
   { to: '/recent',  label: 'Recent',        icon: <Clock size={16} /> },
   { to: '/trash',   label: 'Trash',         icon: <Trash2 size={16} /> },
 ]

@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { formatDate } from '@/lib/utils'
 
-export const Route = createFileRoute('/_auth/shared/')({
+export const Route = createFileRoute('/_auth/shares/')({
   component: SharedWithMePage,
 })
 

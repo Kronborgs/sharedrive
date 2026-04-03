@@ -175,6 +175,16 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 // TestSMTP tests SMTP connectivity during setup, before onboarding is complete.
 // POST /api/v1/system/onboarding/smtp-test
 func (h *Handler) TestSMTP(w http.ResponseWriter, r *http.Request) {
+	// Reject once setup is complete — use the admin SMTP test endpoint instead.
+	var onboardingDone string
+	_ = h.db.QueryRow(r.Context(),
+		`SELECT value FROM system_settings WHERE key = 'onboarding_complete'`,
+	).Scan(&onboardingDone)
+	if onboardingDone == "true" {
+		httputil.RespondError(w, http.StatusForbidden, "setup already complete")
+		return
+	}
+
 	var req struct {
 		Host        string `json:"host"`
 		Port        int    `json:"port"`
@@ -214,7 +224,8 @@ func (h *Handler) TestSMTP(w http.ResponseWriter, r *http.Request) {
 
 	client, err := mail.NewClient(req.Host, opts...)
 	if err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, fmt.Sprintf("SMTP client error: %v", err))
+		log.Warn().Err(err).Str("host", req.Host).Msg("onboarding: SMTP client init failed")
+		httputil.RespondError(w, http.StatusBadRequest, "failed to initialise SMTP client")
 		return
 	}
 

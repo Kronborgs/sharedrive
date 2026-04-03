@@ -282,7 +282,12 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	httputil.Respond(w, http.StatusOK, u)
+	// Embed computed is_admin field so clients don't have to inspect role string.
+	type meResponse struct {
+		*user.User
+		IsAdmin bool `json:"is_admin"`
+	}
+	httputil.Respond(w, http.StatusOK, meResponse{User: u, IsAdmin: u.IsAdmin()})
 }
 
 // ─── Password reset ───────────────────────────────────────────────────────────
@@ -292,12 +297,25 @@ type passwordResetRequestBody struct {
 }
 
 func (h *Handler) PasswordResetRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ip := middleware.ClientIP(r)
+
+	// 10 requests per 15 minutes per IP — prevents email spam / user enumeration
+	allowed, _, _, err := h.limiter.Allow(ctx, KeyIPPasswordReset, ip, 10, 15*time.Minute)
+	if err != nil {
+		log.Error().Err(err).Msg("rate limiter error (password reset)")
+	}
+	if !allowed {
+		httputil.RespondError(w, http.StatusTooManyRequests, "too many requests")
+		return
+	}
+
 	var req passwordResetRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	_ = h.passwordReset.Request(r.Context(), strings.ToLower(strings.TrimSpace(req.Email)), h.cfg.BaseURL)
+	_ = h.passwordReset.Request(ctx, strings.ToLower(strings.TrimSpace(req.Email)), h.cfg.BaseURL)
 	// Always return 200 — don't reveal whether email exists
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -364,6 +382,19 @@ type acceptInviteRequest struct {
 }
 
 func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
+	ip := middleware.ClientIP(r)
+	ctx := r.Context()
+
+	// 20 attempts per 15 minutes per IP — prevents token enumeration
+	allowed, _, _, err := h.limiter.Allow(ctx, KeyIPInviteAccept, ip, 20, 15*time.Minute)
+	if err != nil {
+		log.Error().Err(err).Msg("rate limiter error (invite accept)")
+	}
+	if !allowed {
+		httputil.RespondError(w, http.StatusTooManyRequests, "too many requests")
+		return
+	}
+
 	var req acceptInviteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
@@ -375,12 +406,11 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
 	hash := hashToken(req.Token)
 
 	var tokenID, email, invitedBy string
 	var expiresAt time.Time
-	err := h.db.QueryRow(ctx,
+	err = h.db.QueryRow(ctx,
 		`SELECT id, email, created_by, expires_at FROM invitation_tokens
 		 WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()`,
 		hash,

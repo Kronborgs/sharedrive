@@ -193,11 +193,13 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 	}
 	c, err := mail.NewClient(host, opts...)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "SMTP client error: "+err.Error())
+		log.Warn().Err(err).Str("host", host).Msg("admin: SMTP client init failed")
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to initialise SMTP client")
 		return
 	}
 	if err := c.DialAndSend(m); err != nil {
-		httputil.RespondError(w, http.StatusBadGateway, "SMTP send failed: "+err.Error())
+		log.Warn().Err(err).Str("host", host).Msg("admin: SMTP test failed")
+		httputil.RespondError(w, http.StatusBadGateway, "SMTP delivery failed — check server logs")
 		return
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})

@@ -77,43 +77,43 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		return result, rows.Err()
 	}
 
-	if data.Users, err = queryRows(`SELECT * FROM users`); err != nil {
+	if data.Users, err = queryRows(`SELECT id, email, display_name, password_hash, role, is_active, quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day, webdav_enabled, invited_by, last_login_at, created_at, updated_at FROM users`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export users")
 		return
 	}
-	if data.Groups, err = queryRows(`SELECT * FROM groups`); err != nil {
+	if data.Groups, err = queryRows(`SELECT id, name, owner_id, created_at, updated_at FROM groups`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export groups")
 		return
 	}
-	if data.GroupMembers, err = queryRows(`SELECT * FROM group_members`); err != nil {
+	if data.GroupMembers, err = queryRows(`SELECT group_id, user_id, created_at FROM group_members`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export group_members")
 		return
 	}
-	if data.Tags, err = queryRows(`SELECT * FROM tags`); err != nil {
+	if data.Tags, err = queryRows(`SELECT id, name, color, owner_id, created_at FROM tags`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export tags")
 		return
 	}
-	if data.Files, err = queryRows(`SELECT * FROM files`); err != nil {
+	if data.Files, err = queryRows(`SELECT id, parent_id, owner_id, name, is_folder, mime_type, size_bytes, storage_key, deleted_at, created_at, updated_at FROM files`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export files")
 		return
 	}
-	if data.FileTags, err = queryRows(`SELECT * FROM file_tags`); err != nil {
+	if data.FileTags, err = queryRows(`SELECT file_id, tag_id FROM file_tags`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export file_tags")
 		return
 	}
-	if data.Shares, err = queryRows(`SELECT * FROM shares`); err != nil {
+	if data.Shares, err = queryRows(`SELECT id, file_id, grantor_id, grantee_id, grantee_type, permissions, token_hash, link_label, download_limit, download_count, expires_at, created_at, updated_at FROM shares`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export shares")
 		return
 	}
-	if data.TOTPCreds, err = queryRows(`SELECT * FROM totp_credentials`); err != nil {
+	if data.TOTPCreds, err = queryRows(`SELECT id, user_id, secret_enc, backup_codes, confirmed_at, created_at FROM totp_credentials`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export totp_credentials")
 		return
 	}
-	if data.AppPasswords, err = queryRows(`SELECT * FROM app_passwords`); err != nil {
+	if data.AppPasswords, err = queryRows(`SELECT id, user_id, label, password_hash, created_at, last_used_at, revoked_at FROM app_passwords`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export app_passwords")
 		return
 	}
-	if data.SystemSettings, err = queryRows(`SELECT * FROM system_settings`); err != nil {
+	if data.SystemSettings, err = queryRows(`SELECT key, value, updated_at FROM system_settings`); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to export system_settings")
 		return
 	}
@@ -236,14 +236,58 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Insert helper using pgx copy fallback via plain INSERT
+	// allowedColumns whitelists the exact column names accepted per table during
+	// import. This prevents SQL injection via crafted column names even when the
+	// HMAC verification passes (defense-in-depth).
+	allowedColumns := map[string]map[string]bool{
+		"system_settings": {"key": true, "value": true, "updated_at": true},
+		"users": {
+			"id": true, "email": true, "display_name": true, "password_hash": true,
+			"role": true, "is_active": true, "quota_bytes": true, "quota_used_bytes": true,
+			"bandwidth_limit_bytes_per_day": true, "webdav_enabled": true, "invited_by": true,
+			"last_login_at": true, "created_at": true, "updated_at": true,
+		},
+		"groups":       {"id": true, "name": true, "owner_id": true, "created_at": true, "updated_at": true},
+		"group_members": {"group_id": true, "user_id": true, "created_at": true},
+		"tags":          {"id": true, "name": true, "color": true, "owner_id": true, "created_at": true},
+		"files": {
+			"id": true, "parent_id": true, "owner_id": true, "name": true, "is_folder": true,
+			"mime_type": true, "size_bytes": true, "storage_key": true,
+			"deleted_at": true, "created_at": true, "updated_at": true,
+		},
+		"file_tags": {"file_id": true, "tag_id": true},
+		"shares": {
+			"id": true, "file_id": true, "grantor_id": true, "grantee_id": true,
+			"grantee_type": true, "permissions": true, "token_hash": true, "link_label": true,
+			"download_limit": true, "download_count": true, "expires_at": true,
+			"created_at": true, "updated_at": true,
+		},
+		"totp_credentials": {"id": true, "user_id": true, "secret_enc": true, "backup_codes": true, "confirmed_at": true, "created_at": true},
+		"app_passwords":    {"id": true, "user_id": true, "label": true, "password_hash": true, "created_at": true, "last_used_at": true, "revoked_at": true},
+	}
+
+	// allowedTables is the set of tables that may be targeted during import.
+	allowedTables := map[string]bool{
+		"system_settings": true, "users": true, "groups": true, "group_members": true,
+		"tags": true, "files": true, "file_tags": true, "shares": true,
+		"totp_credentials": true, "app_passwords": true,
+	}
+
+	// Insert helper using pgx INSERT with parameterised values
 	insertRows := func(table string, rows []map[string]any) error {
+		if !allowedTables[table] {
+			return fmt.Errorf("unknown table %q", table)
+		}
+		allowed := allowedColumns[table]
 		for _, row := range rows {
 			cols := make([]string, 0, len(row))
 			placeholders := make([]string, 0, len(row))
 			vals := make([]any, 0, len(row))
 			i := 1
 			for col, val := range row {
+				if !allowed[col] {
+					return fmt.Errorf("column %q is not allowed in table %q", col, table)
+				}
 				cols = append(cols, col)
 				placeholders = append(placeholders, fmt.Sprintf("$%d", i))
 				vals = append(vals, val)

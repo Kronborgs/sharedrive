@@ -23,9 +23,11 @@ func NewRateLimiter(rdb *redis.Client) *RateLimiter {
 
 // Key types used in the application.
 const (
-	KeyIPLogin    = "ip_login:"
-	KeyUserLogin  = "user_login:"
-	KeyIPGlobal   = "ip_global:"
+	KeyIPLogin         = "ip_login:"
+	KeyUserLogin       = "user_login:"
+	KeyIPGlobal        = "ip_global:"
+	KeyIPPasswordReset = "ip_pwreset:"
+	KeyIPInviteAccept  = "ip_invite:"
 )
 
 // Allow checks whether the key is within limit attempts per window.

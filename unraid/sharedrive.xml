@@ -20,43 +20,309 @@
   <Requires>
     1. Docker network "cloudflare" must already exist (shared with your cloudflared container).
     2. Docker network "privatedrive-net" must exist. Create with: docker network create privatedrive-net
-    3. sharedrive-postgres container must be running.
-    4. sharedrive-redis container must be running.
-    5. Copy .env.example to the config path below, rename to .env, and fill in all values before starting.
+    3. sharedrive-postgres must be running.
+    4. sharedrive-redis must be running.
   </Requires>
 
-  <!-- ── Timezone ───────────────────────────────────────────────────────── -->
+  <!-- ══ TIMEZONE ═══════════════════════════════════════════════════════ -->
+
   <Config
     Name="Timezone"
     Target="TZ"
     Default="Europe/Copenhagen"
     Mode=""
-    Description="Container timezone. See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones for valid values."
+    Description="Container timezone. See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones"
     Type="Variable"
     Display="always"
     Required="false"
     Mask="false"
   >Europe/Copenhagen</Config>
 
-  <!-- ── Volumes ───────────────────────────────────────────────────────── -->
+  <!-- ══ SERVER ════════════════════════════════════════════════════════ -->
+
   <Config
-    Name="Config File (.env)"
-    Target="/app/.env"
-    Default="/mnt/user/appdata/sharedrive/config/.env"
-    Mode="ro"
-    Description="Full path to the .env configuration file on the host. Copy .env.example from the repo, rename to .env, and fill in all required values before starting the container."
-    Type="Path"
+    Name="External URL"
+    Target="APP_BASE_URL"
+    Default=""
+    Mode=""
+    Description="Full public URL of your Sharedrive instance, e.g. https://drive.yourdomain.com — used to build share links in emails."
+    Type="Variable"
     Display="always"
     Required="true"
     Mask="false"
-  >/mnt/user/appdata/sharedrive/config/.env</Config>
+  ></Config>
+
+  <Config
+    Name="CORS Origins"
+    Target="CORS_ORIGINS"
+    Default=""
+    Mode=""
+    Description="Comma-separated list of allowed CORS origins. Usually the same value as External URL."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false"
+  ></Config>
+
+  <!-- ══ DATABASE ══════════════════════════════════════════════════════ -->
+
+  <Config
+    Name="Postgres Host"
+    Target="POSTGRES_HOST"
+    Default="sharedrive-postgres"
+    Mode=""
+    Description="Hostname of the PostgreSQL container. Must match the container name of sharedrive-postgres."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >sharedrive-postgres</Config>
+
+  <Config
+    Name="Postgres Port"
+    Target="POSTGRES_PORT"
+    Default="5432"
+    Mode=""
+    Description="PostgreSQL port. Leave as 5432 unless you changed it."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  >5432</Config>
+
+  <Config
+    Name="Postgres Database"
+    Target="POSTGRES_DB"
+    Default="privatedrive"
+    Mode=""
+    Description="PostgreSQL database name. Must match the value set in sharedrive-postgres."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >privatedrive</Config>
+
+  <Config
+    Name="Postgres User"
+    Target="POSTGRES_USER"
+    Default="privatedrive"
+    Mode=""
+    Description="PostgreSQL user. Must match the value set in sharedrive-postgres."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >privatedrive</Config>
+
+  <Config
+    Name="Postgres Password"
+    Target="POSTGRES_PASSWORD"
+    Default=""
+    Mode=""
+    Description="PostgreSQL password. Must match the value set in sharedrive-postgres."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="true"
+  ></Config>
+
+  <!-- ══ REDIS ══════════════════════════════════════════════════════════ -->
+
+  <Config
+    Name="Redis Address"
+    Target="REDIS_ADDR"
+    Default="sharedrive-redis:6379"
+    Mode=""
+    Description="Address of the Redis container in host:port format. Must match the container name of sharedrive-redis."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >sharedrive-redis:6379</Config>
+
+  <!-- ══ SECRETS ════════════════════════════════════════════════════════ -->
+  <!-- Generate each with: openssl rand -hex 32 -->
+
+  <Config
+    Name="Session Secret"
+    Target="SESSION_SECRET"
+    Default=""
+    Mode=""
+    Description="Secret key for signing session tokens. Generate with: openssl rand -hex 32"
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="true"
+  ></Config>
+
+  <Config
+    Name="Backup HMAC Secret"
+    Target="BACKUP_HMAC_SECRET"
+    Default=""
+    Mode=""
+    Description="Secret key for HMAC-signing backup exports. Generate with: openssl rand -hex 32"
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="true"
+  ></Config>
+
+  <Config
+    Name="TOTP Encrypt Key"
+    Target="TOTP_ENCRYPT_KEY"
+    Default=""
+    Mode=""
+    Description="AES-256-GCM key for encrypting TOTP secrets at rest. Must be exactly 32 bytes — generate with: openssl rand -hex 32"
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="true"
+  ></Config>
+
+  <Config
+    Name="Device Trust Secret"
+    Target="DEVICE_TRUST_SECRET"
+    Default=""
+    Mode=""
+    Description="Secret key for HMAC-signing device-trust tokens. Generate with: openssl rand -hex 32"
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="true"
+  ></Config>
+
+  <!-- ══ SMTP (optional) ════════════════════════════════════════════════ -->
+
+  <Config
+    Name="SMTP Host"
+    Target="SMTP_HOST"
+    Default=""
+    Mode=""
+    Description="SMTP server hostname for outbound email (password resets, invitations). Leave blank to disable email."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  ></Config>
+
+  <Config
+    Name="SMTP Port"
+    Target="SMTP_PORT"
+    Default="587"
+    Mode=""
+    Description="SMTP server port."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  >587</Config>
+
+  <Config
+    Name="SMTP Username"
+    Target="SMTP_USER"
+    Default=""
+    Mode=""
+    Description="SMTP login username."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  ></Config>
+
+  <Config
+    Name="SMTP Password"
+    Target="SMTP_PASSWORD"
+    Default=""
+    Mode=""
+    Description="SMTP login password."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="true"
+  ></Config>
+
+  <Config
+    Name="SMTP From Address"
+    Target="SMTP_FROM"
+    Default=""
+    Mode=""
+    Description="Sender address shown in outbound emails, e.g. noreply@yourdomain.com"
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  ></Config>
+
+  <Config
+    Name="SMTP TLS Mode"
+    Target="SMTP_TLS"
+    Default="starttls"
+    Mode=""
+    Description="TLS mode for SMTP: starttls (port 587), tls (port 465), or none."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  >starttls</Config>
+
+  <!-- ══ FEATURES ═══════════════════════════════════════════════════════ -->
+
+  <Config
+    Name="Default User Quota (bytes)"
+    Target="DEFAULT_QUOTA_BYTES"
+    Default="10737418240"
+    Mode=""
+    Description="Default storage quota for new users, in bytes. Default is 10 GB (10737418240)."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  >10737418240</Config>
+
+  <Config
+    Name="WebDAV Enabled"
+    Target="WEBDAV_ENABLED"
+    Default="true"
+    Mode=""
+    Description="Enable WebDAV access for mounting the drive as a network drive."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  >true</Config>
+
+  <Config
+    Name="Open Registration"
+    Target="REGISTRATION_OPEN"
+    Default="false"
+    Mode=""
+    Description="Allow anyone to register an account. Set to true only if you want public sign-up."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  >false</Config>
+
+  <Config
+    Name="Require TOTP for Admins"
+    Target="TOTP_REQUIRED_FOR_ADMIN"
+    Default="true"
+    Mode=""
+    Description="Require admin accounts to have TOTP two-factor authentication enabled."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  >true</Config>
+
+  <!-- ══ VOLUMES ════════════════════════════════════════════════════════ -->
 
   <Config
     Name="Files Storage"
     Target="/data/files"
     Default="/mnt/user/files/sharedrive"
     Mode="rw"
-    Description="Path on the host where uploaded files will be stored. Ensure this directory exists and has sufficient free space."
+    Description="Path on the host where uploaded files are stored. Ensure this directory exists and has sufficient free space."
     Type="Path"
     Display="always"
     Required="true"
@@ -68,7 +334,7 @@
     Target="/data/backups"
     Default="/mnt/user/backups/sharedrive"
     Mode="rw"
-    Description="Path on the host where exported backup archives will be stored."
+    Description="Path on the host where exported backup archives are stored."
     Type="Path"
     Display="always"
     Required="true"

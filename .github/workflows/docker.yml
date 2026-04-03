@@ -67,6 +67,12 @@ jobs:
         working-directory: backend
         run: go mod tidy
 
+      - name: Verify Go build
+        working-directory: backend
+        run: |
+          mkdir -p internal/embed/dist && touch internal/embed/dist/index.html
+          go build ./...
+
       - name: Type-check frontend
         working-directory: frontend
         run: npx tsr generate && npx tsc --noEmit

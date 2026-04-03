@@ -7,7 +7,7 @@ ARG VERSION=dev
 
 WORKDIR /fe
 COPY frontend/package*.json ./
-RUN npm ci --prefer-offline
+RUN npm install --prefer-offline
 COPY frontend/ .
 RUN APP_VERSION=${VERSION} npm run build
 

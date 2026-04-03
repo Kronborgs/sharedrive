@@ -91,6 +91,24 @@ func Load() (*Config, error) {
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
+	// Bind every env var that has no SetDefault — otherwise viper's Unmarshal
+	// won't discover them via AutomaticEnv alone (it only iterates known keys).
+	for _, key := range []string{
+		"APP_BASE_URL",
+		"POSTGRES_PASSWORD",
+		"REDIS_PASSWORD",
+		"SESSION_SECRET",
+		"BACKUP_HMAC_SECRET",
+		"TOTP_ENCRYPT_KEY",
+		"DEVICE_TRUST_SECRET",
+		"SMTP_HOST",
+		"SMTP_USER",
+		"SMTP_PASSWORD",
+		"SMTP_FROM",
+	} {
+		_ = v.BindEnv(key)
+	}
+
 	// Attempt to load .env file (fail silently if absent in production)
 	envFile := v.GetString("ENV_FILE")
 	if envFile == "" {

@@ -19,7 +19,8 @@ func SecurityHeaders(next http.Handler) http.Handler {
 				"style-src 'self' 'unsafe-inline'; "+
 				"img-src 'self' data: blob:; "+
 				"font-src 'self'; "+
-				"connect-src 'self'; "+
+				"connect-src 'self' wss: ws:; "+
+				"worker-src blob:; "+
 				"frame-ancestors 'none';",
 		)
 		// HSTS — only set over HTTPS connections

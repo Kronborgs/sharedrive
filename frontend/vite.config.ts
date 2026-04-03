@@ -40,6 +40,10 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    // Disable the inline modulepreload polyfill script — all supported browsers
+    // handle <link rel="modulepreload"> natively, and the polyfill is an inline
+    // <script> that would be blocked by our Content-Security-Policy.
+    modulePreload: { polyfill: false },
     rollupOptions: {
       output: {
         manualChunks: {

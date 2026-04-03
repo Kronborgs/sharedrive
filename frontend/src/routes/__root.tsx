@@ -3,8 +3,10 @@ import { api } from '@/lib/api'
 import type { OnboardingStatus } from '@/types/api'
 
 export const Route = createRootRoute({
-  beforeLoad: async () => {
-    // Check if first-run setup is needed — redirect unconditionally
+  beforeLoad: async ({ location }) => {
+    // Already heading to setup — don't redirect again (would create a loop)
+    if (location.pathname.startsWith('/setup')) return
+    // Check if first-run setup is needed
     try {
       const status = await api.get<OnboardingStatus>('/api/v1/system/onboarding-status')
       if (status?.required) {

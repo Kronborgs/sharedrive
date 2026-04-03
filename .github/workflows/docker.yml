@@ -18,6 +18,9 @@ jobs:
     name: Build and push
     runs-on: ubuntu-latest
 
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     permissions:
       contents: read
       packages: write
@@ -62,6 +65,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
+          cache: false
 
       - name: Generate go.sum
         working-directory: backend

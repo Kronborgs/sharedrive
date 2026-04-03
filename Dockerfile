@@ -21,7 +21,7 @@ ARG BUILD_DATE=unknown
 RUN apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /src
-COPY backend/go.mod backend/go.sum ./
+COPY backend/go.mod ./
 RUN go mod download
 
 COPY backend/ .

@@ -72,6 +72,7 @@ export interface FileItem {
   // resolved fields
   shared?: boolean
   permissions?: SharePermissions
+  tags?: Array<{ id: string; name: string; color: string }>
 }
 
 export interface SharePermissions {

@@ -1,7 +1,7 @@
 import type { FileItem } from '@/types/api'
 import { getFileIcon, formatBytes, formatRelative, cn } from '@/lib/utils'
 import { MoreVertical, Folder } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 
 interface FileListProps {
   items: FileItem[]
@@ -63,7 +63,6 @@ function FileRow({
   onOpen: (item: FileItem) => void
   onContextMenu: (item: FileItem, x: number, y: number) => void
 }) {
-  const [menuOpen, setMenuOpen] = useState(false)
   const moreRef = useRef<HTMLButtonElement>(null)
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -100,7 +99,7 @@ function FileRow({
               {tag.name}
             </span>
           ))}
-          {item.is_shared && (
+          {item.shared && (
             <span className="shrink-0 hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
               Shared
             </span>
@@ -116,7 +115,7 @@ function FileRow({
       <td className="pr-2">
         <button
           ref={moreRef}
-          onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); onContextMenu(item, moreRef.current!.getBoundingClientRect().left, moreRef.current!.getBoundingClientRect().bottom) }}
+          onClick={e => { e.stopPropagation(); onContextMenu(item, moreRef.current!.getBoundingClientRect().left, moreRef.current!.getBoundingClientRect().bottom) }}
           className="p-1 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-all"
           title="More options"
         >

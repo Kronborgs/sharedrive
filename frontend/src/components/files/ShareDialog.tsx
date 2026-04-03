@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { FileItem, Share, SharePermissions, User, Group } from '@/types/api'
+import type { FileItem, Share, SharePermissions, Group } from '@/types/api'
 import { formatDate } from '@/lib/utils'
-import { X, Copy, Check, Link, Trash2, UserPlus } from 'lucide-react'
+import { X, Check, Link, Trash2, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface ShareDialogProps {
@@ -14,11 +14,12 @@ interface ShareDialogProps {
 type ShareTargetType = 'user' | 'group' | 'link'
 
 const DEFAULT_PERMS: SharePermissions = {
-  can_read: true,
-  can_write: false,
+  can_view: true,
+  can_upload: false,
+  can_edit: false,
   can_delete: false,
-  can_share: false,
-  can_download: true,
+  can_reshare: false,
+  is_owner: false,
 }
 
 export function ShareDialog({ item, onClose }: ShareDialogProps) {

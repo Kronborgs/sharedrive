@@ -31,14 +31,17 @@ export function formatRelative(iso: string): string {
   return `${days}d ago`
 }
 
-export function getFileIcon(mimeType: string | null, isFolder: boolean): string {
-  if (isFolder) return 'folder'
-  if (!mimeType) return 'file'
-  if (mimeType.startsWith('image/')) return 'image'
-  if (mimeType.startsWith('video/')) return 'video'
-  if (mimeType.startsWith('audio/')) return 'audio'
-  if (mimeType.includes('pdf')) return 'pdf'
-  if (mimeType.includes('zip') || mimeType.includes('archive')) return 'archive'
-  if (mimeType.includes('text/') || mimeType.includes('document')) return 'text'
-  return 'file'
+export function getFileIcon(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  if (['jpg','jpeg','png','gif','webp','svg','avif','bmp'].includes(ext)) return '🖼️'
+  if (['mp4','mov','avi','mkv','webm'].includes(ext)) return '🎬'
+  if (['mp3','wav','flac','ogg','m4a'].includes(ext)) return '🎵'
+  if (['pdf'].includes(ext)) return '📄'
+  if (['zip','tar','gz','7z','rar','bz2'].includes(ext)) return '🗜️'
+  if (['doc','docx','odt','rtf'].includes(ext)) return '📝'
+  if (['xls','xlsx','csv'].includes(ext)) return '📊'
+  if (['ppt','pptx'].includes(ext)) return '📊'
+  if (['txt','md','log'].includes(ext)) return '📃'
+  if (['js','ts','jsx','tsx','py','go','rs','c','cpp','h','html','css','json','yaml','yml','sh'].includes(ext)) return '💻'
+  return '📄'
 }

@@ -67,6 +67,11 @@ jobs:
         working-directory: backend
         run: go mod tidy
 
+      - name: Type-check frontend
+        working-directory: frontend
+        run: npx tsr generate && npx tsc --noEmit
+        continue-on-error: true
+
       - name: Read version
         id: version
         run: echo "version=$(cat VERSION 2>/dev/null || echo dev)" >> $GITHUB_OUTPUT

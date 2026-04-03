@@ -57,7 +57,7 @@ function TagsPage() {
       <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
         {/* Create form */}
         <form
-          onSubmit={e => { e.preventDefault(); create.mutate() }}
+          onSubmit={e => { e.preventDefault(); create.mutate(undefined) }}
           className="px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148] flex flex-wrap gap-2 items-center"
         >
           <input
@@ -99,7 +99,7 @@ function TagsPage() {
                 {editId === tag.id ? (
                   <form
                     className="flex flex-wrap gap-2 flex-1 items-center"
-                    onSubmit={e => { e.preventDefault(); update.mutate() }}
+                    onSubmit={e => { e.preventDefault(); update.mutate(undefined) }}
                   >
                     <input
                       autoFocus

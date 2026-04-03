@@ -161,6 +161,7 @@ export interface AuditLog {
   actor_id: string | null
   actor_email: string
   target_user_id: string | null
+  target_email?: string | null
   resource_type: string
   resource_id: string | null
   resource_name: string

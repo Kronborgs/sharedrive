@@ -74,9 +74,9 @@ export function AuditLogsPage() {
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
-  const setPage = (p: number) => void navigate({ search: (prev: typeof searchSchema._output) => ({ ...prev, page: p }) })
-  const setEvent = (e: string) => void navigate({ search: (prev: typeof searchSchema._output) => ({ ...prev, event: e, page: 1 }) })
-  const setUser = (u: string) => void navigate({ search: (prev: typeof searchSchema._output) => ({ ...prev, user: u, page: 1 }) })
+  const setPage = (p: number) => void navigate({ search: prev => ({ ...prev, page: p }) })
+  const setEvent = (e: string) => void navigate({ search: prev => ({ ...prev, event: e, page: 1 }) })
+  const setUser = (u: string) => void navigate({ search: prev => ({ ...prev, user: u, page: 1 }) })
 
   return (
     <div className="space-y-4">

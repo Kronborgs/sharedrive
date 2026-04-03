@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pquerna/otp/totp"
@@ -206,63 +205,3 @@ func (s *TOTPService) validateBackupCode(ctx context.Context, userID, code strin
 	return fmt.Errorf("totp: invalid code")
 }
 
-// ─── Device trust ────────────────────────────────────────────────────────────
-
-const deviceTrustTTL = 30 * 24 * time.Hour // 30 days
-
-type DeviceTrustService struct {
-	db     *pgxpool.Pool
-	secret []byte
-}
-
-func NewDeviceTrustService(db *pgxpool.Pool, secretHex string) (*DeviceTrustService, error) {
-	secret, err := hex.DecodeString(secretHex)
-	if err != nil {
-		return nil, fmt.Errorf("device_trust: invalid secret")
-	}
-	return &DeviceTrustService{db: db, secret: secret}, nil
-}
-
-// Issue creates a trusted device token for a user (post successful 2FA).
-func (d *DeviceTrustService) Issue(ctx context.Context, userID, ip, ua string) (string, error) {
-	b := make([]byte, tokenBytes)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	raw := hex.EncodeToString(b)
-	hash := hashToken(raw) // reuse SHA-256
-
-	_, err := d.db.Exec(ctx,
-		`INSERT INTO device_trust_tokens (user_id, token_hash, ip_address, user_agent, expires_at)
-		 VALUES ($1, $2, $3, $4, $5)`,
-		userID, hash, ip, ua, time.Now().Add(deviceTrustTTL),
-	)
-	if err != nil {
-		return "", fmt.Errorf("device_trust: %w", err)
-	}
-	return raw, nil
-}
-
-// Validate returns the userID if the raw token is valid and not expired.
-func (d *DeviceTrustService) Validate(ctx context.Context, rawToken string) (string, error) {
-	hash := hashToken(rawToken)
-	var userID string
-	err := d.db.QueryRow(ctx,
-		`SELECT user_id FROM device_trust_tokens
-		 WHERE token_hash = $1 AND expires_at > now() AND revoked_at IS NULL`,
-		hash,
-	).Scan(&userID)
-	if err != nil {
-		return "", fmt.Errorf("device_trust: invalid or expired token")
-	}
-	return userID, nil
-}
-
-// Revoke removes a single trust token.
-func (d *DeviceTrustService) Revoke(ctx context.Context, rawToken string) error {
-	hash := hashToken(rawToken)
-	_, err := d.db.Exec(ctx,
-		`UPDATE device_trust_tokens SET revoked_at = now() WHERE token_hash = $1`, hash,
-	)
-	return err
-}

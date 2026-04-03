@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/go-chi/chi/v5"
@@ -16,15 +15,6 @@ import (
 	"github.com/yourname/privatedrive/internal/httputil"
 	"github.com/yourname/privatedrive/internal/middleware"
 )
-
-// AppPassword represents a row in the app_passwords table.
-type AppPassword struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	Scope      string     `json:"scope"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-}
 
 // AppPasswordHandler provides HTTP handlers for app-password management.
 type AppPasswordHandler struct {

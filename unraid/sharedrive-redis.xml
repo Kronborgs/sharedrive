@@ -3,7 +3,7 @@
   <Name>sharedrive-redis</Name>
   <Repository>redis:7-alpine</Repository>
   <Registry>https://hub.docker.com/_/redis</Registry>
-  <Network>privatedrive-net</Network>
+  <Network>sharedrive-net</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support>https://github.com/Kronborgs/sharedrive/issues</Support>
@@ -18,7 +18,7 @@
   <PostArgs>redis-server --save "" --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru</PostArgs>
   <CPUset/>
   <Requires>
-    Docker network "privatedrive-net" must exist. Create with: docker network create privatedrive-net
+    Docker network "sharedrive-net" must exist. Create with: docker network create sharedrive-net
   </Requires>
 
   <!-- ── Timezone ───────────────────────────────────────────────────────── -->

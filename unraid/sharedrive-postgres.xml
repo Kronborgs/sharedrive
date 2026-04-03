@@ -3,7 +3,7 @@
   <Name>sharedrive-postgres</Name>
   <Repository>postgres:16-alpine</Repository>
   <Registry>https://hub.docker.com/_/postgres</Registry>
-  <Network>privatedrive-net</Network>
+  <Network>sharedrive-net</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support>https://github.com/Kronborgs/sharedrive/issues</Support>
@@ -17,7 +17,7 @@
   <PostArgs/>
   <CPUset/>
   <Requires>
-    Docker network "privatedrive-net" must exist. Create with: docker network create privatedrive-net
+    Docker network "sharedrive-net" must exist. Create with: docker network create sharedrive-net
   </Requires>
 
   <!-- ── Timezone ───────────────────────────────────────────────────────── -->

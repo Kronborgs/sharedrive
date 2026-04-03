@@ -14,12 +14,12 @@
   <TemplateURL>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/unraid/sharedrive.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/pics/logo.png</Icon>
   <!-- Also attach to the internal bridge so the app can reach postgres and redis -->
-  <ExtraParams>--network privatedrive-net</ExtraParams>
+  <ExtraParams>--network sharedrive-net</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <Requires>
     1. Docker network "cloudflare" must already exist (shared with your cloudflared container).
-    2. Docker network "privatedrive-net" must exist. Create with: docker network create privatedrive-net
+    2. Docker network "sharedrive-net" must exist. Create with: docker network create sharedrive-net
     3. sharedrive-postgres must be running.
     4. sharedrive-redis must be running.
   </Requires>

@@ -234,7 +234,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
                   <li key={s.id} className="flex items-center gap-2 p-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117]">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-zinc-900 dark:text-slate-100 truncate">
-                        {s.grantee_type === 'link' ? 'Public link' : s.grantee_email ?? s.grantee_group_name ?? 'Unknown'}
+                        {s.grantee_type === 'link' ? 'Public link' : s.grantee_email ?? s.pending_email ?? s.grantee_group_name ?? 'Unknown'}
                       </p>
                       {s.expires_at && (
                         <p className="text-[10px] text-muted">Expires {formatDate(s.expires_at)}</p>

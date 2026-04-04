@@ -91,10 +91,11 @@ export interface Share {
   id: string
   resource_id: string
   owner_id: string
-  grantee_type: 'user' | 'group' | 'link'
+  grantee_type: 'user' | 'group' | 'link' | 'pending'
   grantee_id?: string | null
   grantee_email?: string | null
   grantee_group_name?: string | null
+  pending_email?: string | null
   token?: string | null
   can_view: boolean
   can_upload: boolean

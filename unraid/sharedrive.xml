@@ -190,8 +190,81 @@
     Mask="true"
   ></Config>
 
+  <!-- ══ SMTP ══════════════════════════════════════════════════════════ -->
+
+  <Config
+    Name="SMTP Host"
+    Target="SMTP_HOST"
+    Default=""
+    Mode=""
+    Description="Hostname of your SMTP server, e.g. smtp.gmail.com — required for share invites and password-reset emails."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  ></Config>
+
+  <Config
+    Name="SMTP Port"
+    Target="SMTP_PORT"
+    Default="587"
+    Mode=""
+    Description="SMTP port. 587 for STARTTLS, 465 for TLS/SSL, 25 for plain."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  >587</Config>
+
+  <Config
+    Name="SMTP Username"
+    Target="SMTP_USER"
+    Default=""
+    Mode=""
+    Description="SMTP login username / email address."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  ></Config>
+
+  <Config
+    Name="SMTP Password"
+    Target="SMTP_PASSWORD"
+    Default=""
+    Mode=""
+    Description="SMTP login password or app-specific password."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="true"
+  ></Config>
+
+  <Config
+    Name="SMTP From Address"
+    Target="SMTP_FROM"
+    Default=""
+    Mode=""
+    Description="The From: address used in outgoing emails, e.g. sharedrive@yourdomain.com"
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  ></Config>
+
+  <Config
+    Name="SMTP TLS Mode"
+    Target="SMTP_TLS"
+    Default="starttls"
+    Mode=""
+    Description="TLS mode: starttls (port 587), tls (port 465), or none (port 25)."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  >starttls</Config>
+
   <!-- ══ FEATURES ═══════════════════════════════════════════════════════ -->
-  <!-- SMTP is configured in the Admin → Settings panel after first run. -->
 
   <Config
     Name="WebDAV Enabled"

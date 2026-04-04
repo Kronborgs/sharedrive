@@ -192,6 +192,40 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Duplicate check: reject if an active share already exists for this resource + grantee.
+	if req.GranteeType == "user" && !userNotFound {
+		var exists bool
+		_ = h.db.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM shares WHERE resource_id=$1 AND grantee_id=$2 AND revoked_at IS NULL)`,
+			req.ResourceID, req.GranteeID,
+		).Scan(&exists)
+		if exists {
+			httputil.RespondError(w, http.StatusConflict, "This user already has access to this file")
+			return
+		}
+	} else if req.GranteeType == "group" {
+		var exists bool
+		_ = h.db.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM shares WHERE resource_id=$1 AND grantee_id=$2 AND revoked_at IS NULL)`,
+			req.ResourceID, req.GranteeID,
+		).Scan(&exists)
+		if exists {
+			httputil.RespondError(w, http.StatusConflict, "This group already has access to this file")
+			return
+		}
+	} else if userNotFound {
+		// Pending share — check for existing pending share with same email.
+		var exists bool
+		_ = h.db.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM shares WHERE resource_id=$1 AND pending_email=lower($2) AND revoked_at IS NULL)`,
+			req.ResourceID, req.GranteeEmail,
+		).Scan(&exists)
+		if exists {
+			httputil.RespondError(w, http.StatusConflict, "An invite has already been sent to this email")
+			return
+		}
+	}
+
 	// Pending share: grantee has no account yet → create invitation + pending share.
 	if userNotFound {
 		inviteToken := uuid.New().String()

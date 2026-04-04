@@ -9,9 +9,10 @@ interface FileListProps {
   onSelect: (id: string, additive: boolean) => void
   onOpen: (item: FileItem) => void
   onContextMenu: (item: FileItem, x: number, y: number) => void
+  onSelectAll?: () => void
 }
 
-export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu }: FileListProps) {
+export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, onSelectAll }: FileListProps) {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
@@ -28,6 +29,18 @@ export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu }
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-zinc-100 dark:border-[#2d3148]">
+          {onSelectAll && (
+            <th className="w-8 px-3 py-2.5">
+              <input
+                type="checkbox"
+                className="rounded border-zinc-300 dark:border-zinc-600 cursor-pointer"
+                checked={items.length > 0 && selectedIds.size === items.length}
+                ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < items.length }}
+                onChange={onSelectAll}
+                onClick={e => e.stopPropagation()}
+              />
+            </th>
+          )}
           <th className="text-left px-3 py-2.5 text-xs font-medium text-muted uppercase">Name</th>
           <th className="text-right px-3 py-2.5 text-xs font-medium text-muted uppercase w-24 hidden md:table-cell">Size</th>
           <th className="text-right px-3 py-2.5 text-xs font-medium text-muted uppercase w-32 hidden md:table-cell">Modified</th>

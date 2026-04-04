@@ -51,7 +51,7 @@ function SharedWithMePage() {
       can_view: s.share.can_view,
       can_upload: s.share.can_upload,
       can_edit: s.share.can_edit,
-      can_delete: false, // guests can never delete
+      can_delete: s.share.can_delete,
       can_reshare: s.share.can_reshare,
       is_owner: false,
     },

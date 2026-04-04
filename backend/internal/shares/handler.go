@@ -621,7 +621,7 @@ func (h *Handler) SharedFolderChildren(w http.ResponseWriter, r *http.Request) {
 	// Check that the requesting user has an active share granting access to this folder
 	// or any ancestor folder. We walk up via recursive CTE then match against shares.
 	var shareOwnerID string
-	var canUpload bool
+	var canView, canUpload, canEdit, canDelete, canReshare bool
 	var folderName string
 	err := h.db.QueryRow(ctx,
 		`WITH RECURSIVE ancestors AS (
@@ -629,7 +629,8 @@ func (h *Handler) SharedFolderChildren(w http.ResponseWriter, r *http.Request) {
 		   UNION ALL
 		   SELECT f.id, f.parent_id, f.name FROM files f JOIN ancestors a ON f.id = a.parent_id WHERE f.deleted_at IS NULL
 		 )
-		 SELECT s.owner_id, s.can_upload, (SELECT name FROM files WHERE id = $1)
+		 SELECT s.owner_id, s.can_view, s.can_upload, s.can_edit, s.can_delete, s.can_reshare,
+		        (SELECT name FROM files WHERE id = $1)
 		 FROM shares s
 		 JOIN ancestors a ON a.id = s.resource_id
 		 WHERE s.revoked_at IS NULL
@@ -643,7 +644,7 @@ func (h *Handler) SharedFolderChildren(w http.ResponseWriter, r *http.Request) {
 		   )
 		 LIMIT 1`,
 		folderID, u.ID,
-	).Scan(&shareOwnerID, &canUpload, &folderName)
+	).Scan(&shareOwnerID, &canView, &canUpload, &canEdit, &canDelete, &canReshare, &folderName)
 	if err != nil {
 		httputil.RespondError(w, http.StatusForbidden, "not shared with you")
 		return
@@ -686,7 +687,11 @@ func (h *Handler) SharedFolderChildren(w http.ResponseWriter, r *http.Request) {
 
 	httputil.Respond(w, http.StatusOK, map[string]any{
 		"items":       children,
+		"can_view":    canView,
 		"can_upload":  canUpload,
+		"can_edit":    canEdit,
+		"can_delete":  canDelete,
+		"can_reshare": canReshare,
 		"owner_id":    shareOwnerID,
 		"folder_name": folderName,
 	})

@@ -8,7 +8,7 @@ import { FileList, FileGrid } from '@/components/files/FileViews'
 import { FileContextMenu, type ContextAction } from '@/components/files/FileContextMenu'
 import { DropZone, UploadProgress, useUploader } from '@/components/files/UploadZone'
 import { ShareDialog } from '@/components/files/ShareDialog'
-import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home } from 'lucide-react'
+import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 const searchSchema = z.object({
@@ -106,6 +106,28 @@ function FilesPage() {
   const items = files ?? []
   const sorted = [...items.filter(f => f.is_folder), ...items.filter(f => !f.is_folder)]
 
+  const currentFolderItem: FileItem | null = folderId && breadcrumbs?.length
+    ? {
+        id: folderId,
+        parent_id: null,
+        owner_id: '',
+        is_folder: true,
+        name: breadcrumbs[breadcrumbs.length - 1].name,
+        mime_type: null,
+        size_bytes: 0,
+        checksum_sha256: null,
+        deleted_at: null,
+        created_at: '',
+        updated_at: '',
+        permissions: { can_view: true, can_upload: true, can_edit: true, can_delete: true, can_reshare: true, is_owner: true },
+      }
+    : null
+
+  const handleSelectAll = useCallback(() => {
+    if (selected.size === sorted.length) setSelected(new Set())
+    else setSelected(new Set(sorted.map(f => f.id)))
+  }, [selected.size, sorted])
+
   return (
     <DropZone folderId={folderId} onUploadStart={startUpload}>
       <div className="flex flex-col flex-1 min-h-0">
@@ -132,6 +154,43 @@ function FilesPage() {
             ))}
           </nav>
           <div className="flex items-center gap-1 shrink-0">
+            {folderId && currentFolderItem && (
+              <>
+                <button
+                  onClick={() => setShareItem(currentFolderItem)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                >
+                  <Share2 size={12} />
+                  Share
+                </button>
+                <button
+                  onClick={() => { setRenameId(folderId); setRenameName(currentFolderItem.name) }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                >
+                  <Pencil size={12} />
+                  Rename
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!confirm(`Move "${currentFolderItem.name}" to trash?`)) return
+                    try {
+                      await api.delete(`/api/v1/files/${folderId}`)
+                      const parentId = breadcrumbs && breadcrumbs.length > 1
+                        ? breadcrumbs[breadcrumbs.length - 2].id
+                        : null
+                      void qc.invalidateQueries({ queryKey: ['files', parentId] })
+                      void navigate({ to: '/files', search: parentId ? { folder: parentId } : {} })
+                    } catch {
+                      toast.error('Failed to delete folder')
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <Trash2 size={12} />
+                  Delete
+                </button>
+              </>
+            )}
             <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium cursor-pointer transition-colors">
               <Upload size={12} />
               Upload
@@ -156,7 +215,7 @@ function FilesPage() {
           {isLoading ? (
             <div className="flex items-center justify-center h-40 text-sm text-muted">Loading…</div>
           ) : view === 'list' ? (
-            <FileList items={sorted} selectedIds={selected} onSelect={handleSelect} onOpen={handleOpen} onContextMenu={(item, x, y) => setContextMenu({ item, x, y })} />
+            <FileList items={sorted} selectedIds={selected} onSelect={handleSelect} onOpen={handleOpen} onContextMenu={(item, x, y) => setContextMenu({ item, x, y })} onSelectAll={handleSelectAll} />
           ) : (
             <FileGrid items={sorted} selectedIds={selected} onSelect={handleSelect} onOpen={handleOpen} onContextMenu={(item, x, y) => setContextMenu({ item, x, y })} />
           )}

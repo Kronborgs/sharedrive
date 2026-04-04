@@ -27,7 +27,11 @@ interface ChildItem {
 
 interface ChildrenResponse {
   items: ChildItem[]
+  can_view: boolean
   can_upload: boolean
+  can_edit: boolean
+  can_delete: boolean
+  can_reshare: boolean
   owner_id: string
   folder_name: string
 }
@@ -59,11 +63,11 @@ function SharedBrowsePage() {
     updated_at: '',
     shared: true,
     permissions: {
-      can_view: true,
+      can_view: data?.can_view ?? true,
       can_upload: data?.can_upload ?? false,
-      can_edit: false,
-      can_delete: false,
-      can_reshare: false,
+      can_edit: data?.can_edit ?? false,
+      can_delete: data?.can_delete ?? false,
+      can_reshare: data?.can_reshare ?? false,
       is_owner: false,
     },
   }))

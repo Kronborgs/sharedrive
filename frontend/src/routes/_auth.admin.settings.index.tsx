@@ -171,7 +171,7 @@ function SettingsPage() {
       <div className="flex justify-end">
         <button
           type="submit"
-          disabled={!isDirty || save.isPending}
+          disabled={(!isDirty && !smtpPassword) || save.isPending}
           className="px-5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
         >
           {save.isPending ? 'Saving…' : 'Save changes'}

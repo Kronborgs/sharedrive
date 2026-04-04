@@ -14,7 +14,7 @@ export function useAdminBanner() {
   const [dismissed, setDismissed] = useState(false)
 
   useSSE<AdminBannerEvent>({
-    url: '/api/v1/admin/support-session/events',
+    url: '/api/v1/me/events',
     enabled: !!user && !user.is_admin, // only shown to the account being accessed
     onMessage: (event) => {
       if (event.type === 'admin_session_active') {

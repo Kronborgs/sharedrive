@@ -30,6 +30,7 @@ interface FileContextMenuProps {
   x: number
   y: number
   isTrash?: boolean
+  allowedActions?: ContextAction[]
   onAction: (action: ContextAction, item: FileItem) => void
   onClose: () => void
 }
@@ -58,7 +59,7 @@ const trashItems: MenuItem[] = [
   { action: 'delete',  label: 'Delete permanently', icon: <Trash2 size={14} />, danger: true },
 ]
 
-export function FileContextMenu({ item, x, y, isTrash = false, onAction, onClose }: FileContextMenuProps) {
+export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, onAction, onClose }: FileContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null)
 
   // Close on outside click / escape
@@ -81,7 +82,8 @@ export function FileContextMenu({ item, x, y, isTrash = false, onAction, onClose
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x
   const adjustedY = y + menuHeight > window.innerHeight ? y - menuHeight : y
 
-  const items = isTrash ? trashItems : normalItems
+  const allItems = isTrash ? trashItems : normalItems
+  const items = allowedActions ? allItems.filter(mi => allowedActions.includes(mi.action)) : allItems
 
   return (
     <div

@@ -21,11 +21,32 @@ func NewTrashService(db *pgxpool.Pool, storage *Storage) *TrashService {
 }
 
 // SoftDelete marks a file (or folder tree) as deleted by setting deleted_at.
-// The storage bytes are retained for the retention period.
+// The actor must own the file OR hold an active share with can_delete=true on
+// the file or an ancestor folder.
 func (t *TrashService) SoftDelete(ctx context.Context, id, ownerID string) error {
 	result, err := t.db.Exec(ctx,
 		`UPDATE files SET deleted_at = now(), updated_at = now()
-		 WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL`,
+		 WHERE id = $1::uuid AND deleted_at IS NULL
+		 AND (
+		   owner_id = $2::uuid
+		   OR EXISTS (
+		     WITH RECURSIVE anc AS (
+		       SELECT id, parent_id FROM files WHERE id = $1::uuid
+		       UNION ALL
+		       SELECT f.id, f.parent_id FROM files f JOIN anc a ON f.id = a.parent_id WHERE f.deleted_at IS NULL
+		     )
+		     SELECT 1 FROM shares s JOIN anc a ON a.id = s.resource_id
+		     WHERE s.revoked_at IS NULL
+		       AND (s.expires_at IS NULL OR s.expires_at > now())
+		       AND s.can_delete = true
+		       AND (
+		         (s.grantee_type = 'user' AND s.grantee_id = $2::uuid)
+		         OR (s.grantee_type = 'group' AND s.grantee_id IN (
+		           SELECT group_id FROM group_members WHERE user_id = $2::uuid
+		         ))
+		       )
+		   )
+		 )`,
 		id, ownerID,
 	)
 	if err != nil {

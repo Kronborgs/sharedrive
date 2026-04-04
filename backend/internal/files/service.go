@@ -160,11 +160,32 @@ func (s *Service) CreateFolder(ctx context.Context, ownerID, name string, parent
 	return f, nil
 }
 
-// Rename changes the name of a file/folder owned by ownerID.
+// Rename changes the name of a file/folder. The actor must own the file OR hold
+// an active share with can_edit=true on the file or an ancestor folder.
 func (s *Service) Rename(ctx context.Context, id, ownerID, newName string) error {
 	result, err := s.db.Exec(ctx,
 		`UPDATE files SET name = $1, updated_at = now()
-		 WHERE id = $2 AND owner_id = $3 AND deleted_at IS NULL`,
+		 WHERE id = $2::uuid AND deleted_at IS NULL
+		 AND (
+		   owner_id = $3::uuid
+		   OR EXISTS (
+		     WITH RECURSIVE anc AS (
+		       SELECT id, parent_id FROM files WHERE id = $2::uuid
+		       UNION ALL
+		       SELECT f.id, f.parent_id FROM files f JOIN anc a ON f.id = a.parent_id WHERE f.deleted_at IS NULL
+		     )
+		     SELECT 1 FROM shares s JOIN anc a ON a.id = s.resource_id
+		     WHERE s.revoked_at IS NULL
+		       AND (s.expires_at IS NULL OR s.expires_at > now())
+		       AND s.can_edit = true
+		       AND (
+		         (s.grantee_type = 'user' AND s.grantee_id = $3::uuid)
+		         OR (s.grantee_type = 'group' AND s.grantee_id IN (
+		           SELECT group_id FROM group_members WHERE user_id = $3::uuid
+		         ))
+		       )
+		   )
+		 )`,
 		newName, id, ownerID,
 	)
 	if err != nil {

@@ -104,7 +104,7 @@ export function UploadProgress({ uploads, onDismiss }: UploadProgressProps) {
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-export function useUploader(folderId: string | null) {
+export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   const qc = useQueryClient()
   const [uploads, setUploads] = useState<UploadEntry[]>([])
   const uploadsRef = useRef<UploadEntry[]>([])
@@ -151,7 +151,7 @@ export function useUploader(folderId: string | null) {
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           update(entry.id, { status: 'done', progress: 100 })
-          void qc.invalidateQueries({ queryKey: ['files', folderId] })
+          void qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] })
           setTimeout(() => {
             setUploads(prev => {
               const next = prev.filter(u => u.id !== entry.id)

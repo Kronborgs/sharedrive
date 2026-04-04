@@ -30,6 +30,9 @@ func (t *TrashService) SoftDelete(ctx context.Context, id, ownerID string) error
 		 AND (
 		   owner_id = $2::uuid
 		   OR EXISTS (
+		     SELECT 1 FROM files p WHERE p.id = files.parent_id AND p.owner_id = $2::uuid
+		   )
+		   OR EXISTS (
 		     WITH RECURSIVE anc AS (
 		       SELECT id, parent_id FROM files WHERE id = $1::uuid
 		       UNION ALL

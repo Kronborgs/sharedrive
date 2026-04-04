@@ -184,7 +184,16 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	// Verify the resource belongs to this user, also fetch file name for notification.
 	var fileName string
 	err := h.db.QueryRow(ctx,
-		`SELECT name FROM files WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL`,
+		`SELECT name FROM files
+		 WHERE id = $1 AND deleted_at IS NULL
+		   AND (
+		     owner_id = $2
+		     OR EXISTS (
+		       SELECT 1 FROM files p
+		       WHERE p.id = (SELECT parent_id FROM files WHERE id = $1 AND deleted_at IS NULL)
+		         AND p.owner_id = $2
+		     )
+		   )`,
 		req.ResourceID, u.ID,
 	).Scan(&fileName)
 	if err != nil {

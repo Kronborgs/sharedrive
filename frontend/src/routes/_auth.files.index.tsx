@@ -135,7 +135,9 @@ function FilesPage() {
 
   const handleBulkTrash = useCallback(async () => {
     if (!confirm(`Move ${selected.size} item(s) to trash?`)) return
-    await Promise.all([...selected].map(id => api.delete(`/api/v1/files/${id}`)))
+    const results = await Promise.allSettled([...selected].map(id => api.delete(`/api/v1/files/${id}`)))
+    const failed = results.filter(r => r.status === 'rejected').length
+    if (failed > 0) toast.error(`${failed} item(s) could not be moved to trash`)
     void qc.invalidateQueries({ queryKey: ['files', folderId] })
     setSelected(new Set())
   }, [selected, qc, folderId])

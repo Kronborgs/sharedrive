@@ -167,14 +167,14 @@ function Step1({
 }) {
   const { register, handleSubmit, formState: { errors } } = useForm<Step1Values>({
     resolver: zodResolver(step1Schema),
-    defaultValues: { site_name: 'PrivateDrive' },
+    defaultValues: { site_name: 'Sharedrive' },
   })
   return (
     <div className="space-y-5">
       <form onSubmit={handleSubmit(onNext)} className="space-y-4">
         <div>
           <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100 mb-1">Site configuration</h2>
-          <p className="text-sm text-muted">Give your PrivateDrive instance a name.</p>
+          <p className="text-sm text-muted">Give your Sharedrive instance a name.</p>
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Site name</label>

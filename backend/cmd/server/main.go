@@ -33,7 +33,7 @@ func main() {
 	log.Info().
 		Str("version", Version).
 		Str("built", BuildDate).
-		Msg("PrivateDrive starting")
+		Msg("Sharedrive starting")
 
 	// ── Config ────────────────────────────────────────────────────────────
 	cfg, err := config.Load()
@@ -92,5 +92,5 @@ func main() {
 		log.Fatal().Err(err).Msg("server error")
 	}
 
-	log.Info().Msg("PrivateDrive stopped")
+	log.Info().Msg("Sharedrive stopped")
 }

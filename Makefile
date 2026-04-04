@@ -10,7 +10,7 @@ version:
 
 # ── Version ─────────────────────────────────────────────────────────────────
 bump:
-	@bash scripts/bump-version.sh
+	@bash scripts/bump-version.sh 2>/dev/null || pwsh scripts/bump-version.ps1
 
 # ── Backend ─────────────────────────────────────────────────────────────────
 backend:

@@ -470,4 +470,3 @@ Metadata:  map[string]any{"target_user_id": id, "promoted_from_guest": true},
 })
 httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
-}

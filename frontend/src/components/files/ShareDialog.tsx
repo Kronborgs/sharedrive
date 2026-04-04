@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { FileItem, Share, SharePermissions, Group } from '@/types/api'
 import { formatDate } from '@/lib/utils'
-import { X, Check, Link, Trash2, UserPlus } from 'lucide-react'
+import { X, Check, Link, Trash2, UserPlus, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface ShareDialogProps {
@@ -28,6 +28,149 @@ function defaultExpiry(): string {
   d.setDate(d.getDate() + 1)
   d.setHours(12, 0, 0, 0)
   return d.toISOString().slice(0, 16)
+}
+
+const PERM_KEYS = (Object.keys(DEFAULT_PERMS).filter(k => k !== 'is_owner') as (keyof SharePermissions)[])
+
+function PermCheckboxes({
+  perms,
+  onChange,
+}: {
+  perms: SharePermissions
+  onChange: (p: SharePermissions) => void
+}) {
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+      {PERM_KEYS.map(key => (
+        <label key={key} className="flex items-center gap-1.5 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={perms[key] as boolean}
+            onChange={e => onChange({ ...perms, [key]: e.target.checked })}
+            className="rounded border-zinc-300 dark:border-[#4d5678] text-brand-600"
+          />
+          <span className="text-xs text-zinc-700 dark:text-slate-300 capitalize">
+            {key.replace('can_', '')}
+          </span>
+        </label>
+      ))}
+    </div>
+  )
+}
+
+function ActiveShareRow({
+  s,
+  onRevoke,
+  onCopyLink,
+  copied,
+  onUpdate,
+}: {
+  s: Share
+  onRevoke: () => void
+  onCopyLink?: () => void
+  copied: boolean
+  onUpdate: (perms: SharePermissions, expiresAt: string | null) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [editPerms, setEditPerms] = useState<SharePermissions>({
+    can_view: s.can_view,
+    can_upload: s.can_upload,
+    can_edit: s.can_edit,
+    can_delete: s.can_delete,
+    can_reshare: s.can_reshare,
+    is_owner: false,
+  })
+  const [editExpiry, setEditExpiry] = useState<string>(
+    s.expires_at ? new Date(s.expires_at).toISOString().slice(0, 16) : ''
+  )
+  const [hasExpiry, setHasExpiry] = useState(!!s.expires_at)
+
+  const displayName =
+    s.grantee_type === 'link'
+      ? 'Public link'
+      : s.grantee_email ?? s.pending_email ?? s.grantee_group_name ?? 'Unknown'
+
+  return (
+    <li className="rounded-lg bg-zinc-50 dark:bg-[#0f1117] overflow-hidden">
+      {/* Summary row */}
+      <div className="flex items-center gap-2 p-2">
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="flex-1 min-w-0 text-left"
+        >
+          <p className="text-xs font-medium text-zinc-900 dark:text-slate-100 truncate">{displayName}</p>
+          {s.expires_at && (
+            <p className="text-[10px] text-muted">Expires {formatDate(s.expires_at)}</p>
+          )}
+        </button>
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="p-1 rounded text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-300 transition-colors"
+          title={expanded ? 'Collapse' : 'Edit permissions'}
+        >
+          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </button>
+        {s.grantee_type === 'link' && onCopyLink && (
+          <button
+            onClick={onCopyLink}
+            className="p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+            title="Copy link"
+          >
+            {copied ? <Check size={13} /> : <Link size={13} />}
+          </button>
+        )}
+        <button
+          onClick={onRevoke}
+          className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+          title="Revoke"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+
+      {/* Expanded edit panel */}
+      {expanded && (
+        <div className="border-t border-zinc-200 dark:border-[#2d3148] px-3 pb-3 pt-2 space-y-3">
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-400">Permissions</p>
+            <PermCheckboxes perms={editPerms} onChange={setEditPerms} />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-400">Expiry</p>
+              <button
+                type="button"
+                onClick={() => setHasExpiry(v => !v)}
+                className="text-[11px] text-brand-600 dark:text-brand-400 hover:underline"
+              >
+                {hasExpiry ? 'Remove expiry' : 'Set expiry'}
+              </button>
+            </div>
+            {hasExpiry ? (
+              <input
+                type="datetime-local"
+                value={editExpiry}
+                onChange={e => setEditExpiry(e.target.value)}
+                className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] px-3 py-1.5 text-xs text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            ) : (
+              <p className="text-xs text-muted">Never expires</p>
+            )}
+          </div>
+          <button
+            onClick={() => {
+              const expiresAt = hasExpiry && editExpiry ? new Date(editExpiry).toISOString() : null
+              onUpdate(editPerms, expiresAt)
+              setExpanded(false)
+            }}
+            className="w-full py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium transition-colors"
+          >
+            Save changes
+          </button>
+        </div>
+      )}
+    </li>
+  )
 }
 
 export function ShareDialog({ item, onClose }: ShareDialogProps) {
@@ -70,8 +213,17 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
     onError: () => toast.error('Failed to revoke share'),
   })
 
+  const updateShare = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: object }) =>
+      api.patch(`/api/v1/shares/${id}`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['shares', item.id] })
+      toast.success('Share updated')
+    },
+    onError: () => toast.error('Failed to update share'),
+  })
+
   const handleCreate = () => {
-    // Parse expiry to ISO string or null
     let expiresAt: string | null = null
     if (hasExpiry && expiry) {
       expiresAt = new Date(expiry).toISOString()
@@ -175,21 +327,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
           {/* Permissions */}
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Permissions</p>
-            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-              {(Object.keys(DEFAULT_PERMS).filter(k => k !== 'is_owner') as (keyof SharePermissions)[]).map(key => (
-                <label key={key} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={perms[key]}
-                    onChange={e => setPerms(prev => ({ ...prev, [key]: e.target.checked }))}
-                    className="rounded border-zinc-300 dark:border-[#4d5678] text-brand-600"
-                  />
-                  <span className="text-xs text-zinc-700 dark:text-slate-300 capitalize">
-                    {key.replace('can_', '')}
-                  </span>
-                </label>
-              ))}
-            </div>
+            <PermCheckboxes perms={perms} onChange={setPerms} />
           </div>
 
           {/* Expiry */}
@@ -231,32 +369,26 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
               <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Active shares</p>
               <ul className="space-y-1.5">
                 {shares.map(s => (
-                  <li key={s.id} className="flex items-center gap-2 p-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117]">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-zinc-900 dark:text-slate-100 truncate">
-                        {s.grantee_type === 'link' ? 'Public link' : s.grantee_email ?? s.pending_email ?? s.grantee_group_name ?? 'Unknown'}
-                      </p>
-                      {s.expires_at && (
-                        <p className="text-[10px] text-muted">Expires {formatDate(s.expires_at)}</p>
-                      )}
-                    </div>
-                    {s.grantee_type === 'link' && (
-                      <button
-                        onClick={() => copyLink(s.token ?? '')}
-                        className="p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                        title="Copy link"
-                      >
-                        {copied ? <Check size={13} /> : <Link size={13} />}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => revokeShare.mutate(s.id)}
-                      className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                      title="Revoke"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </li>
+                  <ActiveShareRow
+                    key={s.id}
+                    s={s}
+                    copied={copied}
+                    onRevoke={() => revokeShare.mutate(s.id)}
+                    onCopyLink={s.grantee_type === 'link' ? () => copyLink(s.token ?? '') : undefined}
+                    onUpdate={(editedPerms, expiresAt) =>
+                      updateShare.mutate({
+                        id: s.id,
+                        body: {
+                          can_view: editedPerms.can_view,
+                          can_upload: editedPerms.can_upload,
+                          can_edit: editedPerms.can_edit,
+                          can_delete: editedPerms.can_delete,
+                          can_reshare: editedPerms.can_reshare,
+                          expires_at: expiresAt,
+                        },
+                      })
+                    }
+                  />
                 ))}
               </ul>
             </div>

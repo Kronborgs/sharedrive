@@ -70,8 +70,12 @@ function FilesPage() {
   })
 
   const createFolder = useMutation({
-    mutationFn: (name: string) => api.post('/api/v1/files', { name, parent_id: folderId }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['files', folderId] }),
+    mutationFn: (name: string) => api.post<FileItem>('/api/v1/files', { name, parent_id: folderId }),
+    onSuccess: (newFolder) => {
+      qc.setQueryData<FileItem[]>(['files', folderId], prev =>
+        prev ? [...prev, newFolder] : [newFolder]
+      )
+    },
     onError: () => toast.error('Failed to create folder'),
   })
 

@@ -56,7 +56,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 
-	f, err := h.svc.Get(r.Context(), id, actor.ID.String())
+	f, err := h.svc.GetAccessible(r.Context(), id, actor.ID.String())
 	if err != nil || f == nil {
 		httputil.RespondError(w, http.StatusNotFound, "file not found")
 		return
@@ -168,7 +168,7 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	ctx := r.Context()
 
-	f, err := h.svc.Get(ctx, id, actor.ID.String())
+	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
 	if err != nil || f == nil || f.IsFolder {
 		httputil.RespondError(w, http.StatusNotFound, "file not found")
 		return

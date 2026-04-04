@@ -105,6 +105,27 @@ func (s *Service) Get(ctx context.Context, id, ownerID string) (*File, error) {
 	return scanFile(row)
 }
 
+// GetAccessible retrieves a file if the user owns it OR has an active share grant for it.
+func (s *Service) GetAccessible(ctx context.Context, id, userID string) (*File, error) {
+	row := s.db.QueryRow(ctx,
+		`SELECT `+fileCols+` FROM files
+		 WHERE id = $1
+		   AND deleted_at IS NULL
+		   AND (
+		     owner_id = $2
+		     OR EXISTS (
+		       SELECT 1 FROM shares
+		       WHERE resource_id = $1
+		         AND grantee_id = $2::uuid
+		         AND revoked_at IS NULL
+		         AND (expires_at IS NULL OR expires_at > now())
+		     )
+		   )`,
+		id, userID,
+	)
+	return scanFile(row)
+}
+
 // CreateFolder inserts a new folder record.
 func (s *Service) CreateFolder(ctx context.Context, ownerID, name string, parentID *uuid.UUID) (*File, error) {
 	f := &File{}

@@ -21,21 +21,33 @@ const QUOTA_OPTIONS = [
 ]
 
 // ─── New User Dialog ──────────────────────────────────────────────────────────
+const CUSTOM_SENTINEL = -1
+
 interface NewUserDialogProps {
   groups: Group[]
+  defaultQuotaBytes: number
   onClose: () => void
   onCreated: () => void
 }
 
-function NewUserDialog({ groups, onClose, onCreated }: NewUserDialogProps) {
+function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUserDialogProps) {
+  // Pre-select the default quota; fall back to first preset if 0
+  const initial = defaultQuotaBytes > 0 ? defaultQuotaBytes : QUOTA_OPTIONS[0].bytes
+  const isPreset = QUOTA_OPTIONS.some(q => q.bytes === initial)
+
   const [email, setEmail]               = useState('')
   const [displayName, setDisplayName]   = useState('')
   const [password, setPassword]         = useState('')
   const [role, setRole]                 = useState<'user' | 'admin'>('user')
-  const [quotaBytes, setQuotaBytes]     = useState(QUOTA_OPTIONS[0].bytes)
+  const [quotaSelect, setQuotaSelect]   = useState(isPreset ? initial : CUSTOM_SENTINEL)
+  const [customGB, setCustomGB]         = useState(isPreset ? 10 : Math.round(initial / 1_073_741_824))
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
   const [showPw, setShowPw]             = useState(false)
   const [error, setError]               = useState('')
+
+  const quotaBytes = quotaSelect === CUSTOM_SENTINEL
+    ? Math.round(customGB * 1_073_741_824)
+    : quotaSelect
 
   const create = useMutation({
     mutationFn: () => api.post<{ id: string }>('/api/v1/admin/users', {
@@ -102,11 +114,20 @@ function NewUserDialog({ groups, onClose, onCreated }: NewUserDialogProps) {
           </Field>
 
           <Field label="Quota">
-            <select value={quotaBytes} onChange={e => setQuotaBytes(Number(e.target.value))} className={inputCls}>
+            <select value={quotaSelect} onChange={e => setQuotaSelect(Number(e.target.value))} className={inputCls}>
               {QUOTA_OPTIONS.map(q => (
                 <option key={q.bytes} value={q.bytes}>{q.label}</option>
               ))}
+              <option value={CUSTOM_SENTINEL}>Custom…</option>
             </select>
+            {quotaSelect === CUSTOM_SENTINEL && (
+              <div className="flex items-center gap-2 mt-1.5">
+                <input type="number" min="1" step="1" value={customGB}
+                  onChange={e => setCustomGB(Number(e.target.value))}
+                  className={inputCls + ' w-28'} />
+                <span className="text-sm text-muted">GB</span>
+              </div>
+            )}
           </Field>
 
           {groups.length > 0 && (
@@ -177,6 +198,11 @@ function AdminUsersPage() {
     queryFn: ({ signal }) => api.get<Group[]>('/api/v1/admin/groups', signal),
   })
 
+  const { data: settings } = useQuery({
+    queryKey: ['admin', 'settings'],
+    queryFn: ({ signal }) => api.get<{ default_quota_bytes: number }>('/api/v1/admin/settings', signal),
+  })
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -237,6 +263,7 @@ function AdminUsersPage() {
       {showDialog && (
         <NewUserDialog
           groups={groups}
+          defaultQuotaBytes={settings?.default_quota_bytes ?? 0}
           onClose={() => setShowDialog(false)}
           onCreated={() => void qc.invalidateQueries({ queryKey: ['admin', 'users'] })}
         />

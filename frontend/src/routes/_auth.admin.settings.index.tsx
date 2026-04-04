@@ -41,6 +41,8 @@ type FormValues = z.infer<typeof settingsSchema>
 
 function GB(n: number) { return n / (1024 * 1024 * 1024) }
 function toGB(g: number) { return Math.round(g * 1024 * 1024 * 1024) }
+function MB(n: number) { return n / (1024 * 1024) }
+function toMB(m: number) { return Math.round(m * 1024 * 1024) }
 
 function SettingsPage() {
   const qc = useQueryClient()
@@ -53,7 +55,7 @@ function SettingsPage() {
   const { register, handleSubmit, formState: { errors, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(settingsSchema),
     values: data
-      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: GB(data.max_upload_bytes) }
+      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes) }
       : undefined,
   })
 
@@ -66,7 +68,7 @@ function SettingsPage() {
       const body: Record<string, unknown> = {
         ...values,
         default_quota_bytes: toGB(values.default_quota_bytes),
-        max_upload_bytes: toGB(values.max_upload_bytes),
+        max_upload_bytes: toMB(values.max_upload_bytes),
       }
       if (smtpPassword) body.smtp_password = smtpPassword
       return api.patch('/api/v1/admin/settings', body)
@@ -116,8 +118,8 @@ function SettingsPage() {
           <input type="number" step="0.5" min="0" {...register('default_quota_bytes')} className={inputClass} />
         </Field>
 
-        <Field label="Max upload size (GB)" error={errors.max_upload_bytes?.message}>
-          <input type="number" step="0.1" min="0" {...register('max_upload_bytes')} className={inputClass} />
+        <Field label="Max upload size (MB)" error={errors.max_upload_bytes?.message}>
+          <input type="number" step="1" min="0" {...register('max_upload_bytes')} className={inputClass} />
         </Field>
       </section>
 

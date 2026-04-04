@@ -203,7 +203,7 @@ func (s *Server) buildRouter() *chi.Mux {
 
 			r.Get("/api/v1/admin/guests", s.userHandler.ListGuests)
 			r.Post("/api/v1/admin/guests/{id}/promote", s.userHandler.PromoteGuest)
-			r.Delete("/api/v1/admin/guests/{id}", s.userHandler.Deactivate)
+			r.Delete("/api/v1/admin/guests/{id}", s.userHandler.DeleteGuest)
 
 			r.Get("/api/v1/admin/groups", s.handleAdminListGroups)
 			r.Post("/api/v1/admin/groups", s.handleAdminCreateGroup)

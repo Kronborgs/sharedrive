@@ -112,7 +112,7 @@ func (s *Server) buildRouter() *chi.Mux {
 	}))
 	r.Use(mw.RequestID)
 	r.Use(mw.RealIP)
-	r.Use(mw.SecurityHeaders)
+	r.Use(mw.SecurityHeaders(mw.InlineScriptHashes(embed.DistFS)))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   s.cfg.CORSOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},

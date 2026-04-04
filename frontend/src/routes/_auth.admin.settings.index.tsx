@@ -81,7 +81,7 @@ function SettingsPage() {
   const testSMTP = useMutation({
     mutationFn: () => api.post('/api/v1/admin/settings/smtp-test', { to: testRecipient }),
     onSuccess: () => toast.success('Test email sent'),
-    onError: () => toast.error('SMTP test failed'),
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'SMTP test failed'),
   })
 
   if (isLoading) {

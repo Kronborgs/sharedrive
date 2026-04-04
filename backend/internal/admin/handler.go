@@ -233,7 +233,7 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := c.DialAndSend(m); err != nil {
 		log.Warn().Err(err).Str("host", host).Msg("admin: SMTP test failed")
-		httputil.RespondError(w, http.StatusBadGateway, "SMTP delivery failed — check server logs")
+		httputil.RespondError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})

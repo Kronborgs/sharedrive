@@ -438,6 +438,11 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	if err := tx.QueryRow(ctx,
 		`INSERT INTO users (email, display_name, password_hash, role, quota_bytes, invited_by)
 		 VALUES ($1, $2, $3, 'guest', (SELECT (value::bigint) FROM system_settings WHERE key = 'default_quota_bytes'), $4)
+		 ON CONFLICT (email) DO UPDATE
+		   SET display_name   = EXCLUDED.display_name,
+		       password_hash  = EXCLUDED.password_hash,
+		       updated_at     = now()
+		 WHERE users.role = 'guest'
 		 RETURNING id`,
 		email, req.DisplayName, pwHash, invitedBy,
 	).Scan(&newUserID); err != nil {

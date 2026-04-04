@@ -163,6 +163,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 			req.GranteeEmail,
 		).Scan(&req.GranteeID, &granteeEmail)
 		if err != nil {
+			log.Debug().Err(err).Str("grantee_email", req.GranteeEmail).Msg("share: user lookup failed")
 			httputil.RespondError(w, http.StatusNotFound, "user not found")
 			return
 		}
@@ -179,6 +180,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		req.ResourceID, u.ID,
 	).Scan(&fileName)
 	if err != nil {
+		log.Debug().Err(err).Str("resource_id", req.ResourceID).Msg("share: file lookup failed")
 		httputil.RespondError(w, http.StatusNotFound, "file not found")
 		return
 	}

@@ -125,6 +125,7 @@ export interface Group {
   id: string
   name: string
   description: string
+  color: string
   created_by: string
   created_at: string
   member_count?: number

@@ -470,6 +470,7 @@ type group struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
+	Color       string    `json:"color"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -483,7 +484,7 @@ type groupMember struct {
 func (h *Handler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	rows, err := h.db.Query(ctx,
-		`SELECT id, name, description, created_at FROM groups ORDER BY name ASC`)
+		`SELECT id, name, description, color, created_at FROM groups ORDER BY name ASC`)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -492,7 +493,7 @@ func (h *Handler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	var out []group
 	for rows.Next() {
 		var g group
-		if err := rows.Scan(&g.ID, &g.Name, &g.Description, &g.CreatedAt); err != nil {
+		if err := rows.Scan(&g.ID, &g.Name, &g.Description, &g.Color, &g.CreatedAt); err != nil {
 			continue
 		}
 		out = append(out, g)
@@ -506,6 +507,7 @@ func (h *Handler) ListGroups(w http.ResponseWriter, r *http.Request) {
 type createGroupRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Color       string `json:"color"`
 }
 
 func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
@@ -520,10 +522,13 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "name is required")
 		return
 	}
+	if req.Color == "" {
+		req.Color = "#6b7280"
+	}
 	var id string
 	err := h.db.QueryRow(ctx,
-		`INSERT INTO groups (name, description, created_by) VALUES ($1, $2, $3) RETURNING id`,
-		req.Name, req.Description, u.ID,
+		`INSERT INTO groups (name, description, color, created_by) VALUES ($1, $2, $3, $4) RETURNING id`,
+		req.Name, req.Description, req.Color, u.ID,
 	).Scan(&id)
 	if err != nil {
 		httputil.RespondError(w, http.StatusConflict, "group name already exists")
@@ -535,6 +540,7 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 type updateGroupRequest struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
+	Color       *string `json:"color"`
 }
 
 func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
@@ -553,6 +559,12 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Description != nil {
 		if _, err := h.db.Exec(ctx, `UPDATE groups SET description = $1 WHERE id = $2`, *req.Description, id); err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
+	if req.Color != nil {
+		if _, err := h.db.Exec(ctx, `UPDATE groups SET color = $1 WHERE id = $2`, *req.Color, id); err != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 			return
 		}

@@ -56,6 +56,18 @@ func (m *Mailer) SendShareNotification(_ context.Context, toEmail, sharerName, f
 	return m.send(toEmail, fmt.Sprintf("%s shared \"%s\" with you", sharerName, fileName), body)
 }
 
+// SendShareInvite sends a combined share + sign-up invitation to someone without an account.
+func (m *Mailer) SendShareInvite(_ context.Context, toEmail, sharerName, fileName, inviteLink string) error {
+	body := fmt.Sprintf(
+		"Hi,\n\n"+
+			"%s wants to share a file with you on PrivateDrive: \"%s\"\n\n"+
+			"Create a free account to access it — the link below is valid for 7 days:\n\n%s\n\n"+
+			"Once you have signed up, the file will appear under \"Shared with me\".\n",
+		sharerName, fileName, inviteLink,
+	)
+	return m.send(toEmail, fmt.Sprintf("%s shared \"%s\" with you on PrivateDrive", sharerName, fileName), body)
+}
+
 func (m *Mailer) send(to, subject, body string) error {
 	if m.cfg.SMTPHost == "" {
 		return fmt.Errorf("smtp: SMTP_HOST not configured")

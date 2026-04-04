@@ -446,6 +446,14 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx.Exec(ctx, `UPDATE invitation_tokens SET used_at = now(), used_by = $1 WHERE id = $2`, newUserID, tokenID)
+
+	// Link any pending shares that were created for this email before the user had an account.
+	tx.Exec(ctx,
+		`UPDATE shares SET grantee_type = 'user', grantee_id = $1, pending_email = NULL
+		 WHERE grantee_type = 'pending' AND pending_email = lower($2) AND revoked_at IS NULL`,
+		newUserID, email,
+	)
+
 	if err := tx.Commit(ctx); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return

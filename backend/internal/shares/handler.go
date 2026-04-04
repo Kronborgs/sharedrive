@@ -3,13 +3,16 @@ package shares
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 
@@ -20,6 +23,7 @@ import (
 // Mailer is the subset of smtp.Mailer used by this package.
 type Mailer interface {
 	SendShareNotification(ctx context.Context, toEmail, sharerName, fileName, appURL string) error
+	SendShareInvite(ctx context.Context, toEmail, sharerName, fileName, inviteLink string) error
 }
 
 // Handler provides HTTP handlers for file sharing.
@@ -41,6 +45,7 @@ type Share struct {
 	GranteeID        *string    `json:"grantee_id,omitempty"`
 	GranteeEmail     *string    `json:"grantee_email,omitempty"`
 	GranteeGroupName *string    `json:"grantee_group_name,omitempty"`
+	PendingEmail     *string    `json:"pending_email,omitempty"`
 	Token            *string    `json:"token,omitempty"`
 	CanView          bool       `json:"can_view"`
 	CanUpload        bool       `json:"can_upload"`
@@ -90,6 +95,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	                 s.expires_at, s.created_at,
 	                 u.email AS grantee_email,
 	                 g.name  AS grantee_group_name,
+	                 s.pending_email,
 	                 s.token
 	          FROM shares s
 	          LEFT JOIN users  u ON s.grantee_type = 'user'  AND u.id = s.grantee_id
@@ -116,7 +122,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			&s.ID, &s.ResourceID, &s.OwnerID, &s.GranteeType, &s.GranteeID,
 			&s.CanView, &s.CanUpload, &s.CanEdit, &s.CanDelete, &s.CanReshare,
 			&s.ExpiresAt, &s.CreatedAt,
-			&s.GranteeEmail, &s.GranteeGroupName, &s.Token,
+			&s.GranteeEmail, &s.GranteeGroupName, &s.PendingEmail, &s.Token,
 		); err != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 			return
@@ -153,6 +159,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// For user shares: look up UUID by email if grantee_id not provided.
 	var granteeEmail string
+	var userNotFound bool
 	if req.GranteeType == "user" && req.GranteeID == "" {
 		if req.GranteeEmail == "" {
 			httputil.RespondError(w, http.StatusBadRequest, "grantee_email is required for user shares")
@@ -163,12 +170,12 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 			req.GranteeEmail,
 		).Scan(&req.GranteeID, &granteeEmail)
 		if err != nil {
-			log.Debug().Err(err).Str("grantee_email", req.GranteeEmail).Msg("share: user lookup failed")
-			httputil.RespondError(w, http.StatusNotFound, "user not found")
-			return
+			// User not found — create a pending share + invitation instead of failing.
+			log.Debug().Str("grantee_email", req.GranteeEmail).Msg("share: grantee not found, creating pending share")
+			userNotFound = true
 		}
 	}
-	if req.GranteeType != "link" && req.GranteeID == "" {
+	if req.GranteeType != "link" && !userNotFound && req.GranteeID == "" {
 		httputil.RespondError(w, http.StatusBadRequest, "grantee_id is required")
 		return
 	}
@@ -182,6 +189,50 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Debug().Err(err).Str("resource_id", req.ResourceID).Msg("share: file lookup failed")
 		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	// Pending share: grantee has no account yet → create invitation + pending share.
+	if userNotFound {
+		inviteToken := uuid.New().String()
+		inviteHash := hashTokenSHA256(inviteToken)
+		_, err := h.db.Exec(ctx,
+			`INSERT INTO invitation_tokens (email, token_hash, created_by, expires_at)
+			 VALUES (lower($1), $2, $3, now() + interval '7 days')
+			 ON CONFLICT DO NOTHING`,
+			req.GranteeEmail, inviteHash, u.ID,
+		)
+		if err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		var shareID string
+		err = h.db.QueryRow(ctx,
+			`INSERT INTO shares (resource_id, owner_id, grantee_type, grantee_id,
+			                     can_view, can_upload, can_edit, can_delete, can_reshare,
+			                     created_by, expires_at, pending_email)
+			 VALUES ($1, $2, 'pending', NULL, $3, $4, $5, $6, $7, $8, $9, lower($10))
+			 RETURNING id`,
+			req.ResourceID, u.ID,
+			req.CanView, req.CanUpload, req.CanEdit, req.CanDelete, req.CanReshare,
+			u.ID, req.ExpiresAt, req.GranteeEmail,
+		).Scan(&shareID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		if h.mailer != nil {
+			inviteLink := h.appURL + "/accept-invite?token=" + inviteToken
+			go func() {
+				if err := h.mailer.SendShareInvite(context.Background(), req.GranteeEmail, u.Email, fileName, inviteLink); err != nil {
+					log.Warn().Err(err).Str("to", req.GranteeEmail).Msg("share: failed to send share-invite email")
+				}
+			}()
+		}
+
+		httputil.Respond(w, http.StatusCreated, map[string]any{"id": shareID, "pending": true})
 		return
 	}
 
@@ -240,6 +291,13 @@ func generateToken() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// hashTokenSHA256 returns the hex-encoded SHA-256 of a raw token, matching the
+// format used by invitation_tokens.
+func hashTokenSHA256(raw string) string {
+	h := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(h[:])
 }
 
 // Update handles PATCH /api/v1/shares/{id}.

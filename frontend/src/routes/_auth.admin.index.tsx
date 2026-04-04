@@ -56,10 +56,9 @@ function AdminDashboard() {
     staleTime: Infinity,
   })
 
-  const used = stats?.storage_used_bytes ?? 0
   const diskTotal = stats?.disk_total_bytes ?? 0
   const diskFree = stats?.disk_free_bytes ?? 0
-  const diskUsed = diskTotal > 0 ? diskTotal - diskFree : used
+  const diskUsed = diskTotal - diskFree
   const usedPct = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0
 
   return (
@@ -72,7 +71,7 @@ function AdminDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Users" value={stats?.total_users ?? '…'} />
         <StatCard label="Active Users" value={stats?.active_users ?? '…'} />
-        <StatCard label="Storage Used" value={used > 0 ? formatBytes(used) : '0 B'} />
+        <StatCard label="Disk Used" value={diskTotal > 0 ? formatBytes(diskUsed) : '…'} />
         <StatCard label="Disk Capacity" value={diskTotal > 0 ? formatBytes(diskTotal) : '…'} />
       </div>
 
@@ -80,7 +79,7 @@ function AdminDashboard() {
       {diskTotal > 0 && (
         <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4">
           <div className="flex justify-between text-xs text-muted mb-2">
-            <span>Disk usage</span>
+            <span>Disk usage (entire volume)</span>
             <span>{formatBytes(diskUsed)} / {formatBytes(diskTotal)} ({usedPct}%) — {formatBytes(diskFree)} free</span>
           </div>
           <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">

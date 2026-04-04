@@ -237,7 +237,9 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := c.DialAndSend(m); err != nil {
 		log.Warn().Err(err).Str("host", host).Msg("admin: SMTP test failed")
-		httputil.RespondError(w, http.StatusBadGateway, err.Error())
+		// Use 422 instead of 502 — Cloudflare replaces 5xx response bodies with its
+		// own HTML error page, which breaks JSON parsing on the frontend.
+		httputil.RespondError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})

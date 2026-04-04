@@ -39,8 +39,18 @@ async function request<T>(
     signal,
   })
 
-  // Parse JSON envelope
-  const json: ApiResponse<T> = await res.json()
+  // Parse JSON envelope — the proxy (Cloudflare) may replace 5xx bodies with
+  // its own HTML error page, so we must handle non-JSON responses gracefully.
+  let json: ApiResponse<T>
+  try {
+    json = await res.json()
+  } catch {
+    throw new ApiClientError(
+      'PROXY_ERROR',
+      `Request failed with status ${res.status} — try again or check server logs`,
+      res.status,
+    )
+  }
 
   if (json.error) {
     throw new ApiClientError(json.error.code, json.error.message, res.status)

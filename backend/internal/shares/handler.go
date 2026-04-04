@@ -159,6 +159,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// For user shares: look up UUID by email if grantee_id not provided.
 	var granteeEmail string
+	var granteeRole string
 	var userNotFound bool
 	if req.GranteeType == "user" && req.GranteeID == "" {
 		if req.GranteeEmail == "" {
@@ -166,9 +167,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err := h.db.QueryRow(ctx,
-			`SELECT id, email FROM users WHERE email = lower($1) AND is_active = true`,
+			`SELECT id, email, role FROM users WHERE email = lower($1) AND is_active = true`,
 			req.GranteeEmail,
-		).Scan(&req.GranteeID, &granteeEmail)
+		).Scan(&req.GranteeID, &granteeEmail, &granteeRole)
 		if err != nil {
 			// User not found — create a pending share + invitation instead of failing.
 			log.Debug().Str("grantee_email", req.GranteeEmail).Msg("share: grantee not found, creating pending share")
@@ -328,11 +329,30 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	// Send email notification to the grantee for user shares.
 	if req.GranteeType == "user" && granteeEmail != "" && h.mailer != nil {
 		sharerName := u.Email
-		go func() {
-			if err := h.mailer.SendShareNotification(context.Background(), granteeEmail, sharerName, fileName, h.appURL); err != nil {
-				log.Warn().Err(err).Str("to", granteeEmail).Msg("failed to send share notification email")
-			}
-		}()
+		if granteeRole == "guest" {
+			// Guest users have no password — generate a fresh invitation token so they
+			// can sign in via the accept-invite flow just like a brand-new user.
+			inviteToken := uuid.New().String()
+			inviteHash := hashTokenSHA256(inviteToken)
+			_, _ = h.db.Exec(ctx,
+				`INSERT INTO invitation_tokens (email, token_hash, created_by, expires_at)
+				 VALUES (lower($1), $2, $3, now() + interval '7 days')
+				 ON CONFLICT DO NOTHING`,
+				granteeEmail, inviteHash, u.ID,
+			)
+			inviteLink := h.appURL + "/accept-invite?token=" + inviteToken
+			go func() {
+				if err := h.mailer.SendShareInvite(context.Background(), granteeEmail, sharerName, fileName, inviteLink); err != nil {
+					log.Warn().Err(err).Str("to", granteeEmail).Msg("failed to send share invite email to guest")
+				}
+			}()
+		} else {
+			go func() {
+				if err := h.mailer.SendShareNotification(context.Background(), granteeEmail, sharerName, fileName, h.appURL); err != nil {
+					log.Warn().Err(err).Str("to", granteeEmail).Msg("failed to send share notification email")
+				}
+			}()
+		}
 	}
 
 	resp := map[string]any{"id": id}

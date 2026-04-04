@@ -36,7 +36,6 @@ const mainNav: NavItem[] = [
 const adminNav: NavItem[] = [
   { to: '/admin',              label: 'Dashboard',   icon: <HardDrive size={16} />, exact: true },
   { to: '/admin/users',        label: 'Users',        icon: <Users size={16} /> },
-  { to: '/admin/groups',       label: 'Groups',       icon: <Users size={16} /> },
   { to: '/admin/audit-logs',   label: 'Audit Log',    icon: <ScrollText size={16} /> },
   { to: '/admin/blocked-ips',  label: 'Blocked IPs',  icon: <ShieldBan size={16} /> },
   { to: '/admin/backup',       label: 'Backup',       icon: <Database size={16} /> },

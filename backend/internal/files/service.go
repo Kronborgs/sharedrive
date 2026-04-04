@@ -28,6 +28,14 @@ type File struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
+// nullableString is used to scan nullable TEXT columns into a plain string.
+type nullableString struct{ s *string }
+func (n *nullableString) Scan(src any) error {
+	if src == nil { return nil }
+	if v, ok := src.(string); ok { *n.s = v }
+	return nil
+}
+
 // Service provides file-management operations backed by PostgreSQL.
 type Service struct {
 	db      *pgxpool.Pool
@@ -51,9 +59,11 @@ func scanFile(row interface {
 	Scan(dest ...any) error
 }) (*File, error) {
 	f := &File{}
+	mime := nullableString{&f.MimeType}
+	path := nullableString{&f.StoragePath}
 	return f, row.Scan(
-		&f.ID, &f.ParentID, &f.OwnerID, &f.IsFolder, &f.Name, &f.MimeType,
-		&f.SizeBytes, &f.StoragePath, &f.DeletedAt, &f.CreatedAt, &f.UpdatedAt,
+		&f.ID, &f.ParentID, &f.OwnerID, &f.IsFolder, &f.Name, &mime,
+		&f.SizeBytes, &path, &f.DeletedAt, &f.CreatedAt, &f.UpdatedAt,
 	)
 }
 

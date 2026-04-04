@@ -53,7 +53,7 @@ function FilesPage() {
   const { data: files, isLoading } = useQuery({
     queryKey: ['files', folderId],
     queryFn: ({ signal }) =>
-      api.get<FileItem[]>(`/api/v1/files?${folderId ? `folder_id=${folderId}` : ''}`, signal),
+      api.get<FileItem[]>(`/api/v1/files?${folderId ? `parent_id=${folderId}` : ''}`, signal),
   })
 
   const rename = useMutation({

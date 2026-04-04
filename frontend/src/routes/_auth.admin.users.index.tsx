@@ -388,7 +388,6 @@ function AdminUsersPage() {
           onSaved={() => void qc.invalidateQueries({ queryKey: ['admin', 'users'] })}
         />
       )}
-      )}
     </div>
   )
 }

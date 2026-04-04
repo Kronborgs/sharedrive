@@ -295,3 +295,43 @@ func (s *Service) Upload(ctx context.Context, ownerID, name, mimeType, folderIDS
 
 	return f, nil
 }
+
+// BreadcrumbItem is a minimal representation used for folder navigation breadcrumbs.
+type BreadcrumbItem struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Breadcrumbs returns the ancestor chain from root to the given folder (root first, folder last).
+func (s *Service) Breadcrumbs(ctx context.Context, folderID, ownerID string) ([]BreadcrumbItem, error) {
+	rows, err := s.db.Query(ctx, `
+		WITH RECURSIVE breadcrumb AS (
+			SELECT id::text, name, parent_id, 0 AS depth
+			FROM files
+			WHERE id = $1::uuid AND owner_id = $2::uuid AND deleted_at IS NULL AND is_folder = true
+			UNION ALL
+			SELECT f.id::text, f.name, f.parent_id, b.depth + 1
+			FROM files f
+			INNER JOIN breadcrumb b ON f.id = b.parent_id
+			WHERE f.deleted_at IS NULL
+		)
+		SELECT id, name FROM breadcrumb ORDER BY depth DESC
+	`, folderID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []BreadcrumbItem
+	for rows.Next() {
+		var item BreadcrumbItem
+		if err := rows.Scan(&item.ID, &item.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if items == nil {
+		items = []BreadcrumbItem{}
+	}
+	return items, rows.Err()
+}

@@ -278,6 +278,24 @@ func (h *Handler) EmptyTrash(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// Breadcrumbs handles GET /api/v1/files/breadcrumbs?folder_id=<uuid>
+// Returns the ancestor chain from root to the specified folder (root first, folder last).
+func (h *Handler) Breadcrumbs(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	folderID := r.URL.Query().Get("folder_id")
+	if folderID == "" {
+		httputil.Respond(w, http.StatusOK, []BreadcrumbItem{})
+		return
+	}
+	crumbs, err := h.svc.Breadcrumbs(r.Context(), folderID, actor.ID.String())
+	if err != nil {
+		log.Error().Err(err).Msg("files.Breadcrumbs")
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, crumbs)
+}
+
 // Upload handles POST /api/v1/files/upload — multipart file upload.
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())

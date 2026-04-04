@@ -196,13 +196,37 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if userNotFound {
 		inviteToken := uuid.New().String()
 		inviteHash := hashTokenSHA256(inviteToken)
-		_, err := h.db.Exec(ctx,
-			`INSERT INTO invitation_tokens (email, token_hash, created_by, expires_at)
-			 VALUES (lower($1), $2, $3, now() + interval '7 days')
-			 ON CONFLICT DO NOTHING`,
-			req.GranteeEmail, inviteHash, u.ID,
-		)
-		if err != nil {
+
+		// Invitation expiry: use share expiry if set (capped at 30 days), otherwise 7 days.
+		inviteExpiry := "now() + interval '7 days'"
+		var inviteExpiryArg any
+		if req.ExpiresAt != nil {
+			cap := time.Now().Add(30 * 24 * time.Hour)
+			exp := *req.ExpiresAt
+			if exp.After(cap) {
+				exp = cap
+			}
+			inviteExpiryArg = exp
+			inviteExpiry = "$4"
+		}
+
+		var execErr error
+		if inviteExpiryArg != nil {
+			_, execErr = h.db.Exec(ctx,
+				`INSERT INTO invitation_tokens (email, token_hash, created_by, expires_at)
+				 VALUES (lower($1), $2, $3, $4)
+				 ON CONFLICT DO NOTHING`,
+				req.GranteeEmail, inviteHash, u.ID, inviteExpiryArg,
+			)
+		} else {
+			_, execErr = h.db.Exec(ctx,
+				`INSERT INTO invitation_tokens (email, token_hash, created_by, expires_at)
+				 VALUES (lower($1), $2, $3, `+inviteExpiry+`)
+				 ON CONFLICT DO NOTHING`,
+				req.GranteeEmail, inviteHash, u.ID,
+			)
+		}
+		if execErr != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
@@ -438,19 +462,27 @@ func (h *Handler) SharedByLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	type sharedFile struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		SizeBytes int64  `json:"size_bytes"`
+		MimeType string `json:"mime_type"`
+		IsFolder bool   `json:"is_folder"`
+	}
+
 	type payload struct {
-		Share Share  `json:"share"`
-		Name  string `json:"name"`
-		Size  int64  `json:"size"`
-		Mime  string `json:"mime"`
+		Share Share        `json:"share"`
+		Item  sharedFile   `json:"item"`
+		Items []sharedFile `json:"items,omitempty"` // non-nil only when is_folder=true
 	}
 
 	var p payload
+	var isFolder bool
 	err := h.db.QueryRow(ctx,
 		`SELECT s.id, s.resource_id, s.owner_id, s.grantee_type,
 		        s.can_view, s.can_upload, s.can_edit, s.can_delete, s.can_reshare,
 		        s.expires_at, s.created_at, s.token,
-		        f.name, f.size, COALESCE(f.mime_type, 'application/octet-stream')
+		        f.name, COALESCE(f.size_bytes, 0), COALESCE(f.mime_type, 'application/octet-stream'), f.is_folder
 		 FROM shares s
 		 JOIN files f ON f.id = s.resource_id
 		 WHERE s.token = $1
@@ -462,12 +494,36 @@ func (h *Handler) SharedByLink(w http.ResponseWriter, r *http.Request) {
 		&p.Share.ID, &p.Share.ResourceID, &p.Share.OwnerID, &p.Share.GranteeType,
 		&p.Share.CanView, &p.Share.CanUpload, &p.Share.CanEdit, &p.Share.CanDelete, &p.Share.CanReshare,
 		&p.Share.ExpiresAt, &p.Share.CreatedAt, &p.Share.Token,
-		&p.Name, &p.Size, &p.Mime,
+		&p.Item.Name, &p.Item.SizeBytes, &p.Item.MimeType, &isFolder,
 	)
 	if err != nil {
 		httputil.RespondError(w, http.StatusNotFound, "share not found")
 		return
 	}
+	p.Item.ID = p.Share.ResourceID
+	p.Item.IsFolder = isFolder
+
+	// For folder shares, return direct children (one level).
+	if isFolder && p.Share.CanView {
+		rows, err := h.db.Query(ctx,
+			`SELECT id, name, COALESCE(size_bytes, 0), COALESCE(mime_type, 'application/octet-stream'), is_folder
+			 FROM files
+			 WHERE parent_id = $1 AND deleted_at IS NULL
+			 ORDER BY is_folder DESC, name ASC`,
+			p.Share.ResourceID,
+		)
+		if err == nil {
+			defer rows.Close()
+			p.Items = []sharedFile{}
+			for rows.Next() {
+				var f sharedFile
+				if err := rows.Scan(&f.ID, &f.Name, &f.SizeBytes, &f.MimeType, &f.IsFolder); err == nil {
+					p.Items = append(p.Items, f)
+				}
+			}
+		}
+	}
+
 	httputil.Respond(w, http.StatusOK, p)
 }
 

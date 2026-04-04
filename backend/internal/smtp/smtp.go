@@ -108,7 +108,7 @@ func (m *Mailer) SendShareNotification(_ context.Context, toEmail, sharerName, f
 	body := fmt.Sprintf(
 		"Hi,\n\n"+
 			"%s has shared a file with you on PrivateDrive: \"%s\"\n\n"+
-			"Log in to view it:\n\n%s\n\n"+
+			"Log in to view it:\n\n%s/shares\n\n"+
 			"You can find all files shared with you under \"Shared with me\".\n",
 		sharerName, fileName, appURL,
 	)

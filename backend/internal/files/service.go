@@ -68,6 +68,8 @@ func scanFile(row interface {
 }
 
 // List returns direct children of parentID for ownerID (nil parentID = root).
+// It also includes files uploaded by other users (e.g. guests) into folders
+// that are owned by ownerID.
 func (s *Service) List(ctx context.Context, ownerID string, parentID *uuid.UUID) ([]*File, error) {
 	var rows interface {
 		Next() bool
@@ -84,9 +86,17 @@ func (s *Service) List(ctx context.Context, ownerID string, parentID *uuid.UUID)
 			ownerID,
 		)
 	} else {
+		// Show all files in this folder if the folder is owned by the user,
+		// otherwise only files owned by the user in this folder.
 		rows, err = s.db.Query(ctx,
 			`SELECT `+fileCols+` FROM files
-			 WHERE owner_id = $1 AND parent_id = $2 AND deleted_at IS NULL
+			 WHERE parent_id = $2 AND deleted_at IS NULL
+			   AND (
+			     owner_id = $1
+			     OR EXISTS (
+			       SELECT 1 FROM files p WHERE p.id = $2 AND p.owner_id = $1
+			     )
+			   )
 			 ORDER BY is_folder DESC, name ASC`,
 			ownerID, parentID,
 		)

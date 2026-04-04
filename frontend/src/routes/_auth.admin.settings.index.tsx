@@ -59,6 +59,7 @@ function SettingsPage() {
 
   const [smtpPassword, setSmtpPassword] = useState('')
   const [testRecipient, setTestRecipient] = useState('')
+  const [smtpResult, setSmtpResult] = useState<{ ok: boolean; msg: string } | null>(null)
 
   const save = useMutation({
     mutationFn: (values: FormValues) => {
@@ -80,8 +81,13 @@ function SettingsPage() {
 
   const testSMTP = useMutation({
     mutationFn: () => api.post('/api/v1/admin/settings/smtp-test', { to: testRecipient }),
-    onSuccess: () => toast.success('Test email sent'),
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'SMTP test failed'),
+    onSuccess: () => {
+      setSmtpResult({ ok: true, msg: `Test email sent to ${testRecipient || 'your account email'}` })
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : 'SMTP test failed'
+      setSmtpResult({ ok: false, msg })
+    },
   })
 
   if (isLoading) {
@@ -149,22 +155,29 @@ function SettingsPage() {
 
         <Toggle label="Use TLS/STARTTLS" description="Enable encrypted SMTP connection." name="smtp_tls" register={register} />
 
-        <div className="flex items-center gap-2">
-          <input
-            type="email"
-            value={testRecipient}
-            onChange={e => setTestRecipient(e.target.value)}
-            placeholder="Test recipient (defaults to your email)"
-            className={`${inputClass} flex-1`}
-          />
-          <button
-            type="button"
-            onClick={() => testSMTP.mutate()}
-            disabled={testSMTP.isPending}
-            className="text-sm text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-50 whitespace-nowrap"
-          >
-            {testSMTP.isPending ? 'Sending…' : 'Send test email'}
-          </button>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="email"
+              value={testRecipient}
+              onChange={e => { setTestRecipient(e.target.value); setSmtpResult(null) }}
+              placeholder="Test recipient (defaults to your email)"
+              className={`${inputClass} flex-1`}
+            />
+            <button
+              type="button"
+              onClick={() => { setSmtpResult(null); testSMTP.mutate() }}
+              disabled={testSMTP.isPending}
+              className="text-sm text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-50 whitespace-nowrap"
+            >
+              {testSMTP.isPending ? 'Sending…' : 'Send test email'}
+            </button>
+          </div>
+          {smtpResult && (
+            <p className={`text-xs px-1 ${smtpResult.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {smtpResult.ok ? '✓' : '✗'} {smtpResult.msg}
+            </p>
+          )}
         </div>
       </section>
 

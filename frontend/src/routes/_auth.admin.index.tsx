@@ -29,9 +29,9 @@ function AdminDashboard() {
   })
 
   const totalUsers = users?.total ?? 0
-  const activeUsers = users?.items.filter(u => u.is_active).length ?? 0
-  const totalUsage = users?.items.reduce((sum, u) => sum + u.quota_used_bytes, 0) ?? 0
-  const totalQuota = users?.items.reduce((sum, u) => sum + u.quota_bytes, 0) ?? 0
+  const activeUsers = (users?.items ?? []).filter(u => u.is_active).length
+  const totalUsage = (users?.items ?? []).reduce((sum, u) => sum + u.quota_used_bytes, 0)
+  const totalQuota = (users?.items ?? []).reduce((sum, u) => sum + u.quota_bytes, 0)
 
   return (
     <div className="space-y-6">
@@ -58,10 +58,10 @@ function AdminDashboard() {
           </h2>
         </div>
         <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
-          {logs?.items.length === 0 ? (
+          {(logs?.items ?? []).length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted text-center">No activity yet</p>
           ) : (
-            logs?.items.map(log => (
+            (logs?.items ?? []).map(log => (
               <div key={log.id} className="px-4 py-3 flex items-start gap-3">
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0">
                   {log.event_type}

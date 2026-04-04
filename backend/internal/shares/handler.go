@@ -434,6 +434,8 @@ func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 }
 
 // SharedWithMe handles GET /api/v1/files/shared-with-me.
+// Returns [{share, item}] — each active share the current user is a grantee of,
+// joined with the corresponding file/folder metadata.
 func (h *Handler) SharedWithMe(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := middleware.UserFromContext(ctx)
@@ -441,11 +443,27 @@ func (h *Handler) SharedWithMe(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+
+	type sharedItem struct {
+		ID        string     `json:"id"`
+		Name      string     `json:"name"`
+		IsFolder  bool       `json:"is_folder"`
+		SizeBytes int64      `json:"size_bytes"`
+		MimeType  *string    `json:"mime_type"`
+		CreatedAt time.Time  `json:"created_at"`
+	}
+	type result struct {
+		Share Share      `json:"share"`
+		Item  sharedItem `json:"item"`
+	}
+
 	rows, err := h.db.Query(ctx,
 		`SELECT s.id, s.resource_id, s.owner_id, s.grantee_type, s.grantee_id,
 		        s.can_view, s.can_upload, s.can_edit, s.can_delete, s.can_reshare,
-		        s.expires_at, s.created_at
+		        s.expires_at, s.created_at,
+		        f.name, f.is_folder, COALESCE(f.size_bytes, 0), f.mime_type, f.created_at
 		 FROM shares s
+		 JOIN files f ON f.id = s.resource_id AND f.deleted_at IS NULL
 		 WHERE s.revoked_at IS NULL
 		   AND (s.expires_at IS NULL OR s.expires_at > now())
 		   AND (
@@ -464,25 +482,27 @@ func (h *Handler) SharedWithMe(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var out []Share
+	var out []result
 	for rows.Next() {
-		var s Share
+		var r result
 		if err := rows.Scan(
-			&s.ID, &s.ResourceID, &s.OwnerID, &s.GranteeType, &s.GranteeID,
-			&s.CanView, &s.CanUpload, &s.CanEdit, &s.CanDelete, &s.CanReshare,
-			&s.ExpiresAt, &s.CreatedAt,
+			&r.Share.ID, &r.Share.ResourceID, &r.Share.OwnerID, &r.Share.GranteeType, &r.Share.GranteeID,
+			&r.Share.CanView, &r.Share.CanUpload, &r.Share.CanEdit, &r.Share.CanDelete, &r.Share.CanReshare,
+			&r.Share.ExpiresAt, &r.Share.CreatedAt,
+			&r.Item.Name, &r.Item.IsFolder, &r.Item.SizeBytes, &r.Item.MimeType, &r.Item.CreatedAt,
 		); err != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		out = append(out, s)
+		r.Item.ID = r.Share.ResourceID
+		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if out == nil {
-		out = []Share{}
+		out = []result{}
 	}
 	httputil.Respond(w, http.StatusOK, out)
 }
@@ -559,5 +579,96 @@ func (h *Handler) SharedByLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.Respond(w, http.StatusOK, p)
+}
+
+// SharedFolderChildren handles GET /api/v1/files/shared/{id}/children.
+// Returns the direct children of a folder that has been shared with the calling user,
+// including cases where an ancestor folder was shared.
+func (h *Handler) SharedFolderChildren(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	folderID := chi.URLParam(r, "id")
+	if folderID == "" {
+		httputil.RespondError(w, http.StatusBadRequest, "missing id")
+		return
+	}
+
+	// Check that the requesting user has an active share granting access to this folder
+	// or any ancestor folder. We walk up via recursive CTE then match against shares.
+	var shareOwnerID string
+	var canUpload bool
+	var folderName string
+	err := h.db.QueryRow(ctx,
+		`WITH RECURSIVE ancestors AS (
+		   SELECT id, parent_id, name FROM files WHERE id = $1 AND deleted_at IS NULL
+		   UNION ALL
+		   SELECT f.id, f.parent_id, f.name FROM files f JOIN ancestors a ON f.id = a.parent_id WHERE f.deleted_at IS NULL
+		 )
+		 SELECT s.owner_id, s.can_upload, (SELECT name FROM files WHERE id = $1)
+		 FROM shares s
+		 JOIN ancestors a ON a.id = s.resource_id
+		 WHERE s.revoked_at IS NULL
+		   AND (s.expires_at IS NULL OR s.expires_at > now())
+		   AND (
+		     (s.grantee_type = 'user' AND s.grantee_id = $2)
+		     OR
+		     (s.grantee_type = 'group' AND s.grantee_id IN (
+		       SELECT group_id FROM group_members WHERE user_id = $2
+		     ))
+		   )
+		 LIMIT 1`,
+		folderID, u.ID,
+	).Scan(&shareOwnerID, &canUpload, &folderName)
+	if err != nil {
+		httputil.RespondError(w, http.StatusForbidden, "not shared with you")
+		return
+	}
+
+	type childItem struct {
+		ID        string  `json:"id"`
+		Name      string  `json:"name"`
+		IsFolder  bool    `json:"is_folder"`
+		SizeBytes int64   `json:"size_bytes"`
+		MimeType  *string `json:"mime_type"`
+	}
+
+	rows, err := h.db.Query(ctx,
+		`SELECT id, name, is_folder, COALESCE(size_bytes, 0), mime_type
+		 FROM files
+		 WHERE parent_id = $1 AND deleted_at IS NULL
+		 ORDER BY is_folder DESC, name ASC`,
+		folderID,
+	)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rows.Close()
+
+	children := []childItem{}
+	for rows.Next() {
+		var c childItem
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsFolder, &c.SizeBytes, &c.MimeType); err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		children = append(children, c)
+	}
+	if err := rows.Err(); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	httputil.Respond(w, http.StatusOK, map[string]any{
+		"items":       children,
+		"can_upload":  canUpload,
+		"owner_id":    shareOwnerID,
+		"folder_name": folderName,
+	})
 }
 

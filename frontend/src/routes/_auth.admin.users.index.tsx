@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { X, Plus, Pencil, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -61,9 +61,6 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUse
     onSuccess: () => { toast.success('User created'); onCreated(); onClose() },
     onError: (e: Error) => setError(e.message),
   })
-
-  const toggleGroup = (id: string) =>
-    setSelectedGroups(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -130,27 +127,13 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUse
             )}
           </Field>
 
-          {groups.length > 0 && (
-            <Field label="Groups">
-              <div className="flex flex-wrap gap-2">
-                {groups.map(g => {
-                  const active = selectedGroups.includes(g.id)
-                  return (
-                    <button key={g.id} type="button" onClick={() => toggleGroup(g.id)}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-                        active ? 'border-transparent text-white' : 'border-zinc-200 dark:border-[#2d3148] text-zinc-600 dark:text-slate-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148]'
-                      }`}
-                      style={active ? { backgroundColor: g.color } : {}}
-                    >
-                      <span className="w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: active ? 'rgba(255,255,255,0.65)' : g.color }} />
-                      {g.name}
-                    </button>
-                  )
-                })}
-              </div>
-            </Field>
-          )}
+          <Field label="Groups">
+            <GroupCombobox
+              allGroups={groups}
+              selected={selectedGroups}
+              onChange={setSelectedGroups}
+            />
+          </Field>
 
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
@@ -165,6 +148,123 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUse
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Group combobox: search existing + create new inline ─────────────────────
+interface GroupComboboxProps {
+  allGroups: Group[]
+  selected: string[]
+  onChange: (ids: string[]) => void
+}
+
+function GroupCombobox({ allGroups, selected, onChange }: GroupComboboxProps) {
+  const qc = useQueryClient()
+  const [input, setInput]   = useState('')
+  const [open, setOpen]     = useState(false)
+  const [busy, setBusy]     = useState(false)
+  const ref                 = useRef<HTMLDivElement>(null)
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const trimmed    = input.trim()
+  const filtered   = allGroups.filter(g =>
+    g.name.toLowerCase().includes(trimmed.toLowerCase()) && !selected.includes(g.id)
+  )
+  const exactMatch = allGroups.some(g => g.name.toLowerCase() === trimmed.toLowerCase())
+  const canCreate  = trimmed.length > 0 && !exactMatch
+
+  const selectedGroups = allGroups.filter(g => selected.includes(g.id))
+
+  const addGroup = (id: string) => {
+    onChange([...selected, id])
+    setInput('')
+    setOpen(false)
+  }
+
+  const removeGroup = (id: string) => onChange(selected.filter(s => s !== id))
+
+  const createAndAdd = async () => {
+    if (!trimmed || busy) return
+    setBusy(true)
+    try {
+      const res = await api.post<{ id: string }>('/api/v1/admin/groups', {
+        name: trimmed,
+        color: '#6b7280',
+      })
+      void qc.invalidateQueries({ queryKey: ['admin', 'groups'] })
+      onChange([...selected, res.id])
+      setInput('')
+      setOpen(false)
+    } catch {
+      // ignore — group panel can handle errors later
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div ref={ref} className="space-y-1.5">
+      {/* Selected badges */}
+      {selectedGroups.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selectedGroups.map(g => (
+            <span key={g.id}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+              style={{ backgroundColor: g.color }}
+            >
+              {g.name}
+              <button type="button" onClick={() => removeGroup(g.id)}
+                className="ml-0.5 opacity-70 hover:opacity-100 transition-opacity">
+                <X size={10} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="relative">
+        <input
+          type="text"
+          value={input}
+          onChange={e => { setInput(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          placeholder="Search or create a group…"
+          className={inputCls}
+        />
+
+        {/* Dropdown */}
+        {open && (trimmed.length > 0 || filtered.length > 0) && (
+          <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+            {filtered.map(g => (
+              <button key={g.id} type="button" onMouseDown={() => addGroup(g.id)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors">
+                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
+                <span className="text-zinc-900 dark:text-slate-100">{g.name}</span>
+              </button>
+            ))}
+            {canCreate && (
+              <button type="button" onMouseDown={createAndAdd} disabled={busy}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-brand-600 dark:text-brand-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50">
+                <Plus size={13} className="shrink-0" />
+                {busy ? 'Creating…' : `Create group "${trimmed}"`}
+              </button>
+            )}
+            {filtered.length === 0 && !canCreate && (
+              <div className="px-3 py-2 text-xs text-muted">No groups found</div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

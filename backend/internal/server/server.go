@@ -65,7 +65,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		onboarding:     onboarding.New(db, cfg),
 		userHandler:    user.NewHandler(db, auditSvc),
 		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc),
-		sharesHandler:  shares.NewHandler(db, smtp.New(cfg), cfg.AppBaseURL),
+		sharesHandler:  shares.NewHandler(db, smtp.New(cfg, db), cfg.AppBaseURL),
 		adminHandler:   admin.NewHandler(db, cfg),
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),

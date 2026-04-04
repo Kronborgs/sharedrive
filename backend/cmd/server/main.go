@@ -79,7 +79,7 @@ func main() {
 	}()
 
 	// SMTP mailer.
-	mailer := smtp.New(cfg)
+	mailer := smtp.New(cfg, db)
 
 	// Auth handler.
 	authHandler, err := auth.NewHandler(pool, rdb, cfg, mailer, auditSvc)

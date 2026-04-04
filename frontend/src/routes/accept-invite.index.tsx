@@ -51,8 +51,7 @@ function AcceptInvitePage() {
 
   const onSubmit = async (values: FormValues) => {
     try {
-      await api.post('/api/v1/invitations/accept', {
-        token,
+      await api.post(`/api/v1/invitations/${token}/accept`, {
         display_name: values.display_name,
         password: values.password,
       })

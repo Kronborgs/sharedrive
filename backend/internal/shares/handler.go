@@ -23,30 +23,33 @@ func NewHandler(db *pgxpool.Pool) *Handler {
 }
 
 type Share struct {
-	ID          string     `json:"id"`
-	ResourceID  string     `json:"resource_id"`
-	OwnerID     string     `json:"owner_id"`
-	GranteeType string     `json:"grantee_type"`
-	GranteeID   string     `json:"grantee_id"`
-	CanView     bool       `json:"can_view"`
-	CanUpload   bool       `json:"can_upload"`
-	CanEdit     bool       `json:"can_edit"`
-	CanDelete   bool       `json:"can_delete"`
-	CanReshare  bool       `json:"can_reshare"`
-	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID               string     `json:"id"`
+	ResourceID       string     `json:"resource_id"`
+	OwnerID          string     `json:"owner_id"`
+	GranteeType      string     `json:"grantee_type"`
+	GranteeID        string     `json:"grantee_id"`
+	GranteeEmail     *string    `json:"grantee_email,omitempty"`
+	GranteeGroupName *string    `json:"grantee_group_name,omitempty"`
+	CanView          bool       `json:"can_view"`
+	CanUpload        bool       `json:"can_upload"`
+	CanEdit          bool       `json:"can_edit"`
+	CanDelete        bool       `json:"can_delete"`
+	CanReshare       bool       `json:"can_reshare"`
+	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
 }
 
 type createShareRequest struct {
-	ResourceID  string     `json:"resource_id"`
-	GranteeType string     `json:"grantee_type"` // "user" or "group"
-	GranteeID   string     `json:"grantee_id"`
-	CanView     bool       `json:"can_view"`
-	CanUpload   bool       `json:"can_upload"`
-	CanEdit     bool       `json:"can_edit"`
-	CanDelete   bool       `json:"can_delete"`
-	CanReshare  bool       `json:"can_reshare"`
-	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	ResourceID   string     `json:"resource_id"`
+	GranteeType  string     `json:"grantee_type"` // "user" or "group"
+	GranteeEmail string     `json:"grantee_email"` // resolved to UUID for type=user
+	GranteeID    string     `json:"grantee_id"`    // UUID; used directly for group, or looked up for user
+	CanView      bool       `json:"can_view"`
+	CanUpload    bool       `json:"can_upload"`
+	CanEdit      bool       `json:"can_edit"`
+	CanDelete    bool       `json:"can_delete"`
+	CanReshare   bool       `json:"can_reshare"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
 }
 
 type updateShareRequest struct {
@@ -58,7 +61,8 @@ type updateShareRequest struct {
 	ExpiresAt  *time.Time `json:"expires_at"`
 }
 
-// List handles GET /api/v1/shares — returns shares created by the current user.
+// List handles GET /api/v1/shares — returns shares created by the current user,
+// optionally filtered by ?resource_id=<uuid>.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := middleware.UserFromContext(ctx)
@@ -66,15 +70,26 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	rows, err := h.db.Query(ctx,
-		`SELECT id, resource_id, owner_id, grantee_type, grantee_id,
-		        can_view, can_upload, can_edit, can_delete, can_reshare,
-		        expires_at, created_at
-		 FROM shares
-		 WHERE owner_id = $1 AND revoked_at IS NULL
-		 ORDER BY created_at DESC`,
-		u.ID,
-	)
+
+	resourceID := r.URL.Query().Get("resource_id")
+
+	query := `SELECT s.id, s.resource_id, s.owner_id, s.grantee_type, s.grantee_id,
+	                 s.can_view, s.can_upload, s.can_edit, s.can_delete, s.can_reshare,
+	                 s.expires_at, s.created_at,
+	                 u.email AS grantee_email,
+	                 g.name  AS grantee_group_name
+	          FROM shares s
+	          LEFT JOIN users  u ON s.grantee_type = 'user'  AND u.id = s.grantee_id
+	          LEFT JOIN groups g ON s.grantee_type = 'group' AND g.id = s.grantee_id
+	          WHERE s.owner_id = $1 AND s.revoked_at IS NULL`
+	args := []any{u.ID}
+	if resourceID != "" {
+		query += " AND s.resource_id = $2"
+		args = append(args, resourceID)
+	}
+	query += " ORDER BY s.created_at DESC"
+
+	rows, err := h.db.Query(ctx, query, args...)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -88,6 +103,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			&s.ID, &s.ResourceID, &s.OwnerID, &s.GranteeType, &s.GranteeID,
 			&s.CanView, &s.CanUpload, &s.CanEdit, &s.CanDelete, &s.CanReshare,
 			&s.ExpiresAt, &s.CreatedAt,
+			&s.GranteeEmail, &s.GranteeGroupName,
 		); err != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 			return
@@ -121,6 +137,27 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "grantee_type must be 'user' or 'group'")
 		return
 	}
+
+	// For user shares: look up UUID by email if grantee_id not provided.
+	if req.GranteeType == "user" && req.GranteeID == "" {
+		if req.GranteeEmail == "" {
+			httputil.RespondError(w, http.StatusBadRequest, "grantee_email is required for user shares")
+			return
+		}
+		err := h.db.QueryRow(ctx,
+			`SELECT id FROM users WHERE email = lower($1) AND is_active = true`,
+			req.GranteeEmail,
+		).Scan(&req.GranteeID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusNotFound, "user not found")
+			return
+		}
+	}
+	if req.GranteeID == "" {
+		httputil.RespondError(w, http.StatusBadRequest, "grantee_id is required")
+		return
+	}
+
 	// Verify the resource belongs to this user
 	var exists bool
 	_ = h.db.QueryRow(ctx,

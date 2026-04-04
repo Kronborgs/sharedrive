@@ -22,18 +22,27 @@ const DEFAULT_PERMS: SharePermissions = {
   is_owner: false,
 }
 
+// Return tomorrow at noon as a datetime-local string (YYYY-MM-DDTHH:mm)
+function defaultExpiry(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  d.setHours(12, 0, 0, 0)
+  return d.toISOString().slice(0, 16)
+}
+
 export function ShareDialog({ item, onClose }: ShareDialogProps) {
   const qc = useQueryClient()
   const [tab, setTab] = useState<ShareTargetType>('user')
   const [email, setEmail] = useState('')
   const [groupId, setGroupId] = useState('')
   const [perms, setPerms] = useState<SharePermissions>(DEFAULT_PERMS)
-  const [expiry, setExpiry] = useState('')
+  const [hasExpiry, setHasExpiry] = useState(false)
+  const [expiry, setExpiry] = useState(defaultExpiry())
   const [copied, setCopied] = useState(false)
 
   const { data: shares } = useQuery({
     queryKey: ['shares', item.id],
-    queryFn: ({ signal }) => api.get<Share[]>(`/api/v1/files/${item.id}/shares`, signal),
+    queryFn: ({ signal }) => api.get<Share[]>(`/api/v1/shares?resource_id=${item.id}`, signal),
   })
 
   const { data: groups } = useQuery({
@@ -42,13 +51,14 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   })
 
   const createShare = useMutation({
-    mutationFn: (body: object) => api.post<Share>(`/api/v1/files/${item.id}/shares`, body),
+    mutationFn: (body: object) => api.post<Share>(`/api/v1/shares`, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['shares', item.id] })
       void qc.invalidateQueries({ queryKey: ['files'] })
       setEmail('')
+      toast.success('Share created')
     },
-    onError: () => toast.error('Failed to create share'),
+    onError: (e: Error) => toast.error(e.message || 'Failed to create share'),
   })
 
   const revokeShare = useMutation({
@@ -61,9 +71,20 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   })
 
   const handleCreate = () => {
+    // Parse expiry to ISO string or null
+    let expiresAt: string | null = null
+    if (hasExpiry && expiry) {
+      expiresAt = new Date(expiry).toISOString()
+    }
+
     const body: Record<string, unknown> = {
-      permissions: perms,
-      expires_at: expiry || null,
+      resource_id: item.id,
+      can_view: perms.can_view,
+      can_upload: perms.can_upload,
+      can_edit: perms.can_edit,
+      can_delete: perms.can_delete,
+      can_reshare: perms.can_reshare,
+      expires_at: expiresAt,
     }
 
     if (tab === 'user') {
@@ -71,7 +92,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
       body.grantee_email = email
     } else if (tab === 'group') {
       body.grantee_type = 'group'
-      body.grantee_group_id = groupId
+      body.grantee_id = groupId
     } else {
       body.grantee_type = 'link'
     }
@@ -155,7 +176,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Permissions</p>
             <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-              {(Object.keys(DEFAULT_PERMS) as (keyof SharePermissions)[]).map(key => (
+              {(Object.keys(DEFAULT_PERMS).filter(k => k !== 'is_owner') as (keyof SharePermissions)[]).map(key => (
                 <label key={key} className="flex items-center gap-1.5 text-sm cursor-pointer">
                   <input
                     type="checkbox"
@@ -172,14 +193,27 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
           </div>
 
           {/* Expiry */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Expires (optional)</label>
-            <input
-              type="datetime-local"
-              value={expiry}
-              onChange={e => setExpiry(e.target.value)}
-              className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Expiry</label>
+              <button
+                type="button"
+                onClick={() => setHasExpiry(v => !v)}
+                className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
+              >
+                {hasExpiry ? 'Remove expiry' : 'Set expiry'}
+              </button>
+            </div>
+            {hasExpiry ? (
+              <input
+                type="datetime-local"
+                value={expiry}
+                onChange={e => setExpiry(e.target.value)}
+                className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            ) : (
+              <p className="text-xs text-muted">Never expires</p>
+            )}
           </div>
 
           <button

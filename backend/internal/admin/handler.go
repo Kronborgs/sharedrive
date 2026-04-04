@@ -201,6 +201,10 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "SMTP not configured")
 		return
 	}
+	if kv["smtp_password"] == "" {
+		httputil.RespondError(w, http.StatusBadRequest, "SMTP password not set — enter a password and save first")
+		return
+	}
 	port := 587
 	if s, ok := kv["smtp_port"]; ok {
 		port, _ = strconv.Atoi(s)

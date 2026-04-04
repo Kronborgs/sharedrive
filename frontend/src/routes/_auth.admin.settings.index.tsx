@@ -132,12 +132,6 @@ function SettingsPage() {
           <input {...register('smtp_username')} className={inputClass} />
         </Field>
 
-        <Field label="From address" error={errors.smtp_from_address?.message}>
-          <input type="email" {...register('smtp_from_address')} placeholder="noreply@example.com" className={inputClass} />
-        </Field>
-
-        <Toggle label="Use TLS/STARTTLS" description="Enable encrypted SMTP connection." name="smtp_tls" register={register} />
-
         <Field label="Password">
           <input
             type="password"
@@ -148,6 +142,12 @@ function SettingsPage() {
             className={inputClass}
           />
         </Field>
+
+        <Field label="From address" error={errors.smtp_from_address?.message}>
+          <input type="email" {...register('smtp_from_address')} placeholder="noreply@example.com" className={inputClass} />
+        </Field>
+
+        <Toggle label="Use TLS/STARTTLS" description="Enable encrypted SMTP connection." name="smtp_tls" register={register} />
 
         <div className="flex items-center gap-2">
           <input

@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '@/lib/api'
-import type { FileItem } from '@/types/api'
+import type { FileItem, User } from '@/types/api'
 import { FileList } from '@/components/files/FileViews'
 import { FileContextMenu, type ContextAction } from '@/components/files/FileContextMenu'
 import { Trash2 } from 'lucide-react'
@@ -19,19 +19,25 @@ function TrashPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextState | null>(null)
 
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: ({ signal }) => api.get<User>('/api/v1/me', signal),
+  })
+  const retentionDays = me?.trash_retention_days ?? 30
+
   const { data, isLoading } = useQuery({
     queryKey: ['files', 'trash'],
     queryFn: ({ signal }) => api.get<FileItem[]>('/api/v1/files/trash', signal),
   })
 
   const restore = useMutation({
-    mutationFn: (id: string) => api.post(`/api/v1/files/${id}/restore`, {}),
+    mutationFn: (id: string) => api.post(`/api/v1/files/trash/${id}/restore`, {}),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['files'] }),
     onError: () => toast.error('Restore failed'),
   })
 
   const deletePermanent = useMutation({
-    mutationFn: (id: string) => api.delete(`/api/v1/files/${id}/permanent`),
+    mutationFn: (id: string) => api.delete(`/api/v1/files/trash/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['files', 'trash'] }),
     onError: () => toast.error('Delete failed'),
   })
@@ -69,7 +75,7 @@ function TrashPage() {
 
       {items.length > 0 && (
         <p className="text-xs text-muted">
-          Items in trash are automatically deleted after 30 days.
+          Items in trash are automatically deleted after {retentionDays} days.
         </p>
       )}
 

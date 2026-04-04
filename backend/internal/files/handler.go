@@ -260,6 +260,24 @@ func (h *Handler) PermanentDelete(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// EmptyTrash handles DELETE /api/v1/files/trash — permanently deletes all trashed files.
+func (h *Handler) EmptyTrash(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	ctx := r.Context()
+
+	if err := h.trash.EmptyTrashAll(ctx, actor.ID.String()); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.auditSvc.Log(ctx, audit.Event{
+		Type:      audit.EventFilePermanentDeleted,
+		ActorID:   &actor.ID,
+		IPAddress: middleware.ClientIP(r),
+		Metadata:  map[string]any{"empty_trash": true},
+	})
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // Upload handles POST /api/v1/files/upload — multipart file upload.
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())

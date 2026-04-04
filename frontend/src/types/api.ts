@@ -23,6 +23,7 @@ export interface User {
   quota_used_bytes: number
   bandwidth_limit_bytes_per_day: number | null
   webdav_enabled: boolean
+  trash_retention_days: number | null
   invited_by: string | null
   last_login_at: string | null
   created_at: string

@@ -287,6 +287,7 @@ function AdminUsersPage() {
   const qc = useQueryClient()
   const [tab, setTab] = useState<'users' | 'guests' | 'groups'>('users')
   const [showDialog, setShowDialog] = useState(false)
+  const [editUser, setEditUser] = useState<User | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'users'],
@@ -350,7 +351,7 @@ function AdminUsersPage() {
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
                 {(data?.items ?? []).map(user => (
-                  <UserRow key={user.id} user={user} />
+                  <UserRow key={user.id} user={user} onEdit={setEditUser} />
                 ))}
                 {(data?.items?.length ?? 0) === 0 && (
                   <tr>
@@ -378,6 +379,15 @@ function AdminUsersPage() {
           onClose={() => setShowDialog(false)}
           onCreated={() => void qc.invalidateQueries({ queryKey: ['admin', 'users'] })}
         />
+      )}
+
+      {editUser && (
+        <EditUserDialog
+          user={editUser}
+          onClose={() => setEditUser(null)}
+          onSaved={() => void qc.invalidateQueries({ queryKey: ['admin', 'users'] })}
+        />
+      )}
       )}
     </div>
   )
@@ -650,7 +660,7 @@ function GroupsPanel({ groups, qc }: { groups: Group[]; qc: ReturnType<typeof us
   )
 }
 
-function UserRow({ user }: { user: User }) {
+function UserRow({ user, onEdit }: { user: User; onEdit: (u: User) => void }) {
   const percent = user.quota_bytes > 0
     ? Math.min(100, (user.quota_used_bytes / user.quota_bytes) * 100)
     : 0
@@ -700,13 +710,76 @@ function UserRow({ user }: { user: User }) {
         </span>
       </td>
       <td className="px-4 py-3 text-right">
-        <a
-          href={`/admin/users/${user.id}`}
+        <button
+          onClick={() => onEdit(user)}
           className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
         >
           Edit
-        </a>
+        </button>
       </td>
     </tr>
+  )
+}
+
+// ─── Edit User Dialog ─────────────────────────────────────────────────────────
+function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () => void; onSaved: () => void }) {
+  const [quotaBytes, setQuotaBytes] = useState(user.quota_bytes)
+  const [trashDays, setTrashDays] = useState<string>(user.trash_retention_days != null ? String(user.trash_retention_days) : '')
+
+  const save = useMutation({
+    mutationFn: () => api.patch(`/api/v1/admin/users/${user.id}`, {
+      quota_bytes: quotaBytes,
+      trash_retention_days: trashDays !== '' ? parseInt(trashDays, 10) : null,
+    }),
+    onSuccess: () => { onSaved(); onClose() },
+    onError: () => toast.error('Failed to save'),
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">Edit {user.display_name}</h2>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600"><X size={16} /></button>
+        </div>
+
+        <div className="space-y-4">
+          <Field label="Quota (bytes)">
+            <input
+              type="number"
+              min={0}
+              value={quotaBytes}
+              onChange={e => setQuotaBytes(Number(e.target.value))}
+              className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-[#2d3148] bg-white dark:bg-[#0f1117] text-sm text-zinc-900 dark:text-slate-100"
+            />
+            <p className="text-xs text-muted mt-1">{formatBytes(quotaBytes)}</p>
+          </Field>
+
+          <Field label="Trash retention (days)">
+            <input
+              type="number"
+              min={1}
+              max={365}
+              placeholder="30 (default)"
+              value={trashDays}
+              onChange={e => setTrashDays(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-[#2d3148] bg-white dark:bg-[#0f1117] text-sm text-zinc-900 dark:text-slate-100"
+            />
+            <p className="text-xs text-muted mt-1">Leave empty to use system default (30 days)</p>
+          </Field>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-6">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148]">Cancel</button>
+          <button
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+            className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
+          >
+            {save.isPending ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

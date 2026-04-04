@@ -154,3 +154,46 @@ func (t *TrashService) EmptyTrash(ctx context.Context, ownerID string, retention
 	}
 	return nil
 }
+
+// EmptyTrashAll permanently deletes every trashed file for ownerID regardless of age.
+func (t *TrashService) EmptyTrashAll(ctx context.Context, ownerID string) error {
+	rows, err := t.db.Query(ctx,
+		`SELECT id, size_bytes, storage_path FROM files
+		 WHERE owner_id = $1 AND deleted_at IS NOT NULL`,
+		ownerID,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var toDelete []struct {
+		id          string
+		sizeBytes   int64
+		storagePath *string
+	}
+	for rows.Next() {
+		var item struct {
+			id          string
+			sizeBytes   int64
+			storagePath *string
+		}
+		if err := rows.Scan(&item.id, &item.sizeBytes, &item.storagePath); err == nil {
+			toDelete = append(toDelete, item)
+		}
+	}
+
+	var totalFreed int64
+	for _, item := range toDelete {
+		if _, err := t.db.Exec(ctx, `DELETE FROM files WHERE id = $1`, item.id); err == nil {
+			if item.storagePath != nil && *item.storagePath != "" {
+				_ = t.storage.Delete(item.id)
+			}
+			totalFreed += item.sizeBytes
+		}
+	}
+	if totalFreed > 0 {
+		_ = t.quota.Add(ctx, ownerID, -totalFreed)
+	}
+	return nil
+}

@@ -18,6 +18,7 @@ type User struct {
 	QuotaUsedBytes            int64      `json:"quota_used_bytes"`
 	BandwidthLimitBytesPerDay *int64     `json:"bandwidth_limit_bytes_per_day,omitempty"`
 	WebDAVEnabled             bool       `json:"webdav_enabled"`
+	TrashRetentionDays        *int       `json:"trash_retention_days,omitempty"`
 	InvitedBy                 *uuid.UUID `json:"invited_by,omitempty"`
 	LastLoginAt               *time.Time `json:"last_login_at,omitempty"`
 	CreatedAt                 time.Time  `json:"created_at"`

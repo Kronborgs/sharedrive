@@ -2,11 +2,15 @@ package files
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog/log"
 )
 
 // File represents a row in the files table.
@@ -200,4 +204,63 @@ func (s *Service) Breadcrumbs(ctx context.Context, fileID, ownerID string) ([]*F
 		chain = append(chain, f)
 	}
 	return chain, rows.Err()
+}
+
+// Upload streams r to storage with SHA-256 hashing, enforces quota, and
+// inserts a file record. Pass contentLength=0 if Content-Length is unknown.
+func (s *Service) Upload(ctx context.Context, ownerID, name, mimeType, folderIDStr string, r io.Reader, contentLength int64) (*File, error) {
+	var parentID *uuid.UUID
+	if folderIDStr != "" {
+		if id, err := uuid.Parse(folderIDStr); err == nil {
+			parentID = &id
+		}
+	}
+
+	// Pre-check quota when content length is known upfront
+	if contentLength > 0 {
+		if err := s.quota.Check(ctx, ownerID, contentLength); err != nil {
+			return nil, err
+		}
+	}
+
+	fileID := uuid.New()
+
+	// Stream to storage while computing SHA-256
+	hash := sha256.New()
+	n, err := s.storage.Write(fileID.String(), io.TeeReader(r, hash))
+	if err != nil {
+		return nil, fmt.Errorf("files.Upload: storage write: %w", err)
+	}
+	shaHex := hex.EncodeToString(hash.Sum(nil))
+
+	// Post-write quota check when length was not known upfront
+	if contentLength <= 0 {
+		if err := s.quota.Check(ctx, ownerID, n); err != nil {
+			_ = s.storage.Delete(fileID.String())
+			return nil, err
+		}
+	}
+
+	storagePath := s.storage.Path(fileID.String())
+	f := &File{}
+	err = s.db.QueryRow(ctx,
+		`INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path, checksum_sha256)
+		 VALUES ($1, $2, $3, false, $4, $5, $6, $7, $8)
+		 RETURNING `+fileCols,
+		fileID, ownerID, parentID, name, mimeType, n, storagePath, shaHex,
+	).Scan(
+		&f.ID, &f.ParentID, &f.OwnerID, &f.IsFolder, &f.Name, &f.MimeType,
+		&f.SizeBytes, &f.StoragePath, &f.DeletedAt, &f.CreatedAt, &f.UpdatedAt,
+	)
+	if err != nil {
+		_ = s.storage.Delete(fileID.String())
+		return nil, fmt.Errorf("files.Upload: db insert: %w", err)
+	}
+
+	// Increment quota used
+	if err := s.quota.Add(ctx, ownerID, n); err != nil {
+		log.Warn().Err(err).Str("file_id", fileID.String()).Msg("files.Upload: quota update")
+	}
+
+	return f, nil
 }

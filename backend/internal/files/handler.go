@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -257,4 +258,47 @@ func (h *Handler) PermanentDelete(w http.ResponseWriter, r *http.Request) {
 		Metadata:  map[string]any{"file_id": id},
 	})
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// Upload handles POST /api/v1/files/upload — multipart file upload.
+func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid multipart form")
+		return
+	}
+
+	fileData, header, err := r.FormFile("file")
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer fileData.Close()
+
+	folderID := r.FormValue("folder_id")
+	mimeType := header.Header.Get("Content-Type")
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	f, err := h.svc.Upload(r.Context(), actor.ID.String(), header.Filename, mimeType, folderID, fileData, header.Size)
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "quota:") {
+			httputil.RespondError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		log.Error().Err(err).Msg("files.Upload")
+		httputil.RespondError(w, http.StatusInternalServerError, "upload failed")
+		return
+	}
+
+	h.auditSvc.Log(r.Context(), audit.Event{
+		Type:         audit.EventFileUploaded,
+		ActorID:      &actor.ID,
+		ResourceID:   &f.ID,
+		ResourceName: f.Name,
+		IPAddress:    middleware.ClientIP(r),
+	})
+	httputil.Respond(w, http.StatusCreated, f)
 }

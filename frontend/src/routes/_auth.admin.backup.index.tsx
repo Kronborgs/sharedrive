@@ -36,7 +36,7 @@ function BackupPage() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `privatedrive-backup-${new Date().toISOString().slice(0, 10)}.json.gz`
+        a.download = `sharedrive-backup-${new Date().toISOString().slice(0, 10)}.json.gz`
         a.click()
         URL.revokeObjectURL(url)
       }),

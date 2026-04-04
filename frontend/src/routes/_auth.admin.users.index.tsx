@@ -39,10 +39,10 @@ function AdminUsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
-              {data?.items.map(user => (
+              {(data?.items ?? []).map(user => (
                 <UserRow key={user.id} user={user} />
               ))}
-              {data?.items.length === 0 && (
+              {(data?.items?.length ?? 0) === 0 && (
                 <tr>
                   <td colSpan={6} className="text-center py-8 text-muted">No users found</td>
                 </tr>

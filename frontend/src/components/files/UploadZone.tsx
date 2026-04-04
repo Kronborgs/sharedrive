@@ -99,9 +99,8 @@ export function UploadProgress({ uploads, onDismiss }: UploadProgressProps) {
   )
 }
 
-// --- Upload hook (tus) ---
+// --- Upload hook ---
 
-import * as tus from 'tus-js-client'
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -135,18 +134,22 @@ export function useUploader(folderId: string | null) {
     for (const entry of entries) {
       update(entry.id, { status: 'uploading' })
 
-      const upload = new tus.Upload(entry.file, {
-        endpoint: '/api/v1/files/upload',
-        retryDelays: [0, 3000, 5000, 10000],
-        metadata: {
-          filename: entry.file.name,
-          filetype: entry.file.type,
-          folder_id: folderId ?? '',
-        },
-        onProgress(bytesSent, bytesTotal) {
-          update(entry.id, { progress: Math.round((bytesSent / bytesTotal) * 100) })
-        },
-        onSuccess() {
+      const formData = new FormData()
+      formData.append('file', entry.file)
+      formData.append('folder_id', folderId ?? '')
+
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', '/api/v1/files/upload')
+      xhr.withCredentials = true
+
+      xhr.upload.onprogress = (e: ProgressEvent) => {
+        if (e.lengthComputable) {
+          update(entry.id, { progress: Math.round((e.loaded / e.total) * 100) })
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
           update(entry.id, { status: 'done', progress: 100 })
           void qc.invalidateQueries({ queryKey: ['files', folderId] })
           setTimeout(() => {
@@ -156,13 +159,21 @@ export function useUploader(folderId: string | null) {
               return next
             })
           }, 2000)
-        },
-        onError(err) {
-          update(entry.id, { status: 'error', error: err.message })
-        },
-      })
+        } else {
+          let msg = 'Upload failed'
+          try {
+            const data = JSON.parse(xhr.responseText) as { error?: string }
+            if (data.error) msg = data.error
+          } catch { /* ignore */ }
+          update(entry.id, { status: 'error', error: msg })
+        }
+      }
 
-      upload.start()
+      xhr.onerror = () => {
+        update(entry.id, { status: 'error', error: 'Network error' })
+      }
+
+      xhr.send(formData)
     }
   }, [folderId, qc])
 

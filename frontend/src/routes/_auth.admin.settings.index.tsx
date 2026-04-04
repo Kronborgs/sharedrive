@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useForm, type UseFormRegister } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { useState } from 'react'
 
 export const Route = createFileRoute('/_auth/admin/settings/')({
   component: SettingsPage,
@@ -49,29 +50,36 @@ function SettingsPage() {
     queryFn: ({ signal }) => api.get<SystemSettings>('/api/v1/admin/settings', signal),
   })
 
-  const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm<FormValues>({
+  const { register, handleSubmit, formState: { errors, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(settingsSchema),
     values: data
       ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: GB(data.max_upload_bytes) }
       : undefined,
   })
 
+  const [smtpPassword, setSmtpPassword] = useState('')
+  const [testRecipient, setTestRecipient] = useState('')
+
   const save = useMutation({
-    mutationFn: (values: FormValues) =>
-      api.patch('/api/v1/admin/settings', {
+    mutationFn: (values: FormValues) => {
+      const body: Record<string, unknown> = {
         ...values,
         default_quota_bytes: toGB(values.default_quota_bytes),
         max_upload_bytes: toGB(values.max_upload_bytes),
-      }),
+      }
+      if (smtpPassword) body.smtp_password = smtpPassword
+      return api.patch('/api/v1/admin/settings', body)
+    },
     onSuccess: () => {
       toast.success('Settings saved')
+      setSmtpPassword('')
       void qc.invalidateQueries({ queryKey: ['admin', 'settings'] })
     },
     onError: () => toast.error('Failed to save settings'),
   })
 
   const testSMTP = useMutation({
-    mutationFn: () => api.post('/api/v1/admin/settings/smtp-test', {}),
+    mutationFn: () => api.post('/api/v1/admin/settings/smtp-test', { to: testRecipient }),
     onSuccess: () => toast.success('Test email sent'),
     onError: () => toast.error('SMTP test failed'),
   })
@@ -130,14 +138,34 @@ function SettingsPage() {
 
         <Toggle label="Use TLS/STARTTLS" description="Enable encrypted SMTP connection." name="smtp_tls" register={register} />
 
-        <button
-          type="button"
-          onClick={() => testSMTP.mutate()}
-          disabled={testSMTP.isPending}
-          className="text-sm text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-50"
-        >
-          {testSMTP.isPending ? 'Sending test email…' : 'Send test email'}
-        </button>
+        <Field label="Password">
+          <input
+            type="password"
+            value={smtpPassword}
+            onChange={e => setSmtpPassword(e.target.value)}
+            placeholder="Leave blank to keep existing password"
+            autoComplete="new-password"
+            className={inputClass}
+          />
+        </Field>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="email"
+            value={testRecipient}
+            onChange={e => setTestRecipient(e.target.value)}
+            placeholder="Test recipient (defaults to your email)"
+            className={`${inputClass} flex-1`}
+          />
+          <button
+            type="button"
+            onClick={() => testSMTP.mutate()}
+            disabled={testSMTP.isPending}
+            className="text-sm text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-50 whitespace-nowrap"
+          >
+            {testSMTP.isPending ? 'Sending…' : 'Send test email'}
+          </button>
+        </div>
       </section>
 
       <div className="flex justify-end">
@@ -179,7 +207,7 @@ function Toggle({
 }) {
   return (
     <label className="flex items-start gap-3 cursor-pointer">
-      <input type="checkbox" {...register(name)} className="mt-0.5 rounded border-zinc-300 dark:border-[#4d5678] text-brand-600 focus:ring-brand-500 focus:ring-offset-0" />
+      <input type="checkbox" {...register(name as Parameters<typeof register>[0])} className="mt-0.5 rounded border-zinc-300 dark:border-[#4d5678] text-brand-600 focus:ring-brand-500 focus:ring-offset-0" />
       <div>
         <p className="text-sm text-zinc-900 dark:text-slate-100">{label}</p>
         <p className="text-xs text-muted">{description}</p>

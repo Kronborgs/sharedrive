@@ -176,9 +176,10 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var req smtpTestRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.To == "" {
-		httputil.RespondError(w, http.StatusBadRequest, "to is required")
-		return
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req.To == "" {
+		// Fall back to the logged-in admin's email address
+		req.To = middleware.UserFromContext(ctx).Email
 	}
 
 	// Read SMTP settings from DB

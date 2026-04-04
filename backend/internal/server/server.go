@@ -163,6 +163,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		// Files
 		r.Get("/api/v1/files", s.filesHandler.List)
 		r.Post("/api/v1/files", s.filesHandler.CreateFolder)
+		r.Post("/api/v1/files/upload", s.filesHandler.Upload)
 		r.Get("/api/v1/files/recent", s.filesHandler.Recent)
 		r.Get("/api/v1/files/shared-with-me", s.handleSharedWithMe)
 		r.Get("/api/v1/files/trash", s.filesHandler.ListTrash)

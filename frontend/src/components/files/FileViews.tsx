@@ -1,6 +1,6 @@
 import type { FileItem } from '@/types/api'
 import { getFileIcon, formatBytes, formatRelative, cn } from '@/lib/utils'
-import { MoreVertical, Folder } from 'lucide-react'
+import { MoreVertical, Folder, UserPlus } from 'lucide-react'
 import { useRef } from 'react'
 
 interface FileListProps {
@@ -10,9 +10,10 @@ interface FileListProps {
   onOpen: (item: FileItem) => void
   onContextMenu: (item: FileItem, x: number, y: number) => void
   onSelectAll?: () => void
+  onQuickShare?: (item: FileItem) => void
 }
 
-export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, onSelectAll }: FileListProps) {
+export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, onSelectAll, onQuickShare }: FileListProps) {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
@@ -29,8 +30,8 @@ export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, 
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-zinc-100 dark:border-[#2d3148]">
-          {onSelectAll && (
-            <th className="w-8 px-3 py-2.5">
+          <th className="w-10 px-3 py-2.5">
+            {onSelectAll ? (
               <input
                 type="checkbox"
                 className="rounded border-zinc-300 dark:border-zinc-600 cursor-pointer"
@@ -39,12 +40,12 @@ export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, 
                 onChange={onSelectAll}
                 onClick={e => e.stopPropagation()}
               />
-            </th>
-          )}
+            ) : null}
+          </th>
           <th className="text-left px-3 py-2.5 text-xs font-medium text-muted uppercase">Name</th>
           <th className="text-right px-3 py-2.5 text-xs font-medium text-muted uppercase w-24 hidden md:table-cell">Size</th>
           <th className="text-right px-3 py-2.5 text-xs font-medium text-muted uppercase w-32 hidden md:table-cell">Modified</th>
-          <th className="w-8" />
+          <th className="w-16" />
         </tr>
       </thead>
       <tbody>
@@ -56,6 +57,7 @@ export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, 
             onSelect={onSelect}
             onOpen={onOpen}
             onContextMenu={onContextMenu}
+            onQuickShare={onQuickShare}
           />
         ))}
       </tbody>
@@ -69,12 +71,14 @@ function FileRow({
   onSelect,
   onOpen,
   onContextMenu,
+  onQuickShare,
 }: {
   item: FileItem
   selected: boolean
   onSelect: (id: string, additive: boolean) => void
   onOpen: (item: FileItem) => void
   onContextMenu: (item: FileItem, x: number, y: number) => void
+  onQuickShare?: (item: FileItem) => void
 }) {
   const moreRef = useRef<HTMLButtonElement>(null)
 
@@ -92,12 +96,26 @@ function FileRow({
           : 'hover:bg-zinc-50 dark:hover:bg-[#2d3148]/50',
       )}
       onClick={e => {
+        if ((e.target as HTMLElement).closest('button,input')) return
         if (item.is_folder) onOpen(item)
         else onSelect(item.id, e.metaKey || e.ctrlKey)
       }}
       onDoubleClick={() => { if (!item.is_folder) onOpen(item) }}
       onContextMenu={handleContextMenu}
     >
+      {/* Checkbox cell */}
+      <td className="w-10 px-3 py-2.5" onClick={e => { e.stopPropagation(); onSelect(item.id, true) }}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onSelect(item.id, true)}
+          onClick={e => e.stopPropagation()}
+          className={cn(
+            'rounded border-zinc-300 dark:border-zinc-600 cursor-pointer transition-opacity',
+            selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+          )}
+        />
+      </td>
       <td className="px-3 py-2.5">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="text-lg shrink-0 select-none">
@@ -129,14 +147,25 @@ function FileRow({
         {formatRelative(item.updated_at)}
       </td>
       <td className="pr-2">
-        <button
-          ref={moreRef}
-          onClick={e => { e.stopPropagation(); onContextMenu(item, moreRef.current!.getBoundingClientRect().left, moreRef.current!.getBoundingClientRect().bottom) }}
-          className="p-1 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-all"
-          title="More options"
-        >
-          <MoreVertical size={14} />
-        </button>
+        <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          {onQuickShare && (
+            <button
+              onClick={e => { e.stopPropagation(); onQuickShare(item) }}
+              className="p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
+              title="Share…"
+            >
+              <UserPlus size={14} />
+            </button>
+          )}
+          <button
+            ref={moreRef}
+            onClick={e => { e.stopPropagation(); onContextMenu(item, moreRef.current!.getBoundingClientRect().left, moreRef.current!.getBoundingClientRect().bottom) }}
+            className="p-1 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
+            title="More options"
+          >
+            <MoreVertical size={14} />
+          </button>
+        </div>
       </td>
     </tr>
   )

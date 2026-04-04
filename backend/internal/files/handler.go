@@ -1,6 +1,7 @@
 package files
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -337,4 +338,64 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		IPAddress:    middleware.ClientIP(r),
 	})
 	httputil.Respond(w, http.StatusCreated, f)
+}
+
+// DownloadZip handles GET /api/v1/files/download-zip?ids=id1,id2,...
+// Streams a zip archive of the requested files the actor can access.
+func (h *Handler) DownloadZip(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	ctx := r.Context()
+
+	rawIDs := r.URL.Query().Get("ids")
+	if rawIDs == "" {
+		httputil.RespondError(w, http.StatusBadRequest, "ids is required")
+		return
+	}
+
+	ids := strings.Split(rawIDs, ",")
+	if len(ids) > 100 {
+		httputil.RespondError(w, http.StatusBadRequest, "too many ids (max 100)")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="download.zip"`)
+
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+
+	for _, raw := range ids {
+		id := strings.TrimSpace(raw)
+		if _, err := uuid.Parse(id); err != nil {
+			continue
+		}
+		f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
+		if err != nil || f == nil || f.IsFolder {
+			continue
+		}
+		reader, err := h.svc.storage.Open(id)
+		if err != nil {
+			log.Warn().Err(err).Str("file_id", id).Msg("DownloadZip: open storage")
+			continue
+		}
+		fw, zerr := zw.Create(f.Name)
+		if zerr != nil {
+			reader.Close()
+			log.Warn().Err(zerr).Str("file_id", id).Msg("DownloadZip: create zip entry")
+			continue
+		}
+		buf := make([]byte, 32*1024)
+		for {
+			n, rerr := reader.Read(buf)
+			if n > 0 {
+				if _, werr := fw.Write(buf[:n]); werr != nil {
+					break
+				}
+			}
+			if rerr != nil {
+				break
+			}
+		}
+		reader.Close()
+	}
 }

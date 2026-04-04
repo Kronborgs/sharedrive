@@ -174,6 +174,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/files/shared/{id}/children", s.sharesHandler.SharedFolderChildren)
 		r.Get("/api/v1/files/trash", s.filesHandler.ListTrash)
 		r.Delete("/api/v1/files/trash", s.filesHandler.EmptyTrash)
+		r.Get("/api/v1/files/download-zip", s.filesHandler.DownloadZip)
 		r.Get("/api/v1/files/{id}", s.filesHandler.Get)
 		r.Patch("/api/v1/files/{id}", s.filesHandler.Update)
 		r.Delete("/api/v1/files/{id}", s.filesHandler.Delete)

@@ -24,6 +24,7 @@ import (
 	mw "github.com/yourname/privatedrive/internal/middleware"
 	"github.com/yourname/privatedrive/internal/onboarding"
 	"github.com/yourname/privatedrive/internal/shares"
+	"github.com/yourname/privatedrive/internal/smtp"
 	"github.com/yourname/privatedrive/internal/user"
 	"github.com/yourname/privatedrive/internal/webdav"
 )
@@ -64,7 +65,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		onboarding:     onboarding.New(db, cfg),
 		userHandler:    user.NewHandler(db, auditSvc),
 		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc),
-		sharesHandler:  shares.NewHandler(db),
+		sharesHandler:  shares.NewHandler(db, smtp.New(cfg), cfg.AppBaseURL),
 		adminHandler:   admin.NewHandler(db, cfg),
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),
@@ -140,6 +141,9 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Post("/api/v1/auth/accept-invite", s.handleAcceptInviteRedirect)
 	r.Post("/api/v1/invitations/{token}/accept", s.authHandler.AcceptInvite)
 	r.Get("/api/v1/invitations/{token}", s.authHandler.GetInviteInfo)
+
+	// ── Public shared-link endpoint (no auth) ─────────────────────────────
+	r.Get("/api/v1/public/shared/{token}", s.handleSharedByLink)
 
 	// ── Authenticated API routes ───────────────────────────────────────────
 	r.Group(func(r chi.Router) {
@@ -326,6 +330,7 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request)        
 func (s *Server) handleCreateFolder(w http.ResponseWriter, r *http.Request)           { s.notImplemented(w) }
 func (s *Server) handleRecentFiles(w http.ResponseWriter, r *http.Request)            { s.notImplemented(w) }
 func (s *Server) handleSharedWithMe(w http.ResponseWriter, r *http.Request)           { s.sharesHandler.SharedWithMe(w, r) }
+func (s *Server) handleSharedByLink(w http.ResponseWriter, r *http.Request)            { s.sharesHandler.SharedByLink(w, r) }
 func (s *Server) handleListTrash(w http.ResponseWriter, r *http.Request)              { s.notImplemented(w) }
 func (s *Server) handleGetFile(w http.ResponseWriter, r *http.Request)                { s.notImplemented(w) }
 func (s *Server) handleUpdateFile(w http.ResponseWriter, r *http.Request)             { s.notImplemented(w) }

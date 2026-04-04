@@ -44,6 +44,18 @@ func (m *Mailer) SendInvitation(_ context.Context, toEmail, inviterName, inviteL
 	return m.send(toEmail, fmt.Sprintf("%s has invited you to PrivateDrive", inviterName), body)
 }
 
+// SendShareNotification notifies a user that a file has been shared with them.
+func (m *Mailer) SendShareNotification(_ context.Context, toEmail, sharerName, fileName, appURL string) error {
+	body := fmt.Sprintf(
+		"Hi,\n\n"+
+			"%s has shared a file with you on PrivateDrive: \"%s\"\n\n"+
+			"Log in to view it:\n\n%s\n\n"+
+			"You can find all files shared with you under \"Shared with me\".\n",
+		sharerName, fileName, appURL,
+	)
+	return m.send(toEmail, fmt.Sprintf("%s shared \"%s\" with you", sharerName, fileName), body)
+}
+
 func (m *Mailer) send(to, subject, body string) error {
 	if m.cfg.SMTPHost == "" {
 		return fmt.Errorf("smtp: SMTP_HOST not configured")

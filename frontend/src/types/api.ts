@@ -92,7 +92,7 @@ export interface Share {
   resource_id: string
   owner_id: string
   grantee_type: 'user' | 'group' | 'link'
-  grantee_id: string
+  grantee_id?: string | null
   grantee_email?: string | null
   grantee_group_name?: string | null
   token?: string | null
@@ -109,8 +109,7 @@ export interface Share {
 
 export interface CreateShareRequest {
   resource_id: string
-  grantee_type: 'user' | 'group'
-  grantee_id: string
+  grantee_type: 'user' | 'group' | 'link'
   can_view?: boolean
   can_upload?: boolean
   can_edit?: boolean

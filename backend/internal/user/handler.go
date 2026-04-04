@@ -344,3 +344,129 @@ func (h *Handler) Reinvite(w http.ResponseWriter, r *http.Request) {
 		"email": email,
 	})
 }
+
+//  Guest management 
+
+// GuestSharedItem is a resource that has been shared with a guest user.
+type GuestSharedItem struct {
+ResourceID string `json:"resource_id"`
+Name       string `json:"name"`
+IsFolder   bool   `json:"is_folder"`
+OwnerEmail string `json:"owner_email"`
+}
+
+// GuestUser is returned by ListGuests.
+type GuestUser struct {
+ID            string            `json:"id"`
+Email         string            `json:"email"`
+DisplayName   string            `json:"display_name"`
+LastLoginAt   *time.Time        `json:"last_login_at"`
+CreatedAt     time.Time         `json:"created_at"`
+InvitedByName *string           `json:"invited_by_name"`
+SharedItems   []GuestSharedItem `json:"shared_items"`
+}
+
+// ListGuests handles GET /api/v1/admin/guests
+func (h *Handler) ListGuests(w http.ResponseWriter, r *http.Request) {
+ctx := r.Context()
+
+rows, err := h.db.Query(ctx,
+`SELECT u.id, u.email, u.display_name, u.last_login_at, u.created_at,
+        inviter.display_name
+ FROM users u
+ LEFT JOIN users inviter ON inviter.id = u.invited_by
+ WHERE u.role = 'guest'
+ ORDER BY u.created_at DESC`,
+)
+if err != nil {
+httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+return
+}
+defer rows.Close()
+
+guests := []GuestUser{}
+for rows.Next() {
+var g GuestUser
+if err := rows.Scan(&g.ID, &g.Email, &g.DisplayName, &g.LastLoginAt, &g.CreatedAt, &g.InvitedByName); err != nil {
+httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+return
+}
+g.SharedItems = []GuestSharedItem{}
+guests = append(guests, g)
+}
+if err := rows.Err(); err != nil {
+httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+return
+}
+
+// Fetch shared items for each guest in a single batched query.
+if len(guests) > 0 {
+ids := make([]string, len(guests))
+for i, g := range guests {
+ids[i] = g.ID
+}
+sRows, err := h.db.Query(ctx,
+`SELECT s.grantee_id, f.id, f.name, f.is_folder, owner.email
+ FROM shares s
+ JOIN files f ON f.id = s.resource_id AND f.deleted_at IS NULL
+ JOIN users owner ON owner.id = s.owner_id
+ WHERE s.grantee_type = 'user'
+   AND s.grantee_id = ANY($1::uuid[])
+   AND s.revoked_at IS NULL
+   AND (s.expires_at IS NULL OR s.expires_at > now())
+ ORDER BY f.name ASC`,
+ids,
+)
+if err == nil {
+defer sRows.Close()
+itemMap := make(map[string][]GuestSharedItem)
+for sRows.Next() {
+var granteeID string
+var item GuestSharedItem
+if err := sRows.Scan(&granteeID, &item.ResourceID, &item.Name, &item.IsFolder, &item.OwnerEmail); err == nil {
+itemMap[granteeID] = append(itemMap[granteeID], item)
+}
+}
+for i := range guests {
+if items, ok := itemMap[guests[i].ID]; ok {
+guests[i].SharedItems = items
+}
+}
+}
+}
+
+httputil.Respond(w, http.StatusOK, guests)
+}
+
+// PromoteGuest handles POST /api/v1/admin/guests/{id}/promote
+// Converts a guest user to a regular user with role='user'.
+func (h *Handler) PromoteGuest(w http.ResponseWriter, r *http.Request) {
+ctx := r.Context()
+actor := UserFromContext(ctx)
+id := chi.URLParam(r, "id")
+
+var currentRole string
+if err := h.db.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&currentRole); err != nil {
+httputil.RespondError(w, http.StatusNotFound, "user not found")
+return
+}
+if currentRole != "guest" {
+httputil.RespondError(w, http.StatusBadRequest, "user is not a guest")
+return
+}
+
+if _, err := h.db.Exec(ctx,
+`UPDATE users SET role = 'user', updated_at = now() WHERE id = $1`, id,
+); err != nil {
+httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+return
+}
+
+h.auditSvc.Log(ctx, audit.Event{
+Type:      audit.EventUserActivated,
+ActorID:   &actor.ID,
+IPAddress: clientIP(r),
+Metadata:  map[string]any{"target_user_id": id, "promoted_from_guest": true},
+})
+httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}

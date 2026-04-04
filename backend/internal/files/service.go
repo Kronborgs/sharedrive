@@ -115,20 +115,29 @@ func (s *Service) Get(ctx context.Context, id, ownerID string) (*File, error) {
 	return scanFile(row)
 }
 
-// GetAccessible retrieves a file if the user owns it OR has an active share grant for it.
+// GetAccessible retrieves a file if the user owns it OR has an active share grant
+// for it or any of its ancestor folders.
 func (s *Service) GetAccessible(ctx context.Context, id, userID string) (*File, error) {
 	row := s.db.QueryRow(ctx,
-		`SELECT `+fileCols+` FROM files
+		`WITH RECURSIVE ancestors AS (
+		   SELECT id, parent_id FROM files WHERE id = $1::uuid AND deleted_at IS NULL
+		   UNION ALL
+		   SELECT f.id, f.parent_id
+		   FROM files f
+		   JOIN ancestors a ON f.id = a.parent_id
+		   WHERE f.deleted_at IS NULL
+		 )
+		 SELECT `+fileCols+` FROM files
 		 WHERE id = $1
 		   AND deleted_at IS NULL
 		   AND (
 		     owner_id = $2
 		     OR EXISTS (
-		       SELECT 1 FROM shares
-		       WHERE resource_id = $1
-		         AND grantee_id = $2::uuid
-		         AND revoked_at IS NULL
-		         AND (expires_at IS NULL OR expires_at > now())
+		       SELECT 1 FROM shares sh
+		       JOIN ancestors anc ON sh.resource_id = anc.id
+		       WHERE sh.grantee_id = $2::uuid
+		         AND sh.revoked_at IS NULL
+		         AND (sh.expires_at IS NULL OR sh.expires_at > now())
 		     )
 		   )`,
 		id, userID,
@@ -138,16 +147,13 @@ func (s *Service) GetAccessible(ctx context.Context, id, userID string) (*File, 
 
 // CreateFolder inserts a new folder record.
 func (s *Service) CreateFolder(ctx context.Context, ownerID, name string, parentID *uuid.UUID) (*File, error) {
-	f := &File{}
-	err := s.db.QueryRow(ctx,
+	row := s.db.QueryRow(ctx,
 		`INSERT INTO files (owner_id, parent_id, is_folder, name)
 		 VALUES ($1, $2, true, $3)
 		 RETURNING `+fileCols,
 		ownerID, parentID, name,
-	).Scan(
-		&f.ID, &f.ParentID, &f.OwnerID, &f.IsFolder, &f.Name, &f.MimeType,
-		&f.SizeBytes, &f.StoragePath, &f.DeletedAt, &f.CreatedAt, &f.UpdatedAt,
 	)
+	f, err := scanFile(row)
 	if err != nil {
 		return nil, fmt.Errorf("files.CreateFolder: %w", err)
 	}

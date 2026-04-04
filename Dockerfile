@@ -25,6 +25,7 @@ COPY backend/go.mod ./
 RUN go mod download
 
 COPY backend/ .
+RUN go mod tidy
 
 # Embed the built frontend into the Go binary
 COPY --from=frontend-builder /fe/dist ./internal/embed/dist

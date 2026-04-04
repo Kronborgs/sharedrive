@@ -78,8 +78,11 @@ function FileRow({
           ? 'bg-brand-50 dark:bg-brand-900/20'
           : 'hover:bg-zinc-50 dark:hover:bg-[#2d3148]/50',
       )}
-      onClick={e => onSelect(item.id, e.metaKey || e.ctrlKey)}
-      onDoubleClick={() => onOpen(item)}
+      onClick={e => {
+        if (item.is_folder) onOpen(item)
+        else onSelect(item.id, e.metaKey || e.ctrlKey)
+      }}
+      onDoubleClick={() => { if (!item.is_folder) onOpen(item) }}
       onContextMenu={handleContextMenu}
     >
       <td className="px-3 py-2.5">
@@ -159,8 +162,11 @@ export function FileGrid({ items, selectedIds, onSelect, onOpen, onContextMenu }
               ? 'bg-brand-50 dark:bg-brand-900/20 ring-2 ring-brand-400'
               : 'hover:bg-zinc-100 dark:hover:bg-[#2d3148]',
           )}
-          onClick={e => onSelect(item.id, e.metaKey || e.ctrlKey)}
-          onDoubleClick={() => onOpen(item)}
+          onClick={e => {
+            if (item.is_folder) onOpen(item)
+            else onSelect(item.id, e.metaKey || e.ctrlKey)
+          }}
+          onDoubleClick={() => { if (!item.is_folder) onOpen(item) }}
           onContextMenu={e => { e.preventDefault(); onContextMenu(item, e.clientX, e.clientY) }}
         >
           <span className="text-4xl">{item.is_folder ? '📁' : getFileIcon(item.name)}</span>

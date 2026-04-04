@@ -113,8 +113,8 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 
 	// Create admin user.
 	_, err = tx.Exec(ctx,
-		`INSERT INTO users (email, display_name, password_hash, role, quota_bytes)
-		 VALUES ($1, $2, $3, 'admin', 107374182400)`, // 100 GB default for admin
+		`INSERT INTO users (email, display_name, password_hash, role, is_active, quota_bytes)
+		 VALUES ($1, $2, $3, 'admin', true, 107374182400)`, // 100 GB default for admin
 		req.AdminEmail, req.AdminName, hash,
 	)
 	if err != nil {

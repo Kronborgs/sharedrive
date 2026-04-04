@@ -85,7 +85,7 @@ jobs:
       - name: Read version
         id: version
         run: |
-          echo "version=$(date -u +%Y-%m-%d)-build-${{ github.run_number }}" >> $GITHUB_OUTPUT
+          echo "version=$(date -u +%Y-%m-%d)-build-$(printf '%03d' ${{ github.run_number }})" >> $GITHUB_OUTPUT
           echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
       - name: Build and push

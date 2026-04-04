@@ -20,6 +20,6 @@ if (Test-Path $versionFile) {
     $n = 1
 }
 
-$newVersion = "$date-build-$n"
+$newVersion = "$date-build-$($n.ToString('000'))"
 Set-Content -Path $versionFile -Value $newVersion -NoNewline
 Write-Host "Version bumped to: $newVersion"

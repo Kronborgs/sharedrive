@@ -210,6 +210,7 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Delete("/api/v1/admin/tags/{id}", s.handleAdminDeleteTag)
 
 			r.Get("/api/v1/admin/audit-logs", s.handleAdminAuditLogs)
+			r.Get("/api/v1/admin/stats", s.handleAdminStats)
 			r.Get("/api/v1/admin/blocked-ips", s.handleAdminListBlockedIPs)
 			r.Delete("/api/v1/admin/blocked-ips/{ip}", s.handleAdminUnblockIP)
 			r.Get("/api/v1/admin/ip-whitelist", s.handleAdminListWhitelist)
@@ -357,6 +358,7 @@ func (s *Server) handleAdminCreateTag(w http.ResponseWriter, r *http.Request)   
 func (s *Server) handleAdminUpdateTag(w http.ResponseWriter, r *http.Request)         { s.adminHandler.UpdateTag(w, r) }
 func (s *Server) handleAdminDeleteTag(w http.ResponseWriter, r *http.Request)         { s.adminHandler.DeleteTag(w, r) }
 func (s *Server) handleAdminAuditLogs(w http.ResponseWriter, r *http.Request)         { s.adminHandler.AuditLogs(w, r) }
+func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request)              { s.adminHandler.Stats(w, r) }
 func (s *Server) handleAdminListBlockedIPs(w http.ResponseWriter, r *http.Request)    { s.adminHandler.ListBlockedIPs(w, r) }
 func (s *Server) handleAdminUnblockIP(w http.ResponseWriter, r *http.Request)         { s.adminHandler.UnblockIP(w, r) }
 func (s *Server) handleAdminListWhitelist(w http.ResponseWriter, r *http.Request)     { s.adminHandler.ListWhitelist(w, r) }

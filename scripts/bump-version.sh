@@ -17,6 +17,6 @@ else
   NEXT_N=1
 fi
 
-NEW_VERSION="${DATE}-build-${NEXT_N}"
+NEW_VERSION="${DATE}-build-$(printf '%03d' ${NEXT_N})"
 echo "$NEW_VERSION" > "$CURRENT_FILE"
 echo "Version bumped to: $NEW_VERSION"

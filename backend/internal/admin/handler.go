@@ -377,6 +377,9 @@ func (h *Handler) AuditLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var total int
+	_ = h.db.QueryRow(ctx, `SELECT count(*) FROM audit_logs`).Scan(&total)
+
 	rows, err := h.db.Query(ctx,
 		`SELECT id, event_type, actor_id::TEXT, actor_email,
 		        target_user_id::TEXT, resource_type, resource_id::TEXT, resource_name,
@@ -411,7 +414,51 @@ func (h *Handler) AuditLogs(w http.ResponseWriter, r *http.Request) {
 	if out == nil {
 		out = []auditLogEntry{}
 	}
-	httputil.Respond(w, http.StatusOK, out)
+	httputil.Respond(w, http.StatusOK, map[string]any{
+		"items": out,
+		"total": total,
+	})
+}
+
+// ─── Dashboard Stats ─────────────────────────────────────────────────────────
+
+// Stats handles GET /api/v1/admin/stats — returns aggregated dashboard metrics.
+func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var totalUsers, activeUsers int
+	var totalStorageUsed, totalStorageQuota int64
+	_ = h.db.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE is_active) FROM users`).
+		Scan(&totalUsers, &activeUsers)
+	_ = h.db.QueryRow(ctx, `SELECT coalesce(sum(quota_used_bytes),0), coalesce(sum(quota_bytes),0) FROM users WHERE is_active`).
+		Scan(&totalStorageUsed, &totalStorageQuota)
+
+	// Activity counts from audit_logs (last 30 days)
+	var logins, failedLogins, uploads, downloads, lockouts int
+	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	_ = h.db.QueryRow(ctx,
+		`SELECT
+		  count(*) FILTER (WHERE event_type = 'LOGIN_SUCCESS'),
+		  count(*) FILTER (WHERE event_type = 'LOGIN_FAILED'),
+		  count(*) FILTER (WHERE event_type = 'FILE_UPLOADED'),
+		  count(*) FILTER (WHERE event_type = 'FILE_DOWNLOADED'),
+		  count(*) FILTER (WHERE event_type LIKE 'LOCKOUT_%')
+		 FROM audit_logs WHERE created_at > $1`, cutoff,
+	).Scan(&logins, &failedLogins, &uploads, &downloads, &lockouts)
+
+	httputil.Respond(w, http.StatusOK, map[string]any{
+		"total_users":        totalUsers,
+		"active_users":       activeUsers,
+		"storage_used_bytes": totalStorageUsed,
+		"storage_quota_bytes": totalStorageQuota,
+		"last_30_days": map[string]int{
+			"logins":        logins,
+			"failed_logins": failedLogins,
+			"uploads":       uploads,
+			"downloads":     downloads,
+			"lockouts":      lockouts,
+		},
+	})
 }
 
 // ─── Groups ──────────────────────────────────────────────────────────────────

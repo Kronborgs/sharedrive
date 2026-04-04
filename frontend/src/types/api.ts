@@ -16,7 +16,7 @@ export interface User {
   id: string
   email: string
   display_name: string
-  role: 'user' | 'admin'
+  role: 'user' | 'admin' | 'guest'
   is_admin: boolean
   is_active: boolean
   quota_bytes: number
@@ -27,6 +27,23 @@ export interface User {
   last_login_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface GuestSharedItem {
+  resource_id: string
+  name: string
+  is_folder: boolean
+  owner_email: string
+}
+
+export interface GuestUser {
+  id: string
+  email: string
+  display_name: string
+  last_login_at: string | null
+  created_at: string
+  invited_by_name: string | null
+  shared_items: GuestSharedItem[]
 }
 
 export interface Session {

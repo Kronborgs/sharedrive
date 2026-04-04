@@ -2,9 +2,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
-import { X, Plus, Pencil, Trash2 } from 'lucide-react'
+import { X, Plus, Pencil, Trash2, UserCheck, Folder, File, ChevronDown, ChevronRight } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { User, Group, PaginatedResponse } from '@/types/api'
+import type { User, Group, PaginatedResponse, GuestUser } from '@/types/api'
 import { formatBytes, formatDate } from '@/lib/utils'
 
 export const Route = createFileRoute('/_auth/admin/users/')({
@@ -285,12 +285,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // ─── Main page ────────────────────────────────────────────────────────────────
 function AdminUsersPage() {
   const qc = useQueryClient()
-  const [tab, setTab] = useState<'users' | 'groups'>('users')
+  const [tab, setTab] = useState<'users' | 'guests' | 'groups'>('users')
   const [showDialog, setShowDialog] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'users'],
     queryFn: ({ signal }) => api.get<PaginatedResponse<User>>('/api/v1/admin/users', signal),
+  })
+
+  const { data: guests = [], isLoading: guestsLoading } = useQuery({
+    queryKey: ['admin', 'guests'],
+    queryFn: ({ signal }) => api.get<GuestUser[]>('/api/v1/admin/guests', signal),
+    enabled: tab === 'guests',
   })
 
   const { data: groups = [] } = useQuery({
@@ -308,7 +314,7 @@ function AdminUsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 bg-zinc-100 dark:bg-[#0f1117] rounded-lg p-1">
-          {(['users', 'groups'] as const).map(t => (
+          {(['users', 'guests', 'groups'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
                 tab === t
@@ -357,6 +363,11 @@ function AdminUsersPage() {
         </div>
       )}
 
+      {/* Guests tab */}
+      {tab === 'guests' && (
+        <GuestsPanel guests={guests} isLoading={guestsLoading} qc={qc} />
+      )}
+
       {/* Groups tab */}
       {tab === 'groups' && <GroupsPanel groups={groups} qc={qc} />}
 
@@ -386,6 +397,159 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
           className={`w-5 h-5 rounded-full transition-transform ${value === c ? 'ring-2 ring-offset-2 ring-zinc-400 dark:ring-slate-500 scale-110' : 'hover:scale-110'}`}
           style={{ backgroundColor: c }} />
       ))}
+    </div>
+  )
+}
+
+// ─── Guests panel ─────────────────────────────────────────────────────────────
+function GuestsPanel({
+  guests,
+  isLoading,
+  qc,
+}: {
+  guests: GuestUser[]
+  isLoading: boolean
+  qc: ReturnType<typeof useQueryClient>
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  const promote = useMutation({
+    mutationFn: (id: string) => api.post(`/api/v1/admin/guests/${id}/promote`, {}),
+    onSuccess: () => {
+      toast.success('Guest promoted to user')
+      void qc.invalidateQueries({ queryKey: ['admin', 'guests'] })
+      void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+    },
+    onError: () => toast.error('Failed to promote guest'),
+  })
+
+  const deactivate = useMutation({
+    mutationFn: (id: string) => api.delete(`/api/v1/admin/guests/${id}`),
+    onSuccess: () => {
+      toast.success('Guest removed')
+      void qc.invalidateQueries({ queryKey: ['admin', 'guests'] })
+    },
+    onError: () => toast.error('Failed to remove guest'),
+  })
+
+  const toggle = (id: string) =>
+    setExpanded(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+
+  return (
+    <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
+      {isLoading ? (
+        <div className="flex items-center justify-center h-40 text-sm text-muted">Loading…</div>
+      ) : guests.length === 0 ? (
+        <div className="flex items-center justify-center h-40 text-sm text-muted">No guest users</div>
+      ) : (
+        <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
+          {guests.map(guest => {
+            const isExpanded = expanded.has(guest.id)
+            return (
+              <div key={guest.id}>
+                <div className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-[#0f1117] transition-colors">
+                  {/* Expand toggle */}
+                  <button
+                    onClick={() => toggle(guest.id)}
+                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 shrink-0"
+                    title="Toggle shared items"
+                  >
+                    {isExpanded
+                      ? <ChevronDown size={15} />
+                      : <ChevronRight size={15} />
+                    }
+                  </button>
+
+                  {/* Avatar */}
+                  <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                    <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                      {(guest.display_name || guest.email)[0]?.toUpperCase()}
+                    </span>
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 truncate">
+                        {guest.display_name || guest.email}
+                      </p>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 shrink-0">
+                        guest
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted truncate">{guest.email}</p>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Invited by {guest.invited_by_name ?? '—'} · {formatDate(guest.created_at)}
+                      {guest.last_login_at
+                        ? ` · Last login ${formatDate(guest.last_login_at)}`
+                        : ' · Never logged in'
+                      }
+                    </p>
+                  </div>
+
+                  {/* Shared count badge */}
+                  <div className="text-xs text-muted shrink-0">
+                    {guest.shared_items.length} shared item{guest.shared_items.length !== 1 ? 's' : ''}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => {
+                        if (confirm(`Promote "${guest.display_name || guest.email}" to a regular user? They will get full access to their own file storage.`)) {
+                          promote.mutate(guest.id)
+                        }
+                      }}
+                      disabled={promote.isPending}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
+                      title="Promote to regular user"
+                    >
+                      <UserCheck size={13} />
+                      Promote
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Remove guest "${guest.email}"? They will lose access to all shared items.`)) {
+                          deactivate.mutate(guest.id)
+                        }
+                      }}
+                      disabled={deactivate.isPending}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      title="Remove guest"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Expandable shared items list */}
+                {isExpanded && (
+                  <div className="px-12 pb-3 space-y-1">
+                    {guest.shared_items.length === 0 ? (
+                      <p className="text-xs text-muted py-1">Nothing shared with this guest yet</p>
+                    ) : (
+                      guest.shared_items.map(item => (
+                        <div key={item.resource_id} className="flex items-center gap-2 text-xs text-zinc-600 dark:text-slate-400">
+                          {item.is_folder
+                            ? <Folder size={13} className="text-amber-500 shrink-0" />
+                            : <File size={13} className="text-zinc-400 shrink-0" />
+                          }
+                          <span className="font-medium text-zinc-800 dark:text-slate-200 truncate">{item.name}</span>
+                          <span className="text-zinc-400 shrink-0">shared by {item.owner_email}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

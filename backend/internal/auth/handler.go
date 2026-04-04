@@ -436,8 +436,8 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 	var newUserID uuid.UUID
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO users (email, display_name, password_hash, quota_bytes, invited_by)
-		 VALUES ($1, $2, $3, (SELECT (value::bigint) FROM system_settings WHERE key = 'default_quota_bytes'), $4)
+		`INSERT INTO users (email, display_name, password_hash, role, quota_bytes, invited_by)
+		 VALUES ($1, $2, $3, 'guest', (SELECT (value::bigint) FROM system_settings WHERE key = 'default_quota_bytes'), $4)
 		 RETURNING id`,
 		email, req.DisplayName, pwHash, invitedBy,
 	).Scan(&newUserID); err != nil {

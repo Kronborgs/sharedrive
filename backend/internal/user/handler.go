@@ -470,3 +470,56 @@ Metadata:  map[string]any{"target_user_id": id, "promoted_from_guest": true},
 })
 httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
+
+// DeleteGuest handles DELETE /api/v1/admin/guests/{id}.
+// Hard-deletes a guest user: revokes all their shares then removes the user row.
+func (h *Handler) DeleteGuest(w http.ResponseWriter, r *http.Request) {
+ctx := r.Context()
+actor := UserFromContext(ctx)
+id := chi.URLParam(r, "id")
+
+var currentRole string
+if err := h.db.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&currentRole); err != nil {
+httputil.RespondError(w, http.StatusNotFound, "user not found")
+return
+}
+if currentRole != "guest" {
+httputil.RespondError(w, http.StatusBadRequest, "user is not a guest")
+return
+}
+
+tx, err := h.db.Begin(ctx)
+if err != nil {
+httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+return
+}
+defer tx.Rollback(ctx)
+
+// Revoke all shares granted to this guest.
+if _, err := tx.Exec(ctx,
+`UPDATE shares SET revoked_at = now() WHERE grantee_id = $1 AND revoked_at IS NULL`,
+id,
+); err != nil {
+httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+return
+}
+
+// Delete the user row.
+if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
+httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+return
+}
+
+if err := tx.Commit(ctx); err != nil {
+httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+return
+}
+
+h.auditSvc.Log(ctx, audit.Event{
+Type:     audit.EventUserDeactivated,
+ActorID:  &actor.ID,
+IPAddress: r.RemoteAddr,
+Metadata: map[string]any{"target_user_id": id, "deleted_guest": true},
+})
+httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}

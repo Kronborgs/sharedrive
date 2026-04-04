@@ -13,7 +13,8 @@ interface DashboardStats {
   total_users: number
   active_users: number
   storage_used_bytes: number
-  storage_quota_bytes: number
+  disk_total_bytes: number
+  disk_free_bytes: number
   last_30_days: {
     logins: number
     failed_logins: number
@@ -56,8 +57,10 @@ function AdminDashboard() {
   })
 
   const used = stats?.storage_used_bytes ?? 0
-  const quota = stats?.storage_quota_bytes ?? 0
-  const usedPct = quota > 0 ? Math.round((used / quota) * 100) : 0
+  const diskTotal = stats?.disk_total_bytes ?? 0
+  const diskFree = stats?.disk_free_bytes ?? 0
+  const diskUsed = diskTotal > 0 ? diskTotal - diskFree : used
+  const usedPct = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0
 
   return (
     <div className="space-y-6">
@@ -70,15 +73,15 @@ function AdminDashboard() {
         <StatCard label="Total Users" value={stats?.total_users ?? '…'} />
         <StatCard label="Active Users" value={stats?.active_users ?? '…'} />
         <StatCard label="Storage Used" value={used > 0 ? formatBytes(used) : '0 B'} />
-        <StatCard label="Storage Capacity" value={quota > 0 ? formatBytes(quota) : '0 B'} />
+        <StatCard label="Disk Capacity" value={diskTotal > 0 ? formatBytes(diskTotal) : '…'} />
       </div>
 
       {/* Storage bar */}
-      {quota > 0 && (
+      {diskTotal > 0 && (
         <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4">
           <div className="flex justify-between text-xs text-muted mb-2">
-            <span>Storage usage</span>
-            <span>{formatBytes(used)} / {formatBytes(quota)} ({usedPct}%)</span>
+            <span>Disk usage</span>
+            <span>{formatBytes(diskUsed)} / {formatBytes(diskTotal)} ({usedPct}%) — {formatBytes(diskFree)} free</span>
           </div>
           <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
             <div

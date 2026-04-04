@@ -170,10 +170,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.auditSvc.Log(ctx, audit.Event{
-			Type:      audit.EventUserLoginTOTPRequired,
-			ActorID:   &u.ID,
-			IPAddress: ip,
-			UserAgent: r.UserAgent(),
+			Type:       audit.EventUserLoginTOTPRequired,
+			ActorID:    &u.ID,
+			ActorEmail: u.Email,
+			IPAddress:  ip,
+			UserAgent:  r.UserAgent(),
 		})
 		httputil.Respond(w, http.StatusOK, loginResponse{RequireTOTP: true, PendingToken: pendingToken})
 		return
@@ -182,10 +183,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	// Issue session
 	h.createSessionAndCookie(ctx, w, r, u.ID.String(), ip)
 	h.auditSvc.Log(ctx, audit.Event{
-		Type:      audit.EventUserLogin,
-		ActorID:   &u.ID,
-		IPAddress: ip,
-		UserAgent: r.UserAgent(),
+		Type:       audit.EventUserLogin,
+		ActorID:    &u.ID,
+		ActorEmail: u.Email,
+		IPAddress:  ip,
+		UserAgent:  r.UserAgent(),
 	})
 	httputil.Respond(w, http.StatusOK, loginResponse{})
 }
@@ -239,11 +241,14 @@ func (h *Handler) TOTPVerify(w http.ResponseWriter, r *http.Request) {
 
 	userUUID, err := uuid.Parse(userID)
 	if err == nil {
+		var actorEmail string
+		_ = h.db.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, userUUID).Scan(&actorEmail)
 		h.auditSvc.Log(ctx, audit.Event{
-			Type:      audit.EventUserLogin,
-			ActorID:   &userUUID,
-			IPAddress: ip,
-			UserAgent: r.UserAgent(),
+			Type:       audit.EventUserLogin,
+			ActorID:    &userUUID,
+			ActorEmail: actorEmail,
+			IPAddress:  ip,
+			UserAgent:  r.UserAgent(),
 		})
 	}
 	httputil.Respond(w, http.StatusOK, loginResponse{})
@@ -539,10 +544,10 @@ func (h *Handler) recordLoginFailure(ctx context.Context, ip, email string, user
 		log.Warn().Str("ip", ip).Dur("duration", dur).Msg("IP locked out")
 	}
 	h.auditSvc.Log(ctx, audit.Event{
-		Type:      audit.EventUserLoginFailed,
-		ActorID:   userID,
-		Metadata:  map[string]interface{}{"email": email},
-		IPAddress: ip,
+		Type:       audit.EventUserLoginFailed,
+		ActorID:    userID,
+		ActorEmail: email,
+		IPAddress:  ip,
 	})
 }
 

@@ -427,11 +427,13 @@ func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var totalUsers, activeUsers int
-	var totalStorageUsed, totalStorageQuota int64
+	var totalStorageUsed int64
 	_ = h.db.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE is_active) FROM users`).
 		Scan(&totalUsers, &activeUsers)
-	_ = h.db.QueryRow(ctx, `SELECT coalesce(sum(quota_used_bytes),0), coalesce(sum(quota_bytes),0) FROM users WHERE is_active`).
-		Scan(&totalStorageUsed, &totalStorageQuota)
+	_ = h.db.QueryRow(ctx, `SELECT coalesce(sum(quota_used_bytes),0) FROM users`).
+		Scan(&totalStorageUsed)
+
+	diskTotal, diskFree := diskStats(h.cfg.FilesRoot)
 
 	// Activity counts from audit_logs (last 30 days)
 	var logins, failedLogins, uploads, downloads, lockouts int
@@ -450,7 +452,8 @@ func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
 		"total_users":        totalUsers,
 		"active_users":       activeUsers,
 		"storage_used_bytes": totalStorageUsed,
-		"storage_quota_bytes": totalStorageQuota,
+		"disk_total_bytes":   diskTotal,
+		"disk_free_bytes":    diskFree,
 		"last_30_days": map[string]int{
 			"logins":        logins,
 			"failed_logins": failedLogins,

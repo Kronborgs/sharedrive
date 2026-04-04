@@ -218,8 +218,10 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 
 	opts := []mail.Option{
 		mail.WithPort(port),
+		mail.WithTimeout(15 * time.Second),
 		mail.WithUsername(kv["smtp_user"]),
 		mail.WithPassword(kv["smtp_password"]),
+		mail.WithSMTPAuth(mail.SMTPAuthPlain),
 	}
 	switch kv["smtp_tls"] {
 	case "tls":

@@ -205,38 +205,6 @@ func (s *Service) Recent(ctx context.Context, ownerID string, limit int) ([]*Fil
 	return files, rows.Err()
 }
 
-// Breadcrumbs returns the ancestor chain from root to parentID.
-func (s *Service) Breadcrumbs(ctx context.Context, fileID, ownerID string) ([]*File, error) {
-	// Walk up via recursive CTE.
-	rows, err := s.db.Query(ctx,
-		`WITH RECURSIVE ancestors AS (
-		   SELECT `+fileCols+` FROM files WHERE id = $1 AND owner_id = $2
-		   UNION ALL
-		   SELECT f.id, f.parent_id, f.owner_id, f.is_folder, f.name, f.mime_type,
-		          f.size_bytes, f.storage_path, f.deleted_at, f.created_at, f.updated_at
-		   FROM files f
-		   JOIN ancestors a ON f.id = a.parent_id
-		   WHERE f.owner_id = $2
-		 )
-		 SELECT * FROM ancestors ORDER BY created_at ASC`,
-		fileID, ownerID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var chain []*File
-	for rows.Next() {
-		f, err := scanFile(rows)
-		if err != nil {
-			return nil, err
-		}
-		chain = append(chain, f)
-	}
-	return chain, rows.Err()
-}
-
 // Upload streams r to storage with SHA-256 hashing, enforces quota, and
 // inserts a file record. Pass contentLength=0 if Content-Length is unknown.
 func (s *Service) Upload(ctx context.Context, ownerID, name, mimeType, folderIDStr string, r io.Reader, contentLength int64) (*File, error) {

@@ -472,7 +472,7 @@ httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // DeleteGuest handles DELETE /api/v1/admin/guests/{id}.
-// Hard-deletes a guest user: revokes all their shares then removes the user row.
+// Hard-deletes a guest user and all their associated data.
 func (h *Handler) DeleteGuest(w http.ResponseWriter, r *http.Request) {
 ctx := r.Context()
 actor := UserFromContext(ctx)
@@ -495,16 +495,20 @@ return
 }
 defer tx.Rollback(ctx)
 
-// Revoke all shares granted to this guest.
-if _, err := tx.Exec(ctx,
-`UPDATE shares SET revoked_at = now() WHERE grantee_id = $1 AND revoked_at IS NULL`,
-id,
-); err != nil {
-httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-return
-}
+// Remove all FK-referencing rows before deleting the user.
+tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, id)
+tx.Exec(ctx, `DELETE FROM device_trust_tokens WHERE user_id = $1`, id)
+tx.Exec(ctx, `DELETE FROM password_reset_tokens WHERE user_id = $1`, id)
+tx.Exec(ctx, `DELETE FROM totp_credentials WHERE user_id = $1`, id)
+tx.Exec(ctx, `DELETE FROM app_passwords WHERE user_id = $1`, id)
+tx.Exec(ctx, `DELETE FROM bandwidth_usage WHERE user_id = $1`, id)
+tx.Exec(ctx, `UPDATE invitation_tokens SET used_by = NULL WHERE used_by = $1`, id)
+tx.Exec(ctx, `UPDATE audit_logs SET actor_id = NULL WHERE actor_id = $1`, id)
+tx.Exec(ctx, `UPDATE audit_logs SET target_user_id = NULL WHERE target_user_id = $1`, id)
+// Delete shares granted to this guest (hard delete, not revoke).
+tx.Exec(ctx, `DELETE FROM shares WHERE grantee_id = $1`, id)
 
-// Delete the user row.
+// Finally delete the user row.
 if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
 httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 return
@@ -516,10 +520,10 @@ return
 }
 
 h.auditSvc.Log(ctx, audit.Event{
-Type:     audit.EventUserDeactivated,
-ActorID:  &actor.ID,
+Type:      audit.EventUserDeactivated,
+ActorID:   &actor.ID,
 IPAddress: r.RemoteAddr,
-Metadata: map[string]any{"target_user_id": id, "deleted_guest": true},
+Metadata:  map[string]any{"target_user_id": id, "deleted_guest": true},
 })
 httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }

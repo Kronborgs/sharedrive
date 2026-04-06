@@ -500,6 +500,10 @@ func (s *Server) tusHandler() http.Handler {
 	}
 
 	r := chi.NewRouter()
+	// chi.Mount does NOT strip r.URL.Path (only sets the internal RoutePath).
+	// tusd's extractIDFromPath uses strings.Trim(r.URL.Path, "/"), so a PATCH
+	// to /upload/{id} would yield "upload/{id}" instead of "{id}" without this.
+	r.Use(func(next http.Handler) http.Handler { return http.StripPrefix("/upload", next) })
 	r.Use(s.authHandler.SessionMiddleware)
 	r.Use(mw.RequireAuth)
 	r.Use(h.Middleware)

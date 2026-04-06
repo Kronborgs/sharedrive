@@ -300,14 +300,25 @@ func (h *Handler) Breadcrumbs(w http.ResponseWriter, r *http.Request) {
 // Upload handles POST /api/v1/files/upload — multipart file upload.
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())
+	ctx := r.Context()
 
-	// Enforce max upload size before reading body
-	maxBytes := h.svc.GetEffectiveMaxUpload(r.Context(), actor.ID.String(), actor.Role, r.FormValue("folder_id"))
-	r.Body = http.MaxBytesReader(w, r.Body, maxBytes+1024) // +1 KB for form overhead
+	// Read folder_id from URL query string ONLY — calling r.FormValue here
+	// would trigger ParseMultipartForm internally, consuming the body before
+	// MaxBytesReader is applied.  folder_id from the body is re-read below.
+	folderIDQuery := r.URL.Query().Get("folder_id")
+	maxBytes := h.svc.GetEffectiveMaxUpload(ctx, actor.ID.String(), actor.Role, folderIDQuery)
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes+1024*1024) // +1 MB form overhead
 
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		httputil.RespondError(w, http.StatusRequestEntityTooLarge, "file exceeds the maximum upload size for this account")
 		return
+	}
+
+	// folder_id may have been in the multipart body rather than the URL.
+	folderID := r.FormValue("folder_id")
+	// If the effective limit changes (guest → folder owner), re-check against file size.
+	if folderID != folderIDQuery {
+		maxBytes = h.svc.GetEffectiveMaxUpload(ctx, actor.ID.String(), actor.Role, folderID)
 	}
 
 	fileData, header, err := r.FormFile("file")
@@ -317,7 +328,12 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer fileData.Close()
 
-	folderID := r.FormValue("folder_id")
+	// Post-parse size guard (handles folder_id-from-body case above).
+	if header.Size > maxBytes {
+		httputil.RespondError(w, http.StatusRequestEntityTooLarge, "file exceeds the maximum upload size for this account")
+		return
+	}
+
 	mimeType := header.Header.Get("Content-Type")
 	if mimeType == "" {
 		mimeType = "application/octet-stream"

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"os"
@@ -217,7 +218,11 @@ func (fs *userFS) OpenFile(ctx context.Context, name string, flag int, _ os.File
 	return &davFile{fi: rec.info(), f: f}, nil
 }
 
-// openForWrite handles PUT: buffer to a temp file, commit on Close().
+// openForWrite handles PUT: stream body into a temp file on the same volume as
+// the final storage, computing SHA-256 on the fly. On Close(), the temp file is
+// atomically renamed to the final path — no second copy, no extra disk space,
+// and the response is sent to the client as soon as the rename + DB upsert
+// complete (≈ milliseconds instead of "stream again at disk speed").
 func (fs *userFS) openForWrite(ctx context.Context, name string) (gowebdav.File, error) {
 	parentPath := path.Dir(name)
 	base := path.Base(name)
@@ -227,10 +232,6 @@ func (fs *userFS) openForWrite(ctx context.Context, name string) (gowebdav.File,
 		return nil, os.ErrNotExist
 	}
 
-	// Use filesRoot for the temp buffer so it lands on the same volume as the
-	// final storage path. Writing to /tmp (default) would fail for large files
-	// when the container's tmpfs is small, and would also force a cross-device
-	// copy instead of a fast same-volume rename.
 	if err := os.MkdirAll(fs.filesRoot, 0750); err != nil {
 		return nil, fmt.Errorf("webdav write: mkdir: %w", err)
 	}
@@ -240,68 +241,23 @@ func (fs *userFS) openForWrite(ctx context.Context, name string) (gowebdav.File,
 	}
 
 	// Check if the file already exists (overwrite vs create).
-	var existingID, existingStoragePath string
+	var existingID string
 	_ = fs.db.QueryRow(ctx, `
-		SELECT id::text, COALESCE(storage_path, '')
+		SELECT id::text
 		FROM files
 		WHERE parent_id = $1::uuid AND name = $2 AND is_folder = false AND deleted_at IS NULL
-	`, parentID, base).Scan(&existingID, &existingStoragePath)
-
-	commit := func(tmp *os.File) error {
-		defer func() { _ = os.Remove(tmp.Name()) }()
-
-		if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-			return err
-		}
-
-		fileID := existingID
-		if fileID == "" {
-			fileID = uuid.New().String()
-		}
-
-		storagePath := storagePathFor(fs.filesRoot, fileID)
-		if err := os.MkdirAll(filepath.Dir(storagePath), 0750); err != nil {
-			return err
-		}
-
-		dst, err := os.OpenFile(storagePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
-		if err != nil {
-			return err
-		}
-		hash := sha256.New()
-		n, err := io.Copy(io.MultiWriter(dst, hash), tmp)
-		dst.Close()
-		if err != nil {
-			_ = os.Remove(storagePath)
-			return err
-		}
-		shaHex := hex.EncodeToString(hash.Sum(nil))
-
-		if existingID != "" {
-			// Overwrite existing file record.
-			_, err = fs.db.Exec(ctx, `
-				UPDATE files
-				SET size_bytes = $1, storage_path = $2, checksum_sha256 = $3, updated_at = now()
-				WHERE id = $4::uuid AND deleted_at IS NULL
-			`, n, storagePath, shaHex, existingID)
-		} else {
-			_, err = fs.db.Exec(ctx, `
-				INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path, checksum_sha256)
-				VALUES ($1::uuid, $2::uuid, $3::uuid, false, $4, 'application/octet-stream', $5, $6, $7)
-			`, fileID, fs.userID, parentID, base, n, storagePath, shaHex)
-		}
-		if err != nil {
-			_ = os.Remove(storagePath)
-			// Remove old storage only if overwrite wrote to a new path.
-			return fmt.Errorf("webdav write: db: %w", err)
-		}
-		return nil
-	}
+	`, parentID, base).Scan(&existingID)
 
 	return &davWriteFile{
-		tmp:    tmp,
-		commit: commit,
-		fi:     &davFileInfo{name: base, modTime: time.Now()},
+		tmp:        tmp,
+		hash:       sha256.New(),
+		fi:         &davFileInfo{name: base, modTime: time.Now()},
+		db:         fs.db,
+		filesRoot:  fs.filesRoot,
+		userID:     fs.userID,
+		parentID:   parentID,
+		base:       base,
+		existingID: existingID,
 	}, nil
 }
 
@@ -513,23 +469,83 @@ func (f *davFile) Readdir(int) ([]os.FileInfo, error)          { return nil, os.
 
 // ── webdav.File: write-buffered file ─────────────────────────────────────────
 
+// davWriteFile streams the PUT body into a temp file on the storage volume while
+// computing SHA-256 on the fly. Close() atomically renames the temp file to the
+// final path (no second copy) and upserts the DB record. This keeps the commit
+// phase to milliseconds so Windows WebDAV does not time out on large files.
 type davWriteFile struct {
-	tmp    *os.File
-	commit func(*os.File) error
-	fi     os.FileInfo
+	tmp       *os.File
+	hash      hash.Hash
+	size      int64
+	fi        os.FileInfo
+
+	// set by openForWrite
+	db         *pgxpool.Pool
+	filesRoot  string
+	userID     string
+	parentID   string
+	base       string
+	existingID string
 }
 
-func (f *davWriteFile) Write(p []byte) (int, error)                  { return f.tmp.Write(p) }
+func (f *davWriteFile) Write(p []byte) (int, error) {
+	n, err := f.tmp.Write(p)
+	if n > 0 {
+		_, _ = f.hash.Write(p[:n])
+		f.size += int64(n)
+	}
+	return n, err
+}
+
 func (f *davWriteFile) Read(p []byte) (int, error)                   { return f.tmp.Read(p) }
 func (f *davWriteFile) Seek(offset int64, whence int) (int64, error) { return f.tmp.Seek(offset, whence) }
 func (f *davWriteFile) Readdir(int) ([]os.FileInfo, error)           { return nil, os.ErrInvalid }
 func (f *davWriteFile) Stat() (os.FileInfo, error)                   { return f.fi, nil }
+
 func (f *davWriteFile) Close() error {
-	err := f.commit(f.tmp)
-	_ = f.tmp.Close()
-	_ = os.Remove(f.tmp.Name())
-	if err != nil {
-		log.Error().Err(err).Msg("webdav: commit write")
+	// Close the temp file handle before renaming.
+	if err := f.tmp.Close(); err != nil {
+		_ = os.Remove(f.tmp.Name())
+		return err
 	}
-	return err
+
+	fileID := f.existingID
+	if fileID == "" {
+		fileID = uuid.New().String()
+	}
+
+	storagePath := storagePathFor(f.filesRoot, fileID)
+	if err := os.MkdirAll(filepath.Dir(storagePath), 0750); err != nil {
+		_ = os.Remove(f.tmp.Name())
+		return fmt.Errorf("webdav commit mkdir: %w", err)
+	}
+
+	// Atomic rename — same volume, no double copy, near-zero latency.
+	if err := os.Rename(f.tmp.Name(), storagePath); err != nil {
+		_ = os.Remove(f.tmp.Name())
+		return fmt.Errorf("webdav commit rename: %w", err)
+	}
+
+	shaHex := hex.EncodeToString(f.hash.Sum(nil))
+	ctx := context.Background()
+
+	var dbErr error
+	if f.existingID != "" {
+		_, dbErr = f.db.Exec(ctx, `
+			UPDATE files
+			SET size_bytes = $1, storage_path = $2, checksum_sha256 = $3, updated_at = now()
+			WHERE id = $4::uuid AND deleted_at IS NULL
+		`, f.size, storagePath, shaHex, f.existingID)
+	} else {
+		_, dbErr = f.db.Exec(ctx, `
+			INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path, checksum_sha256)
+			VALUES ($1::uuid, $2::uuid, $3::uuid, false, $4, 'application/octet-stream', $5, $6, $7)
+		`, fileID, f.userID, f.parentID, f.base, f.size, storagePath, shaHex)
+	}
+	if dbErr != nil {
+		_ = os.Remove(storagePath)
+		log.Error().Err(dbErr).Str("file", f.base).Msg("webdav: commit db")
+		return fmt.Errorf("webdav commit db: %w", dbErr)
+	}
+	return nil
 }

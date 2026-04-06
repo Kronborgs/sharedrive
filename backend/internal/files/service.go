@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -306,6 +307,72 @@ func (s *Service) Upload(ctx context.Context, ownerID, name, mimeType, folderIDS
 		log.Warn().Err(err).Str("file_id", fileID.String()).Msg("files.Upload: quota update")
 	}
 
+	return f, nil
+}
+
+// CheckQuota returns an error when the user has insufficient quota for addBytes.
+func (s *Service) CheckQuota(ctx context.Context, userID string, addBytes int64) error {
+	return s.quota.Check(ctx, userID, addBytes)
+}
+
+// FinalizeTusUpload moves a completed tus temp file into permanent storage,
+// inserts a DB record, updates quota, and cleans up the tus temp files.
+func (s *Service) FinalizeTusUpload(
+	ctx context.Context,
+	tempPath, ownerID, name, mimeType, folderIDStr string,
+	size int64,
+) (*File, error) {
+	// Always remove tus temp files when this function returns.
+	defer func() {
+		_ = os.Remove(tempPath)
+		_ = os.Remove(tempPath + ".info")
+	}()
+
+	var parentID *uuid.UUID
+	if folderIDStr != "" {
+		if id, err := uuid.Parse(folderIDStr); err == nil {
+			parentID = &id
+		}
+	}
+
+	if size > 0 {
+		if err := s.quota.Check(ctx, ownerID, size); err != nil {
+			return nil, err
+		}
+	}
+
+	src, err := os.Open(tempPath)
+	if err != nil {
+		return nil, fmt.Errorf("files.FinalizeTusUpload: open: %w", err)
+	}
+	defer src.Close()
+
+	fileID := uuid.New()
+	hash := sha256.New()
+	n, err := s.storage.Write(fileID.String(), io.TeeReader(src, hash))
+	if err != nil {
+		return nil, fmt.Errorf("files.FinalizeTusUpload: storage write: %w", err)
+	}
+	shaHex := hex.EncodeToString(hash.Sum(nil))
+
+	storagePath := s.storage.Path(fileID.String())
+	f := &File{}
+	if err = s.db.QueryRow(ctx,
+		`INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path, checksum_sha256)
+		 VALUES ($1, $2, $3, false, $4, $5, $6, $7, $8)
+		 RETURNING `+fileCols,
+		fileID, ownerID, parentID, name, mimeType, n, storagePath, shaHex,
+	).Scan(
+		&f.ID, &f.ParentID, &f.OwnerID, &f.IsFolder, &f.Name, &f.MimeType,
+		&f.SizeBytes, &f.StoragePath, &f.DeletedAt, &f.CreatedAt, &f.UpdatedAt,
+	); err != nil {
+		_ = s.storage.Delete(fileID.String())
+		return nil, fmt.Errorf("files.FinalizeTusUpload: db insert: %w", err)
+	}
+
+	if err := s.quota.Add(ctx, ownerID, n); err != nil {
+		log.Warn().Err(err).Str("file_id", fileID.String()).Msg("FinalizeTusUpload: quota.Add")
+	}
 	return f, nil
 }
 

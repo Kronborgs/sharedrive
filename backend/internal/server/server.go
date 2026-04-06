@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,11 +15,14 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	goredis "github.com/redis/go-redis/v9"
+	tusd "github.com/tus/tusd/v2/pkg/handler"
+	"github.com/tus/tusd/v2/pkg/filestore"
 	"github.com/rs/zerolog/log"
 
 	"github.com/yourname/privatedrive/internal/admin"
 	"github.com/yourname/privatedrive/internal/audit"
 	"github.com/yourname/privatedrive/internal/auth"
+
 	"github.com/yourname/privatedrive/internal/config"
 	"github.com/yourname/privatedrive/internal/embed"
 	"github.com/yourname/privatedrive/internal/files"
@@ -41,12 +46,14 @@ type Server struct {
 	authHandler    *auth.Handler
 	onboarding     *onboarding.Handler
 	userHandler    *user.Handler
+	fileSvc        *files.Service
 	filesHandler   *files.Handler
 	sharesHandler  *shares.Handler
 	adminHandler   *admin.Handler
 	sseHandler     *admin.SSEHandler
 	supportHandler *admin.SupportAccessHandler
 	appPwdHandler  *webdav.AppPasswordHandler
+	auditSvc       audit.Logger
 }
 
 // New constructs a Server with all routes and middleware registered.
@@ -64,20 +71,22 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		authHandler:    authHandler,
 		onboarding:     onboarding.New(db, cfg),
 		userHandler:    user.NewHandler(db, auditSvc, smtp.New(cfg, db), cfg.AppBaseURL),
+		fileSvc:        fileSvc,
 		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc),
 		sharesHandler:  shares.NewHandler(db, smtp.New(cfg, db), cfg.AppBaseURL),
 		adminHandler:   admin.NewHandler(db, cfg),
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
+		auditSvc:       auditSvc,
 	}
 	s.router = s.buildRouter()
 	s.http = &http.Server{
-		Addr:         cfg.ListenAddr(),
-		Handler:      s.router,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 120 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:              cfg.ListenAddr(),
+		Handler:           s.router,
+		ReadHeaderTimeout: 15 * time.Second, // guards against slow-header attacks
+		WriteTimeout:      0,                // disabled; large up/downloads need unbounded time
+		IdleTimeout:       120 * time.Second,
 	}
 	return s
 }
@@ -117,7 +126,13 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   s.cfg.CORSOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
+		AllowedHeaders: []string{
+			"Accept", "Authorization", "Content-Type", "X-Request-ID",
+			// Tus resumable-upload protocol headers
+			"Tus-Resumable", "Upload-Length", "Upload-Metadata", "Upload-Offset",
+			"Upload-Defer-Length", "Upload-Concat",
+		},
+		ExposedHeaders:   []string{"Location", "Tus-Resumable", "Upload-Offset", "Upload-Length"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -400,8 +415,88 @@ func (s *Server) webdavHandler() http.Handler {
 }
 
 func (s *Server) tusHandler() http.Handler {
-	// TODO: mounted by files/upload module
-	return http.NotFoundHandler()
+	if err := os.MkdirAll(s.cfg.TusUploadDir, 0750); err != nil {
+		log.Fatal().Err(err).Str("dir", s.cfg.TusUploadDir).Msg("tusHandler: mkdir")
+	}
+
+	store := filestore.New(s.cfg.TusUploadDir)
+	composer := tusd.NewStoreComposer()
+	store.UseIn(composer)
+
+	tusConfig := tusd.Config{
+		BasePath:                "/upload/",
+		StoreComposer:           composer,
+		RespectForwardedHeaders: true,
+		PreUploadCreate: func(ctx context.Context, event tusd.HookEvent) (tusd.HTTPResponse, tusd.FileInfoChanges, error) {
+			actor := mw.UserFromContext(ctx)
+			if actor == nil {
+				return tusd.HTTPResponse{StatusCode: http.StatusUnauthorized}, tusd.FileInfoChanges{}, nil
+			}
+			if event.Upload.Size > 0 {
+				if err := s.fileSvc.CheckQuota(ctx, actor.ID.String(), event.Upload.Size); err != nil {
+					return tusd.HTTPResponse{
+						StatusCode: http.StatusUnprocessableEntity,
+						Body:       `{"error":"` + err.Error() + `"}`,
+						Headers:    map[string]string{"Content-Type": "application/json"},
+					}, tusd.FileInfoChanges{}, nil
+				}
+			}
+			return tusd.HTTPResponse{}, tusd.FileInfoChanges{}, nil
+		},
+		PostFinish: func(ctx context.Context, event tusd.HookEvent) (tusd.HTTPResponse, error) {
+			actor := mw.UserFromContext(ctx)
+			if actor == nil {
+				return tusd.HTTPResponse{StatusCode: http.StatusUnauthorized}, nil
+			}
+			meta := event.Upload.MetaData
+			name := meta["filename"]
+			if name == "" {
+				name = "upload"
+			}
+			mimeType := meta["filetype"]
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+			}
+			folderID := meta["folder_id"]
+			tempPath := filepath.Join(s.cfg.TusUploadDir, event.Upload.ID)
+
+			f, err := s.fileSvc.FinalizeTusUpload(ctx, tempPath, actor.ID.String(), name, mimeType, folderID, event.Upload.Size)
+			if err != nil {
+				log.Error().Err(err).Str("upload_id", event.Upload.ID).Msg("tusHandler: finalize")
+				code := http.StatusInternalServerError
+				if strings.HasPrefix(err.Error(), "quota:") {
+					code = http.StatusUnprocessableEntity
+				}
+				return tusd.HTTPResponse{
+					StatusCode: code,
+					Body:       `{"error":"` + err.Error() + `"}`,
+					Headers:    map[string]string{"Content-Type": "application/json"},
+				}, err
+			}
+			s.auditSvc.Log(ctx, audit.Event{
+				Type:         audit.EventFileUploaded,
+				ActorID:      &actor.ID,
+				ResourceID:   &f.ID,
+				ResourceName: f.Name,
+			})
+			return tusd.HTTPResponse{}, nil
+		},
+	}
+
+	h, err := tusd.NewUnroutedHandler(tusConfig)
+	if err != nil {
+		log.Fatal().Err(err).Msg("tusHandler: NewUnroutedHandler")
+	}
+
+	r := chi.NewRouter()
+	r.Use(s.authHandler.SessionMiddleware)
+	r.Use(mw.RequireAuth)
+	r.Use(h.Middleware)
+	r.Post("/", h.PostFile)
+	r.Head("/{id}", h.HeadFile)
+	r.Patch("/{id}", h.PatchFile)
+	r.Delete("/{id}", h.DelFile)
+	return r
 }
 
 func (s *Server) notImplemented(w http.ResponseWriter) {

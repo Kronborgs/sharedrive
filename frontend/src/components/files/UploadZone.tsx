@@ -103,6 +103,10 @@ export function UploadProgress({ uploads, onDismiss }: UploadProgressProps) {
 
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import * as tus from 'tus-js-client'
+
+// Chunk size: 50 MB — safely below Cloudflare's 100 MB per-request limit.
+const TUS_CHUNK_SIZE = 50 * 1024 * 1024
 
 export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   const qc = useQueryClient()
@@ -134,22 +138,32 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     for (const entry of entries) {
       update(entry.id, { status: 'uploading' })
 
-      const formData = new FormData()
-      formData.append('file', entry.file)
-      formData.append('folder_id', folderId ?? '')
-
-      const xhr = new XMLHttpRequest()
-      xhr.open('POST', '/api/v1/files/upload')
-      xhr.withCredentials = true
-
-      xhr.upload.onprogress = (e: ProgressEvent) => {
-        if (e.lengthComputable) {
-          update(entry.id, { progress: Math.round((e.loaded / e.total) * 100) })
-        }
-      }
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
+      const upload = new tus.Upload(entry.file, {
+        endpoint: '/upload/',
+        chunkSize: TUS_CHUNK_SIZE,
+        retryDelays: [0, 1000, 3000, 5000, 10000],
+        metadata: {
+          filename: entry.file.name,
+          filetype: entry.file.type || 'application/octet-stream',
+          folder_id: folderId ?? '',
+        },
+        onError: (error) => {
+          let msg = 'Upload failed'
+          const det = error as tus.DetailedError
+          if (det.originalResponse != null) {
+            try {
+              const body = det.originalResponse.getBody()
+              const data = JSON.parse(body) as { error?: string }
+              if (data.error) msg = data.error
+            } catch { /* ignore */ }
+          }
+          update(entry.id, { status: 'error', error: msg })
+        },
+        onProgress: (bytesUploaded, bytesTotal) => {
+          const progress = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0
+          update(entry.id, { progress })
+        },
+        onSuccess: () => {
           update(entry.id, { status: 'done', progress: 100 })
           void qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] })
           setTimeout(() => {
@@ -159,21 +173,9 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
               return next
             })
           }, 2000)
-        } else {
-          let msg = 'Upload failed'
-          try {
-            const data = JSON.parse(xhr.responseText) as { error?: string }
-            if (data.error) msg = data.error
-          } catch { /* ignore */ }
-          update(entry.id, { status: 'error', error: msg })
-        }
-      }
-
-      xhr.onerror = () => {
-        update(entry.id, { status: 'error', error: 'Network error' })
-      }
-
-      xhr.send(formData)
+        },
+      })
+      upload.start()
     }
   }, [folderId, qc])
 

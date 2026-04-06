@@ -265,8 +265,45 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.db.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
+	var exists bool
+	if err := h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`, id).Scan(&exists); err != nil || !exists {
+		httputil.RespondError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Explicitly clean up all FK-constrained rows so the delete works
+	// even if migration 0023 cascade changes have not applied yet.
+	tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, id)
+	tx.Exec(ctx, `DELETE FROM device_trust_tokens WHERE user_id = $1`, id)
+	tx.Exec(ctx, `DELETE FROM password_reset_tokens WHERE user_id = $1`, id)
+	tx.Exec(ctx, `DELETE FROM totp_credentials WHERE user_id = $1`, id)
+	tx.Exec(ctx, `DELETE FROM app_passwords WHERE user_id = $1`, id)
+	tx.Exec(ctx, `DELETE FROM bandwidth_usage WHERE user_id = $1`, id)
+	tx.Exec(ctx, `UPDATE invitation_tokens SET used_by = NULL WHERE used_by = $1`, id)
+	tx.Exec(ctx, `UPDATE invitation_tokens SET created_by = NULL WHERE created_by = $1`, id)
+	tx.Exec(ctx, `UPDATE groups SET created_by = NULL WHERE created_by = $1`, id)
+	tx.Exec(ctx, `UPDATE tags SET created_by = NULL WHERE created_by = $1`, id)
+	tx.Exec(ctx, `UPDATE ip_whitelist SET created_by = NULL WHERE created_by = $1`, id)
+	tx.Exec(ctx, `DELETE FROM admin_access_sessions WHERE admin_id = $1 OR target_user_id = $1`, id)
+	tx.Exec(ctx, `DELETE FROM group_members WHERE user_id = $1`, id)
+	tx.Exec(ctx, `UPDATE shares SET revoked_at = now() WHERE grantee_id = $1 AND revoked_at IS NULL`, id)
+	tx.Exec(ctx, `DELETE FROM shares WHERE owner_id = $1 OR created_by = $1`, id)
+	tx.Exec(ctx, `DELETE FROM files WHERE owner_id = $1`, id)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
 		log.Error().Err(err).Msg("admin: delete user")
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

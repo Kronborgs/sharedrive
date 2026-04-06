@@ -785,7 +785,7 @@ function UserRow({
               className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title={isSelf ? 'Cannot lock your own account' : 'Lock account'}
             >
-              <Lock size={14} />
+              <LockOpen size={14} />
             </button>
           ) : (
             <button
@@ -793,7 +793,7 @@ function UserRow({
               className="p-1.5 rounded-lg text-zinc-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
               title="Unlock account"
             >
-              <LockOpen size={14} />
+              <Lock size={14} />
             </button>
           )}
           <button

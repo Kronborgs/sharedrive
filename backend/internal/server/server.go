@@ -81,9 +81,20 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		auditSvc:       auditSvc,
 	}
 	s.router = s.buildRouter()
+
+	// WebDAV is mounted OUTSIDE Chi so that non-standard HTTP methods such as
+	// PROPFIND, MKCOL, PROPPATCH, COPY, MOVE, LOCK and UNLOCK are accepted.
+	// Chi only recognises the standard nine methods and returns 405 for the rest.
+	davSrv := webdav.NewAuthDAVServer(s.db, s.cfg.FilesRoot)
 	s.http = &http.Server{
-		Addr:              cfg.ListenAddr(),
-		Handler:           s.router,
+		Addr: cfg.ListenAddr(),
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/dav/") {
+				davSrv.ServeHTTP(w, r)
+				return
+			}
+			s.router.ServeHTTP(w, r)
+		}),
 		ReadHeaderTimeout: 15 * time.Second, // guards against slow-header attacks
 		WriteTimeout:      0,                // disabled; large up/downloads need unbounded time
 		IdleTimeout:       120 * time.Second,
@@ -270,11 +281,6 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Post("/api/v1/admin/support-access/{id}/end", s.handleAdminEndSupportAccess)
 		})
 	})
-
-	// ── WebDAV (email + app-password, Basic Auth) ──────────────────────────
-	davSrv := webdav.NewAuthDAVServer(s.db, s.cfg.FilesRoot)
-	r.Handle("/dav/{userID}", davSrv)
-	r.Handle("/dav/{userID}/*", davSrv)
 
 	// ── Tus resumable upload ────────────────────────────────────────────────
 	r.Mount("/upload", s.tusHandler())

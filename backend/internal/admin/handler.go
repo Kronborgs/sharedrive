@@ -89,6 +89,20 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetPublicSettings returns non-sensitive settings that are safe to expose to
+// all authenticated and unauthenticated users (e.g. direct_upload_url).
+// GET /api/v1/system/settings
+func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var directUploadURL string
+	_ = h.db.QueryRow(ctx,
+		`SELECT value FROM system_settings WHERE key = 'direct_upload_url'`,
+	).Scan(&directUploadURL)
+	httputil.Respond(w, http.StatusOK, map[string]string{
+		"direct_upload_url": directUploadURL,
+	})
+}
+
 type updateSettingsRequest struct {
 	SiteName           *string `json:"site_name"`
 	AllowRegistrations *bool   `json:"allow_registrations"`

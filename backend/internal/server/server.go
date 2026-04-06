@@ -140,6 +140,7 @@ func (s *Server) buildRouter() *chi.Mux {
 	// ── System endpoints (no auth required) ───────────────────────────────
 	r.Get("/api/v1/system/health", s.handleHealth)
 	r.Get("/api/v1/system/version", s.handleVersion)
+	r.Get("/api/v1/system/settings", s.adminHandler.GetPublicSettings)
 	r.Get("/api/v1/system/onboarding-status", s.onboarding.Status)
 	r.Post("/api/v1/system/onboarding", s.onboarding.Setup)
 	r.Post("/api/v1/system/onboarding/restore", s.onboarding.RestoreSetup)

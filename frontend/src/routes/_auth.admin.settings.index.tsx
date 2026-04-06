@@ -80,6 +80,7 @@ function SettingsPage() {
       toast.success('Settings saved')
       setSmtpPassword('')
       void qc.invalidateQueries({ queryKey: ['admin', 'settings'] })
+      void qc.invalidateQueries({ queryKey: ['system', 'settings'] })
     },
     onError: () => toast.error('Failed to save settings'),
   })

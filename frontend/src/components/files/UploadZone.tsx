@@ -182,10 +182,10 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   // Per-upload rolling samples for speed calculation
   const speedSamples = useRef<Map<string, SpeedSample[]>>(new Map())
 
-  // Fetch direct_upload_url from system settings (cached, no auth needed as admin)
+  // Fetch direct_upload_url from public system settings (no auth required)
   const { data: settings } = useQuery({
-    queryKey: ['admin', 'settings'],
-    queryFn: ({ signal }) => api.get<{ direct_upload_url?: string }>('/api/v1/admin/settings', signal),
+    queryKey: ['system', 'settings'],
+    queryFn: ({ signal }) => api.get<{ direct_upload_url?: string }>('/api/v1/system/settings', signal),
     staleTime: 5 * 60 * 1000, // 5 min
   })
 

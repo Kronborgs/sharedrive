@@ -218,75 +218,94 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       return next
     })
 
-    for (const entry of entries) {
-      update(entry.id, { status: 'uploading' })
+    // When using the direct upload subdomain, fetch a short-lived upload token so
+    // authentication works cross-subdomain (session cookie may not be forwarded).
+    const startEntries = async () => {
+      let uploadToken: string | undefined
+      if (directBase) {
+        try {
+          const res = await api.post<{ token: string }>('/api/v1/upload-token', {})
+          uploadToken = res.token
+        } catch {
+          // Fall back to cookie auth (works on same-origin)
+        }
+      }
 
-      const upload = new tus.Upload(entry.file, {
-        endpoint: tusEndpoint,
-        chunkSize: chunkSize,
-        retryDelays: [0, 1000, 3000, 5000, 10000],
-        withCredentials: true,
-        metadata: {
-          filename: entry.file.name,
-          filetype: entry.file.type || 'application/octet-stream',
-          folder_id: folderId ?? '',
-        },
-        onError: (error) => {
-          let msg = 'Upload failed'
-          const det = error as tus.DetailedError
-          if (det.originalResponse != null) {
-            try {
-              const body = det.originalResponse.getBody()
-              const data = JSON.parse(body) as { error?: string | { message?: string } }
-              if (data.error) {
-                msg = typeof data.error === 'string' ? data.error : (data.error.message ?? 'Upload failed')
-              }
-            } catch { /* ignore */ }
-          }
-          update(entry.id, { status: 'error', error: msg })
-        },
-        onProgress: (bytesUploaded, bytesTotal) => {
-          const progress = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0
+      for (const entry of entries) {
+        update(entry.id, { status: 'uploading' })
 
-          // Rolling-window speed calculation
-          const now = Date.now()
-          const samples = speedSamples.current.get(entry.id) ?? []
-          samples.push({ time: now, bytes: bytesUploaded })
-          // Keep only the last SPEED_WINDOW samples
-          while (samples.length > SPEED_WINDOW) samples.shift()
-          speedSamples.current.set(entry.id, samples)
+        const extraHeaders: Record<string, string> = {}
+        if (uploadToken) extraHeaders['X-Upload-Token'] = uploadToken
 
-          let speed: number | undefined
-          let eta: number | undefined
-          if (samples.length >= 2) {
-            const oldest = samples[0]
-            const newest = samples[samples.length - 1]
-            const elapsed = (newest.time - oldest.time) / 1000
-            if (elapsed > 0) {
-              speed = (newest.bytes - oldest.bytes) / elapsed
-              if (speed > 0 && bytesTotal > bytesUploaded) {
-                eta = (bytesTotal - bytesUploaded) / speed
+        const upload = new tus.Upload(entry.file, {
+          endpoint: tusEndpoint,
+          chunkSize: chunkSize,
+          retryDelays: [0, 1000, 3000, 5000, 10000],
+          headers: extraHeaders,
+          metadata: {
+            filename: entry.file.name,
+            filetype: entry.file.type || 'application/octet-stream',
+            folder_id: folderId ?? '',
+          },
+          onError: (error) => {
+            let msg = 'Upload failed'
+            const det = error as tus.DetailedError
+            if (det.originalResponse != null) {
+              try {
+                const body = det.originalResponse.getBody()
+                const data = JSON.parse(body) as { error?: string | { message?: string } }
+                if (data.error) {
+                  msg = typeof data.error === 'string' ? data.error : (data.error.message ?? 'Upload failed')
+                }
+              } catch { /* ignore */ }
+            }
+            update(entry.id, { status: 'error', error: msg })
+          },
+          onProgress: (bytesUploaded, bytesTotal) => {
+            const progress = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0
+
+            // Rolling-window speed calculation
+            const now = Date.now()
+            const samples = speedSamples.current.get(entry.id) ?? []
+            samples.push({ time: now, bytes: bytesUploaded })
+            // Keep only the last SPEED_WINDOW samples
+            while (samples.length > SPEED_WINDOW) samples.shift()
+            speedSamples.current.set(entry.id, samples)
+
+            let speed: number | undefined
+            let eta: number | undefined
+            if (samples.length >= 2) {
+              const oldest = samples[0]
+              const newest = samples[samples.length - 1]
+              const elapsed = (newest.time - oldest.time) / 1000
+              if (elapsed > 0) {
+                speed = (newest.bytes - oldest.bytes) / elapsed
+                if (speed > 0 && bytesTotal > bytesUploaded) {
+                  eta = (bytesTotal - bytesUploaded) / speed
+                }
               }
             }
-          }
 
-          update(entry.id, { progress, speed, eta, bytesUploaded })
-        },
-        onSuccess: () => {
-          speedSamples.current.delete(entry.id)
-          update(entry.id, { status: 'done', progress: 100 })
-          void qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] })
-          setTimeout(() => {
-            setUploads(prev => {
-              const next = prev.filter(u => u.id !== entry.id)
-              uploadsRef.current = next
-              return next
-            })
-          }, 2000)
-        },
-      })
-      upload.start()
+            update(entry.id, { progress, speed, eta, bytesUploaded })
+          },
+          onSuccess: () => {
+            speedSamples.current.delete(entry.id)
+            update(entry.id, { status: 'done', progress: 100 })
+            void qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] })
+            setTimeout(() => {
+              setUploads(prev => {
+                const next = prev.filter(u => u.id !== entry.id)
+                uploadsRef.current = next
+                return next
+              })
+            }, 2000)
+          },
+        })
+        upload.start()
+      }
     }
+
+    void startEntries()
   }, [folderId, qc, settings])
 
   const dismiss = useCallback((id: string) => {

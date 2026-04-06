@@ -29,6 +29,8 @@ const (
 	deviceCookieName   = "pd_device"
 	pendingTOTPKey     = "pending_totp:"
 	pendingTOTPTTL     = 10 * time.Minute
+	uploadTokenKey     = "upload_token:"
+	uploadTokenTTL     = time.Hour
 )
 
 // Handler provides all auth HTTP handlers.
@@ -536,6 +538,66 @@ func (h *Handler) createSessionAndCookie(ctx context.Context, w http.ResponseWri
 		Secure:   !h.cfg.IsDev(),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(h.cfg.SessionIdleTimeout.Seconds()),
+	})
+}
+
+// IssueUploadToken generates a short-lived token for cross-subdomain TUS upload auth.
+// The raw token is returned and stored in Redis under uploadTokenKey+token → userID.
+func (h *Handler) IssueUploadToken(ctx context.Context, userID string) (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("upload token: generate: %w", err)
+	}
+	token := hex.EncodeToString(b)
+	if err := h.rdb.Set(ctx, uploadTokenKey+token, userID, uploadTokenTTL).Err(); err != nil {
+		return "", fmt.Errorf("upload token: store: %w", err)
+	}
+	return token, nil
+}
+
+// HandleIssueUploadToken handles POST /api/v1/upload-token.
+// Requires an authenticated session. Returns {"token":"..."} for use as X-Upload-Token.
+func (h *Handler) HandleIssueUploadToken(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	if actor == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	token, err := h.IssueUploadToken(r.Context(), actor.ID.String())
+	if err != nil {
+		log.Error().Err(err).Msg("issue upload token")
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]string{"token": token})
+}
+
+// UploadTokenMiddleware checks the X-Upload-Token header when no session cookie auth
+// has already populated the context (i.e. it acts as a fallback for cross-subdomain uploads).
+func (h *Handler) UploadTokenMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Already authenticated via session cookie — nothing to do.
+		if middleware.UserFromContext(r.Context()) != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		token := r.Header.Get("X-Upload-Token")
+		if token == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		userID, err := h.rdb.Get(r.Context(), uploadTokenKey+token).Result()
+		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		u, err := user.FindByID(r.Context(), h.db, userID)
+		if err != nil || u == nil || !u.IsActive {
+			next.ServeHTTP(w, r)
+			return
+		}
+		ctx := middleware.WithUser(r.Context(), u)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

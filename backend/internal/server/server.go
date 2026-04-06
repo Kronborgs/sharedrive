@@ -137,6 +137,8 @@ func (s *Server) buildRouter() *chi.Mux {
 			// Tus resumable-upload protocol headers
 			"Tus-Resumable", "Upload-Length", "Upload-Metadata", "Upload-Offset",
 			"Upload-Defer-Length", "Upload-Concat",
+			// Cross-subdomain upload auth
+			"X-Upload-Token",
 		},
 		ExposedHeaders:   []string{"Location", "Tus-Resumable", "Upload-Offset", "Upload-Length"},
 		AllowCredentials: true,
@@ -181,6 +183,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/me/totp/setup", s.handleTOTPSetup)
 		r.Post("/api/v1/me/totp/confirm", s.handleTOTPConfirm)
 		r.Delete("/api/v1/me/totp", s.handleTOTPDisable)
+
+		// Upload token (cross-subdomain TUS auth)
+		r.Post("/api/v1/upload-token", s.authHandler.HandleIssueUploadToken)
 
 		// Sessions
 		r.Get("/api/v1/auth/sessions", s.handleListSessions)
@@ -522,9 +527,10 @@ func (s *Server) tusHandler() http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	// All mutating TUS routes require a valid session.
+	// All mutating TUS routes require a valid session or an upload token.
 	r.Group(func(r chi.Router) {
 		r.Use(s.authHandler.SessionMiddleware)
+		r.Use(s.authHandler.UploadTokenMiddleware)
 		r.Use(mw.RequireAuth)
 		r.Use(h.Middleware)
 		r.Post("/", h.PostFile)

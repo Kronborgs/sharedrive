@@ -19,6 +19,10 @@ import (
 	"github.com/yourname/privatedrive/internal/httputil"
 )
 
+// clientIP returns the normalised client IP. After the RealIP middleware runs,
+// r.RemoteAddr already contains the real client IP.
+func clientIP(r *http.Request) string { return r.RemoteAddr }
+
 // Handler provides HTTP handlers for admin user management.
 type Handler struct {
 	db       *pgxpool.Pool

@@ -23,34 +23,44 @@ func NewTrashService(db *pgxpool.Pool, storage *Storage) *TrashService {
 // SoftDelete marks a file (or folder tree) as deleted by setting deleted_at.
 // The actor must own the file OR hold an active share with can_delete=true on
 // the file or an ancestor folder.
-// When the actor is not the file owner but has delete permission via ancestor
-// folder ownership or share, ownership is transferred to the actor so the file
-// appears in the actor's trash (not an inaccessible guest trash).
-func (t *TrashService) SoftDelete(ctx context.Context, id, ownerID string) error {
+//
+// Ownership transfer rule: the deleted file always lands in the PARENT FOLDER
+// owner's trash. This means guest-uploaded files are transferred to the folder
+// owner's trash, not the guest's (guests have no trash).
+func (t *TrashService) SoftDelete(ctx context.Context, id, actorID string) error {
 	tx, err := t.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("trash.SoftDelete: begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	// Fetch current owner and size so we can transfer quota if ownership changes.
+	// Fetch current owner, parent folder owner, size, and type so we can
+	// determine where the file should land in trash and fix quota.
 	var currentOwner string
+	var parentOwner *string
 	var sizeBytes int64
 	var isFolder bool
 	if err := tx.QueryRow(ctx,
-		`SELECT owner_id::text, COALESCE(size_bytes, 0), is_folder
-		 FROM files WHERE id = $1::uuid AND deleted_at IS NULL`, id,
-	).Scan(&currentOwner, &sizeBytes, &isFolder); err != nil {
+		`SELECT f.owner_id::text,
+		        p.owner_id::text,
+		        COALESCE(f.size_bytes, 0),
+		        f.is_folder
+		 FROM files f
+		 LEFT JOIN files p ON p.id = f.parent_id AND p.deleted_at IS NULL
+		 WHERE f.id = $1::uuid AND f.deleted_at IS NULL`, id,
+	).Scan(&currentOwner, &parentOwner, &sizeBytes, &isFolder); err != nil {
 		return fmt.Errorf("trash.SoftDelete: not found")
 	}
 
-	// Soft-delete and unconditionally set owner_id = actor, subject to
-	// permission check. For files the actor already owns this is a no-op on
-	// owner_id. For files owned by someone else (e.g. guest-uploaded files in
-	// an owned folder) the ownership transfers to the actor so the file
-	// appears in the actor's trash.
+	// The file will be owned by the parent folder's owner after deletion.
+	// If there is no parent (root-level file) the current owner is kept.
+	trashOwner := currentOwner
+	if parentOwner != nil {
+		trashOwner = *parentOwner
+	}
+
 	result, err := tx.Exec(ctx,
-		`UPDATE files SET deleted_at = now(), updated_at = now(), owner_id = $2::uuid
+		`UPDATE files SET deleted_at = now(), updated_at = now(), owner_id = $3::uuid
 		 WHERE id = $1::uuid AND deleted_at IS NULL
 		 AND (
 		   owner_id = $2
@@ -75,7 +85,7 @@ func (t *TrashService) SoftDelete(ctx context.Context, id, ownerID string) error
 		       )
 		   )
 		 )`,
-		id, ownerID,
+		id, actorID, trashOwner,
 	)
 	if err != nil {
 		return fmt.Errorf("trash.SoftDelete: %w", err)
@@ -84,16 +94,15 @@ func (t *TrashService) SoftDelete(ctx context.Context, id, ownerID string) error
 		return fmt.Errorf("trash.SoftDelete: not found or access denied")
 	}
 
-	// Transfer quota allocation when ownership changed (non-folder files only).
-	// Decrement the old owner's usage; increment the new owner's so that
-	// PermanentDelete can correctly reclaim from the right user later.
-	if currentOwner != ownerID && !isFolder && sizeBytes > 0 {
+	// Fix quota when ownership changed (non-folder files only).
+	// Decrement old owner; increment new owner so PermanentDelete reclaims correctly.
+	if currentOwner != trashOwner && !isFolder && sizeBytes > 0 {
 		tx.Exec(ctx,
 			`UPDATE users SET quota_used_bytes = GREATEST(0, quota_used_bytes - $1), updated_at = now()
 			 WHERE id = $2::uuid`, sizeBytes, currentOwner)
 		tx.Exec(ctx,
 			`UPDATE users SET quota_used_bytes = quota_used_bytes + $1, updated_at = now()
-			 WHERE id = $2::uuid`, sizeBytes, ownerID)
+			 WHERE id = $2::uuid`, sizeBytes, trashOwner)
 	}
 
 	return tx.Commit(ctx)

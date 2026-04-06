@@ -119,6 +119,22 @@ export function Sidebar() {
         </>
       )}
 
+      {/* WebDAV */}
+      {user?.role !== 'guest' && (
+        <>
+          <div className="mx-4 border-t border-zinc-200 dark:border-[#2d3148] my-1" />
+          <nav className="px-2 pb-3 space-y-0.5">
+            <button
+              onClick={() => setShowWebDAV(true)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] hover:text-zinc-900 dark:hover:text-slate-100"
+            >
+              <HardDrive size={16} />
+              WebDAV
+            </button>
+          </nav>
+        </>
+      )}
+
       {/* Spacer */}
       <div className="flex-1" />
 
@@ -158,15 +174,6 @@ export function Sidebar() {
 
         {showUserMenu && (
           <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-lg py-1 z-50">
-            {user?.role !== 'guest' && (
-              <button
-                onClick={() => { setShowWebDAV(true); setShowUserMenu(false) }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-              >
-                <HardDrive size={14} />
-                WebDAV
-              </button>
-            )}
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"

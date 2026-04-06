@@ -11,11 +11,13 @@ import (
 )
 
 // inlineScriptRe matches the content of <script> tags that contain inline code.
-// External scripts (<script src="..."></script>) have empty bodies and won't be
-// captured because `[^<]+` requires at least one non-`<` byte.
+// External scripts (<script src="..."></script>) have empty bodies and are skipped
+// because the non-greedy `.+?` requires at least one byte between the tags.
 // Vite injects a modulepreload polyfill as an inline script whose content changes
 // with every build, so we compute hashes at startup rather than hardcoding them.
-var inlineScriptRe = regexp.MustCompile(`(?s)<script[^>]*>([^<]+)</script>`)
+// Note: the script body may contain `<` (e.g. comparison operators) so we cannot
+// use [^<]+ here — `.+?` with the (?s) flag handles that correctly.
+var inlineScriptRe = regexp.MustCompile(`(?s)<script(?:\s[^>]*)?>(.+?)</script>`)
 
 // InlineScriptHashes reads dist/index.html from the given FS and returns
 // a 'sha256-XXXX=' hash string for every inline <script> block found.

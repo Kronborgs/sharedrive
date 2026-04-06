@@ -199,7 +199,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
 
   const startUpload = useCallback((files: File[]) => {
     // Determine TUS endpoint: prefer direct_upload_url (bypasses Cloudflare) if set
-    const directBase = settings?.direct_upload_url?.trim()
+    const directBase = settings?.direct_upload_url?.trim().replace(/\/+$/, '')
     const tusEndpoint = directBase ? `${directBase}/upload/` : '/upload/'
     // No chunking when uploading directly (no Cloudflare 100 MB limit).
     // When going through Cloudflare, keep 50 MB chunks to stay under their limit.

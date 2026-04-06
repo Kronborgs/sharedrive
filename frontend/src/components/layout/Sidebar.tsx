@@ -158,7 +158,7 @@ export function Sidebar() {
 
         {showUserMenu && (
           <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-lg py-1 z-50">
-            {user?.webdav_enabled && (
+            {user?.role !== 'guest' && (
               <button
                 onClick={() => { setShowWebDAV(true); setShowUserMenu(false) }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"

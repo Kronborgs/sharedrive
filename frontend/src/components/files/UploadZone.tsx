@@ -225,6 +225,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
         endpoint: tusEndpoint,
         chunkSize: chunkSize,
         retryDelays: [0, 1000, 3000, 5000, 10000],
+        withCredentials: true,
         metadata: {
           filename: entry.file.name,
           filetype: entry.file.type || 'application/octet-stream',

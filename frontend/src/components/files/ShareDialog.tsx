@@ -253,7 +253,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   }
 
   const copyLink = (token: string) => {
-    void navigator.clipboard.writeText(`${window.location.origin}/shared/${token}`)
+    void navigator.clipboard.writeText(`${window.location.origin}/shared/?token=${token}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

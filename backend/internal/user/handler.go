@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -19,6 +20,11 @@ import (
 	"github.com/yourname/privatedrive/internal/httputil"
 )
 
+// Mailer is the subset of smtp.Mailer used by this package.
+type Mailer interface {
+	SendInvitation(ctx context.Context, toEmail, inviterName, inviteLink string) error
+}
+
 // clientIP returns the normalised client IP. After the RealIP middleware runs,
 // r.RemoteAddr already contains the real client IP.
 func clientIP(r *http.Request) string { return r.RemoteAddr }
@@ -27,11 +33,13 @@ func clientIP(r *http.Request) string { return r.RemoteAddr }
 type Handler struct {
 	db       *pgxpool.Pool
 	auditSvc audit.Logger
+	mailer   Mailer
+	appURL   string
 }
 
 // NewHandler creates a Handler.
-func NewHandler(db *pgxpool.Pool, auditSvc audit.Logger) *Handler {
-	return &Handler{db: db, auditSvc: auditSvc}
+func NewHandler(db *pgxpool.Pool, auditSvc audit.Logger, mailer Mailer, appURL string) *Handler {
+	return &Handler{db: db, auditSvc: auditSvc, mailer: mailer, appURL: appURL}
 }
 
 // List handles GET /api/v1/admin/users
@@ -467,6 +475,15 @@ func (h *Handler) Reinvite(w http.ResponseWriter, r *http.Request) {
 		},
 		IPAddress: r.RemoteAddr,
 	})
+
+	if h.mailer != nil {
+		inviteLink := h.appURL + "/accept-invite?token=" + rawToken
+		go func() {
+			if err := h.mailer.SendInvitation(context.Background(), email, actor.Email, inviteLink); err != nil {
+				log.Warn().Err(err).Str("to", email).Msg("reinvite: send invitation email")
+			}
+		}()
+	}
 
 	httputil.Respond(w, http.StatusOK, map[string]any{
 		"token": rawToken,

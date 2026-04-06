@@ -511,13 +511,27 @@ func (s *Server) tusHandler() http.Handler {
 	// tusd's extractIDFromPath uses strings.Trim(r.URL.Path, "/"), so a PATCH
 	// to /upload/{id} would yield "upload/{id}" instead of "{id}" without this.
 	r.Use(func(next http.Handler) http.Handler { return http.StripPrefix("/upload", next) })
-	r.Use(s.authHandler.SessionMiddleware)
-	r.Use(mw.RequireAuth)
-	r.Use(h.Middleware)
-	r.Post("/", h.PostFile)
-	r.Head("/{id}", h.HeadFile)
-	r.Patch("/{id}", h.PatchFile)
-	r.Delete("/{id}", h.DelFile)
+
+	// OPTIONS must be handled without auth so that CORS preflight requests
+	// (which carry no session cookie) are not rejected by RequireAuth.
+	// The parent router's go-chi/cors middleware adds the ACAO headers.
+	r.Options("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	r.Options("/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	// All mutating TUS routes require a valid session.
+	r.Group(func(r chi.Router) {
+		r.Use(s.authHandler.SessionMiddleware)
+		r.Use(mw.RequireAuth)
+		r.Use(h.Middleware)
+		r.Post("/", h.PostFile)
+		r.Head("/{id}", h.HeadFile)
+		r.Patch("/{id}", h.PatchFile)
+		r.Delete("/{id}", h.DelFile)
+	})
 	return r
 }
 

@@ -33,6 +33,10 @@ const mainNav: NavItem[] = [
   { to: '/trash',   label: 'Trash',         icon: <Trash2 size={16} /> },
 ]
 
+const guestNav: NavItem[] = [
+  { to: '/shares',  label: 'Shared',        icon: <Share2 size={16} /> },
+]
+
 const adminNav: NavItem[] = [
   { to: '/admin',              label: 'Dashboard',   icon: <HardDrive size={16} />, exact: true },
   { to: '/admin/users',        label: 'Users',        icon: <Users size={16} /> },
@@ -91,7 +95,7 @@ export function Sidebar() {
 
       {/* Main nav */}
       <nav className="px-2 py-3 space-y-0.5">
-        {mainNav.map(item => (
+        {(user?.role === 'guest' ? guestNav : mainNav).map(item => (
           <NavLink key={item.to} item={item} />
         ))}
       </nav>

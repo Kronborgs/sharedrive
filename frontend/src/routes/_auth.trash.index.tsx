@@ -1,7 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
 import type { FileItem, User } from '@/types/api'
 import { FileList } from '@/components/files/FileViews'
 import { FileContextMenu, type ContextAction } from '@/components/files/FileContextMenu'
@@ -15,6 +16,12 @@ export const Route = createFileRoute('/_auth/trash/')({
 interface ContextState { item: FileItem; x: number; y: number }
 
 function TrashPage() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
+  }, [user])
+  if (user?.role === 'guest') return null
   const qc = useQueryClient()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextState | null>(null)

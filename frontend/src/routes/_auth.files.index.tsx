@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { useAuth } from '@/lib/auth-context'
 import { z } from 'zod'
 import { api } from '@/lib/api'
 import type { FileItem } from '@/types/api'
@@ -29,7 +30,12 @@ interface ContextMenuState {
 }
 
 function FilesPage() {
+  const { user } = useAuth()
   const navigate = useNavigate()
+  useEffect(() => {
+    if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
+  }, [user])
+  if (user?.role === 'guest') return null
   const { folder: folderId = null } = Route.useSearch()
   const qc = useQueryClient()
 

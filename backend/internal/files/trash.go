@@ -23,12 +23,37 @@ func NewTrashService(db *pgxpool.Pool, storage *Storage) *TrashService {
 // SoftDelete marks a file (or folder tree) as deleted by setting deleted_at.
 // The actor must own the file OR hold an active share with can_delete=true on
 // the file or an ancestor folder.
+// When the actor is not the file owner but has delete permission via ancestor
+// folder ownership or share, ownership is transferred to the actor so the file
+// appears in the actor's trash (not an inaccessible guest trash).
 func (t *TrashService) SoftDelete(ctx context.Context, id, ownerID string) error {
-	result, err := t.db.Exec(ctx,
-		`UPDATE files SET deleted_at = now(), updated_at = now()
+	tx, err := t.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("trash.SoftDelete: begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Fetch current owner and size so we can transfer quota if ownership changes.
+	var currentOwner string
+	var sizeBytes int64
+	var isFolder bool
+	if err := tx.QueryRow(ctx,
+		`SELECT owner_id::text, COALESCE(size_bytes, 0), is_folder
+		 FROM files WHERE id = $1::uuid AND deleted_at IS NULL`, id,
+	).Scan(&currentOwner, &sizeBytes, &isFolder); err != nil {
+		return fmt.Errorf("trash.SoftDelete: not found")
+	}
+
+	// Soft-delete and unconditionally set owner_id = actor, subject to
+	// permission check. For files the actor already owns this is a no-op on
+	// owner_id. For files owned by someone else (e.g. guest-uploaded files in
+	// an owned folder) the ownership transfers to the actor so the file
+	// appears in the actor's trash.
+	result, err := tx.Exec(ctx,
+		`UPDATE files SET deleted_at = now(), updated_at = now(), owner_id = $2::uuid
 		 WHERE id = $1::uuid AND deleted_at IS NULL
 		 AND (
-		   owner_id = $2::uuid
+		   owner_id = $2
 		   OR EXISTS (
 		     SELECT 1 FROM files p WHERE p.id = files.parent_id AND p.owner_id = $2::uuid
 		   )
@@ -58,7 +83,20 @@ func (t *TrashService) SoftDelete(ctx context.Context, id, ownerID string) error
 	if result.RowsAffected() == 0 {
 		return fmt.Errorf("trash.SoftDelete: not found or access denied")
 	}
-	return nil
+
+	// Transfer quota allocation when ownership changed (non-folder files only).
+	// Decrement the old owner's usage; increment the new owner's so that
+	// PermanentDelete can correctly reclaim from the right user later.
+	if currentOwner != ownerID && !isFolder && sizeBytes > 0 {
+		tx.Exec(ctx,
+			`UPDATE users SET quota_used_bytes = GREATEST(0, quota_used_bytes - $1), updated_at = now()
+			 WHERE id = $2::uuid`, sizeBytes, currentOwner)
+		tx.Exec(ctx,
+			`UPDATE users SET quota_used_bytes = quota_used_bytes + $1, updated_at = now()
+			 WHERE id = $2::uuid`, sizeBytes, ownerID)
+	}
+
+	return tx.Commit(ctx)
 }
 
 // Restore cancels a soft-delete.

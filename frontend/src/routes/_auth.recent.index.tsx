@@ -1,17 +1,22 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { FileItem } from '@/types/api'
 import { FileList } from '@/components/files/FileViews'
-import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/lib/auth-context'
 
 export const Route = createFileRoute('/_auth/recent/')({
   component: RecentPage,
 })
 
 function RecentPage() {
+  const { user } = useAuth()
   const navigate = useNavigate()
+  useEffect(() => {
+    if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
+  }, [user])
+  if (user?.role === 'guest') return null
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const { data, isLoading } = useQuery({

@@ -763,9 +763,9 @@ function UserRow({
       </td>
       <td className="px-4 py-3">
         <span className={`inline-flex items-center gap-1 text-xs ${
-          user.is_active ? 'text-green-600 dark:text-green-400' : 'text-zinc-400'
+          user.is_active ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
         }`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-green-500' : 'bg-zinc-400'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
           {user.is_active ? 'Active' : 'Locked'}
         </span>
       </td>

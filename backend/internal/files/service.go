@@ -126,7 +126,8 @@ func (s *Service) Get(ctx context.Context, id, ownerID string) (*File, error) {
 }
 
 // GetAccessible retrieves a file if the user owns it OR has an active share grant
-// for it or any of its ancestor folders.
+// for it or any of its ancestor folders, OR owns an ancestor folder (e.g. a
+// folder owner accessing a file uploaded by a guest into their folder).
 func (s *Service) GetAccessible(ctx context.Context, id, userID string) (*File, error) {
 	row := s.db.QueryRow(ctx,
 		`WITH RECURSIVE ancestors AS (
@@ -148,6 +149,13 @@ func (s *Service) GetAccessible(ctx context.Context, id, userID string) (*File, 
 		       WHERE sh.grantee_id = $2::uuid
 		         AND sh.revoked_at IS NULL
 		         AND (sh.expires_at IS NULL OR sh.expires_at > now())
+		     )
+		     OR EXISTS (
+		       SELECT 1 FROM ancestors anc
+		       JOIN files af ON af.id = anc.id
+		       WHERE af.owner_id = $2::uuid
+		         AND af.is_folder = true
+		         AND af.id != $1::uuid
 		     )
 		   )`,
 		id, userID,

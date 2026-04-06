@@ -34,9 +34,18 @@ func NewAuthDAVServer(db *pgxpool.Pool, filesRoot string) *AuthDAVServer {
 }
 
 func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Required by the Windows WebDAV redirector to recognise the endpoint
-	// as a true DAV server and skip its own redirect logic.
+	// Always advertise DAV capability — Windows WebClient reads these headers
+	// from the OPTIONS response before it ever sends credentials.
 	w.Header().Set("MS-Author-Via", "DAV")
+	w.Header().Set("DAV", "1, 2")
+
+	// OPTIONS answered without auth so Windows WebClient / macOS Finder can
+	// discover WebDAV support before prompting for a password.
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Allow", "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 
 	// Extract the user ID from the URL: /dav/{userID}[/...]
 	// The userID segment makes each user's DAV root distinct and lets Windows

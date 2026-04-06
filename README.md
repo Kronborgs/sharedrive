@@ -1,20 +1,78 @@
-# PrivateDrive
+# Sharedrive
 
-A self-hosted, private file storage platform. OneDrive-inspired web UX, WebDAV support, granular sharing, 2FA, admin dashboard — packaged as a single Docker container.
+A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, granular sharing, TOTP 2FA, full admin dashboard — packaged as a single Docker container.
 
-## Features
+> **Screenshots coming soon.**
 
-- **Resumable uploads** via [tus protocol](https://tus.io/) — survives network interruptions
-- **WebDAV** for native OS file system mappings (Windows, macOS, Linux)
-- **Link/user/group sharing** with permissions (read, write, delete, share, download)
-- **TOTP 2FA** with backup codes
-- **Trusted devices** (30-day skip-2FA tokens)
-- **Progressive rate limiting** — Redis sliding-window + automatic lockout tiers
-- **Admin dashboard** — user management, quota, audit log, IP whitelist/block, group/tag management
-- **Admin support sessions** — limited-scope access to a user account, fully audited
-- **Backup/restore** — metadata JSON export (file content is NOT included)
-- **Dark mode** — system-detected or manual toggle
-- **Cloudflare Tunnel** — designed for reverse-proxy-free deployments
+---
+
+## Features at a glance
+
+### Files
+- List and grid view with breadcrumb navigation
+- Drag-and-drop upload zone + file picker button
+- **Resumable uploads** via the [tus protocol](https://tus.io/) — survives network interruptions and browser restarts
+- **Direct upload URL** — bypass Cloudflare for large files at full speed (configured in admin settings)
+- Live upload progress panel with per-file speed (MB/s) and ETA
+- Create folders, rename, move (drag or context menu)
+- Right-click context menu: open, download, share, rename, trash
+- Multi-select with shift-click or checkbox; bulk download as ZIP, bulk trash
+- **Recent files** — last 50 accessed or modified items
+
+### Sharing
+- Share files or folders with **users**, **groups**, or a **public link**
+- Per-share permissions: View, Upload (folders only), Edit, Rename, Delete, Re-share
+- Optional expiry date per share
+- **Pending shares** — invites a non-registered email and converts the share on registration
+- Share notification emails and invitation emails via SMTP
+
+### Trash / Recycle Bin
+- Soft-delete with automatic ownership transfer (guest-uploaded files land in the folder owner's trash)
+- Restore individual files or empty the entire trash
+- Configurable per-user retention period (auto-cleanup)
+
+### Authentication
+- Email + Argon2id password
+- **TOTP 2FA** (RFC 6238) with 10 single-use backup codes; secrets stored AES-256-GCM encrypted
+- **Trusted devices** — 30-day TOTP bypass cookie after first verification
+- Session management — list and revoke individual active sessions
+- **Self-service password reset** via email token (1-hour expiry)
+- **Forced password change** — admin can require a reset on next login
+- Invitation-based onboarding with 7-day invite links
+
+### Security
+- **Progressive IP lockout** — Redis sliding-window counters with automatic tier escalation (60 min → 6 h → 24 h)
+- **Manual IP block** (permanent, admin-managed) + CIDR whitelist to bypass all rate limiting
+- Passwords: Argon2id
+- Sessions: opaque 256-bit tokens, SHA-256-stored in DB
+- TOTP secrets: AES-256-GCM at rest
+- Security headers on every response: HSTS, CSP, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`
+- CSP `connect-src` updated dynamically with the configured direct upload URL
+- Audit log: immutable, covers all auth, file, share, and admin events — never deleted by the application
+
+### Admin Dashboard
+- **User management** — create, edit, lock/unlock, force password reset, re-invite, view sessions
+- **Quota management** — per-user storage quota with presets (10 GB – 1 TB) and custom values
+- **Per-user limits** — max upload size, daily bandwidth cap, WebDAV toggle
+- **Guest accounts** — limited role; redirect to Shares view; promotable to full user
+- **Group management** — create groups, add/remove members, use groups as share targets
+- **Tag management** — admin-defined tags with custom colours; applicable to any file
+- **Admin support access** — limited-scope impersonation of a user account, fully audited; the user sees a real-time banner via SSE
+- **Backup & restore** — export HMAC-signed gzip JSON (metadata only, no file blobs); restore at any time or during first-run setup
+- **System settings** — site name, open registration, default quota, global max upload size, direct upload URL, SMTP configuration with live test
+- **Audit log viewer** — filterable by event type and actor email, paginated, colour-coded
+- **Blocked IPs** — view active lockouts with tier/TTL, manually block or unblock, manage CIDR whitelist
+
+### WebDAV
+- Mounted at `/dav/` — map as a network drive in Windows Explorer, macOS Finder, or any WebDAV client
+- Per-user **app passwords** (named, scoped, revocable); plain text shown once on creation
+- WebDAV can be disabled globally or per user
+
+### Infrastructure
+- Single Go binary serves the embedded React SPA, REST API, TUS upload endpoint, and WebDAV
+- **Cloudflare Tunnel ready** — designed for reverse-proxy-free deployments on Unraid or any Docker Compose host
+- PostgreSQL for all metadata; Redis for rate limiting and ephemeral state (ephemeral — no volume needed)
+- Dark mode — system-detected with manual toggle
 
 ---
 
@@ -28,51 +86,70 @@ A self-hosted, private file storage platform. OneDrive-inspired web UX, WebDAV s
 
 ## Quick start (Unraid / Docker Compose)
 
-### 1. Clone and configure
+### 1. Pull and configure
 
 ```bash
-git clone https://github.com/yourname/privatedrive /mnt/user/appdata/privatedrive/repo
-cd /mnt/user/appdata/privatedrive/repo
+mkdir -p /mnt/user/appdata/sharedrive
+cd /mnt/user/appdata/sharedrive
 
+# Download the example env file
+curl -O https://raw.githubusercontent.com/Kronborgs/sharedrive/master/.env.example
 cp .env.example .env
-nano .env          # fill in secrets + your domain
+nano .env   # fill in secrets + your domain
 ```
 
-Generate secrets:
+Generate the four required secrets:
 
 ```bash
-openssl rand -hex 32   # run 4 times, paste into SESSION_SECRET, BACKUP_HMAC_SECRET, TOTP_ENCRYPT_KEY, DEVICE_TRUST_SECRET
+openssl rand -hex 32   # run once per secret
+# Paste each into: SESSION_SECRET, BACKUP_HMAC_SECRET, TOTP_ENCRYPT_KEY, DEVICE_TRUST_SECRET
 ```
 
-### 2. Cloudflare Tunnel network
+> `TOTP_ENCRYPT_KEY` must be exactly **64 hex characters** (32 bytes).
 
-PrivateDrive joins your **existing** cloudflared tunnel network so no separate `cloudflared` container is needed. Check your tunnel compose for the network name and set it in `.env`:
+### 2. Cloudflare Tunnel
 
-```env
-CLOUDFLARE_NETWORK_NAME=cloudflare-net   # default
-```
+Sharedrive joins your **existing** `cloudflared` tunnel network — no separate tunnel container needed. Set `CLOUDFLARE_NETWORK_NAME` in `.env` to match your tunnel's Docker network name.
 
 In your Cloudflare dashboard → Zero Trust → Networks → Tunnels, add a public hostname:
-- **Subdomain:** `drive`
-- **Service:** `http://privatedrive-app:8080`
 
-### 3. Build and start
+| Field | Value |
+|---|---|
+| Subdomain | `drive` (or anything you prefer) |
+| Domain | `yourdomain.com` |
+| Service | `http://sharedrive:8080` |
+
+**Optional — direct upload subdomain (bypasses Cloudflare for large files):**
+
+Add a second hostname (e.g. `upload.yourdomain.com` → `http://sharedrive:8080`) and set `direct_upload_url` in Admin → Settings.
+
+### 3. Start
 
 ```bash
-make docker          # builds production image tagged with VERSION
+# Download docker-compose.yml
+curl -O https://raw.githubusercontent.com/Kronborgs/sharedrive/master/docker-compose.yml
+
 docker compose up -d
 ```
 
-Or pull a pre-built image (if published):
+### 4. First-run wizard
+
+Open `https://drive.yourdomain.com`. An empty database triggers an automatic redirect to `/setup`. The three-step wizard takes under two minutes:
+
+1. **Site** — set a name and optionally restore a backup
+2. **Admin account** — display name, email, password (≥ 12 chars)
+3. **SMTP** — mail server details (can be skipped and configured later)
+
+---
+
+## Upgrading
 
 ```bash
-docker pull ghcr.io/yourname/privatedrive:latest
+docker compose pull
 docker compose up -d
 ```
 
-### 4. First-run setup
-
-Open `https://drive.yourdomain.com`. If the database is empty you will be redirected to `/setup` to create the admin account. The wizard takes < 2 minutes.
+Database migrations run automatically on startup.
 
 ---
 
@@ -81,27 +158,26 @@ Open `https://drive.yourdomain.com`. If the database is empty you will be redire
 Requires: Go 1.23+, Node 22+, Docker Compose.
 
 ```bash
-# Start dev stack (hot reload for both frontend and backend)
+# Full dev stack with hot reload (frontend + backend)
 make dev
 
 # Frontend only
 cd frontend && npm install && npm run dev
 
-# Backend only (with air)
+# Backend only (requires air)
 cd backend && air
 ```
 
-The dev stack runs:
-- Frontend Vite dev server on `:5173` (proxies `/api` to backend)
-- Backend on `:8080` with Air live reload
-- Postgres on `:5432`
-- Redis on `:6379`
+Dev stack ports:
+- `:5173` — Vite dev server (proxies `/api` and `/upload` to backend)
+- `:8080` — Go backend with Air live reload
+- `:5432` — PostgreSQL
+- `:6379` — Redis
 
 ### Bump version
 
 ```bash
-make bump            # increments build number, e.g. 2025-01-15-build-2
-make docker          # builds and tags with new version
+make bump     # increments patch version in VERSION file
 ```
 
 ---
@@ -110,21 +186,34 @@ make docker          # builds and tags with new version
 
 WebDAV is available at `https://drive.yourdomain.com/dav/`.
 
-1. In the web UI → user menu → "App Passwords" — generate a WebDAV-specific password
-2. Map a network drive using your **email** as username and the app password
+**Generate an app password first:** Web UI → user menu (top-right) → App Passwords → New.
 
 ### Windows (File Explorer)
 
 1. Right-click **This PC** → **Map network drive**
 2. Folder: `\\drive.yourdomain.com@SSL\dav`
-3. Credentials: email + app password
-
-**Note:** Cloudflare free tier has a 100 MB upload limit on HTTP requests. For large WebDAV uploads, use a DNS-only record (bypasses Cloudflare proxy) or use the web UI (which uses tus for resumable uploads).
+3. Credentials: your email + app password
 
 ### macOS (Finder)
 
 1. **Go** → **Connect to Server** (`⌘K`)
 2. Server: `https://drive.yourdomain.com/dav/`
+
+> **Large files over WebDAV:** Cloudflare's free tier limits HTTP requests to 100 MB. For files larger than that, use the web UI (which uses the tus protocol for resumable uploads) or configure a **direct upload URL** that bypasses Cloudflare.
+
+---
+
+## Direct Upload (bypass Cloudflare)
+
+By default all traffic — including uploads — goes through Cloudflare, which caps each request at ~100 MB on the free tier.
+
+To remove this limit:
+
+1. Create a second tunnel hostname pointing directly at your server (e.g. `upload.yourdomain.com`), **or** use a DNS-only (orange cloud off) record.
+2. In Admin → Settings → **Direct upload URL**, enter `https://upload.yourdomain.com`.
+3. The frontend will automatically use this URL for all uploads and display an **⚡ Direct** badge in the upload panel.
+
+Auth works seamlessly: the frontend fetches a short-lived upload token from the main domain and sends it as an `X-Upload-Token` header, so no session cookie is required cross-subdomain.
 
 ---
 
@@ -133,68 +222,136 @@ WebDAV is available at `https://drive.yourdomain.com/dav/`.
 ```
 /data/files/
   {first-2-chars-of-uuid}/
-    {uuid}           # raw file bytes, zero metadata
+    {uuid}       ← raw file bytes, no metadata
 ```
 
-File metadata (name, size, MIME type, owner) lives entirely in PostgreSQL. The storage path is opaque.
+File metadata (name, size, MIME type, owner, checksum) lives entirely in PostgreSQL. The on-disk paths are opaque.
 
 ---
 
-## Volumes (docker-compose.yml)
+## Volumes
 
-| Path in container | Purpose | Host path (example) |
-|---|---|---|
-| `/data/files` | File storage | `/mnt/user/data/privatedrive/files` |
-| `/data/postgres` | PostgreSQL data | `/mnt/user/appdata/privatedrive/postgres` |
+| Container path | Purpose |
+|---|---|
+| `/data/files` | All uploaded file data |
+| `/data/backups` | Backup export destination |
 
-Redis data is **intentionally ephemeral** (no volume). It only holds rate-limit counters and pending 2FA sessions that are safe to lose on restart.
-
----
-
-## Environment variables
-
-See [`.env.example`](.env.example) for the full reference with descriptions.
+Redis is **intentionally ephemeral** — it holds rate-limit counters, pending 2FA tokens, and upload tokens that are safe to lose on restart.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────┐
-│           Cloudflare Tunnel         │
-│         (existing container)        │
-└──────────────┬──────────────────────┘
-               │  cloudflare-net (Docker network)
-┌──────────────▼──────────────────────┐
-│        privatedrive-app:8080        │
-│   Go binary (serves SPA + API)      │
-│   ┌──────────┐  ┌────────────────┐  │
-│   │  Chi API │  │  tus upload    │  │
-│   │  /api/v1 │  │  endpoint      │  │
-│   └──────────┘  └────────────────┘  │
-│   ┌──────────┐  ┌────────────────┐  │
-│   │  WebDAV  │  │  Embedded SPA  │  │
-│   │  /dav/   │  │  (React/Vite)  │  │
-│   └──────────┘  └────────────────┘  │
-└───────────┬──────────────┬──────────┘
-            │              │
-   ┌────────▼──────┐  ┌────▼──────────┐
-   │  PostgreSQL   │  │  Redis 7      │
-   │  (15 tables)  │  │  (ephemeral)  │
-   └───────────────┘  └───────────────┘
+┌──────────────────────────────────────┐
+│          Cloudflare Tunnel           │
+│        (existing container)          │
+└───────────────┬──────────────────────┘
+                │  cloudflare Docker network
+┌───────────────▼──────────────────────┐
+│          sharedrive:8080             │
+│    Go binary — single process        │
+│  ┌───────────┐  ┌─────────────────┐  │
+│  │  REST API │  │  TUS upload     │  │
+│  │  /api/v1  │  │  /upload        │  │
+│  └───────────┘  └─────────────────┘  │
+│  ┌───────────┐  ┌─────────────────┐  │
+│  │  WebDAV   │  │  Embedded SPA   │  │
+│  │  /dav     │  │  (React + Vite) │  │
+│  └───────────┘  └─────────────────┘  │
+└──────────────┬───────────────┬───────┘
+               │               │
+   ┌───────────▼──────┐  ┌─────▼────────┐
+   │   PostgreSQL 16  │  │   Redis 7    │
+   │  (all metadata)  │  │  (ephemeral) │
+   └──────────────────┘  └──────────────┘
 ```
 
 ---
 
 ## Security
 
-- Passwords: Argon2id
-- TOTP secrets: AES-256-GCM at rest
-- Sessions: opaque 256-bit tokens, SHA-256 stored in DB
-- Rate limiting: Redis sorted-set sliding windows + progressive lockouts
-- Headers: HSTS, CSP, X-Frame-Options, Referrer-Policy
-- IP extraction: `CF-Connecting-IP` → `X-Forwarded-For` → `RemoteAddr`
-- Audit log: immutable, never deleted by application code
+| Aspect | Implementation |
+|---|---|
+| Passwords | Argon2id (default params) |
+| TOTP secrets | AES-256-GCM encrypted at rest |
+| Backup integrity | HMAC-SHA256 (`BACKUP_HMAC_SECRET`) |
+| Sessions | Opaque 256-bit random tokens; SHA-256 stored in DB |
+| Device trust | HMAC-SHA256 signed 32-byte tokens |
+| Rate limiting | Redis sorted-set sliding windows |
+| IP lockout | Progressive tiers: 60 min → 6 h → 24 h |
+| CSP | Dynamic per-request (direct upload URL injected) |
+| HSTS | `max-age=63072000; includeSubDomains; preload` |
+| IP extraction | `CF-Connecting-IP` → `X-Forwarded-For` → `RemoteAddr` |
+| Audit log | Immutable — never deleted by application code |
+
+---
+
+## Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `APP_BASE_URL` | **required** | Full public URL, e.g. `https://drive.yourdomain.com` |
+| `APP_HOST` | `0.0.0.0` | Listen address |
+| `APP_PORT` | `8080` | Listen port |
+| `GO_ENV` | `production` | Set to `development` for dev mode |
+| `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed CORS origins |
+| `SESSION_SECRET` | **required** | 32+ byte random secret |
+| `BACKUP_HMAC_SECRET` | **required** | 32+ byte random secret |
+| `TOTP_ENCRYPT_KEY` | **required** | Exactly 64 hex chars (32 bytes) |
+| `DEVICE_TRUST_SECRET` | **required** | 32+ byte random secret |
+| `POSTGRES_HOST` | — | PostgreSQL host |
+| `POSTGRES_PORT` | `5432` | PostgreSQL port |
+| `POSTGRES_DB` | `privatedrive` | Database name |
+| `POSTGRES_USER` | `privatedrive` | Database user |
+| `POSTGRES_PASSWORD` | **required** | Database password |
+| `POSTGRES_SSLMODE` | `disable` | `disable` / `require` / `verify-full` |
+| `REDIS_ADDR` | `redis:6379` | Redis address |
+| `REDIS_PASSWORD` | — | Redis password (optional) |
+| `REDIS_DB` | `0` | Redis database index |
+| `FILES_ROOT` | `/data/files` | File storage root |
+| `BACKUPS_ROOT` | `/data/backups` | Backup export root |
+| `TUS_UPLOAD_DIR` | `/data/files/tmp/uploads` | TUS temporary directory |
+| `WEBDAV_ENABLED` | `true` | Global WebDAV toggle |
+| `DEFAULT_QUOTA_BYTES` | `10737418240` | Default user quota (10 GB) |
+| `TOTP_REQUIRED_FOR_ADMIN` | `true` | Enforce TOTP for admin accounts |
+| `CLOUDFLARE_NETWORK_NAME` | `cloudflare` | External Docker network name |
+| `RL_USER_LOCKOUT_THRESHOLD` | `5` | Failed logins before user lockout |
+| `RL_USER_LOCKOUT_DURATION_MIN` | `30` | User lockout duration (minutes) |
+| `RL_IP_THRESHOLD_60M` | `10` | IP failures for 60-minute lockout |
+| `RL_IP_THRESHOLD_6H` | `15` | IP failures for 6-hour lockout |
+| `RL_IP_THRESHOLD_24H` | `20` | IP failures for 24-hour lockout |
+| `RL_WINDOW_SECONDS` | `900` | Rate-limit sliding window (15 min) |
+
+SMTP credentials can be set via environment variables (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_TLS`) **or** through Admin → Settings in the UI.
+
+---
+
+## Backup & Restore
+
+### Export
+Admin → Backup → **Export backup**. Downloads a gzip-compressed JSON file (`.json.gz`) containing all metadata: users, groups, tags, files (metadata + SHA-256 checksums), shares, TOTP credentials, app passwords, and system settings. **File blobs are not included.**
+
+The export is HMAC-SHA256 signed using `BACKUP_HMAC_SECRET` to detect tampering.
+
+### Restore
+Admin → Backup → **Restore from backup** — upload the `.json.gz` file. The HMAC is verified before applying. All metadata is overwritten; files on disk are unaffected.
+
+Restore is also available during the **first-run wizard** (step 1) to migrate from another instance.
+
+---
+
+## Audit Log
+
+Every significant action is recorded permanently in the `audit_logs` table. Covered events include:
+
+**Auth:** login, logout, failed login, TOTP enable/disable, password change/reset, session revoke, device trust grant/revoke  
+**Files:** upload, download, rename, move, delete, restore, permanent delete, folder create  
+**Shares:** create, modify, revoke  
+**Admin:** user create/delete/lock/unlock/quota change, group create/delete, settings change, backup export/import, support access start/end, IP block/unblock/whitelist  
+**WebDAV:** app password create/revoke, file put, file delete  
+
+View and filter at Admin → Audit Logs.
 
 ---
 

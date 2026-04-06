@@ -22,15 +22,20 @@ import (
 // AuthDAVServer handles WebDAV requests authenticated via HTTP Basic Auth
 // (email + app password). Mounted at /dav.
 //
-// Windows: Map Network Drive → https://<host>/dav
-// macOS Finder: Connect to Server → https://<host>/dav
+// Windows: Map Network Drive → https://<host>/dav/<userID>
+// macOS Finder: Connect to Server → https://<host>/dav/<userID>
 type AuthDAVServer struct {
 	db        *pgxpool.Pool
 	filesRoot string
+	locks     gowebdav.LockSystem // shared across requests so LOCK tokens survive to PUT
 }
 
 func NewAuthDAVServer(db *pgxpool.Pool, filesRoot string) *AuthDAVServer {
-	return &AuthDAVServer{db: db, filesRoot: filesRoot}
+	return &AuthDAVServer{
+		db:        db,
+		filesRoot: filesRoot,
+		locks:     gowebdav.NewMemLS(),
+	}
 }
 
 func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +79,7 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h := &gowebdav.Handler{
 		Prefix:     "/dav/" + userID,
 		FileSystem: &userFS{db: s.db, filesRoot: s.filesRoot, userID: userID},
-		LockSystem: gowebdav.NewMemLS(),
+		LockSystem: s.locks,
 		Logger: func(r *http.Request, err error) {
 			if err != nil {
 				log.Debug().Err(err).

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { FileItem, Share, SharePermissions, Group } from '@/types/api'
@@ -183,6 +183,17 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   const [expiry, setExpiry] = useState(defaultExpiry())
   const [copied, setCopied] = useState(false)
 
+  const { data: settings } = useQuery({
+    queryKey: ['system-settings'],
+    queryFn: ({ signal }) => api.get<{ direct_upload_url?: string }>('/api/v1/system/settings', signal),
+    staleTime: 5 * 60 * 1000,
+  })
+  const linkEnabled = !!(settings?.direct_upload_url?.trim())
+
+  useEffect(() => {
+    if (!linkEnabled && tab === 'link') setTab('user')
+  }, [linkEnabled, tab])
+
   const { data: shares } = useQuery({
     queryKey: ['shares', item.id],
     queryFn: ({ signal }) => api.get<Share[]>(`/api/v1/shares?resource_id=${item.id}`, signal),
@@ -274,19 +285,26 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
 
         {/* Tab bar */}
         <div className="flex border-b border-zinc-100 dark:border-[#2d3148] px-5">
-          {(['user', 'group', 'link'] as ShareTargetType[]).map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`py-2.5 px-3 text-sm font-medium border-b-2 transition-colors capitalize ${
-                tab === t
-                  ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-                  : 'border-transparent text-muted hover:text-zinc-700 dark:hover:text-slate-300'
-              }`}
-            >
-              {t === 'link' ? 'Link' : t === 'group' ? 'Group' : 'User'}
-            </button>
-          ))}
+          {(['user', 'group', 'link'] as ShareTargetType[]).map(t => {
+            const disabled = t === 'link' && !linkEnabled
+            return (
+              <button
+                key={t}
+                onClick={() => { if (!disabled) setTab(t) }}
+                disabled={disabled}
+                title={disabled ? 'Requires Direct Upload URL to be configured in Admin \u2192 Settings' : undefined}
+                className={`py-2.5 px-3 text-sm font-medium border-b-2 transition-colors capitalize ${
+                  disabled
+                    ? 'border-transparent text-zinc-300 dark:text-zinc-600 cursor-not-allowed'
+                    : tab === t
+                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+                    : 'border-transparent text-muted hover:text-zinc-700 dark:hover:text-slate-300'
+                }`}
+              >
+                {t === 'link' ? 'Link' : t === 'group' ? 'Group' : 'User'}
+              </button>
+            )
+          })}
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto flex-1">

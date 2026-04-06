@@ -37,23 +37,33 @@ func InlineScriptHashes(distFS fs.FS) []string {
 // SecurityHeaders returns middleware that adds security-related HTTP response
 // headers to every response. Pass the output of InlineScriptHashes as
 // scriptHashes so the CSP allows the inline scripts injected by Vite.
-func SecurityHeaders(scriptHashes []string) func(http.Handler) http.Handler {
+// extraConnectSrc is called once per request and its return value (if non-empty)
+// is appended to the connect-src directive — use it to allow a dynamic
+// direct-upload URL stored in the database.
+func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string) func(http.Handler) http.Handler {
 	// Build the script-src directive once at startup
 	scriptSrc := "'self' https://static.cloudflareinsights.com"
 	if len(scriptHashes) > 0 {
 		scriptSrc += " " + strings.Join(scriptHashes, " ")
 	}
-	csp := "default-src 'self'; " +
-		"script-src " + scriptSrc + "; " +
-		"style-src 'self' 'unsafe-inline'; " +
-		"img-src 'self' data: blob:; " +
-		"font-src 'self'; " +
-		"connect-src 'self' wss: ws: https://cloudflareinsights.com; " +
-		"worker-src blob:; " +
-		"frame-ancestors 'none';"
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			connectSrc := "'self' wss: ws: https://cloudflareinsights.com"
+			if extraConnectSrc != nil {
+				if extra := extraConnectSrc(); extra != "" {
+					connectSrc += " " + extra
+				}
+			}
+			csp := "default-src 'self'; " +
+				"script-src " + scriptSrc + "; " +
+				"style-src 'self' 'unsafe-inline'; " +
+				"img-src 'self' data: blob:; " +
+				"font-src 'self'; " +
+				"connect-src " + connectSrc + "; " +
+				"worker-src blob:; " +
+				"frame-ancestors 'none';"
+
 			h := w.Header()
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("X-Frame-Options", "DENY")

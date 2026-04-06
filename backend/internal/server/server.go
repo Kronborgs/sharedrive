@@ -122,7 +122,13 @@ func (s *Server) buildRouter() *chi.Mux {
 	}))
 	r.Use(mw.RequestID)
 	r.Use(mw.RealIP)
-	r.Use(mw.SecurityHeaders(mw.InlineScriptHashes(embed.DistFS)))
+	r.Use(mw.SecurityHeaders(mw.InlineScriptHashes(embed.DistFS), func() string {
+		var v string
+		_ = s.db.QueryRow(context.Background(),
+			`SELECT value FROM system_settings WHERE key = 'direct_upload_url'`,
+		).Scan(&v)
+		return v
+	}))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   s.cfg.CORSOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},

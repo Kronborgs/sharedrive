@@ -301,8 +301,12 @@ func (h *Handler) Breadcrumbs(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())
 
+	// Enforce max upload size before reading body
+	maxBytes := h.svc.GetEffectiveMaxUpload(r.Context(), actor.ID.String(), actor.Role, r.FormValue("folder_id"))
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes+1024) // +1 KB for form overhead
+
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid multipart form")
+		httputil.RespondError(w, http.StatusRequestEntityTooLarge, "file exceeds the maximum upload size for this account")
 		return
 	}
 

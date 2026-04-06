@@ -844,8 +844,9 @@ function formatQuotaForInput(bytes: number): string {
 }
 
 function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () => void; onSaved: () => void }) {
-  const [quotaInput, setQuotaInput]   = useState(() => formatQuotaForInput(user.quota_bytes))
-  const [trashDays, setTrashDays]     = useState<string>(user.trash_retention_days != null ? String(user.trash_retention_days) : '')
+  const [quotaInput, setQuotaInput]     = useState(() => formatQuotaForInput(user.quota_bytes))
+  const [uploadInput, setUploadInput]   = useState(() => user.max_upload_bytes != null ? formatQuotaForInput(user.max_upload_bytes) : '')
+  const [trashDays, setTrashDays]       = useState<string>(user.trash_retention_days != null ? String(user.trash_retention_days) : '')
 
   const { data: stats } = useQuery({
     queryKey: ['admin', 'stats'],
@@ -861,9 +862,14 @@ function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () =>
   const overLimit    = maxQuotaBytes !== null && isValid && parsedBytes > maxQuotaBytes
   const quotaBytes   = isValid ? parsedBytes : user.quota_bytes
 
+  const parsedUpload  = uploadInput.trim() === '' ? null : parseQuotaInput(uploadInput)
+  const uploadIsValid = uploadInput.trim() === '' || (parsedUpload !== null && parsedUpload > 0)
+  const uploadBytes   = parsedUpload
+
   const save = useMutation({
     mutationFn: () => api.patch(`/api/v1/admin/users/${user.id}`, {
       quota_bytes: quotaBytes,
+      max_upload_bytes: uploadBytes,
       trash_retention_days: trashDays !== '' ? parseInt(trashDays, 10) : null,
     }),
     onSuccess: () => { onSaved(); onClose() },
@@ -911,6 +917,31 @@ function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () =>
             </div>
           </Field>
 
+          <Field label="Max file upload size">
+            <input
+              type="text"
+              value={uploadInput}
+              onChange={e => setUploadInput(e.target.value)}
+              placeholder="e.g. 256 MB, 1 GB (empty = system default)"
+              className={`w-full px-3 py-2 rounded-lg border text-sm text-zinc-900 dark:text-slate-100 bg-white dark:bg-[#0f1117] ${
+                !uploadIsValid
+                  ? 'border-red-400 dark:border-red-500'
+                  : 'border-zinc-300 dark:border-[#2d3148]'
+              }`}
+            />
+            <div className="mt-1 space-y-0.5">
+              {uploadIsValid && parsedUpload !== null && (
+                <p className="text-xs text-muted">{formatQuotaForInput(parsedUpload)} ({parsedUpload.toLocaleString()} bytes)</p>
+              )}
+              {!uploadIsValid && uploadInput.trim() !== '' && (
+                <p className="text-xs text-red-500">Invalid format — use e.g. "256 MB" or "1 GB"</p>
+              )}
+              {uploadIsValid && uploadInput.trim() === '' && (
+                <p className="text-xs text-muted">Will use system default max upload size</p>
+              )}
+            </div>
+          </Field>
+
           <Field label="Trash retention (days)">
             <input
               type="number"
@@ -929,7 +960,7 @@ function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () =>
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148]">Cancel</button>
           <button
             onClick={() => save.mutate()}
-            disabled={save.isPending || !isValid || overLimit}
+            disabled={save.isPending || !isValid || overLimit || !uploadIsValid}
             className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
           >
             {save.isPending ? 'Saving…' : 'Save'}

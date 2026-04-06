@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -313,6 +314,46 @@ func (s *Service) Upload(ctx context.Context, ownerID, name, mimeType, folderIDS
 // CheckQuota returns an error when the user has insufficient quota for addBytes.
 func (s *Service) CheckQuota(ctx context.Context, userID string, addBytes int64) error {
 	return s.quota.Check(ctx, userID, addBytes)
+}
+
+const defaultMaxUploadBytes = 256 * 1024 * 1024 // 256 MB
+
+// GetEffectiveMaxUpload returns the maximum file size (bytes) allowed for this upload.
+// For guest users with a folder_id, the folder owner's limit is used instead.
+// Falls back to the system_settings value, then 256 MB.
+func (s *Service) GetEffectiveMaxUpload(ctx context.Context, userID, role, folderID string) int64 {
+	lookupID := userID
+	if role == "guest" && folderID != "" {
+		// Find folder owner
+		var ownerID string
+		if err := s.db.QueryRow(ctx,
+			`SELECT owner_id::text FROM files WHERE id = $1::uuid AND is_folder = true AND deleted_at IS NULL`,
+			folderID,
+		).Scan(&ownerID); err == nil && ownerID != "" {
+			lookupID = ownerID
+		}
+	}
+
+	var maxBytes *int64
+	_ = s.db.QueryRow(ctx,
+		`SELECT max_upload_bytes FROM users WHERE id = $1::uuid`,
+		lookupID,
+	).Scan(&maxBytes)
+
+	if maxBytes != nil && *maxBytes > 0 {
+		return *maxBytes
+	}
+
+	// Fall back to system_settings
+	var sysVal string
+	if err := s.db.QueryRow(ctx,
+		`SELECT value FROM system_settings WHERE key = 'max_upload_bytes'`,
+	).Scan(&sysVal); err == nil && sysVal != "" {
+		if n, err := strconv.ParseInt(sysVal, 10, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultMaxUploadBytes
 }
 
 // FinalizeTusUpload moves a completed tus temp file into permanent storage,

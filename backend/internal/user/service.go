@@ -11,7 +11,7 @@ import (
 func FindByID(ctx context.Context, db *pgxpool.Pool, id string) (*User, error) {
 	const q = `
 		SELECT id, email, display_name, password_hash, role, is_active, must_change_password,
-		       quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day,
+		       quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day, max_upload_bytes,
 		       webdav_enabled, trash_retention_days, invited_by, last_login_at,
 		       created_at, updated_at
 		FROM users
@@ -21,7 +21,7 @@ func FindByID(ctx context.Context, db *pgxpool.Pool, id string) (*User, error) {
 	err := db.QueryRow(ctx, q, id).Scan(
 		&u.ID, &u.Email, &u.DisplayName, &u.PasswordHash,
 		&u.Role, &u.IsActive, &u.MustChangePassword,
-		&u.QuotaBytes, &u.QuotaUsedBytes, &u.BandwidthLimitBytesPerDay,
+		&u.QuotaBytes, &u.QuotaUsedBytes, &u.BandwidthLimitBytesPerDay, &u.MaxUploadBytes,
 		&u.WebDAVEnabled, &u.TrashRetentionDays, &u.InvitedBy, &u.LastLoginAt,
 		&u.CreatedAt, &u.UpdatedAt,
 	)
@@ -35,7 +35,7 @@ func FindByID(ctx context.Context, db *pgxpool.Pool, id string) (*User, error) {
 func FindByEmail(ctx context.Context, db *pgxpool.Pool, email string) (*User, error) {
 	const q = `
 		SELECT id, email, display_name, password_hash, role, is_active, must_change_password,
-		       quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day,
+		       quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day, max_upload_bytes,
 		       webdav_enabled, trash_retention_days, invited_by, last_login_at,
 		       created_at, updated_at
 		FROM users
@@ -45,7 +45,7 @@ func FindByEmail(ctx context.Context, db *pgxpool.Pool, email string) (*User, er
 	err := db.QueryRow(ctx, q, email).Scan(
 		&u.ID, &u.Email, &u.DisplayName, &u.PasswordHash,
 		&u.Role, &u.IsActive, &u.MustChangePassword,
-		&u.QuotaBytes, &u.QuotaUsedBytes, &u.BandwidthLimitBytesPerDay,
+		&u.QuotaBytes, &u.QuotaUsedBytes, &u.BandwidthLimitBytesPerDay, &u.MaxUploadBytes,
 		&u.WebDAVEnabled, &u.TrashRetentionDays, &u.InvitedBy, &u.LastLoginAt,
 		&u.CreatedAt, &u.UpdatedAt,
 	)
@@ -72,7 +72,7 @@ func List(ctx context.Context, db *pgxpool.Pool, limit, offset int, activeOnly b
 	var q string
 	var args []interface{}
 	const cols = `id, email, display_name, password_hash, role, is_active, must_change_password,
-	              quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day,
+	              quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day, max_upload_bytes,
 	              webdav_enabled, trash_retention_days, invited_by, last_login_at, created_at, updated_at`
 	if activeOnly {
 		q = `SELECT ` + cols + ` FROM users WHERE is_active = true ORDER BY created_at DESC LIMIT $1 OFFSET $2`
@@ -93,7 +93,7 @@ func List(ctx context.Context, db *pgxpool.Pool, limit, offset int, activeOnly b
 		if err := rows.Scan(
 			&u.ID, &u.Email, &u.DisplayName, &u.PasswordHash,
 			&u.Role, &u.IsActive, &u.MustChangePassword,
-			&u.QuotaBytes, &u.QuotaUsedBytes, &u.BandwidthLimitBytesPerDay,
+			&u.QuotaBytes, &u.QuotaUsedBytes, &u.BandwidthLimitBytesPerDay, &u.MaxUploadBytes,
 			&u.WebDAVEnabled, &u.TrashRetentionDays, &u.InvitedBy, &u.LastLoginAt,
 			&u.CreatedAt, &u.UpdatedAt,
 		); err != nil {

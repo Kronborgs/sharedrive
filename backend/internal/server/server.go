@@ -427,28 +427,39 @@ func (s *Server) tusHandler() http.Handler {
 		BasePath:                "/upload/",
 		StoreComposer:           composer,
 		RespectForwardedHeaders: true,
-		PreUploadCreate: func(ctx context.Context, event tusd.HookEvent) (tusd.HTTPResponse, tusd.FileInfoChanges, error) {
+		PreUploadCreateCallback: func(hook tusd.HookEvent) (tusd.HTTPResponse, tusd.FileInfoChanges, error) {
+			ctx := hook.Context
 			actor := mw.UserFromContext(ctx)
 			if actor == nil {
 				return tusd.HTTPResponse{StatusCode: http.StatusUnauthorized}, tusd.FileInfoChanges{}, nil
 			}
-			if event.Upload.Size > 0 {
-				if err := s.fileSvc.CheckQuota(ctx, actor.ID.String(), event.Upload.Size); err != nil {
+			if hook.Upload.Size > 0 {
+				// Enforce per-user (or folder-owner for guests) max upload size
+				maxBytes := s.fileSvc.GetEffectiveMaxUpload(ctx, actor.ID.String(), actor.Role, hook.Upload.MetaData["folder_id"])
+				if hook.Upload.Size > maxBytes {
+					return tusd.HTTPResponse{
+						StatusCode: http.StatusRequestEntityTooLarge,
+						Body:       `{"error":"file exceeds the maximum upload size for this account"}`,
+						Header:     tusd.HTTPHeader{"Content-Type": "application/json"},
+					}, tusd.FileInfoChanges{}, nil
+				}
+				if err := s.fileSvc.CheckQuota(ctx, actor.ID.String(), hook.Upload.Size); err != nil {
 					return tusd.HTTPResponse{
 						StatusCode: http.StatusUnprocessableEntity,
 						Body:       `{"error":"` + err.Error() + `"}`,
-						Headers:    map[string]string{"Content-Type": "application/json"},
+						Header:     tusd.HTTPHeader{"Content-Type": "application/json"},
 					}, tusd.FileInfoChanges{}, nil
 				}
 			}
 			return tusd.HTTPResponse{}, tusd.FileInfoChanges{}, nil
 		},
-		PostFinish: func(ctx context.Context, event tusd.HookEvent) (tusd.HTTPResponse, error) {
+		PreFinishResponseCallback: func(hook tusd.HookEvent) (tusd.HTTPResponse, error) {
+			ctx := hook.Context
 			actor := mw.UserFromContext(ctx)
 			if actor == nil {
 				return tusd.HTTPResponse{StatusCode: http.StatusUnauthorized}, nil
 			}
-			meta := event.Upload.MetaData
+			meta := hook.Upload.MetaData
 			name := meta["filename"]
 			if name == "" {
 				name = "upload"
@@ -458,11 +469,11 @@ func (s *Server) tusHandler() http.Handler {
 				mimeType = "application/octet-stream"
 			}
 			folderID := meta["folder_id"]
-			tempPath := filepath.Join(s.cfg.TusUploadDir, event.Upload.ID)
+			tempPath := filepath.Join(s.cfg.TusUploadDir, hook.Upload.ID)
 
-			f, err := s.fileSvc.FinalizeTusUpload(ctx, tempPath, actor.ID.String(), name, mimeType, folderID, event.Upload.Size)
+			f, err := s.fileSvc.FinalizeTusUpload(ctx, tempPath, actor.ID.String(), name, mimeType, folderID, hook.Upload.Size)
 			if err != nil {
-				log.Error().Err(err).Str("upload_id", event.Upload.ID).Msg("tusHandler: finalize")
+				log.Error().Err(err).Str("upload_id", hook.Upload.ID).Msg("tusHandler: finalize")
 				code := http.StatusInternalServerError
 				if strings.HasPrefix(err.Error(), "quota:") {
 					code = http.StatusUnprocessableEntity
@@ -470,7 +481,7 @@ func (s *Server) tusHandler() http.Handler {
 				return tusd.HTTPResponse{
 					StatusCode: code,
 					Body:       `{"error":"` + err.Error() + `"}`,
-					Headers:    map[string]string{"Content-Type": "application/json"},
+					Header:     tusd.HTTPHeader{"Content-Type": "application/json"},
 				}, err
 			}
 			s.auditSvc.Log(ctx, audit.Event{

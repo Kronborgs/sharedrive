@@ -237,8 +237,10 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
           if (det.originalResponse != null) {
             try {
               const body = det.originalResponse.getBody()
-              const data = JSON.parse(body) as { error?: string }
-              if (data.error) msg = data.error
+              const data = JSON.parse(body) as { error?: string | { message?: string } }
+              if (data.error) {
+                msg = typeof data.error === 'string' ? data.error : (data.error.message ?? 'Upload failed')
+              }
             } catch { /* ignore */ }
           }
           update(entry.id, { status: 'error', error: msg })

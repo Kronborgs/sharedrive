@@ -114,7 +114,7 @@ function SharedPage() {
                 {share.expires_at && ` · Expires ${formatDate(share.expires_at)}`}
               </p>
             </div>
-            {share.permissions.can_download && !item.is_folder && (
+            {share.can_view && !item.is_folder && (
               <a
                 href={downloadUrl}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
@@ -141,7 +141,7 @@ function SharedPage() {
                     <td className="px-4 py-2.5 text-right text-xs text-muted tabular-nums">
                       {f.is_folder ? '—' : formatBytes(f.size_bytes)}
                     </td>
-                    {share.permissions.can_download && !f.is_folder && (
+                    {share.can_view && !f.is_folder && (
                       <td className="px-4 py-2.5 text-right">
                         <a
                           href={`/api/v1/public/shared/${token}/download?file_id=${f.id}`}

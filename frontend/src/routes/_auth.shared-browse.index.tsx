@@ -64,6 +64,7 @@ function SharedBrowsePage() {
     queryKey: ['shared-browse', folderId],
     queryFn: ({ signal }) =>
       api.get<ChildrenResponse>(`/api/v1/files/shared/${folderId}/children`, signal),
+    staleTime: 0,
   })
 
   const rename = useMutation({

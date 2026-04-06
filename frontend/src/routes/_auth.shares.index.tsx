@@ -31,6 +31,7 @@ function SharedWithMePage() {
   const { data, isLoading } = useQuery({
     queryKey: ['files', 'shared-with-me'],
     queryFn: ({ signal }) => api.get<SharedItem[]>('/api/v1/files/shared-with-me', signal),
+    staleTime: 0,
   })
 
   // Convert to FileItem shape that FileList understands

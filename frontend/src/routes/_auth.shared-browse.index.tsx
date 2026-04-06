@@ -58,7 +58,7 @@ function SharedBrowsePage() {
 
   const rootId = root ?? folderId
 
-  const { uploads, startUpload, dismiss } = useUploader(folderId, ['shared-browse', folderId])
+  const { uploads, startUpload, dismiss, directUpload } = useUploader(folderId, ['shared-browse', folderId])
 
   const { data, isLoading } = useQuery<ChildrenResponse>({
     queryKey: ['shared-browse', folderId],
@@ -201,7 +201,7 @@ function SharedBrowsePage() {
         />
       )}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
-      <UploadProgress uploads={uploads} onDismiss={dismiss} />
+      <UploadProgress uploads={uploads} onDismiss={dismiss} directUpload={directUpload} />
 
       {renameId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

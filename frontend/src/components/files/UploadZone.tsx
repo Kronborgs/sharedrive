@@ -58,6 +58,7 @@ export interface UploadEntry {
 interface UploadProgressProps {
   uploads: UploadEntry[]
   onDismiss: (id: string) => void
+  directUpload?: boolean
 }
 
 function formatSpeed(bps: number): string {
@@ -80,7 +81,7 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`
 }
 
-export function UploadProgress({ uploads, onDismiss }: UploadProgressProps) {
+export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgressProps) {
   const active = uploads.filter(u => u.status !== 'done')
 
   if (active.length === 0) return null
@@ -91,6 +92,11 @@ export function UploadProgress({ uploads, onDismiss }: UploadProgressProps) {
         <span className="text-xs font-medium text-zinc-700 dark:text-slate-300">
           Uploading {active.length} file{active.length > 1 ? 's' : ''}
         </span>
+        {directUpload && (
+          <span className="text-[10px] font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-1.5 py-0.5 rounded">
+            ⚡ Direkte
+          </span>
+        )}
       </div>
       <ul className="max-h-56 overflow-y-auto divide-y divide-zinc-100 dark:divide-[#2d3148]">
         {active.map(u => (
@@ -139,10 +145,16 @@ export function UploadProgress({ uploads, onDismiss }: UploadProgressProps) {
         ))}
       </ul>
       <div className="px-3 py-2 border-t border-zinc-100 dark:border-[#2d3148]">
-        <p className="text-[10px] text-zinc-400 dark:text-slate-500 leading-snug">
-          Filer uploades i dele (50 MB ad gangen). Hastighed varierer — det er normalt at
-          progressbaren &quot;staller&quot; kortvarigt mellem dele.
-        </p>
+        {directUpload ? (
+          <p className="text-[10px] text-green-600 dark:text-green-400 leading-snug">
+            Uploader direkte til serveren — bypasser Cloudflare for maksimal hastighed.
+          </p>
+        ) : (
+          <p className="text-[10px] text-zinc-400 dark:text-slate-500 leading-snug">
+            Filer uploades i dele (50 MB ad gangen). Hastighed varierer — det er normalt at
+            progressbaren &quot;staller&quot; kortvarigt mellem dele.
+          </p>
+        )}
       </div>
     </div>
   )
@@ -151,8 +163,9 @@ export function UploadProgress({ uploads, onDismiss }: UploadProgressProps) {
 // --- Upload hook ---
 
 import { useCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as tus from 'tus-js-client'
+import { api } from '@/lib/api'
 
 // Chunk size: 50 MB — safely below Cloudflare's 100 MB per-request limit.
 const TUS_CHUNK_SIZE = 50 * 1024 * 1024
@@ -169,6 +182,13 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   // Per-upload rolling samples for speed calculation
   const speedSamples = useRef<Map<string, SpeedSample[]>>(new Map())
 
+  // Fetch direct_upload_url from system settings (cached, no auth needed as admin)
+  const { data: settings } = useQuery({
+    queryKey: ['admin', 'settings'],
+    queryFn: ({ signal }) => api.get<{ direct_upload_url?: string }>('/api/v1/admin/settings', signal),
+    staleTime: 5 * 60 * 1000, // 5 min
+  })
+
   const update = (id: string, patch: Partial<UploadEntry>) => {
     setUploads(prev => {
       const next = prev.map(u => u.id === id ? { ...u, ...patch } : u)
@@ -178,6 +198,10 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   }
 
   const startUpload = useCallback((files: File[]) => {
+    // Determine TUS endpoint: prefer direct_upload_url (bypasses Cloudflare) if set
+    const directBase = settings?.direct_upload_url?.trim()
+    const tusEndpoint = directBase ? `${directBase}/upload/` : '/upload/'
+
     const entries: UploadEntry[] = files.map(file => ({
       id: crypto.randomUUID(),
       file,
@@ -195,7 +219,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       update(entry.id, { status: 'uploading' })
 
       const upload = new tus.Upload(entry.file, {
-        endpoint: '/upload/',
+        endpoint: tusEndpoint,
         chunkSize: TUS_CHUNK_SIZE,
         retryDelays: [0, 1000, 3000, 5000, 10000],
         metadata: {
@@ -257,7 +281,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       })
       upload.start()
     }
-  }, [folderId, qc])
+  }, [folderId, qc, settings])
 
   const dismiss = useCallback((id: string) => {
     setUploads(prev => {
@@ -267,5 +291,5 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     })
   }, [])
 
-  return { uploads, startUpload, dismiss }
+  return { uploads, startUpload, dismiss, directUpload: !!(settings?.direct_upload_url?.trim()) }
 }

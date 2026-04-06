@@ -46,7 +46,7 @@ function FilesPage() {
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
 
-  const { uploads, startUpload, dismiss } = useUploader(folderId)
+  const { uploads, startUpload, dismiss, directUpload } = useUploader(folderId)
 
   const { data: breadcrumbs } = useQuery({
     queryKey: ['breadcrumbs', folderId],
@@ -275,7 +275,7 @@ function FilesPage() {
 
       {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
-      <UploadProgress uploads={uploads} onDismiss={dismiss} />
+      <UploadProgress uploads={uploads} onDismiss={dismiss} directUpload={directUpload} />
 
       {renameId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

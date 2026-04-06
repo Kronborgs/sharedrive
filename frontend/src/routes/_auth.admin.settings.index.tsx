@@ -17,6 +17,7 @@ interface SystemSettings {
   require_invite: boolean
   default_quota_bytes: number
   max_upload_bytes: number
+  direct_upload_url: string
   smtp_host: string
   smtp_port: number
   smtp_username: string
@@ -30,6 +31,7 @@ const settingsSchema = z.object({
   require_invite: z.boolean(),
   default_quota_bytes: z.coerce.number().min(0),
   max_upload_bytes: z.coerce.number().min(0),
+  direct_upload_url: z.string().url().or(z.literal('')),
   smtp_host: z.string(),
   smtp_port: z.coerce.number().min(1).max(65535),
   smtp_username: z.string(),
@@ -55,7 +57,7 @@ function SettingsPage() {
   const { register, handleSubmit, formState: { errors, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(settingsSchema),
     values: data
-      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes) }
+      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '' }
       : undefined,
   })
 
@@ -69,6 +71,7 @@ function SettingsPage() {
         ...values,
         default_quota_bytes: toGB(values.default_quota_bytes),
         max_upload_bytes: toMB(values.max_upload_bytes),
+        direct_upload_url: values.direct_upload_url,
       }
       if (smtpPassword) body.smtp_password = smtpPassword
       return api.patch('/api/v1/admin/settings', body)
@@ -120,6 +123,19 @@ function SettingsPage() {
 
         <Field label="Max upload size (MB)" error={errors.max_upload_bytes?.message}>
           <input type="number" step="1" min="0" {...register('max_upload_bytes')} className={inputClass} />
+        </Field>
+
+        <Field label="Direct upload URL" error={errors.direct_upload_url?.message}>
+          <input
+            type="url"
+            {...register('direct_upload_url')}
+            placeholder="https://upload.sharedrive.kronborgs.dk"
+            className={inputClass}
+          />
+          <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">
+            Valgfri URL der bypasser Cloudflare for hurtigere uploads (f.eks. direkte WAN-IP eller subdomain med grå sky i Cloudflare DNS).
+            Lad feltet stå tomt for at bruge den normale upload-rute.
+          </p>
         </Field>
       </section>
 

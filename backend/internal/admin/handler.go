@@ -35,6 +35,7 @@ type settingsResponse struct {
 	RequireInvite      bool   `json:"require_invite"`
 	DefaultQuotaBytes  int64  `json:"default_quota_bytes"`
 	MaxUploadBytes     int64  `json:"max_upload_bytes"`
+	DirectUploadURL    string `json:"direct_upload_url"`
 	SMTPHost           string `json:"smtp_host"`
 	SMTPPort           int    `json:"smtp_port"`
 	SMTPUsername       string `json:"smtp_username"`
@@ -79,6 +80,7 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		RequireInvite:      kv["require_invite"] == "true",
 		DefaultQuotaBytes:  defaultQuota,
 		MaxUploadBytes:     maxUpload,
+		DirectUploadURL:    kv["direct_upload_url"],
 		SMTPHost:           kv["smtp_host"],
 		SMTPPort:           smtpPort,
 		SMTPUsername:       kv["smtp_user"],
@@ -93,6 +95,7 @@ type updateSettingsRequest struct {
 	RequireInvite      *bool   `json:"require_invite"`
 	DefaultQuotaBytes  *int64  `json:"default_quota_bytes"`
 	MaxUploadBytes     *int64  `json:"max_upload_bytes"`
+	DirectUploadURL    *string `json:"direct_upload_url"`
 	SMTPHost           *string `json:"smtp_host"`
 	SMTPPort           *int    `json:"smtp_port"`
 	SMTPUsername       *string `json:"smtp_username"`
@@ -142,6 +145,9 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.MaxUploadBytes != nil {
 		upsert("max_upload_bytes", strconv.FormatInt(*req.MaxUploadBytes, 10))
+	}
+	if req.DirectUploadURL != nil {
+		upsert("direct_upload_url", *req.DirectUploadURL)
 	}
 	if req.SMTPHost != nil {
 		upsert("smtp_host", *req.SMTPHost)

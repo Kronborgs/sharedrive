@@ -259,22 +259,24 @@ func (fs *userFS) openForWrite(ctx context.Context, name string) (gowebdav.File,
 
 	// Check if the file already exists (overwrite vs create).
 	var existingID string
+	var existingSize int64
 	_ = fs.db.QueryRow(ctx, `
-		SELECT id::text
+		SELECT id::text, COALESCE(size_bytes, 0)
 		FROM files
 		WHERE parent_id = $1::uuid AND name = $2 AND is_folder = false AND deleted_at IS NULL
-	`, parentID, base).Scan(&existingID)
+	`, parentID, base).Scan(&existingID, &existingSize)
 
 	return &davWriteFile{
-		tmp:        tmp,
-		hash:       sha256.New(),
-		fi:         &davFileInfo{name: base, modTime: time.Now()},
-		db:         fs.db,
-		filesRoot:  fs.filesRoot,
-		userID:     fs.userID,
-		parentID:   parentID,
-		base:       base,
-		existingID: existingID,
+		tmp:          tmp,
+		hash:         sha256.New(),
+		fi:           &davFileInfo{name: base, modTime: time.Now()},
+		db:           fs.db,
+		filesRoot:    fs.filesRoot,
+		userID:       fs.userID,
+		parentID:     parentID,
+		base:         base,
+		existingID:   existingID,
+		existingSize: existingSize,
 	}, nil
 }
 
@@ -524,18 +526,19 @@ func (f *davFile) Readdir(int) ([]os.FileInfo, error)          { return nil, os.
 // final path (no second copy) and upserts the DB record. This keeps the commit
 // phase to milliseconds so Windows WebDAV does not time out on large files.
 type davWriteFile struct {
-	tmp       *os.File
-	hash      hash.Hash
-	size      int64
-	fi        os.FileInfo
+	tmp  *os.File
+	hash hash.Hash
+	size int64
+	fi   *davFileInfo // pointer so Write() can update Size() for Stat() accuracy
 
 	// set by openForWrite
-	db         *pgxpool.Pool
-	filesRoot  string
-	userID     string
-	parentID   string
-	base       string
-	existingID string
+	db           *pgxpool.Pool
+	filesRoot    string
+	userID       string
+	parentID     string
+	base         string
+	existingID   string
+	existingSize int64
 }
 
 func (f *davWriteFile) Write(p []byte) (int, error) {
@@ -543,6 +546,7 @@ func (f *davWriteFile) Write(p []byte) (int, error) {
 	if n > 0 {
 		_, _ = f.hash.Write(p[:n])
 		f.size += int64(n)
+		f.fi.size = f.size // keep Stat() accurate; webdav library reads it after io.Copy
 	}
 	return n, err
 }
@@ -557,6 +561,20 @@ func (f *davWriteFile) Close() error {
 	if err := f.tmp.Close(); err != nil {
 		_ = os.Remove(f.tmp.Name())
 		return err
+	}
+
+	// If nothing was written, remove the temp file and bail — avoid creating
+	// or overwriting a file with a 0-byte body (Windows sends a probe PUT
+	// on first access; the subsequent PUT carries the actual content).
+	if f.size == 0 {
+		_ = os.Remove(f.tmp.Name())
+		if f.existingID == "" {
+			// New file, nothing committed — not an error from the client's
+			// perspective (returns 201/204 normally).
+			return nil
+		}
+		// Overwrite with 0 bytes — refuse to corrupt the existing file.
+		return nil
 	}
 
 	fileID := f.existingID
@@ -597,5 +615,20 @@ func (f *davWriteFile) Close() error {
 		log.Error().Err(dbErr).Str("file", f.base).Msg("webdav: commit db")
 		return fmt.Errorf("webdav commit db: %w", dbErr)
 	}
+
+	// Update quota_used_bytes: delta = new size − old size (0 for new files).
+	quotaDelta := f.size - f.existingSize
+	if quotaDelta != 0 {
+		_, _ = f.db.Exec(ctx,
+			`UPDATE users SET quota_used_bytes = GREATEST(0, quota_used_bytes + $1), updated_at = now() WHERE id = $2::uuid`,
+			quotaDelta, f.userID,
+		)
+	}
+
+	log.Debug().
+		Str("file", f.base).
+		Int64("bytes", f.size).
+		Str("sha256", shaHex[:8]+"...").
+		Msg("webdav: committed")
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/xml"
 	"fmt"
 	"hash"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -208,7 +210,22 @@ func (fs *userFS) OpenFile(ctx context.Context, name string, flag int, _ os.File
 		if err != nil {
 			return nil, err
 		}
-		return &davDir{fi: rec.info(), children: children}, nil
+		dir := &davDir{fi: rec.info(), children: children}
+		// For the root directory, fetch quota so Windows Explorer can display
+		// the used/available space bar on the network drive icon.
+		if rec.id == "" {
+			var qTotal, qUsed int64
+			_ = fs.db.QueryRow(ctx,
+				`SELECT quota_bytes, quota_used_bytes FROM users WHERE id = $1::uuid`,
+				fs.userID,
+			).Scan(&qTotal, &qUsed)
+			if qTotal > 0 {
+				dir.quotaTotal = qTotal
+				dir.quotaUsed = qUsed
+				dir.hasQuota = true
+			}
+		}
+		return dir, nil
 	}
 
 	f, err := os.Open(rec.storagePath)
@@ -419,10 +436,17 @@ func (fi *davFileInfo) Mode() os.FileMode {
 
 // ── webdav.File: directory ────────────────────────────────────────────────────
 
+// davDir implements webdav.File for directory listings.
+// When hasQuota is true (root only), it also implements webdav.DeadPropsHolder
+// so that PROPFIND returns DAV:quota-available-bytes / DAV:quota-used-bytes,
+// which makes Windows Explorer show the used/free space bar on the drive icon.
 type davDir struct {
-	fi       os.FileInfo
-	children []*dbRec
-	pos      int
+	fi         os.FileInfo
+	children   []*dbRec
+	pos        int
+	quotaTotal int64
+	quotaUsed  int64
+	hasQuota   bool
 }
 
 func (d *davDir) Close() error                               { return nil }
@@ -430,6 +454,32 @@ func (d *davDir) Read([]byte) (int, error)                   { return 0, os.ErrI
 func (d *davDir) Seek(int64, int) (int64, error)             { return 0, os.ErrInvalid }
 func (d *davDir) Write([]byte) (int, error)                  { return 0, os.ErrPermission }
 func (d *davDir) Stat() (os.FileInfo, error)                 { return d.fi, nil }
+
+// DeadProps implements webdav.DeadPropsHolder — reports quota to WebDAV clients.
+func (d *davDir) DeadProps() (map[xml.Name]gowebdav.Property, error) {
+	if !d.hasQuota {
+		return nil, nil
+	}
+	avail := d.quotaTotal - d.quotaUsed
+	if avail < 0 {
+		avail = 0
+	}
+	return map[xml.Name]gowebdav.Property{
+		{Space: "DAV:", Local: "quota-available-bytes"}: {
+			XMLName:  xml.Name{Space: "DAV:", Local: "quota-available-bytes"},
+			InnerXML: []byte(strconv.FormatInt(avail, 10)),
+		},
+		{Space: "DAV:", Local: "quota-used-bytes"}: {
+			XMLName:  xml.Name{Space: "DAV:", Local: "quota-used-bytes"},
+			InnerXML: []byte(strconv.FormatInt(d.quotaUsed, 10)),
+		},
+	}, nil
+}
+
+// Patch implements webdav.DeadPropsHolder — quota is read-only.
+func (d *davDir) Patch([]gowebdav.Proppatch) ([]gowebdav.Propstat, error) {
+	return nil, os.ErrPermission
+}
 func (d *davDir) Readdir(count int) ([]os.FileInfo, error) {
 	if count <= 0 {
 		out := make([]os.FileInfo, len(d.children))

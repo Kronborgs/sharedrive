@@ -271,8 +271,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		})
 	})
 
-	// ── WebDAV ──────────────────────────────────────────────────────────────
-	r.Mount("/dav", s.webdavHandler())
+	// ── WebDAV (email + app-password, Basic Auth) ──────────────────────────
+	davSrv := webdav.NewAuthDAVServer(s.db, s.cfg.FilesRoot)
+	r.Handle("/dav", davSrv)
+	r.Handle("/dav/*", davSrv)
 
 	// ── Tus resumable upload ────────────────────────────────────────────────
 	r.Mount("/upload", s.tusHandler())
@@ -419,11 +421,6 @@ func (s *Server) sessionMiddleware(next http.Handler) http.Handler {
 	// This is no longer called — s.authHandler.SessionMiddleware is used directly.
 	// Kept as dead code guard to avoid naming conflicts if referenced elsewhere.
 	return s.authHandler.SessionMiddleware(next)
-}
-
-func (s *Server) webdavHandler() http.Handler {
-	// TODO: mounted by webdav module
-	return http.NotFoundHandler()
 }
 
 func (s *Server) tusHandler() http.Handler {

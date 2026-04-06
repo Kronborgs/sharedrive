@@ -1,4 +1,4 @@
-﻿package user
+package user
 
 import (
 	"crypto/sha256"
@@ -46,9 +46,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.Respond(w, http.StatusOK, map[string]any{
-		"users": users,
-		"total": total,
-		"page":  page,
+		"items":       users,
+		"total":       total,
+		"cursor_next": nil,
 	})
 }
 

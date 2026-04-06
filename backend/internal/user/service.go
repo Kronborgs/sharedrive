@@ -62,7 +62,7 @@ func List(ctx context.Context, db *pgxpool.Pool, limit, offset int, activeOnly b
 	if activeOnly {
 		countQ = `SELECT count(*) FROM users WHERE is_active = true`
 	} else {
-		countQ = `SELECT count(*) FROM users`
+		countQ = `SELECT count(*) FROM users WHERE role != 'guest'`
 	}
 	var total int
 	if err := db.QueryRow(ctx, countQ, countArgs...).Scan(&total); err != nil {
@@ -77,7 +77,7 @@ func List(ctx context.Context, db *pgxpool.Pool, limit, offset int, activeOnly b
 	if activeOnly {
 		q = `SELECT ` + cols + ` FROM users WHERE is_active = true ORDER BY created_at DESC LIMIT $1 OFFSET $2`
 	} else {
-		q = `SELECT ` + cols + ` FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+		q = `SELECT ` + cols + ` FROM users WHERE role != 'guest' ORDER BY created_at DESC LIMIT $1 OFFSET $2`
 	}
 	args = []interface{}{limit, offset}
 

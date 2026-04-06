@@ -81,10 +81,20 @@ export function WebDAVDialog({ onClose }: Props) {
               Use this URL in Windows (Map Network Drive), macOS Finder (Connect to Server), or any WebDAV client.
               Log in with your <strong>email address</strong> and an <strong>app password</strong> below.
             </p>
-            <p className="text-[11px] text-amber-600 dark:text-amber-400">
-              <strong>Windows tip:</strong> The default WebDAV file size limit is 50 MB. To raise it to 4 GB run this in an Administrator PowerShell, then reconnect:{' '}
-              <code className="font-mono">Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\WebClient\Parameters" -Name FileSizeLimitInBytes -Value 0xFFFFFFFF; net stop webclient; net start webclient</code>
-            </p>
+            <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 space-y-2">
+              <p className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">Windows tip — raise file size limit to 4 GB</p>
+              <p className="text-[11px] text-blue-700 dark:text-blue-400">By default Windows WebDAV only allows files up to 50 MB. Run the command below in an <strong>Administrator PowerShell</strong>, then disconnect and reconnect the network drive.</p>
+              <div className="flex items-start gap-2 rounded border border-blue-200 dark:border-blue-700 bg-white dark:bg-[#0f1117] px-3 py-2">
+                <code className="flex-1 text-[11px] font-mono text-zinc-800 dark:text-slate-200 break-all select-all">{`Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\WebClient\Parameters" -Name FileSizeLimitInBytes -Value 0xFFFFFFFF; net stop webclient; net start webclient`}</code>
+                <button
+                  onClick={() => copy(`Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters" -Name FileSizeLimitInBytes -Value 0xFFFFFFFF; net stop webclient; net start webclient`, 'url')}
+                  className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors mt-0.5"
+                  title="Copy command"
+                >
+                  {copied === 'url' ? <Check size={13} /> : <Copy size={13} />}
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Revealed new password — show once */}

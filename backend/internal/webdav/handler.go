@@ -227,7 +227,14 @@ func (fs *userFS) openForWrite(ctx context.Context, name string) (gowebdav.File,
 		return nil, os.ErrNotExist
 	}
 
-	tmp, err := os.CreateTemp("", "sharedrive-dav-*")
+	// Use filesRoot for the temp buffer so it lands on the same volume as the
+	// final storage path. Writing to /tmp (default) would fail for large files
+	// when the container's tmpfs is small, and would also force a cross-device
+	// copy instead of a fast same-volume rename.
+	if err := os.MkdirAll(fs.filesRoot, 0750); err != nil {
+		return nil, fmt.Errorf("webdav write: mkdir: %w", err)
+	}
+	tmp, err := os.CreateTemp(fs.filesRoot, ".dav-upload-*")
 	if err != nil {
 		return nil, fmt.Errorf("webdav write: temp: %w", err)
 	}

@@ -127,11 +127,23 @@ export function UploadProgress({ uploads, onDismiss }: UploadProgressProps) {
                     {u.eta != null && u.eta > 0 && u.speed != null && u.speed > 0 ? formatEta(u.eta) : ''}
                   </span>
                 </div>
+                {/* Show a note while chunk boundary is being committed (speed drops to 0) */}
+                {u.speed === 0 && u.progress > 0 && u.progress < 100 && (
+                  <p className="text-[10px] text-amber-500 dark:text-amber-400 mt-0.5">
+                    Gemmer chunk… et øjeblik
+                  </p>
+                )}
               </>
             )}
           </li>
         ))}
       </ul>
+      <div className="px-3 py-2 border-t border-zinc-100 dark:border-[#2d3148]">
+        <p className="text-[10px] text-zinc-400 dark:text-slate-500 leading-snug">
+          Filer uploades i dele (50 MB ad gangen). Hastighed varierer — det er normalt at
+          progressbaren &quot;staller&quot; kortvarigt mellem dele.
+        </p>
+      </div>
     </div>
   )
 }

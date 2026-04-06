@@ -81,6 +81,10 @@ export function WebDAVDialog({ onClose }: Props) {
               Use this URL in Windows (Map Network Drive), macOS Finder (Connect to Server), or any WebDAV client.
               Log in with your <strong>email address</strong> and an <strong>app password</strong> below.
             </p>
+            <p className="text-[11px] text-amber-600 dark:text-amber-400">
+              <strong>Windows tip:</strong> The default WebDAV file size limit is 50 MB. To raise it to 4 GB run this in an Administrator PowerShell, then reconnect:{' '}
+              <code className="font-mono">Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\WebClient\Parameters" -Name FileSizeLimitInBytes -Value 0xFFFFFFFF; net stop webclient; net start webclient</code>
+            </p>
           </div>
 
           {/* Revealed new password — show once */}

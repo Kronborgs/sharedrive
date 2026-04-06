@@ -248,9 +248,10 @@ func (h *Handler) TOTPVerify(w http.ResponseWriter, r *http.Request) {
 				Name:     deviceCookieName,
 				Value:    raw,
 				Path:     "/",
+				Domain:   h.cfg.CookieDomain,
 				HttpOnly: true,
 				Secure:   !h.cfg.IsDev(),
-				SameSite: http.SameSiteStrictMode,
+				SameSite: http.SameSiteLaxMode,
 				MaxAge:   int((30 * 24 * time.Hour).Seconds()),
 			})
 		}
@@ -530,9 +531,10 @@ func (h *Handler) createSessionAndCookie(ctx context.Context, w http.ResponseWri
 		Name:     sessionCookieName,
 		Value:    raw,
 		Path:     "/",
+		Domain:   h.cfg.CookieDomain,
 		HttpOnly: true,
 		Secure:   !h.cfg.IsDev(),
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(h.cfg.SessionIdleTimeout.Seconds()),
 	})
 }

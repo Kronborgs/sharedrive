@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -79,6 +80,7 @@ type Config struct {
 	// Auth handler convenience fields (derived from RL_* and SESSION_* above)
 	SessionIdleTimeout    time.Duration
 	BaseURL               string
+	CookieDomain          string // e.g. ".kronborgs.dk" — covers all subdomains
 	RateLimitLoginAttempts int
 	RateLimitLoginWindow  time.Duration
 }
@@ -197,6 +199,15 @@ func Load() (*Config, error) {
 	// Derived convenience fields
 	cfg.SessionIdleTimeout = cfg.SessionDuration
 	cfg.BaseURL = cfg.AppBaseURL
+	// Derive cookie domain: strip scheme and subdomain to get .parent.tld
+	// e.g. https://sharedrive.kronborgs.dk → .kronborgs.dk
+	if u, err := url.Parse(cfg.AppBaseURL); err == nil {
+		host := u.Hostname()
+		parts := strings.Split(host, ".")
+		if len(parts) >= 2 {
+			cfg.CookieDomain = "." + strings.Join(parts[len(parts)-2:], ".")
+		}
+	}
 	windowSec := v.GetInt("RL_WINDOW_SECONDS")
 	if windowSec == 0 {
 		windowSec = 60

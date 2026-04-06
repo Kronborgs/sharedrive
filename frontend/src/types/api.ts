@@ -66,6 +66,9 @@ export interface LoginRequest {
 export interface LoginResponse {
   status: 'ok' | 'totp_required'
   pending_token?: string
+  require_totp?: boolean
+  require_password_change?: boolean
+  reset_token?: string
 }
 
 export interface TOTPVerifyRequest {

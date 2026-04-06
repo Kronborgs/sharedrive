@@ -14,6 +14,7 @@ type User struct {
 	PasswordHash              string     `json:"-"` // never serialised
 	Role                      string     `json:"role"`
 	IsActive                  bool       `json:"is_active"`
+	MustChangePassword        bool       `json:"must_change_password"`
 	QuotaBytes                int64      `json:"quota_bytes"`
 	QuotaUsedBytes            int64      `json:"quota_used_bytes"`
 	BandwidthLimitBytesPerDay *int64     `json:"bandwidth_limit_bytes_per_day,omitempty"`

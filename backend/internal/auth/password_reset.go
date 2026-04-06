@@ -28,6 +28,32 @@ func NewPasswordResetService(db *pgxpool.Pool, mailer Mailer) *PasswordResetServ
 	return &PasswordResetService{db: db, mailer: mailer}
 }
 
+// GenerateResetToken creates a password-reset token for the given user without
+// sending any email. Used by the login flow when must_change_password is set.
+func (p *PasswordResetService) GenerateResetToken(ctx context.Context, userID string) (string, error) {
+	// Invalidate any existing unused tokens.
+	_, _ = p.db.Exec(ctx,
+		`UPDATE password_reset_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL`,
+		userID,
+	)
+
+	b := make([]byte, tokenBytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("GenerateResetToken: %w", err)
+	}
+	raw := hex.EncodeToString(b)
+	hash := hashToken(raw)
+
+	_, err := p.db.Exec(ctx,
+		`INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval '1 hour')`,
+		userID, hash,
+	)
+	if err != nil {
+		return "", fmt.Errorf("GenerateResetToken: store: %w", err)
+	}
+	return raw, nil
+}
+
 // Request generates a reset token and sends an email if the address is known.
 // We deliberately do NOT reveal whether the email exists (timing is best-effort).
 func (p *PasswordResetService) Request(ctx context.Context, email, baseURL string) error {
@@ -93,9 +119,9 @@ func (p *PasswordResetService) Confirm(ctx context.Context, rawToken, newPasswor
 	}
 	defer tx.Rollback(ctx)
 
-	// Update password
+	// Update password and clear force-reset flag
 	if _, err = tx.Exec(ctx,
-		`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`,
+		`UPDATE users SET password_hash = $1, must_change_password = false, updated_at = now() WHERE id = $2`,
 		newPasswordHash, userID,
 	); err != nil {
 		return fmt.Errorf("password_reset: update password: %w", err)

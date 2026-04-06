@@ -33,7 +33,9 @@ export default function LoginPage() {
     setError(null)
     try {
       const res = await api.post<LoginResponse>('/api/v1/auth/login', values)
-      if (res.status === 'totp_required' && res.pending_token) {
+      if (res.require_password_change && res.reset_token) {
+        await navigate({ to: '/reset-password', search: { token: res.reset_token } })
+      } else if (res.require_totp && res.pending_token) {
         await navigate({
           to: '/login/totp',
           search: { pending_token: res.pending_token, trust_device: values.trust_device ?? false },

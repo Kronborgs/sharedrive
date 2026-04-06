@@ -93,8 +93,10 @@ type loginRequest struct {
 }
 
 type loginResponse struct {
-	RequireTOTP  bool   `json:"require_totp,omitempty"`
-	PendingToken string `json:"pending_token,omitempty"`
+	RequireTOTP           bool   `json:"require_totp,omitempty"`
+	PendingToken          string `json:"pending_token,omitempty"`
+	RequirePasswordChange bool   `json:"require_password_change,omitempty"`
+	ResetToken            string `json:"reset_token,omitempty"`
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -151,6 +153,21 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	// Password OK — clear failure counters
 	h.lockout.ClearFailures(ctx, ip)
 	h.limiter.Reset(ctx, KeyIPLogin, ip)
+
+	// If admin forced a password change, return a short-lived reset token instead of a session.
+	if u.MustChangePassword {
+		resetToken, tokenErr := h.passwordReset.GenerateResetToken(ctx, u.ID.String())
+		if tokenErr != nil {
+			log.Error().Err(tokenErr).Msg("login: generate forced reset token")
+			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		httputil.Respond(w, http.StatusOK, loginResponse{
+			RequirePasswordChange: true,
+			ResetToken:            resetToken,
+		})
+		return
+	}
 
 	// Check if trusted device skips TOTP
 	hasTOTP, _ := h.totpSvc.HasTOTP(ctx, u.ID.String())

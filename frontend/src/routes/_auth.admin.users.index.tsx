@@ -2,8 +2,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
-import { X, Plus, Pencil, Trash2, UserCheck, Folder, File, ChevronDown, ChevronRight } from 'lucide-react'
+import { X, Plus, Pencil, Trash2, UserCheck, Folder, File, ChevronDown, ChevronRight, Lock, LockOpen, KeyRound } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
 import type { User, Group, PaginatedResponse, GuestUser } from '@/types/api'
 import { formatBytes, formatDate } from '@/lib/utils'
 
@@ -285,6 +286,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // ─── Main page ────────────────────────────────────────────────────────────────
 function AdminUsersPage() {
   const qc = useQueryClient()
+  const { user: me } = useAuth()
   const [tab, setTab] = useState<'users' | 'guests' | 'groups'>('users')
   const [showDialog, setShowDialog] = useState(false)
   const [editUser, setEditUser] = useState<User | null>(null)
@@ -308,6 +310,32 @@ function AdminUsersPage() {
   const { data: settings } = useQuery({
     queryKey: ['admin', 'settings'],
     queryFn: ({ signal }) => api.get<{ default_quota_bytes: number }>('/api/v1/admin/settings', signal),
+  })
+
+  const invalidateUsers = () => void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+
+  const lockMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/api/v1/admin/users/${id}/lock`),
+    onSuccess: () => { toast.success('User locked'); invalidateUsers() },
+    onError: () => toast.error('Failed to lock user'),
+  })
+
+  const unlockMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/api/v1/admin/users/${id}/unlock`),
+    onSuccess: () => { toast.success('User unlocked'); invalidateUsers() },
+    onError: () => toast.error('Failed to unlock user'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/api/v1/admin/users/${id}`),
+    onSuccess: () => { toast.success('User deleted'); invalidateUsers() },
+    onError: () => toast.error('Failed to delete user'),
+  })
+
+  const forceResetMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/api/v1/admin/users/${id}/force-password-reset`),
+    onSuccess: () => toast.success('User will be prompted to set a new password on next login'),
+    onError: () => toast.error('Failed to force password reset'),
   })
 
   return (
@@ -351,7 +379,24 @@ function AdminUsersPage() {
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
                 {(data?.items ?? []).map(user => (
-                  <UserRow key={user.id} user={user} onEdit={setEditUser} />
+                  <UserRow
+                    key={user.id}
+                    user={user}
+                    isSelf={user.id === me?.id}
+                    onEdit={setEditUser}
+                    onLock={id => lockMutation.mutate(id)}
+                    onUnlock={id => unlockMutation.mutate(id)}
+                    onDelete={id => {
+                      if (confirm(`Delete user "${data?.items?.find(u => u.id === id)?.display_name ?? id}"?\n\nThis will permanently remove the user and all their files. This cannot be undone.`)) {
+                        deleteMutation.mutate(id)
+                      }
+                    }}
+                    onForceReset={id => {
+                      if (confirm('Force this user to set a new password on their next login?')) {
+                        forceResetMutation.mutate(id)
+                      }
+                    }}
+                  />
                 ))}
                 {(data?.items?.length ?? 0) === 0 && (
                   <tr>
@@ -659,7 +704,23 @@ function GroupsPanel({ groups, qc }: { groups: Group[]; qc: ReturnType<typeof us
   )
 }
 
-function UserRow({ user, onEdit }: { user: User; onEdit: (u: User) => void }) {
+function UserRow({
+  user,
+  onEdit,
+  onLock,
+  onUnlock,
+  onDelete,
+  onForceReset,
+  isSelf,
+}: {
+  user: User
+  onEdit: (u: User) => void
+  onLock: (id: string) => void
+  onUnlock: (id: string) => void
+  onDelete: (id: string) => void
+  onForceReset: (id: string) => void
+  isSelf: boolean
+}) {
   const percent = user.quota_bytes > 0
     ? Math.min(100, (user.quota_used_bytes / user.quota_bytes) * 100)
     : 0
@@ -705,16 +766,52 @@ function UserRow({ user, onEdit }: { user: User; onEdit: (u: User) => void }) {
           user.is_active ? 'text-green-600 dark:text-green-400' : 'text-zinc-400'
         }`}>
           <span className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-green-500' : 'bg-zinc-400'}`} />
-          {user.is_active ? 'Active' : 'Inactive'}
+          {user.is_active ? 'Active' : 'Locked'}
         </span>
       </td>
-      <td className="px-4 py-3 text-right">
-        <button
-          onClick={() => onEdit(user)}
-          className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
-        >
-          Edit
-        </button>
+      <td className="px-4 py-3">
+        <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={() => onEdit(user)}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
+            title="Edit quota &amp; settings"
+          >
+            <Pencil size={14} />
+          </button>
+          {user.is_active ? (
+            <button
+              onClick={() => onLock(user.id)}
+              disabled={isSelf}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title={isSelf ? 'Cannot lock your own account' : 'Lock account'}
+            >
+              <Lock size={14} />
+            </button>
+          ) : (
+            <button
+              onClick={() => onUnlock(user.id)}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
+              title="Unlock account"
+            >
+              <LockOpen size={14} />
+            </button>
+          )}
+          <button
+            onClick={() => onForceReset(user.id)}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+            title="Force password reset on next login"
+          >
+            <KeyRound size={14} />
+          </button>
+          <button
+            onClick={() => onDelete(user.id)}
+            disabled={isSelf}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title={isSelf ? 'Cannot delete your own account' : 'Delete user'}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </td>
     </tr>
   )

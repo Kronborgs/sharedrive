@@ -18,8 +18,8 @@ import { Route as ResetPasswordIndexRouteImport } from './routes/reset-password.
 import { Route as AcceptInviteIndexRouteImport } from './routes/accept-invite.index'
 import { Route as LoginTotpRouteImport } from './routes/login.totp'
 import { Route as AuthTrashIndexRouteImport } from './routes/_auth.trash.index'
-import { Route as AuthSharedBrowseIndexRouteImport } from './routes/_auth.shared-browse.index'
 import { Route as AuthSharesIndexRouteImport } from './routes/_auth.shares.index'
+import { Route as AuthSharedBrowseIndexRouteImport } from './routes/_auth.shared-browse.index'
 import { Route as AuthRecentIndexRouteImport } from './routes/_auth.recent.index'
 import { Route as AuthFilesIndexRouteImport } from './routes/_auth.files.index'
 import { Route as AuthAdminIndexRouteImport } from './routes/_auth.admin.index'
@@ -75,14 +75,14 @@ const AuthTrashIndexRoute = AuthTrashIndexRouteImport.update({
   path: '/trash/',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthSharedBrowseIndexRoute = AuthSharedBrowseIndexRouteImport.update({
-  id: '/shared-browse/',
-  path: '/shared-browse/',
-  getParentRoute: () => AuthRoute,
-} as any)
 const AuthSharesIndexRoute = AuthSharesIndexRouteImport.update({
   id: '/shares/',
   path: '/shares/',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthSharedBrowseIndexRoute = AuthSharedBrowseIndexRouteImport.update({
+  id: '/shared-browse/',
+  path: '/shared-browse/',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthRecentIndexRoute = AuthRecentIndexRouteImport.update({
@@ -350,18 +350,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthTrashIndexRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/shared-browse/': {
-      id: '/_auth/shared-browse/'
-      path: '/shared-browse'
-      fullPath: '/shared-browse/'
-      preLoaderRoute: typeof AuthSharedBrowseIndexRouteImport
-      parentRoute: typeof AuthRoute
-    }
     '/_auth/shares/': {
       id: '/_auth/shares/'
       path: '/shares'
       fullPath: '/shares/'
       preLoaderRoute: typeof AuthSharesIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/shared-browse/': {
+      id: '/_auth/shared-browse/'
+      path: '/shared-browse'
+      fullPath: '/shared-browse/'
+      preLoaderRoute: typeof AuthSharedBrowseIndexRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/recent/': {

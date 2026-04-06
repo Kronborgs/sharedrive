@@ -194,11 +194,16 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// Deactivate handles DELETE /api/v1/admin/users/{id} — sets is_active = false.
-func (h *Handler) Deactivate(w http.ResponseWriter, r *http.Request) {
+// Lock handles POST /api/v1/admin/users/{id}/lock — sets is_active = false and revokes sessions.
+func (h *Handler) Lock(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	actor := UserFromContext(ctx)
 	id := chi.URLParam(r, "id")
+
+	if actor != nil && actor.ID.String() == id {
+		httputil.RespondError(w, http.StatusBadRequest, "cannot lock your own account")
+		return
+	}
 
 	if _, err := h.db.Exec(ctx,
 		`UPDATE users SET is_active = false, updated_at = now() WHERE id = $1`, id,
@@ -211,15 +216,98 @@ func (h *Handler) Deactivate(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.db.Exec(ctx,
 		`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, id,
 	); err != nil {
-		log.Warn().Err(err).Msg("admin: revoke sessions on deactivate")
+		log.Warn().Err(err).Msg("admin: revoke sessions on lock")
 	}
 
 	h.auditSvc.Log(ctx, audit.Event{
 		Type:      audit.EventUserDeactivated,
 		ActorID:   &actor.ID,
-		IPAddress: r.RemoteAddr,
+		IPAddress: clientIP(r),
 		Metadata:  map[string]any{"target_user_id": id},
 	})
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// Unlock handles POST /api/v1/admin/users/{id}/unlock — sets is_active = true.
+func (h *Handler) Unlock(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	actor := UserFromContext(ctx)
+	id := chi.URLParam(r, "id")
+
+	if _, err := h.db.Exec(ctx,
+		`UPDATE users SET is_active = true, updated_at = now() WHERE id = $1`, id,
+	); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	h.auditSvc.Log(ctx, audit.Event{
+		Type:      audit.EventUserActivated,
+		ActorID:   &actor.ID,
+		IPAddress: clientIP(r),
+		Metadata:  map[string]any{"target_user_id": id},
+	})
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// Delete handles DELETE /api/v1/admin/users/{id} — permanently removes the user and all their data.
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	actor := UserFromContext(ctx)
+	id := chi.URLParam(r, "id")
+
+	if actor != nil && actor.ID.String() == id {
+		httputil.RespondError(w, http.StatusBadRequest, "cannot delete your own account")
+		return
+	}
+
+	if _, err := h.db.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
+		log.Error().Err(err).Msg("admin: delete user")
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if actor != nil {
+		h.auditSvc.Log(ctx, audit.Event{
+			Type:      audit.EventUserDeleted,
+			ActorID:   &actor.ID,
+			IPAddress: clientIP(r),
+			Metadata:  map[string]any{"target_user_id": id},
+		})
+	}
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// ForcePasswordReset handles POST /api/v1/admin/users/{id}/force-password-reset.
+// Sets must_change_password = true and revokes all sessions so the user must
+// log in and immediately set a new password.
+func (h *Handler) ForcePasswordReset(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	actor := UserFromContext(ctx)
+	id := chi.URLParam(r, "id")
+
+	if _, err := h.db.Exec(ctx,
+		`UPDATE users SET must_change_password = true, updated_at = now() WHERE id = $1`, id,
+	); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Revoke all active sessions so the user must re-login.
+	if _, err := h.db.Exec(ctx,
+		`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, id,
+	); err != nil {
+		log.Warn().Err(err).Msg("admin: revoke sessions on force-password-reset")
+	}
+
+	if actor != nil {
+		h.auditSvc.Log(ctx, audit.Event{
+			Type:      audit.EventUserForcedPasswordReset,
+			ActorID:   &actor.ID,
+			IPAddress: clientIP(r),
+			Metadata:  map[string]any{"target_user_id": id},
+		})
+	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

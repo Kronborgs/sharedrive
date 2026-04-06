@@ -50,11 +50,34 @@ export interface UploadEntry {
   progress: number
   status: 'queued' | 'uploading' | 'done' | 'error'
   error?: string
+  speed?: number   // bytes/s
+  eta?: number     // seconds remaining
+  bytesUploaded?: number
 }
 
 interface UploadProgressProps {
   uploads: UploadEntry[]
   onDismiss: (id: string) => void
+}
+
+function formatSpeed(bps: number): string {
+  if (bps >= 1024 * 1024) return `${(bps / 1024 / 1024).toFixed(1)} MB/s`
+  if (bps >= 1024) return `${(bps / 1024).toFixed(0)} KB/s`
+  return `${bps.toFixed(0)} B/s`
+}
+
+function formatEta(secs: number): string {
+  if (secs < 60) return `${Math.ceil(secs)}s`
+  const m = Math.floor(secs / 60)
+  const s = Math.ceil(secs % 60)
+  return s > 0 ? `${m}m ${s}s` : `${m}m`
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${bytes} B`
 }
 
 export function UploadProgress({ uploads, onDismiss }: UploadProgressProps) {
@@ -85,12 +108,26 @@ export function UploadProgress({ uploads, onDismiss }: UploadProgressProps) {
             {u.status === 'error' ? (
               <p className="text-xs text-red-500">{u.error ?? 'Upload failed'}</p>
             ) : (
-              <div className="h-1 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden">
-                <div
-                  className="h-full bg-brand-500 transition-all duration-200"
-                  style={{ width: `${u.progress}%` }}
-                />
-              </div>
+              <>
+                <div className="h-1 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden mb-1">
+                  <div
+                    className="h-full bg-brand-500 transition-all duration-200"
+                    style={{ width: `${u.progress}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-zinc-400 dark:text-slate-500">
+                    {u.bytesUploaded != null ? formatBytes(u.bytesUploaded) : '0 B'}
+                    {' / '}
+                    {formatBytes(u.file.size)}
+                  </span>
+                  <span className="text-[10px] text-zinc-400 dark:text-slate-500">
+                    {u.speed != null && u.speed > 0 ? formatSpeed(u.speed) : ''}
+                    {u.speed != null && u.speed > 0 && u.eta != null && u.eta > 0 ? ' · ' : ''}
+                    {u.eta != null && u.eta > 0 && u.speed != null && u.speed > 0 ? formatEta(u.eta) : ''}
+                  </span>
+                </div>
+              </>
             )}
           </li>
         ))}
@@ -108,10 +145,17 @@ import * as tus from 'tus-js-client'
 // Chunk size: 50 MB — safely below Cloudflare's 100 MB per-request limit.
 const TUS_CHUNK_SIZE = 50 * 1024 * 1024
 
+// Rolling window for speed calculation: keep last N samples over ~10 s
+const SPEED_WINDOW = 10
+
+interface SpeedSample { time: number; bytes: number }
+
 export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   const qc = useQueryClient()
   const [uploads, setUploads] = useState<UploadEntry[]>([])
   const uploadsRef = useRef<UploadEntry[]>([])
+  // Per-upload rolling samples for speed calculation
+  const speedSamples = useRef<Map<string, SpeedSample[]>>(new Map())
 
   const update = (id: string, patch: Partial<UploadEntry>) => {
     setUploads(prev => {
@@ -161,9 +205,33 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
         },
         onProgress: (bytesUploaded, bytesTotal) => {
           const progress = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0
-          update(entry.id, { progress })
+
+          // Rolling-window speed calculation
+          const now = Date.now()
+          const samples = speedSamples.current.get(entry.id) ?? []
+          samples.push({ time: now, bytes: bytesUploaded })
+          // Keep only the last SPEED_WINDOW samples
+          while (samples.length > SPEED_WINDOW) samples.shift()
+          speedSamples.current.set(entry.id, samples)
+
+          let speed: number | undefined
+          let eta: number | undefined
+          if (samples.length >= 2) {
+            const oldest = samples[0]
+            const newest = samples[samples.length - 1]
+            const elapsed = (newest.time - oldest.time) / 1000
+            if (elapsed > 0) {
+              speed = (newest.bytes - oldest.bytes) / elapsed
+              if (speed > 0 && bytesTotal > bytesUploaded) {
+                eta = (bytesTotal - bytesUploaded) / speed
+              }
+            }
+          }
+
+          update(entry.id, { progress, speed, eta, bytesUploaded })
         },
         onSuccess: () => {
+          speedSamples.current.delete(entry.id)
           update(entry.id, { status: 'done', progress: 100 })
           void qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] })
           setTimeout(() => {

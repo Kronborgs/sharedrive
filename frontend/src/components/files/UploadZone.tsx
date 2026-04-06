@@ -151,7 +151,7 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgr
           </p>
         ) : (
           <p className="text-[10px] text-zinc-400 dark:text-slate-500 leading-snug">
-            Filer uploades i dele (50 MB ad gangen). Hastighed varierer — det er normalt at
+            Filer uploades via Cloudflare i 50 MB dele. Hastighed varierer — det er normalt at
             progressbaren &quot;staller&quot; kortvarigt mellem dele.
           </p>
         )}
@@ -201,6 +201,9 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     // Determine TUS endpoint: prefer direct_upload_url (bypasses Cloudflare) if set
     const directBase = settings?.direct_upload_url?.trim()
     const tusEndpoint = directBase ? `${directBase}/upload/` : '/upload/'
+    // No chunking when uploading directly (no Cloudflare 100 MB limit).
+    // When going through Cloudflare, keep 50 MB chunks to stay under their limit.
+    const chunkSize = directBase ? Infinity : TUS_CHUNK_SIZE
 
     const entries: UploadEntry[] = files.map(file => ({
       id: crypto.randomUUID(),
@@ -220,7 +223,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
 
       const upload = new tus.Upload(entry.file, {
         endpoint: tusEndpoint,
-        chunkSize: TUS_CHUNK_SIZE,
+        chunkSize: chunkSize,
         retryDelays: [0, 1000, 3000, 5000, 10000],
         metadata: {
           filename: entry.file.name,

@@ -273,8 +273,8 @@ func (s *Server) buildRouter() *chi.Mux {
 
 	// ── WebDAV (email + app-password, Basic Auth) ──────────────────────────
 	davSrv := webdav.NewAuthDAVServer(s.db, s.cfg.FilesRoot)
-	r.Handle("/dav", davSrv)
-	r.Handle("/dav/*", davSrv)
+	r.Handle("/dav/{userID}", davSrv)
+	r.Handle("/dav/{userID}/*", davSrv)
 
 	// ── Tus resumable upload ────────────────────────────────────────────────
 	r.Mount("/upload", s.tusHandler())

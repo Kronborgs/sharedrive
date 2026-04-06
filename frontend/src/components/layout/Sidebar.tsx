@@ -71,6 +71,7 @@ function NavLink({ item }: { item: NavItem }) {
 export function Sidebar() {
   const { user, setUser } = useAuth()
   const qc = useQueryClient()
+  const state = useRouterState()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showWebDAV, setShowWebDAV] = useState(false)
 
@@ -119,8 +120,8 @@ export function Sidebar() {
         </>
       )}
 
-      {/* WebDAV */}
-      {user?.role !== 'guest' && (
+      {/* WebDAV — only visible in the Files section */}
+      {user?.role !== 'guest' && state.location.pathname.startsWith('/files') && (
         <>
           <div className="mx-4 border-t border-zinc-200 dark:border-[#2d3148] my-1" />
           <nav className="px-2 pb-3 space-y-0.5">

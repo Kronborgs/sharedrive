@@ -38,6 +38,16 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// as a true DAV server and skip its own redirect logic.
 	w.Header().Set("MS-Author-Via", "DAV")
 
+	// Extract the user ID from the URL: /dav/{userID}[/...]
+	// The userID segment makes each user's DAV root distinct and lets Windows
+	// resolve the network location to a concrete path.
+	trimmed := strings.TrimPrefix(r.URL.Path, "/dav/")
+	urlUserID := strings.SplitN(trimmed, "/", 2)[0]
+	if urlUserID == "" {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+
 	email, password, ok := r.BasicAuth()
 	if !ok || email == "" || password == "" {
 		w.Header().Set("WWW-Authenticate", `Basic realm="Sharedrive"`)
@@ -46,14 +56,14 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, err := ValidateAppPassword(r.Context(), s.db, email, password)
-	if err != nil {
+	if err != nil || userID != urlUserID {
 		w.Header().Set("WWW-Authenticate", `Basic realm="Sharedrive"`)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	h := &gowebdav.Handler{
-		Prefix:     "/dav",
+		Prefix:     "/dav/" + userID,
 		FileSystem: &userFS{db: s.db, filesRoot: s.filesRoot, userID: userID},
 		LockSystem: gowebdav.NewMemLS(),
 		Logger: func(r *http.Request, err error) {

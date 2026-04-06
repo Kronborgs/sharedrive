@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
 import type { AppPassword, CreatedAppPassword } from '@/types/api'
 import { X, Copy, Check, Trash2, Plus, HardDrive } from 'lucide-react'
 import { toast } from 'sonner'
@@ -11,12 +12,13 @@ interface Props {
 }
 
 export function WebDAVDialog({ onClose }: Props) {
+  const { user } = useAuth()
   const qc = useQueryClient()
   const [newName, setNewName] = useState('')
   const [revealed, setRevealed] = useState<CreatedAppPassword | null>(null)
   const [copied, setCopied] = useState<'url' | 'pwd' | null>(null)
 
-  const davUrl = `${window.location.origin}/dav`
+  const davUrl = `${window.location.origin}/dav/${user?.id ?? ''}`
 
   const { data: passwords } = useQuery({
     queryKey: ['app-passwords'],

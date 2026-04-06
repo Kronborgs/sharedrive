@@ -818,9 +818,48 @@ function UserRow({
 }
 
 // ─── Edit User Dialog ─────────────────────────────────────────────────────────
+// ─── Quota input helpers ──────────────────────────────────────────────────────
+
+/** Parse a human-readable size string like "1GB", "500 MB", "2.5TB" → bytes, or null on failure. */
+function parseQuotaInput(s: string): number | null {
+  const m = s.trim().match(/^([0-9]*\.?[0-9]+)\s*(KB|MB|GB|TB|PB|B)?$/i)
+  if (!m) return null
+  const n = parseFloat(m[1])
+  const unit = (m[2] ?? 'B').toUpperCase()
+  const multipliers: Record<string, number> = {
+    B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4, PB: 1024 ** 5,
+  }
+  return Math.round(n * (multipliers[unit] ?? 1))
+}
+
+/** Format bytes back to a short readable string for the input placeholder. */
+function formatQuotaForInput(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  let i = 0
+  let v = bytes
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
+  const rounded = parseFloat(v.toFixed(2))
+  return `${rounded} ${units[i]}`
+}
+
 function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () => void; onSaved: () => void }) {
-  const [quotaBytes, setQuotaBytes] = useState(user.quota_bytes)
-  const [trashDays, setTrashDays] = useState<string>(user.trash_retention_days != null ? String(user.trash_retention_days) : '')
+  const [quotaInput, setQuotaInput]   = useState(() => formatQuotaForInput(user.quota_bytes))
+  const [trashDays, setTrashDays]     = useState<string>(user.trash_retention_days != null ? String(user.trash_retention_days) : '')
+
+  const { data: stats } = useQuery({
+    queryKey: ['admin', 'stats'],
+    queryFn: ({ signal }) => api.get<{ disk_free_bytes: number }>('/api/v1/admin/stats', signal),
+    staleTime: 60_000,
+  })
+
+  // Max quota = free disk * 75%  (25% headroom)
+  const maxQuotaBytes = stats ? Math.floor(stats.disk_free_bytes * 0.75) : null
+
+  const parsedBytes  = parseQuotaInput(quotaInput)
+  const isValid      = parsedBytes !== null && parsedBytes > 0
+  const overLimit    = maxQuotaBytes !== null && isValid && parsedBytes > maxQuotaBytes
+  const quotaBytes   = isValid ? parsedBytes : user.quota_bytes
 
   const save = useMutation({
     mutationFn: () => api.patch(`/api/v1/admin/users/${user.id}`, {
@@ -840,15 +879,36 @@ function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () =>
         </div>
 
         <div className="space-y-4">
-          <Field label="Quota (bytes)">
+          <Field label="Quota">
             <input
-              type="number"
-              min={0}
-              value={quotaBytes}
-              onChange={e => setQuotaBytes(Number(e.target.value))}
-              className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-[#2d3148] bg-white dark:bg-[#0f1117] text-sm text-zinc-900 dark:text-slate-100"
+              type="text"
+              value={quotaInput}
+              onChange={e => setQuotaInput(e.target.value)}
+              placeholder="e.g. 100 GB, 2 TB, 500 MB"
+              className={`w-full px-3 py-2 rounded-lg border text-sm text-zinc-900 dark:text-slate-100 bg-white dark:bg-[#0f1117] ${
+                !isValid
+                  ? 'border-red-400 dark:border-red-500'
+                  : overLimit
+                  ? 'border-amber-400 dark:border-amber-500'
+                  : 'border-zinc-300 dark:border-[#2d3148]'
+              }`}
             />
-            <p className="text-xs text-muted mt-1">{formatBytes(quotaBytes)}</p>
+            <div className="mt-1 space-y-0.5">
+              {isValid && (
+                <p className="text-xs text-muted">{formatBytes(parsedBytes!)} ({parsedBytes!.toLocaleString()} bytes)</p>
+              )}
+              {!isValid && quotaInput.trim() !== '' && (
+                <p className="text-xs text-red-500">Invalid format — use e.g. "100 GB" or "2 TB"</p>
+              )}
+              {overLimit && maxQuotaBytes !== null && (
+                <p className="text-xs text-amber-500">
+                  Exceeds available headroom — max allowed: {formatBytes(maxQuotaBytes)} (75% of {formatBytes(stats!.disk_free_bytes)} free)
+                </p>
+              )}
+              {!overLimit && maxQuotaBytes !== null && (
+                <p className="text-xs text-muted">Max: {formatBytes(maxQuotaBytes)} (75% of free disk)</p>
+              )}
+            </div>
           </Field>
 
           <Field label="Trash retention (days)">
@@ -869,7 +929,7 @@ function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () =>
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148]">Cancel</button>
           <button
             onClick={() => save.mutate()}
-            disabled={save.isPending}
+            disabled={save.isPending || !isValid || overLimit}
             className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
           >
             {save.isPending ? 'Saving…' : 'Save'}

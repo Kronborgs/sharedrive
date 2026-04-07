@@ -16,6 +16,7 @@ import { Route as SharedIndexRouteImport } from './routes/shared.index'
 import { Route as SetupIndexRouteImport } from './routes/setup.index'
 import { Route as ResetPasswordIndexRouteImport } from './routes/reset-password.index'
 import { Route as AcceptInviteIndexRouteImport } from './routes/accept-invite.index'
+import { Route as LoginIndexRouteImport } from './routes/login.index'
 import { Route as LoginTotpRouteImport } from './routes/login.totp'
 import { Route as AuthTrashIndexRouteImport } from './routes/_auth.trash.index'
 import { Route as AuthSharesIndexRouteImport } from './routes/_auth.shares.index'
@@ -65,6 +66,11 @@ const AcceptInviteIndexRoute = AcceptInviteIndexRouteImport.update({
   id: '/accept-invite/',
   path: '/accept-invite/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const LoginIndexRoute = LoginIndexRouteImport.update({
+  id: '/login/',
+  path: '/',
+  getParentRoute: () => LoginRoute,
 } as any)
 const LoginTotpRoute = LoginTotpRouteImport.update({
   id: '/totp',
@@ -146,6 +152,7 @@ const AuthActivityIndexRoute = AuthActivityIndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRouteWithChildren
+  '/login/': typeof LoginIndexRoute
   '/login/totp': typeof LoginTotpRoute
   '/accept-invite/': typeof AcceptInviteIndexRoute
   '/reset-password/': typeof ResetPasswordIndexRoute
@@ -168,7 +175,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/login': typeof LoginRouteWithChildren
+  '/login': typeof LoginIndexRoute
   '/login/totp': typeof LoginTotpRoute
   '/accept-invite': typeof AcceptInviteIndexRoute
   '/reset-password': typeof ResetPasswordIndexRoute
@@ -194,6 +201,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_auth': typeof AuthRouteWithChildren
   '/login': typeof LoginRouteWithChildren
+  '/login/': typeof LoginIndexRoute
   '/login/totp': typeof LoginTotpRoute
   '/accept-invite/': typeof AcceptInviteIndexRoute
   '/reset-password/': typeof ResetPasswordIndexRoute
@@ -219,6 +227,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/login/'
     | '/login/totp'
     | '/accept-invite/'
     | '/reset-password/'
@@ -243,6 +252,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/login/totp'
+    | '/login'
     | '/accept-invite'
     | '/reset-password'
     | '/setup'
@@ -266,6 +276,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_auth'
     | '/login'
+    | '/login/'
     | '/login/totp'
     | '/accept-invite/'
     | '/reset-password/'
@@ -347,6 +358,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/accept-invite/'
       preLoaderRoute: typeof AcceptInviteIndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/login/': {
+      id: '/login/'
+      path: '/login'
+      fullPath: '/login/'
+      preLoaderRoute: typeof LoginIndexRouteImport
+      parentRoute: typeof LoginRoute
     }
     '/login/totp': {
       id: '/login/totp'
@@ -493,10 +511,12 @@ const AuthRouteChildren: AuthRouteChildren = {
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
 interface LoginRouteChildren {
+  LoginIndexRoute: typeof LoginIndexRoute
   LoginTotpRoute: typeof LoginTotpRoute
 }
 
 const LoginRouteChildren: LoginRouteChildren = {
+  LoginIndexRoute: LoginIndexRoute,
   LoginTotpRoute: LoginTotpRoute,
 }
 

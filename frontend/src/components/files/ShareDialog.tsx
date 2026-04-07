@@ -184,7 +184,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   const [email, setEmail] = useState('')
   const [groupId, setGroupId] = useState('')
   const [perms, setPerms] = useState<SharePermissions>(DEFAULT_PERMS)
-  const [hasExpiry, setHasExpiry] = useState(true)
+  const [hasExpiry, setHasExpiry] = useState(false)
   const [expiry, setExpiry] = useState(defaultExpiry())
   const [copied, setCopied] = useState(false)
 

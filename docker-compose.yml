@@ -73,6 +73,20 @@ services:
     networks:
       - sharedrive-net
 
+  watchtower:
+    image: containrrr/watchtower
+    container_name: sharedrive-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/config.json:ro  # ghcr.io credentials
+    environment:
+      WATCHTOWER_POLL_INTERVAL: 300          # check every 5 minutes
+      WATCHTOWER_CLEANUP: "true"             # remove old images
+      WATCHTOWER_INCLUDE_STOPPED: "false"
+      WATCHTOWER_SCOPE: sharedrive           # only watch our containers
+    command: sharedrive                      # only update the app container
+
 networks:
   sharedrive-net:
     driver: bridge

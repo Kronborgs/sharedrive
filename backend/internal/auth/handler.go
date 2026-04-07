@@ -741,12 +741,18 @@ func (h *Handler) TOTPSetup(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// Store the pending secret server-side so the confirm step doesn't trust
+	// a client-supplied secret.
+	redisKey := "totp_pending:" + u.ID.String()
+	if err := h.rdb.Set(ctx, redisKey, secret, 10*time.Minute).Err(); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	httputil.Respond(w, http.StatusOK, totpSetupResponse{Secret: secret, ProvisioningURI: uri})
 }
 
 type totpConfirmRequest struct {
-	Secret string `json:"secret"`
-	Code   string `json:"code"`
+	Code string `json:"code"`
 }
 
 type totpConfirmResponse struct {
@@ -765,8 +771,17 @@ func (h *Handler) TOTPConfirm(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	codes, err := h.totpSvc.ConfirmEnroll(ctx, u.ID.String(), u.Email, req.Secret, req.Code)
+	// Fetch the pending secret stored in Redis by TOTPSetup — never trust the client.
+	redisKey := "totp_pending:" + u.ID.String()
+	secret, err := h.rdb.GetDel(ctx, redisKey).Result()
 	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "setup session expired — please restart 2FA setup")
+		return
+	}
+	codes, err := h.totpSvc.ConfirmEnroll(ctx, u.ID.String(), u.Email, secret, req.Code)
+	if err != nil {
+		// Re-store the secret so the user can retry without rescanning.
+		_ = h.rdb.Set(ctx, redisKey, secret, 10*time.Minute).Err()
 		httputil.RespondError(w, http.StatusBadRequest, "invalid TOTP code")
 		return
 	}

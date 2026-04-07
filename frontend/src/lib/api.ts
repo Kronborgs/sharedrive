@@ -89,8 +89,8 @@ export function fetchTOTPSetup(): Promise<TOTPSetupData> {
   return api.get<TOTPSetupData>('/api/v1/me/totp/setup')
 }
 
-export function confirmTOTPSetup(secret: string, code: string): Promise<TOTPConfirmData> {
-  return api.post<TOTPConfirmData>('/api/v1/me/totp/confirm', { secret, code })
+export function confirmTOTPSetup(code: string): Promise<TOTPConfirmData> {
+  return api.post<TOTPConfirmData>('/api/v1/me/totp/confirm', { code })
 }
 
 export function disableTOTP(): Promise<void> {

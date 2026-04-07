@@ -55,7 +55,7 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
     setLoading(true)
     setError(null)
     try {
-      const res = await confirmTOTPSetup(secret, codeToSend)
+      const res = await confirmTOTPSetup(codeToSend)
       setBackupCodes(res.backup_codes)
       setStep('backup')
     } catch {

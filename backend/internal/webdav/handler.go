@@ -20,6 +20,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 	gowebdav "golang.org/x/net/webdav"
+
+	"github.com/yourname/privatedrive/internal/audit"
+	"github.com/yourname/privatedrive/internal/middleware"
 )
 
 // AuthDAVServer handles WebDAV requests authenticated via HTTP Basic Auth
@@ -31,13 +34,15 @@ type AuthDAVServer struct {
 	db        *pgxpool.Pool
 	filesRoot string
 	locks     gowebdav.LockSystem // shared across requests so LOCK tokens survive to PUT
+	auditSvc  audit.Logger
 }
 
-func NewAuthDAVServer(db *pgxpool.Pool, filesRoot string) *AuthDAVServer {
+func NewAuthDAVServer(db *pgxpool.Pool, filesRoot string, auditSvc audit.Logger) *AuthDAVServer {
 	return &AuthDAVServer{
 		db:        db,
 		filesRoot: filesRoot,
 		locks:     gowebdav.NewMemLS(),
+		auditSvc:  auditSvc,
 	}
 }
 
@@ -74,9 +79,27 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := ValidateAppPassword(r.Context(), s.db, email, password)
 	if err != nil || userID != urlUserID {
+		s.auditSvc.Log(r.Context(), audit.Event{
+			Type:       audit.EventWebDAVLoginFailed,
+			ActorEmail: email,
+			IPAddress:  middleware.ClientIP(r),
+			Metadata:   map[string]any{"reason": "invalid credentials"},
+		})
 		w.Header().Set("WWW-Authenticate", `Basic realm="Sharedrive"`)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
+	}
+
+	// Log successful WebDAV login (only once per new connection by checking OPTIONS/PROPFIND).
+	if r.Method == "PROPFIND" || r.Method == "OPTIONS" {
+		uid, _ := uuid.Parse(userID)
+		s.auditSvc.Log(r.Context(), audit.Event{
+			Type:       audit.EventWebDAVLoginSuccess,
+			ActorID:    &uid,
+			ActorEmail: email,
+			IPAddress:  middleware.ClientIP(r),
+			Metadata:   map[string]any{"method": r.Method, "path": r.URL.Path},
+		})
 	}
 
 	h := &gowebdav.Handler{

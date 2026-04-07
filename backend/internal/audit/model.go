@@ -48,6 +48,10 @@ const (
 	EventShareModified = "SHARE_MODIFIED"
 	EventShareRevoked  = "SHARE_REVOKED"
 
+	// WebDAV events
+	EventWebDAVLoginSuccess = "WEBDAV_LOGIN_SUCCESS"
+	EventWebDAVLoginFailed  = "WEBDAV_LOGIN_FAILED"
+
 	// Admin events
 	EventAdminSupportStarted = "ADMIN_SUPPORT_ACCESS_STARTED"
 	EventAdminSupportEnded   = "ADMIN_SUPPORT_ACCESS_ENDED"

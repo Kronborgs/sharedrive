@@ -2,8 +2,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
-import { X, Plus, Pencil, Trash2, UserCheck, Folder, File, ChevronDown, ChevronRight, Lock, LockOpen, KeyRound } from 'lucide-react'
-import { api } from '@/lib/api'
+import { X, Plus, Pencil, Trash2, UserCheck, Folder, File, ChevronDown, ChevronRight, Lock, LockOpen, KeyRound, ShieldCheck, ShieldOff } from 'lucide-react'
+import { api, adminRevokeTOTP } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import type { User, Group, PaginatedResponse, GuestUser } from '@/types/api'
 import { formatBytes, formatDate } from '@/lib/utils'
@@ -374,6 +374,7 @@ function AdminUsersPage() {
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Quota</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Last login</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">2FA</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -386,6 +387,17 @@ function AdminUsersPage() {
                     onEdit={setEditUser}
                     onLock={id => lockMutation.mutate(id)}
                     onUnlock={id => unlockMutation.mutate(id)}
+                    onRevokeTOTP={async id => {
+                      if (confirm('Remove 2FA from this user? They will be able to log in without a second factor.')) {
+                        try {
+                          await adminRevokeTOTP(id)
+                          toast.success('2FA removed')
+                          void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+                        } catch {
+                          toast.error('Failed to remove 2FA')
+                        }
+                      }
+                    }}
                     onDelete={id => {
                       if (confirm(`Delete user "${data?.items?.find(u => u.id === id)?.display_name ?? id}"?\n\nThis will permanently remove the user and all their files. This cannot be undone.`)) {
                         deleteMutation.mutate(id)
@@ -400,7 +412,7 @@ function AdminUsersPage() {
                 ))}
                 {(data?.items?.length ?? 0) === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-muted">No users found</td>
+                    <td colSpan={7} className="text-center py-8 text-muted">No users found</td>
                   </tr>
                 )}
               </tbody>
@@ -711,6 +723,7 @@ function UserRow({
   onUnlock,
   onDelete,
   onForceReset,
+  onRevokeTOTP,
   isSelf,
 }: {
   user: User
@@ -719,6 +732,7 @@ function UserRow({
   onUnlock: (id: string) => void
   onDelete: (id: string) => void
   onForceReset: (id: string) => void
+  onRevokeTOTP: (id: string) => void
   isSelf: boolean
 }) {
   const percent = user.quota_bytes > 0
@@ -768,6 +782,23 @@ function UserRow({
           <span className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
           {user.is_active ? 'Active' : 'Locked'}
         </span>
+      </td>
+      <td className="px-4 py-3">
+        {user.totp_enabled ? (
+          <button
+            onClick={() => onRevokeTOTP(user.id)}
+            title="2FA active — click to revoke"
+            className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+          >
+            <ShieldCheck size={13} />
+            Enabled
+          </button>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
+            <ShieldOff size={13} />
+            Off
+          </span>
+        )}
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-1">

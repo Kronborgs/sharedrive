@@ -25,6 +25,12 @@ type Mailer interface {
 	SendInvitation(ctx context.Context, toEmail, inviterName, inviteLink string) error
 }
 
+// TOTPManager lets the user admin handler query and revoke TOTP for any user.
+type TOTPManager interface {
+	HasTOTP(ctx context.Context, userID string) (bool, error)
+	Disable(ctx context.Context, userID string) error
+}
+
 // clientIP returns the normalised client IP. After the RealIP middleware runs,
 // r.RemoteAddr already contains the real client IP.
 func clientIP(r *http.Request) string { return r.RemoteAddr }
@@ -35,11 +41,12 @@ type Handler struct {
 	auditSvc audit.Logger
 	mailer   Mailer
 	appURL   string
+	totpMgr  TOTPManager // optional, may be nil
 }
 
 // NewHandler creates a Handler.
-func NewHandler(db *pgxpool.Pool, auditSvc audit.Logger, mailer Mailer, appURL string) *Handler {
-	return &Handler{db: db, auditSvc: auditSvc, mailer: mailer, appURL: appURL}
+func NewHandler(db *pgxpool.Pool, auditSvc audit.Logger, mailer Mailer, appURL string, totpMgr TOTPManager) *Handler {
+	return &Handler{db: db, auditSvc: auditSvc, mailer: mailer, appURL: appURL, totpMgr: totpMgr}
 }
 
 // List handles GET /api/v1/admin/users
@@ -57,8 +64,22 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+
+	type userWithTOTP struct {
+		*User
+		TOTPEnabled bool `json:"totp_enabled"`
+	}
+	items := make([]userWithTOTP, 0, len(users))
+	for _, u := range users {
+		var enabled bool
+		if h.totpMgr != nil {
+			enabled, _ = h.totpMgr.HasTOTP(r.Context(), u.ID.String())
+		}
+		items = append(items, userWithTOTP{User: u, TOTPEnabled: enabled})
+	}
+
 	httputil.Respond(w, http.StatusOK, map[string]any{
-		"items":       users,
+		"items":       items,
 		"total":       total,
 		"cursor_next": nil,
 	})
@@ -389,6 +410,33 @@ func (h *Handler) ForcePasswordReset(w http.ResponseWriter, r *http.Request) {
 			ActorID:   &actor.ID,
 			IPAddress: clientIP(r),
 			Metadata:  map[string]any{"target_user_id": id},
+		})
+	}
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// RevokeTOTP handles DELETE /api/v1/admin/users/{id}/totp.
+// Allows an admin to remove TOTP from any user's account.
+func (h *Handler) RevokeTOTP(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	actor := UserFromContext(ctx)
+	id := chi.URLParam(r, "id")
+
+	if h.totpMgr == nil {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "TOTP not configured")
+		return
+	}
+	if err := h.totpMgr.Disable(ctx, id); err != nil {
+		log.Error().Err(err).Msg("admin: revoke user TOTP")
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if actor != nil {
+		h.auditSvc.Log(ctx, audit.Event{
+			Type:      audit.EventUserUpdated,
+			ActorID:   &actor.ID,
+			IPAddress: clientIP(r),
+			Metadata:  map[string]any{"target_user_id": id, "action": "revoke_totp"},
 		})
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})

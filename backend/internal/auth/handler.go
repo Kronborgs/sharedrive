@@ -78,6 +78,9 @@ func NewHandler(
 	}, nil
 }
 
+// TOTPService exposes the TOTP backend so other packages can use it via an interface.
+func (h *Handler) TOTPService() *TOTPService { return h.totpSvc }
+
 // Routes registers auth routes on a chi Router.
 func (h *Handler) Routes(r chi.Router) {
 	r.Post("/auth/login", h.Login)

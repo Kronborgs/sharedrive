@@ -81,7 +81,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		buildDate:      buildDate,
 		authHandler:    authHandler,
 		onboarding:     onboarding.New(db, cfg),
-		userHandler:    user.NewHandler(db, auditSvc, smtp.New(cfg, db), cfg.AppBaseURL),
+		userHandler:    user.NewHandler(db, auditSvc, smtp.New(cfg, db), cfg.AppBaseURL, authHandler.TOTPService()),
 		fileSvc:        fileSvc,
 		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc, rdb, conv, ratelimit.New(rdb)),
 		sharesHandler:  shares.NewHandler(db, smtp.New(cfg, db), cfg.AppBaseURL),
@@ -284,6 +284,7 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Post("/api/v1/admin/users/{id}/lock", s.userHandler.Lock)
 			r.Post("/api/v1/admin/users/{id}/unlock", s.userHandler.Unlock)
 			r.Post("/api/v1/admin/users/{id}/force-password-reset", s.userHandler.ForcePasswordReset)
+			r.Delete("/api/v1/admin/users/{id}/totp", s.userHandler.RevokeTOTP)
 			r.Post("/api/v1/admin/users/{id}/invite", s.handleAdminReinviteUser)
 			r.Get("/api/v1/admin/users/{id}/sessions", s.userHandler.ListSessions)
 			r.Post("/api/v1/admin/users/{id}/support-access", s.handleAdminSupportAccess)

@@ -97,6 +97,10 @@ export function disableTOTP(): Promise<void> {
   return api.delete('/api/v1/me/totp')
 }
 
+export function adminRevokeTOTP(userId: string): Promise<void> {
+  return api.delete(`/api/v1/admin/users/${userId}/totp`)
+}
+
 // ── Playlist ──────────────────────────────────────────────────────────────────
 
 export interface PlaylistTrack {

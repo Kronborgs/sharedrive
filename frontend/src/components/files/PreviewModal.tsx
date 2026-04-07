@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { X, Download, AlertTriangle, Loader2 } from 'lucide-react'
+import { X, Download, AlertTriangle, Loader2, Printer } from 'lucide-react'
 import type { FileItem } from '@/types/api'
 import { PDFRenderer } from './renderers/PDFRenderer'
 import { STLRenderer } from './renderers/STLRenderer'
@@ -41,6 +41,39 @@ export function PreviewModal({ item, onClose }: PreviewModalProps) {
   const previewUrl = `/api/v1/files/${item.id}/preview`
   const pdfUrl = `/api/v1/files/${item.id}/preview/pdf`
 
+  const isPrintable = kind === 'pdf' || kind === 'office' || kind === 'image' || kind === 'text'
+
+  const handlePrint = useCallback(() => {
+    const url = kind === 'office' ? pdfUrl : previewUrl
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:0'
+
+    if (kind === 'image') {
+      // Inject a minimal HTML document so the image fills the print page
+      document.body.appendChild(iframe)
+      const doc = iframe.contentDocument!
+      doc.open()
+      doc.write(
+        `<!DOCTYPE html><html><head><style>` +
+        `body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh}` +
+        `img{max-width:100%;max-height:100vh;object-fit:contain}` +
+        `</style></head><body><img src="${url}"></body></html>`
+      )
+      doc.close()
+      setTimeout(() => {
+        iframe.contentWindow?.print()
+        iframe.contentWindow!.onafterprint = () => iframe.remove()
+      }, 400)
+    } else {
+      iframe.src = url
+      document.body.appendChild(iframe)
+      iframe.onload = () => {
+        iframe.contentWindow?.print()
+        iframe.contentWindow!.onafterprint = () => iframe.remove()
+      }
+    }
+  }, [kind, previewUrl, pdfUrl])
+
   // Close on Escape key
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -69,6 +102,16 @@ export function PreviewModal({ item, onClose }: PreviewModalProps) {
             <Download size={12} />
             Download
           </a>
+          {isPrintable && (
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+              title="Print"
+            >
+              <Printer size={12} />
+              Print
+            </button>
+          )}
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400"

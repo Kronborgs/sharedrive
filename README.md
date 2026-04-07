@@ -10,6 +10,7 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 
 ### Files
 - List and grid view with breadcrumb navigation
+- **Image thumbnails** — raster images (JPEG, PNG, GIF, WebP) render a 256 px thumbnail in the file list and grid; other types fall back to an icon
 - Drag-and-drop upload zone + file picker button
 - **Resumable uploads** via the [tus protocol](https://tus.io/) — survives network interruptions and browser restarts
 - **Direct upload URL** — bypass Cloudflare for large files at full speed (configured in admin settings)
@@ -17,7 +18,24 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 - Create folders, rename, move (drag or context menu)
 - Right-click context menu: open, download, share, rename, trash
 - Multi-select with shift-click or checkbox; bulk download as ZIP, bulk trash
+- **Download ZIP dialog** — optional password protection (auto-generated or custom), with a clear password display and a "Download started" confirmation step
 - **Recent files** — last 50 accessed or modified items
+- **Activity feed** — personal history of the last 50 file events (upload, download, preview, delete, etc.) with timestamp and IP address; accessible via the sidebar
+
+### File Preview
+- **PDF** — rendered page-by-page in the browser via PDF.js with a loading spinner
+- **Office documents** (DOCX, XLSX, PPTX, ODT, ODS, ODP) — converted server-side to PDF via LibreOffice; shows a "Preparing preview…" spinner while conversion runs
+- **Images** (JPEG, PNG, GIF, WebP, SVG) — full-size preview with a fade-in loading state
+- **Video** (MP4, WebM, OGG, MOV) — native browser player
+- **Audio** (MP3, WAV, AAC, M4A, Opus) — native browser player; FLAC detected at render time — shows a download-to-play fallback if the browser does not support it
+- **3D models** (STL, 3MF) — interactive WebGL viewer (Three.js)
+- **Text & code** — syntax-highlighted viewer; previews truncated at 1 MB with a notice
+- **Print button** — prints PDF, office, image, and text files directly from the preview modal using the browser's print dialog (no server-side printer required)
+
+### Download Rate Limiting
+- **Per-user limits** — 200 single-file downloads / hour; 30 ZIP downloads / hour
+- **Per-IP limits** — 600 single-file downloads / hour; 60 ZIP downloads / hour
+- Returns HTTP 429 with `Retry-After: 3600` on breach
 
 ### Sharing
 - Share files or folders with **users**, **groups**, or a **public link**
@@ -43,6 +61,7 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 ### Security
 - **Progressive IP lockout** — Redis sliding-window counters with automatic tier escalation (60 min → 6 h → 24 h)
 - **Manual IP block** (permanent, admin-managed) + CIDR whitelist to bypass all rate limiting
+- **Download rate limiting** — sliding-window Redis counters, separate limits per user and per IP for single-file and ZIP downloads
 - Passwords: Argon2id
 - Sessions: opaque 256-bit tokens, SHA-256-stored in DB
 - TOTP secrets: AES-256-GCM at rest

@@ -88,15 +88,16 @@ func (s *TOTPService) ConfirmEnroll(ctx context.Context, userID, userEmail, secr
 	}
 
 	_, err = s.db.Exec(ctx,
-		`INSERT INTO totp_secrets (user_id, secret_enc, backup_codes_hash)
+		`INSERT INTO totp_credentials (user_id, encrypted_secret, backup_codes)
 		 VALUES ($1, $2, $3)
 		 ON CONFLICT (user_id) DO UPDATE
-		   SET secret_enc = EXCLUDED.secret_enc,
-		       backup_codes_hash = EXCLUDED.backup_codes_hash,
-		       enabled_at = now()`,
+		   SET encrypted_secret = EXCLUDED.encrypted_secret,
+		       backup_codes     = EXCLUDED.backup_codes,
+		       confirmed_at     = now()`,
 		userID, encrypted, hashed,
 	)
 	if err != nil {
+		log.Error().Err(err).Str("user_id", userID).Msg("totp: failed to store secret in DB")
 		return nil, fmt.Errorf("totp: store secret: %w", err)
 	}
 	return backupCodes, nil
@@ -105,7 +106,7 @@ func (s *TOTPService) ConfirmEnroll(ctx context.Context, userID, userEmail, secr
 // Validate checks a TOTP code (or backup code) for a user.
 func (s *TOTPService) Validate(ctx context.Context, userID, code string) error {
 	row := s.db.QueryRow(ctx,
-		`SELECT secret_enc, backup_codes_hash FROM totp_secrets WHERE user_id = $1`,
+		`SELECT encrypted_secret, backup_codes FROM totp_credentials WHERE user_id = $1`,
 		userID,
 	)
 	var encSecret string
@@ -130,7 +131,7 @@ func (s *TOTPService) Validate(ctx context.Context, userID, code string) error {
 
 // Disable removes TOTP for a user.
 func (s *TOTPService) Disable(ctx context.Context, userID string) error {
-	_, err := s.db.Exec(ctx, `DELETE FROM totp_secrets WHERE user_id = $1`, userID)
+	_, err := s.db.Exec(ctx, `DELETE FROM totp_credentials WHERE user_id = $1`, userID)
 	return err
 }
 
@@ -138,7 +139,7 @@ func (s *TOTPService) Disable(ctx context.Context, userID string) error {
 func (s *TOTPService) HasTOTP(ctx context.Context, userID string) (bool, error) {
 	var exists bool
 	err := s.db.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM totp_secrets WHERE user_id = $1)`, userID,
+		`SELECT EXISTS(SELECT 1 FROM totp_credentials WHERE user_id = $1)`, userID,
 	).Scan(&exists)
 	return exists, err
 }
@@ -218,7 +219,7 @@ func (s *TOTPService) validateBackupCode(ctx context.Context, userID, code strin
 			copy(newHashes, storedHashes)
 			newHashes[i] = "USED-" + stored
 			_, _ = s.db.Exec(ctx,
-				`UPDATE totp_secrets SET backup_codes_hash = $1 WHERE user_id = $2`,
+				`UPDATE totp_credentials SET backup_codes = $1 WHERE user_id = $2`,
 				newHashes, userID,
 			)
 			return nil

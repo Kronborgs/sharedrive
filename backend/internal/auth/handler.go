@@ -803,9 +803,14 @@ func (h *Handler) TOTPConfirm(w http.ResponseWriter, r *http.Request) {
 	log.Debug().Str("user_id", u.ID.String()).Int("secret_len", len(secret)).Str("code", req.Code).Msg("totp: confirm attempt")
 	codes, err := h.totpSvc.ConfirmEnroll(ctx, u.ID.String(), u.Email, secret, req.Code)
 	if err != nil {
+		log.Error().Err(err).Str("user_id", u.ID.String()).Msg("totp: ConfirmEnroll failed")
 		// Re-store the secret so the user can retry without rescanning.
 		_ = h.rdb.Set(ctx, redisKey, secret, 10*time.Minute).Err()
-		httputil.RespondError(w, http.StatusBadRequest, "invalid TOTP code")
+		if strings.Contains(err.Error(), "invalid code") {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid TOTP code")
+		} else {
+			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		}
 		return
 	}
 	// Clear any admin-forced TOTP requirement now that the user has enrolled.

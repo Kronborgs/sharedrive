@@ -231,7 +231,7 @@ func (h *Handler) TOTPVerify(w http.ResponseWriter, r *http.Request) {
 	ip := middleware.ClientIP(r)
 
 	// Rate-limit TOTP verify by IP to prevent brute-force on leaked pending tokens.
-	allowed, rlErr := h.limiter.Allow(ctx, KeyIPTOTPVerify, ip, 10, 60)
+	allowed, _, _, rlErr := h.limiter.Allow(ctx, KeyIPTOTPVerify, ip, 10, 60*time.Second)
 	if rlErr != nil || !allowed {
 		httputil.RespondError(w, http.StatusTooManyRequests, "too many requests")
 		return

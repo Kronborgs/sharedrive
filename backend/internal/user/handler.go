@@ -433,10 +433,10 @@ func (h *Handler) RevokeTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if actor != nil {
 		h.auditSvc.Log(ctx, audit.Event{
-			Type:      audit.EventUserUpdated,
+			Type:      audit.EventTOTPDisabled,
 			ActorID:   &actor.ID,
 			IPAddress: clientIP(r),
-			Metadata:  map[string]any{"target_user_id": id, "action": "revoke_totp"},
+			Metadata:  map[string]any{"target_user_id": id, "action": "admin_revoke_totp"},
 		})
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})

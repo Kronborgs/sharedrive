@@ -45,6 +45,7 @@ export function WebDAVDialog({ onClose }: Props) {
   const [revealed, setRevealed] = useState<CreatedAppPassword | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('windows')
+  const [showPSFallback, setShowPSFallback] = useState(false)
 
   const { data: settings } = useQuery({
     queryKey: ['system', 'settings'],
@@ -134,20 +135,24 @@ export function WebDAVDialog({ onClose }: Props) {
           {/* ── Windows ── */}
           {tab === 'windows' && (
             <div className="space-y-3">
-              <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3">
-                <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 mb-1">Vigtigt — brug normal PowerShell, ikke administrator</p>
-                <p className="text-[11px] text-amber-700 dark:text-amber-400">Åbn Start → søg "PowerShell" → klik direkte. Kør <strong>ikke</strong> som administrator, ellers vises drevet ikke i Stifinder.</p>
-              </div>
-
-              <p className="text-[11px] text-zinc-600 dark:text-slate-400">Kør denne kommando i normal PowerShell — erstat <code className="font-mono">APP-PASSWORD</code> med din app password nedenfor:</p>
+              {/* Primary: GUI method */}
               <CodeRow
-                label="PowerShell-kommando"
-                value={`net use S: "${windowsUnc}" /user:${user?.email ?? 'din@email.dk'} APP-PASSWORD /persistent:yes`}
-                copyKey="wincmd"
+                label="Sti til netværksdrev (kopiér denne)"
+                value={windowsUnc}
+                copyKey="winunc"
                 copied={copied}
                 onCopy={copy}
               />
-              <p className="text-[11px] text-zinc-500 dark:text-slate-500">Drevet <strong>S:</strong> dukker derefter op under "Enheder og drev" i Stifinder med lagervisning. Vælg et andet bogstav hvis S: er optaget.</p>
+
+              <ol className="text-[11px] text-zinc-600 dark:text-slate-400 space-y-1.5 list-decimal list-inside">
+                <li>Åbn Stifinder (<kbd className="font-mono text-[10px] bg-zinc-100 dark:bg-[#0f1117] px-1 py-0.5 rounded">Win+E</kbd>)</li>
+                <li>Højreklik på <strong>Denne computer</strong> → klik <strong>Tilknyt netværksdrev…</strong></li>
+                <li>Vælg et drevbogstav (f.eks. <strong>S:</strong>)</li>
+                <li>Indsæt stien ovenfor i feltet <strong>Mappe:</strong></li>
+                <li>Sæt flueben ved <strong>Genetablér forbindelsen ved logon</strong></li>
+                <li>Sæt flueben ved <strong>Opret forbindelsen som en anden bruger</strong></li>
+                <li>Log ind med din <strong>email</strong> og et <strong>app password</strong> oprettet nedenfor</li>
+              </ol>
 
               <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 space-y-2">
                 <p className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">Hæv filstørrelsesgrænseren til 4 GB</p>
@@ -156,6 +161,32 @@ export function WebDAVDialog({ onClose }: Props) {
                   <code className="flex-1 text-[10px] font-mono text-zinc-800 dark:text-slate-200 break-all select-all">{windowsRegCmd}</code>
                   <CopyButton text={windowsRegCmd} copyKey="winreg" copied={copied} onCopy={copy} />
                 </div>
+              </div>
+
+              {/* Fallback: PowerShell */}
+              <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148]">
+                <button
+                  onClick={() => setShowPSFallback(v => !v)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-medium text-zinc-600 dark:text-slate-400 hover:text-zinc-900 dark:hover:text-slate-200 transition-colors"
+                >
+                  <span>Alternativt: tilknyt via PowerShell</span>
+                  <span className="text-[10px]">{showPSFallback ? '▲' : '▼'}</span>
+                </button>
+                {showPSFallback && (
+                  <div className="px-3 pb-3 space-y-2 border-t border-zinc-200 dark:border-[#2d3148] pt-2">
+                    <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-2">
+                      <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 mb-0.5">Brug normal PowerShell — ikke administrator</p>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400">Åbn Start → søg "PowerShell" → klik direkte. Kør <strong>ikke</strong> som administrator, ellers vises drevet ikke i Stifinder.</p>
+                    </div>
+                    <CodeRow
+                      label="PowerShell-kommando (erstat APP-PASSWORD)"
+                      value={`net use S: "${windowsUnc}" /user:${user?.email ?? 'din@email.dk'} APP-PASSWORD /persistent:yes`}
+                      copyKey="wincmd"
+                      copied={copied}
+                      onCopy={copy}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}

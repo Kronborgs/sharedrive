@@ -20,7 +20,7 @@ export function WebDAVDialog({ onClose }: Props) {
   const [copied, setCopied] = useState<'url' | 'pwd' | null>(null)
 
   const { data: settings } = useQuery({
-    queryKey: ['system-settings'],
+    queryKey: ['system', 'settings'],
     queryFn: ({ signal }) => api.get<{ direct_upload_url?: string }>('/api/v1/system/settings', signal),
     staleTime: 5 * 60 * 1000,
   })

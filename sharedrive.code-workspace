@@ -27,7 +27,51 @@
 			"git add": true,
 			"git init": true,
 			"git remote": true,
-			"git config": true
+			"git config": true,
+			"git commit": true,
+			"git push": true,
+			"Test-Path": true,
+			"go": true,
+			"npm --version 2>&1": true,
+			"npm install": true,
+			"Get-Item": true,
+			"npx vite": true,
+			"Rename-Item": true,
+			"&": true,
+			"Get-Command": true,
+			"where.exe": true,
+			"/^bash x:\\\\sharedrive\\\\scripts\\\\bump-version\\.sh; Get-Content x:\\\\sharedrive\\\\VERSION$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			"Set-Content": true,
+			"npx tsc": true,
+			"git cat-file": true,
+			"Add-Content": true,
+			"docker run": true,
+			"ForEach-Object": true,
+			"npm run build": true,
+			"/^node -e \"const r = require\\('x:/sharedrive/frontend/node_modules/@tanstack/react-router'\\); console\\.log\\(Object\\.keys\\(r\\)\\.filter\\(k => k\\.toLowerCase\\(\\)\\.includes\\('redirect'\\)\\)\\)\" 2>&1$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			"git hash-object": true,
+			"git rev-parse": true,
+			"530..545": true,
+			"git checkout": true,
+			"/^cd x:\\\\sharedrive\npython3 -c \"\nimport re\n\nwith open\\(r'backend\\\\internal\\\\user\\\\handler\\.go', 'r', encoding='utf-8'\\) as f:\n    src = f\\.read\\(\\)\n\nold = '\\\\t// Delete shares granted to this guest \\(hard delete, not revoke\\)\\.\\\\n\\\\ttx\\.Exec\\(ctx, \\\\`DELETE FROM shares WHERE grantee_id = \\\\\\$1\\\\`, id\\)\\\\n\\\\n\\\\t// Finally delete the user row\\.\\\\n'\nnew = '\\\\t// Revoke all shares granted to this guest\\.\\\\n\\\\ttx\\.Exec\\(ctx, \\\\`UPDATE shares SET revoked_at = now\\(\\) WHERE grantee_id = \\\\\\$1 AND revoked_at IS NULL\\\\`, id\\)\\\\n\\\\t// Delete shares owned or created by this guest\\.\\\\n\\\\ttx\\.Exec\\(ctx, \\\\`DELETE FROM shares WHERE owner_id = \\\\\\$1 OR created_by = \\\\\\$1\\\\`, id\\)\\\\n\\\\t// Delete files owned by this guest \\(uploaded by them into other folders\\)\\.\\\\n\\\\ttx\\.Exec\\(ctx, \\\\`DELETE FROM files WHERE owner_id = \\\\\\$1\\\\`, id\\)\\\\n\\\\t// Hard-delete the user record\\.\\\\n'\n\nif old in src:\n    result = src\\.replace\\(old, new\\)\n    with open\\(r'backend\\\\internal\\\\user\\\\handler\\.go', 'w', encoding='utf-8'\\) as f:\n        f\\.write\\(result\\)\n    print\\('Patched OK, new length:', len\\(result\\.splitlines\\(\\)\\)\\)\nelse:\n    print\\('OLD TEXT NOT FOUND'\\)\n\"\n$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			"/^python patch_handler\\.py$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			"/^python3 patch_handler\\.py$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			".\\patch_handler.ps1": true
 		}
 	}
 }

@@ -120,7 +120,7 @@ func (s *TOTPService) Validate(ctx context.Context, userID, code string) error {
 		return err
 	}
 
-	valid, _ := totp.ValidateCustom(code, secret, timeNow(), totp.ValidateOpts{Skew: 1, Digits: 6, Period: 30, Algorithm: otp.AlgorithmSHA1})
+	valid, _ := totp.ValidateCustom(code, secret, timeNow(), totp.ValidateOpts{Skew: 20, Digits: otp.DigitsSix, Period: 30, Algorithm: otp.AlgorithmSHA1})
 	if valid {
 		return nil
 	}

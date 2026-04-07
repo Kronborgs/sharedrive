@@ -230,3 +230,27 @@ export interface PaginatedResponse<T> {
   total: number
   cursor_next: string | null
 }
+
+// ── Preview & Download ────────────────────────────────────────────────────────
+
+export interface PrepareDownloadRequest {
+  ids: string[]
+  use_password: boolean
+  custom_password?: string
+}
+
+export interface PrepareDownloadResponse {
+  token: string
+  password?: string
+  expires_in: number
+}
+
+// ── Activity ──────────────────────────────────────────────────────────────────
+
+export interface ActivityEvent {
+  id: string
+  event_type: string
+  resource_name: string | null
+  ip_address: string
+  created_at: string
+}

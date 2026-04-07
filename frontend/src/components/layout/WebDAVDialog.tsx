@@ -134,14 +134,21 @@ export function WebDAVDialog({ onClose }: Props) {
           {/* ── Windows ── */}
           {tab === 'windows' && (
             <div className="space-y-3">
-              <CodeRow label="Netværksdrev-sti (UNC)" value={windowsUnc} copyKey="winunc" copied={copied} onCopy={copy} />
-              <ol className="text-[11px] text-zinc-600 dark:text-slate-400 space-y-1 list-decimal list-inside">
-                <li>Åbn <strong>Stifinder</strong> → højreklik på <strong>Denne computer</strong> → <strong>Tilknyt netværksdrev</strong></li>
-                <li>Vælg et drevbogstav (f.eks. <strong>S:</strong>)</li>
-                <li>Indsæt stien ovenfor i <strong>Mappe</strong>-feltet</li>
-                <li>Sæt hak i <strong>Opret forbindelse med andre legitimationsoplysninger</strong></li>
-                <li>Log ind med din <strong>email</strong> og en <strong>app password</strong> nedenfor</li>
-              </ol>
+              <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3">
+                <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 mb-1">Vigtigt — brug normal PowerShell, ikke administrator</p>
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">Åbn Start → søg "PowerShell" → klik direkte. Kør <strong>ikke</strong> som administrator, ellers vises drevet ikke i Stifinder.</p>
+              </div>
+
+              <p className="text-[11px] text-zinc-600 dark:text-slate-400">Kør denne kommando i normal PowerShell — erstat <code className="font-mono">APP-PASSWORD</code> med din app password nedenfor:</p>
+              <CodeRow
+                label="PowerShell-kommando"
+                value={`net use S: "${windowsUnc}" /user:${user?.email ?? 'din@email.dk'} APP-PASSWORD /persistent:yes`}
+                copyKey="wincmd"
+                copied={copied}
+                onCopy={copy}
+              />
+              <p className="text-[11px] text-zinc-500 dark:text-slate-500">Drevet <strong>S:</strong> dukker derefter op under "Enheder og drev" i Stifinder med lagervisning. Vælg et andet bogstav hvis S: er optaget.</p>
+
               <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 space-y-2">
                 <p className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">Hæv filstørrelsesgrænseren til 4 GB</p>
                 <p className="text-[11px] text-blue-700 dark:text-blue-400">Windows tillader som standard kun filer op til 50 MB via WebDAV. Kør kommandoen nedenfor i <strong>Administrator PowerShell</strong>, frakobl og tilslut drevet igen.</p>

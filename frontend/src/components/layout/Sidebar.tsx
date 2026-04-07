@@ -10,6 +10,7 @@ import {
   ShieldBan,
   HardDrive,
   Database,
+  History,
   ChevronDown,
   LogOut,
 } from 'lucide-react'
@@ -28,10 +29,11 @@ interface NavItem {
 }
 
 const mainNav: NavItem[] = [
-  { to: '/files',   label: 'My Files',     icon: <Files size={16} />,   exact: true },
-  { to: '/shares',  label: 'Shared',        icon: <Share2 size={16} /> },
-  { to: '/recent',  label: 'Recent',        icon: <Clock size={16} /> },
-  { to: '/trash',   label: 'Trash',         icon: <Trash2 size={16} /> },
+  { to: '/files',    label: 'My Files',  icon: <Files size={16} />,   exact: true },
+  { to: '/shares',   label: 'Shared',    icon: <Share2 size={16} /> },
+  { to: '/recent',   label: 'Recent',    icon: <Clock size={16} /> },
+  { to: '/activity', label: 'Activity',  icon: <History size={16} /> },
+  { to: '/trash',    label: 'Trash',     icon: <Trash2 size={16} /> },
 ]
 
 const guestNav: NavItem[] = [

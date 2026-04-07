@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 )
 
 // inlineScriptRe matches the content of <script> tags that contain inline code.
@@ -39,9 +41,9 @@ func InlineScriptHashes(distFS fs.FS) []string {
 // SecurityHeaders returns middleware that adds security-related HTTP response
 // headers to every response. Pass the output of InlineScriptHashes as
 // scriptHashes so the CSP allows the inline scripts injected by Vite.
-// extraConnectSrc is called once per request and its return value (if non-empty)
-// is appended to the connect-src directive — use it to allow a dynamic
-// direct-upload URL stored in the database.
+// extraConnectSrc is called at most once per minute and its return value (if
+// non-empty) is appended to the connect-src directive — use it to allow a
+// dynamic direct-upload URL stored in the database.
 func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string) func(http.Handler) http.Handler {
 	// Build the script-src directive once at startup
 	scriptSrc := "'self' https://static.cloudflareinsights.com"
@@ -49,13 +51,33 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string) func(
 		scriptSrc += " " + strings.Join(scriptHashes, " ")
 	}
 
+	// Cache extraConnectSrc result — the direct_upload_url changes rarely so
+	// calling the DB query on every request is unnecessary overhead.
+	var (
+		cachedExtra     string
+		cachedAt        time.Time
+		cacheMu         sync.Mutex
+		cacheTTL        = 60 * time.Second
+	)
+	resolveExtra := func() string {
+		if extraConnectSrc == nil {
+			return ""
+		}
+		cacheMu.Lock()
+		defer cacheMu.Unlock()
+		if time.Since(cachedAt) < cacheTTL {
+			return cachedExtra
+		}
+		cachedExtra = extraConnectSrc()
+		cachedAt = time.Now()
+		return cachedExtra
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			connectSrc := "'self' wss: ws: https://cloudflareinsights.com"
-			if extraConnectSrc != nil {
-				if extra := extraConnectSrc(); extra != "" {
-					connectSrc += " " + extra
-				}
+			if extra := resolveExtra(); extra != "" {
+				connectSrc += " " + extra
 			}
 			csp := "default-src 'self'; " +
 				"script-src " + scriptSrc + "; " +

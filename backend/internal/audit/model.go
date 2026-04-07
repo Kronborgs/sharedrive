@@ -42,6 +42,8 @@ const (
 	EventFileRenamed          = "FILE_RENAMED"
 	EventFileMoved            = "FILE_MOVED"
 	EventFolderCreated        = "FOLDER_CREATED"
+	EventFilePreviewed        = "FILE_PREVIEWED"
+	EventZipDownloaded        = "ZIP_DOWNLOADED"
 
 	// Share events
 	EventShareCreated  = "SHARE_CREATED"

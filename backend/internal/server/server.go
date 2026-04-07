@@ -28,6 +28,8 @@ import (
 	"github.com/yourname/privatedrive/internal/files"
 	mw "github.com/yourname/privatedrive/internal/middleware"
 	"github.com/yourname/privatedrive/internal/onboarding"
+	"github.com/yourname/privatedrive/internal/preview"
+	"github.com/yourname/privatedrive/internal/ratelimit"
 	"github.com/yourname/privatedrive/internal/shares"
 	"github.com/yourname/privatedrive/internal/smtp"
 	"github.com/yourname/privatedrive/internal/user"
@@ -62,6 +64,15 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 	fileSvc := files.NewService(db, storage)
 	trashSvc := files.NewTrashService(db, storage)
 
+	var conv *preview.Converter
+	if cfg.PreviewCacheDir != "" {
+		if c, err := preview.New(cfg.PreviewCacheDir); err != nil {
+			log.Warn().Err(err).Msg("preview: converter init failed — Office preview unavailable")
+		} else {
+			conv = c
+		}
+	}
+
 	s := &Server{
 		cfg:            cfg,
 		db:             db,
@@ -72,7 +83,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		onboarding:     onboarding.New(db, cfg),
 		userHandler:    user.NewHandler(db, auditSvc, smtp.New(cfg, db), cfg.AppBaseURL),
 		fileSvc:        fileSvc,
-		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc),
+		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc, rdb, conv, ratelimit.New(rdb)),
 		sharesHandler:  shares.NewHandler(db, smtp.New(cfg, db), cfg.AppBaseURL),
 		adminHandler:   admin.NewHandler(db, cfg),
 		sseHandler:     admin.NewSSEHandler(db),
@@ -81,6 +92,31 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		auditSvc:       auditSvc,
 	}
 	s.router = s.buildRouter()
+
+	// Start preview-cache cleanup goroutine — purges cached PDFs older than 24 h.
+	if cfg.PreviewCacheDir != "" {
+		go func() {
+			ticker := time.NewTicker(1 * time.Hour)
+			defer ticker.Stop()
+			for range ticker.C {
+				if err := cleanPreviewCache(cfg.PreviewCacheDir); err != nil {
+					log.Warn().Err(err).Msg("preview cache cleanup")
+				}
+			}
+		}()
+	}
+
+	// Start TUS temp-file cleanup goroutine — removes abandoned partial uploads
+	// older than 48 h to prevent unbounded disk growth.
+	go func() {
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := cleanTusUploadDir(cfg.TusUploadDir); err != nil {
+				log.Warn().Err(err).Msg("tus upload dir cleanup")
+			}
+		}
+	}()
 
 	// WebDAV is mounted OUTSIDE Chi so that non-standard HTTP methods such as
 	// PROPFIND, MKCOL, PROPPATCH, COPY, MOVE, LOCK and UNLOCK are accepted.
@@ -194,6 +230,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/me/totp/setup", s.handleTOTPSetup)
 		r.Post("/api/v1/me/totp/confirm", s.handleTOTPConfirm)
 		r.Delete("/api/v1/me/totp", s.handleTOTPDisable)
+		r.Get("/api/v1/me/activity", s.adminHandler.UserActivity)
 
 		// Upload token (cross-subdomain TUS auth)
 		r.Post("/api/v1/upload-token", s.authHandler.HandleIssueUploadToken)
@@ -213,6 +250,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/files/trash", s.filesHandler.ListTrash)
 		r.Delete("/api/v1/files/trash", s.filesHandler.EmptyTrash)
 		r.Get("/api/v1/files/download-zip", s.filesHandler.DownloadZip)
+		r.Post("/api/v1/files/prepare-download", s.filesHandler.PrepareDownload)
+		r.Get("/api/v1/files/{id}/preview", s.filesHandler.Preview)
+		r.Get("/api/v1/files/{id}/preview/pdf", s.filesHandler.PreviewPDF)
+		r.Get("/api/v1/files/{id}/thumbnail", s.filesHandler.Thumbnail)
 		r.Get("/api/v1/files/{id}", s.filesHandler.Get)
 		r.Patch("/api/v1/files/{id}", s.filesHandler.Update)
 		r.Delete("/api/v1/files/{id}", s.filesHandler.Delete)
@@ -342,6 +383,57 @@ func (s *Server) redisStatus(ctx context.Context) string {
 		return "error"
 	}
 	return "ok"
+}
+
+// cleanPreviewCache removes LibreOffice PDF cache entries older than 24 hours.
+func cleanPreviewCache(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	cutoff := time.Now().Add(-24 * time.Hour)
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil || e.IsDir() {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+	return nil
+}
+
+// cleanTusUploadDir removes abandoned partial TUS upload files (.bin and .info)
+// that are older than 48 hours. This prevents unbounded disk growth from uploads
+// that were never completed or whose sessions were disrupted.
+func cleanTusUploadDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	cutoff := time.Now().Add(-48 * time.Hour)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		name := e.Name()
+		if (strings.HasSuffix(name, ".bin") || strings.HasSuffix(name, ".info")) &&
+			info.ModTime().Before(cutoff) {
+			_ = os.Remove(filepath.Join(dir, name))
+		}
+	}
+	return nil
 }
 
 func (s *Server) handleOnboardingStatus(w http.ResponseWriter, r *http.Request) {
@@ -504,6 +596,7 @@ func (s *Server) tusHandler() http.Handler {
 				ActorID:      &actor.ID,
 				ResourceID:   &f.ID,
 				ResourceName: f.Name,
+				IPAddress:    hook.HTTPRequest.RemoteAddr,
 			})
 			return tusd.HTTPResponse{}, nil
 		},

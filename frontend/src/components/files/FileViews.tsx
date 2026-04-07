@@ -1,7 +1,8 @@
 import type { FileItem } from '@/types/api'
-import { getFileIcon, formatBytes, formatRelative, cn } from '@/lib/utils'
+import { formatBytes, formatRelative, cn } from '@/lib/utils'
 import { MoreVertical, Folder, UserPlus } from 'lucide-react'
 import { useRef } from 'react'
+import { FileThumbnail } from './FileThumbnail'
 
 interface FileListProps {
   items: FileItem[]
@@ -118,9 +119,7 @@ function FileRow({
       </td>
       <td className="px-3 py-2.5">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="text-lg shrink-0 select-none">
-            {item.is_folder ? '📁' : getFileIcon(item.name)}
-          </span>
+          <FileThumbnail item={item} size={20} />
           <span className="truncate text-zinc-900 dark:text-slate-100 text-sm" title={item.name}>
             {item.name}
           </span>
@@ -211,7 +210,7 @@ export function FileGrid({ items, selectedIds, onSelect, onOpen, onContextMenu }
           onDoubleClick={() => { if (!item.is_folder) onOpen(item) }}
           onContextMenu={e => { e.preventDefault(); onContextMenu(item, e.clientX, e.clientY) }}
         >
-          <span className="text-4xl">{item.is_folder ? '📁' : getFileIcon(item.name)}</span>
+          <FileThumbnail item={item} size={48} />
           <span className="text-xs text-zinc-900 dark:text-slate-100 text-center break-all line-clamp-2 w-full" title={item.name}>
             {item.name}
           </span>

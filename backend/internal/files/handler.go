@@ -2,30 +2,53 @@ package files
 
 import (
 	"archive/zip"
+	"context"
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
+	"image"
+	"image/jpeg"
+	_ "image/gif"  // register GIF decoder
+	_ "image/png"  // register PNG decoder
+	"io"
+	"math/big"
 	"net/http"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
+
+	"net/url"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	goredis "github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
+	yzip "github.com/yeka/zip"
+	xdraw "golang.org/x/image/draw"
+	_ "golang.org/x/image/webp" // register WEBP decoder
 
 	"github.com/yourname/privatedrive/internal/audit"
 	"github.com/yourname/privatedrive/internal/httputil"
 	"github.com/yourname/privatedrive/internal/middleware"
+	"github.com/yourname/privatedrive/internal/preview"
+	"github.com/yourname/privatedrive/internal/ratelimit"
 )
 
 // Handler provides HTTP handlers for the files API.
 type Handler struct {
-	svc      *Service
-	trash    *TrashService
-	auditSvc audit.Logger
+	svc       *Service
+	trash     *TrashService
+	auditSvc  audit.Logger
+	redis     *goredis.Client
+	converter *preview.Converter // nil when LibreOffice is not configured
+	limiter   *ratelimit.Limiter // nil when Redis is unavailable
 }
 
 // NewHandler creates a Handler.
-func NewHandler(svc *Service, trash *TrashService, auditSvc audit.Logger) *Handler {
-	return &Handler{svc: svc, trash: trash, auditSvc: auditSvc}
+func NewHandler(svc *Service, trash *TrashService, auditSvc audit.Logger, rdb *goredis.Client, conv *preview.Converter, lim *ratelimit.Limiter) *Handler {
+	return &Handler{svc: svc, trash: trash, auditSvc: auditSvc, redis: rdb, converter: conv, limiter: lim}
 }
 
 // List handles GET /api/v1/files — list contents of a folder (default: root).
@@ -169,6 +192,23 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	ctx := r.Context()
 
+	// Per-user and per-IP download rate limiting (200/hour per user, 600/hour per IP).
+	if h.limiter != nil {
+		userOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyUserDownload, actor.ID.String(), 200, time.Hour)
+		if !userOK {
+			w.Header().Set("Retry-After", "3600")
+			httputil.RespondError(w, http.StatusTooManyRequests, "download rate limit exceeded — try again later")
+			return
+		}
+		ip := middleware.ClientIP(r)
+		ipOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyIPDownload, ip, 600, time.Hour)
+		if !ipOK {
+			w.Header().Set("Retry-After", "3600")
+			httputil.RespondError(w, http.StatusTooManyRequests, "download rate limit exceeded — try again later")
+			return
+		}
+	}
+
 	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
 	if err != nil || f == nil || f.IsFolder {
 		httputil.RespondError(w, http.StatusNotFound, "file not found")
@@ -189,15 +229,21 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Length", strconv.FormatInt(f.SizeBytes, 10))
-	w.Header().Set("Content-Disposition", `attachment; filename="`+f.Name+`"`)
+	w.Header().Set("Content-Disposition", contentDisposition("attachment", f.Name))
+	w.Header().Set("Cache-Control", "private")
 	http.ServeContent(w, r, f.Name, f.UpdatedAt, reader)
 
-	h.auditSvc.Log(ctx, audit.Event{
-		Type:         audit.EventFileDownloaded,
-		ActorID:      &actor.ID,
-		ResourceID:   &f.ID,
-		ResourceName: f.Name,
-		IPAddress:    middleware.ClientIP(r),
+	// Use a background context: by the time ServeContent returns for large files,
+	// the request context may already be cancelled (client disconnect).
+	auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer auditCancel()
+	h.auditSvc.Log(auditCtx, audit.Event{
+		Type:          audit.EventFileDownloaded,
+		ActorID:       &actor.ID,
+		ResourceID:    &f.ID,
+		ResourceName:  f.Name,
+		IPAddress:     middleware.ClientIP(r),
+		IsAdminAction: middleware.IsSupportMode(ctx),
 	})
 }
 
@@ -360,18 +406,302 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusCreated, f)
 }
 
-// DownloadZip handles GET /api/v1/files/download-zip?ids=id1,id2,...
-// Streams a zip archive of the requested files the actor can access.
+// ── Utility helpers ─────────────────────────────────────────────────────────────────────
+
+// contentDisposition returns a Content-Disposition header value with an ASCII
+// fallback filename and an RFC 5987 / RFC 8187 filename* parameter so that
+// non-ASCII characters (e.g. Danish ÆØÅ) survive in all modern browsers.
+func contentDisposition(dispositionType, filename string) string {
+	// Build an ASCII-safe fallback: replace non-ASCII bytes and embedded quotes.
+	b := make([]byte, 0, len(filename))
+	for i := 0; i < len(filename); i++ {
+		c := filename[i]
+		if c > 0x7f || c == '"' {
+			b = append(b, '_')
+		} else {
+			b = append(b, c)
+		}
+	}
+	// RFC 5987 percent-encoding of the UTF-8 filename.
+	encoded := url.PathEscape(filename)
+	return fmt.Sprintf(`%s; filename="%s"; filename*=UTF-8''%s`, dispositionType, string(b), encoded)
+}
+
+// safeZipName sanitizes an archive entry path to prevent directory-traversal
+// attacks when the recipient extracts the ZIP. Any component that is "..",
+// ".", empty, or all-whitespace is dropped.
+func safeZipName(rawPath string) string {
+	// Normalise both slash styles (for any Windows-sourced paths in the DB).
+	cleaned := strings.ReplaceAll(rawPath, "\\", "/")
+	parts := strings.Split(cleaned, "/")
+	safe := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" || p == "." || p == ".." {
+			continue
+		}
+		safe = append(safe, p)
+	}
+	if len(safe) == 0 {
+		return "unnamed"
+	}
+	return strings.Join(safe, "/")
+}
+
+// isTextMIME returns true when the MIME type represents displayable text that
+// should be truncated for safe, fast preview delivery.
+func isTextMIME(mime string) bool {
+	return strings.HasPrefix(mime, "text/") ||
+		mime == "application/json" ||
+		mime == "application/xml" ||
+		mime == "application/javascript"
+}
+
+// ── Thumbnail ─────────────────────────────────────────────────────────────────
+
+const (
+	thumbnailMaxPx          = 256
+	thumbnailMaxSourceBytes = 20 * 1024 * 1024 // 20 MB — refuse larger source images
+)
+
+// Thumbnail handles GET /api/v1/files/{id}/thumbnail.
+// Returns a 256×256-capped JPEG thumbnail for image files.
+// Non-image files and oversized sources return 404.
+func (h *Handler) Thumbnail(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+
+	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
+	if err != nil || f == nil || f.IsFolder {
+		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	// Only generate thumbnails for raster images; SVG is served via the preview endpoint.
+	mime := f.MimeType
+	if !strings.HasPrefix(mime, "image/") || mime == "image/svg+xml" {
+		httputil.RespondError(w, http.StatusNotFound, "thumbnail not available")
+		return
+	}
+
+	if f.SizeBytes > thumbnailMaxSourceBytes {
+		httputil.RespondError(w, http.StatusNotFound, "source file too large for thumbnail")
+		return
+	}
+
+	// Conditional request — ETag is the file's last-modified timestamp.
+	etag := fmt.Sprintf(`"%s"`, f.UpdatedAt.UTC().Format(time.RFC3339))
+	w.Header().Set("ETag", etag)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	reader, err := h.svc.storage.Open(id)
+	if err != nil {
+		log.Error().Err(err).Str("file_id", id).Msg("Thumbnail: open storage")
+		httputil.RespondError(w, http.StatusInternalServerError, "could not open file")
+		return
+	}
+	defer reader.Close()
+
+	src, _, err := image.Decode(reader)
+	if err != nil {
+		// Format not decoded by registered decoders — return 404 so frontend falls back to icon.
+		httputil.RespondError(w, http.StatusNotFound, "unsupported image format")
+		return
+	}
+
+	thumb := thumbnailResize(src, thumbnailMaxPx)
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.WriteHeader(http.StatusOK)
+	_ = jpeg.Encode(w, thumb, &jpeg.Options{Quality: 85})
+}
+
+// thumbnailResize scales src down so neither dimension exceeds maxPx while
+// preserving aspect ratio.  Uses bilinear interpolation for quality.
+// Returns src unchanged when it is already within bounds.
+func thumbnailResize(src image.Image, maxPx int) image.Image {
+	b := src.Bounds()
+	sw, sh := b.Dx(), b.Dy()
+	if sw == 0 || sh == 0 || (sw <= maxPx && sh <= maxPx) {
+		return src
+	}
+
+	var tw, th int
+	if sw >= sh {
+		tw = maxPx
+		th = sh * maxPx / sw
+	} else {
+		th = maxPx
+		tw = sw * maxPx / sh
+	}
+	if tw < 1 {
+		tw = 1
+	}
+	if th < 1 {
+		th = 1
+	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, tw, th))
+	xdraw.BiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), xdraw.Over, nil)
+	return dst
+}
+
+// ── Download ZIP ─────────────────────────────────────────────────────────────────
+
+const (
+	downloadTokenPrefix  = "download_token:"
+	downloadTokenTTL     = 10 * time.Minute
+	passwordAlphabet     = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+	passwordLength       = 12
+	customPasswordMaxLen = 128 // prevent oversized payloads being stored in Redis
+)
+
+// reDownloadToken matches the 64-character lowercase hex tokens produced by randomToken.
+var reDownloadToken = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// randomPassword generates a cryptographically-secure 12-character password
+// from a human-readable alphabet (no visually confusable characters: 0/O, 1/I/l).
+func randomPassword() (string, error) {
+	al := big.NewInt(int64(len(passwordAlphabet)))
+	out := make([]byte, passwordLength)
+	for i := range out {
+		n, err := rand.Int(rand.Reader, al)
+		if err != nil {
+			return "", err
+		}
+		out[i] = passwordAlphabet[n.Int64()]
+	}
+	return string(out), nil
+}
+
+// randomToken generates a 32-byte hex token for short-lived download links.
+func randomToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", b), nil
+}
+
+// downloadTokenPayload is stored in Redis for prepare-download transactions.
+type downloadTokenPayload struct {
+	IDs      []string `json:"ids"`
+	Password string   `json:"password"` // empty = no archive encryption
+}
+
+// PrepareDownloadRequest is the JSON body accepted by PrepareDownload.
+type PrepareDownloadRequest struct {
+	IDs            []string `json:"ids"`
+	UsePassword    bool     `json:"use_password"`
+	CustomPassword string   `json:"custom_password"`
+}
+
+// PrepareDownload handles POST /api/v1/files/prepare-download.
+// Validates the requested IDs, generates an optional one-time password, and
+// stores a short-lived Redis token that DownloadZip redeems via ?token=.
+func (h *Handler) PrepareDownload(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Reject oversized bodies before decoding — prevent DoS via malformed JSON.
+	// 500 UUIDs * ~40 bytes each + JSON overhead fits well within 64 KB.
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+
+	var req PrepareDownloadRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(req.IDs) == 0 {
+		httputil.RespondError(w, http.StatusBadRequest, "ids is required")
+		return
+	}
+	if len(req.IDs) > 500 {
+		httputil.RespondError(w, http.StatusBadRequest, "too many ids (max 500)")
+		return
+	}
+	for _, id := range req.IDs {
+		if _, err := uuid.Parse(strings.TrimSpace(id)); err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid id: "+id)
+			return
+		}
+	}
+
+	password := ""
+	if req.UsePassword {
+		if req.CustomPassword != "" {
+			if len(req.CustomPassword) < 4 {
+				httputil.RespondError(w, http.StatusBadRequest, "custom password must be at least 4 characters")
+				return
+			}
+			if len(req.CustomPassword) > customPasswordMaxLen {
+				httputil.RespondError(w, http.StatusBadRequest, "custom password too long (max 128 characters)")
+				return
+			}
+			password = req.CustomPassword
+		} else {
+			var err error
+			if password, err = randomPassword(); err != nil {
+				log.Error().Err(err).Msg("PrepareDownload: randomPassword")
+				httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+		}
+	}
+
+	token, err := randomToken()
+	if err != nil {
+		log.Error().Err(err).Msg("PrepareDownload: randomToken")
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	payload := downloadTokenPayload{IDs: req.IDs, Password: password}
+	data, _ := json.Marshal(payload)
+	if err := h.redis.Set(ctx, downloadTokenPrefix+token, string(data), downloadTokenTTL).Err(); err != nil {
+		log.Error().Err(err).Msg("PrepareDownload: redis set")
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	resp := map[string]any{
+		"token":      token,
+		"expires_in": int(downloadTokenTTL.Seconds()),
+	}
+	if password != "" {
+		resp["password"] = password
+	}
+	httputil.Respond(w, http.StatusOK, resp)
+}
+//
+//	GET /api/v1/files/download-zip?ids=id1,id2,...  (plain ZIP, folders expanded)
+//	GET /api/v1/files/download-zip?token=<token>    (optional AES-256 encryption)
+//
+// Folder IDs are expanded recursively in both code paths.
 func (h *Handler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())
 	ctx := r.Context()
 
-	rawIDs := r.URL.Query().Get("ids")
-	if rawIDs == "" {
-		httputil.RespondError(w, http.StatusBadRequest, "ids is required")
+	// ── Token path (optionally encrypted) ─────────────────────────────────
+	if token := strings.TrimSpace(r.URL.Query().Get("token")); token != "" {
+		if !reDownloadToken.MatchString(token) {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid token format")
+			return
+		}
+		h.downloadZipByToken(w, r, ctx, actor.ID, token)
 		return
 	}
 
+	// ── Legacy ids= path (extended with recursive folder expansion) ────────
+	rawIDs := r.URL.Query().Get("ids")
+	if rawIDs == "" {
+		httputil.RespondError(w, http.StatusBadRequest, "ids or token is required")
+		return
+	}
 	ids := strings.Split(rawIDs, ",")
 	if len(ids) > 100 {
 		httputil.RespondError(w, http.StatusBadRequest, "too many ids (max 100)")
@@ -380,6 +710,8 @@ func (h *Handler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="download.zip"`)
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Accept-Ranges", "none")
 
 	zw := zip.NewWriter(w)
 	defer zw.Close()
@@ -390,32 +722,278 @@ func (h *Handler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
-		if err != nil || f == nil || f.IsFolder {
+		if err != nil || f == nil {
 			continue
 		}
-		reader, err := h.svc.storage.Open(id)
-		if err != nil {
-			log.Warn().Err(err).Str("file_id", id).Msg("DownloadZip: open storage")
+		if f.IsFolder {
+			h.streamFolderIntoZip(ctx, zw, id, actor.ID.String())
 			continue
 		}
-		fw, zerr := zw.Create(f.Name)
-		if zerr != nil {
-			reader.Close()
-			log.Warn().Err(zerr).Str("file_id", id).Msg("DownloadZip: create zip entry")
-			continue
-		}
-		buf := make([]byte, 32*1024)
-		for {
-			n, rerr := reader.Read(buf)
-			if n > 0 {
-				if _, werr := fw.Write(buf[:n]); werr != nil {
-					break
-				}
-			}
-			if rerr != nil {
-				break
-			}
-		}
-		reader.Close()
+		h.streamFileIntoZip(zw, id, f.Name)
 	}
+}
+
+// downloadZipByToken redeems a prepare-download Redis token and streams a
+// plain or AES-256-encrypted ZIP depending on the payload's password field.
+func (h *Handler) downloadZipByToken(w http.ResponseWriter, r *http.Request, ctx context.Context, actorID uuid.UUID, token string) {
+	userID := actorID.String()
+
+	// ZIP downloads are more expensive than single-file downloads: 30/hour per user, 60/hour per IP.
+	if h.limiter != nil {
+		userOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyUserZipDL, userID, 30, time.Hour)
+		if !userOK {
+			w.Header().Set("Retry-After", "3600")
+			httputil.RespondError(w, http.StatusTooManyRequests, "ZIP download rate limit exceeded — try again later")
+			return
+		}
+		ip := middleware.ClientIP(r)
+		ipOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyIPZipDL, ip, 60, time.Hour)
+		if !ipOK {
+			w.Header().Set("Retry-After", "3600")
+			httputil.RespondError(w, http.StatusTooManyRequests, "ZIP download rate limit exceeded — try again later")
+			return
+		}
+	}
+	data, err := h.redis.GetDel(ctx, downloadTokenPrefix+token).Result()
+	if err != nil {
+		httputil.RespondError(w, http.StatusNotFound, "download token not found or expired")
+		return
+	}
+
+	var payload downloadTokenPayload
+	if err := json.Unmarshal([]byte(data), &payload); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Audit at token-redemption time. The request context is still live here
+	// (streaming hasn't started yet), so no need for a background context.
+	h.auditSvc.Log(ctx, audit.Event{
+		Type:          audit.EventZipDownloaded,
+		ActorID:       &actorID,
+		IPAddress:     middleware.ClientIP(r),
+		IsAdminAction: middleware.IsSupportMode(ctx),
+		Metadata:      map[string]any{"file_count": len(payload.IDs), "password_protected": payload.Password != ""},
+	})
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="download.zip"`)
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Accept-Ranges", "none")
+
+	if payload.Password != "" {
+		// AES-256 encrypted ZIP (yeka/zip)
+		yzw := yzip.NewWriter(w)
+		defer yzw.Close()
+		for _, raw := range payload.IDs {
+			id := strings.TrimSpace(raw)
+			if _, err := uuid.Parse(id); err != nil {
+				continue
+			}
+			f, err := h.svc.GetAccessible(ctx, id, userID)
+			if err != nil || f == nil {
+				continue
+			}
+			if f.IsFolder {
+				h.streamFolderIntoEncryptedZip(ctx, yzw, id, userID, payload.Password)
+				continue
+			}
+			h.streamFileIntoEncryptedZip(yzw, id, f.Name, payload.Password)
+		}
+	} else {
+		// Plain ZIP
+		zw := zip.NewWriter(w)
+		defer zw.Close()
+		for _, raw := range payload.IDs {
+			id := strings.TrimSpace(raw)
+			if _, err := uuid.Parse(id); err != nil {
+				continue
+			}
+			f, err := h.svc.GetAccessible(ctx, id, userID)
+			if err != nil || f == nil {
+				continue
+			}
+			if f.IsFolder {
+				h.streamFolderIntoZip(ctx, zw, id, userID)
+				continue
+			}
+			h.streamFileIntoZip(zw, id, f.Name)
+		}
+	}
+}
+
+// streamFileIntoZip copies a single file from storage into a plain zip.Writer entry.
+func (h *Handler) streamFileIntoZip(zw *zip.Writer, fileID, nameInZip string) {
+	reader, err := h.svc.storage.Open(fileID)
+	if err != nil {
+		log.Warn().Err(err).Str("file_id", fileID).Msg("streamFileIntoZip: open")
+		return
+	}
+	defer reader.Close()
+
+	fw, err := zw.Create(safeZipName(nameInZip))
+	if err != nil {
+		log.Warn().Err(err).Str("file_id", fileID).Msg("streamFileIntoZip: create entry")
+		return
+	}
+	if _, err := io.Copy(fw, reader); err != nil {
+		log.Warn().Err(err).Str("file_id", fileID).Msg("streamFileIntoZip: copy")
+	}
+}
+
+// streamFolderIntoZip recursively adds all descendants of folderID into a
+// plain zip.Writer, preserving relative path structure. Access to the top-level
+// folder was already verified by the caller; per-file re-checking is redundant
+// and causes N+1 DB queries for large folders.
+func (h *Handler) streamFolderIntoZip(ctx context.Context, zw *zip.Writer, folderID, _ string) {
+	entries, err := h.svc.ListDescendantFiles(ctx, folderID)
+	if err != nil {
+		log.Warn().Err(err).Str("folder_id", folderID).Msg("streamFolderIntoZip: list")
+		return
+	}
+	for _, e := range entries {
+		h.streamFileIntoZip(zw, e.ID, e.PathInZip)
+	}
+}
+
+// streamFileIntoEncryptedZip copies a single file into a yeka/zip AES-256 entry.
+func (h *Handler) streamFileIntoEncryptedZip(yzw *yzip.Writer, fileID, nameInZip, password string) {
+	reader, err := h.svc.storage.Open(fileID)
+	if err != nil {
+		log.Warn().Err(err).Str("file_id", fileID).Msg("streamFileIntoEncryptedZip: open")
+		return
+	}
+	defer reader.Close()
+
+	fw, err := yzw.Encrypt(safeZipName(nameInZip), password, yzip.AES256Encryption)
+	if err != nil {
+		log.Warn().Err(err).Str("file_id", fileID).Msg("streamFileIntoEncryptedZip: encrypt entry")
+		return
+	}
+	if _, err := io.Copy(fw, reader); err != nil {
+		log.Warn().Err(err).Str("file_id", fileID).Msg("streamFileIntoEncryptedZip: copy")
+	}
+}
+
+// streamFolderIntoEncryptedZip recursively adds descendants of folderID into an
+// AES-256 encrypted yeka/zip archive. Access to the top-level folder was already
+// verified by the caller; per-file re-checking causes N+1 DB queries.
+func (h *Handler) streamFolderIntoEncryptedZip(ctx context.Context, yzw *yzip.Writer, folderID, _ string, password string) {
+	entries, err := h.svc.ListDescendantFiles(ctx, folderID)
+	if err != nil {
+		log.Warn().Err(err).Str("folder_id", folderID).Msg("streamFolderIntoEncryptedZip: list")
+		return
+	}
+	for _, e := range entries {
+		h.streamFileIntoEncryptedZip(yzw, e.ID, e.PathInZip, password)
+	}
+}
+
+// Preview handles GET /api/v1/files/{id}/preview — streams a file inline for
+// browser preview. Text-typed files are capped at 1 MB and the
+// X-Preview-Truncated: true response header is set when truncation occurs.
+// All other types use http.ServeContent which supports byte-range requests
+// (required for video and audio seeking).
+func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+
+	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
+	if err != nil || f == nil || f.IsFolder {
+		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	reader, err := h.svc.storage.Open(id)
+	if err != nil {
+		log.Error().Err(err).Str("file_id", id).Msg("files.Preview: open storage")
+		httputil.RespondError(w, http.StatusInternalServerError, "could not open file")
+		return
+	}
+	defer reader.Close()
+
+	mime := f.MimeType
+	if mime == "" {
+		mime = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Content-Disposition", contentDisposition("inline", f.Name))
+	w.Header().Set("Cache-Control", "private, no-store")
+
+	const textPreviewLimit = 1 * 1024 * 1024 // 1 MB
+	if isTextMIME(mime) && f.SizeBytes > textPreviewLimit {
+		w.Header().Set("X-Preview-Truncated", "true")
+		w.Header().Set("Content-Length", strconv.FormatInt(textPreviewLimit, 10))
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.CopyN(w, reader, textPreviewLimit)
+	} else {
+		http.ServeContent(w, r, f.Name, f.UpdatedAt, reader)
+	}
+
+	// Use a background context so the audit event is not silently dropped when
+	// the request context is cancelled by a client disconnect after the transfer.
+	auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer auditCancel()
+	h.auditSvc.Log(auditCtx, audit.Event{
+		Type:          audit.EventFilePreviewed,
+		ActorID:       &actor.ID,
+		ResourceID:    &f.ID,
+		ResourceName:  f.Name,
+		IPAddress:     middleware.ClientIP(r),
+		IsAdminAction: middleware.IsSupportMode(ctx),
+	})
+}
+
+// PreviewPDF handles GET /api/v1/files/{id}/preview/pdf — converts an Office
+// document to PDF via LibreOffice and serves the cached result inline.
+// Returns 503 Service Unavailable when LibreOffice is not configured.
+func (h *Handler) PreviewPDF(w http.ResponseWriter, r *http.Request) {
+	if h.converter == nil {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "PDF conversion not available on this server")
+		return
+	}
+
+	actor := middleware.UserFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+
+	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
+	if err != nil || f == nil || f.IsFolder {
+		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	sourcePath := h.svc.storage.Path(id)
+	pdfPath, err := h.converter.PDFPath(ctx, id, sourcePath, f.UpdatedAt)
+	if err != nil {
+		log.Error().Err(err).Str("file_id", id).Msg("files.PreviewPDF: convert")
+		httputil.RespondError(w, http.StatusInternalServerError, "PDF conversion failed")
+		return
+	}
+
+	pdfFile, err := os.Open(pdfPath)
+	if err != nil {
+		log.Error().Err(err).Str("pdf_path", pdfPath).Msg("files.PreviewPDF: open")
+		httputil.RespondError(w, http.StatusInternalServerError, "could not open converted file")
+		return
+	}
+	defer pdfFile.Close()
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", contentDisposition("inline", f.Name+".pdf"))
+	w.Header().Set("Cache-Control", "private, no-store")
+	http.ServeContent(w, r, f.Name+".pdf", f.UpdatedAt, pdfFile)
+
+	auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer auditCancel()
+	h.auditSvc.Log(auditCtx, audit.Event{
+		Type:          audit.EventFilePreviewed,
+		ActorID:       &actor.ID,
+		ResourceID:    &f.ID,
+		ResourceName:  f.Name,
+		IPAddress:     middleware.ClientIP(r),
+		IsAdminAction: middleware.IsSupportMode(ctx),
+		Metadata:      map[string]any{"via": "pdf_conversion"},
+	})
 }

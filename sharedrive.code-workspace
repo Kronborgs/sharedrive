@@ -71,7 +71,11 @@
 				"approve": true,
 				"matchCommandLine": true
 			},
-			".\\patch_handler.ps1": true
+			".\\patch_handler.ps1": true,
+			"/^\\$env:PATH \\+= \";C:\\\\Program Files\\\\nodejs\"; cd x:\\\\sharedrive\\\\frontend; node -e \"import\\('three'\\)\\.then\\(m => console\\.log\\(m\\.REVISION\\)\\)\"$/": {
+				"approve": true,
+				"matchCommandLine": true
+			}
 		}
 	}
 }

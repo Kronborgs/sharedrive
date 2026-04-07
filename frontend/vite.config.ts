@@ -37,6 +37,9 @@ export default defineConfig({
       },
     },
   },
+  optimizeDeps: {
+    exclude: ['pdfjs-dist'],
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,
@@ -56,6 +59,8 @@ export default defineConfig({
             '@radix-ui/react-context-menu',
             '@radix-ui/react-tabs',
           ],
+          pdf: ['pdfjs-dist'],
+          three: ['three'],
         },
       },
     },

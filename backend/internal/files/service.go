@@ -148,9 +148,15 @@ func (s *Service) GetAccessible(ctx context.Context, id, userID string) (*File, 
 		     OR EXISTS (
 		       SELECT 1 FROM shares sh
 		       JOIN ancestors anc ON sh.resource_id = anc.id
-		       WHERE sh.grantee_id = $2::uuid
-		         AND sh.revoked_at IS NULL
+		       WHERE sh.revoked_at IS NULL
 		         AND (sh.expires_at IS NULL OR sh.expires_at > now())
+		         AND (
+		           (sh.grantee_type = 'user'  AND sh.grantee_id = $2::uuid)
+		           OR
+		           (sh.grantee_type = 'group' AND sh.grantee_id IN (
+		             SELECT group_id FROM group_members WHERE user_id = $2::uuid
+		           ))
+		         )
 		     )
 		     OR EXISTS (
 		       SELECT 1 FROM ancestors anc
@@ -455,4 +461,57 @@ func (s *Service) Breadcrumbs(ctx context.Context, folderID, ownerID string) ([]
 		items = []BreadcrumbItem{}
 	}
 	return items, rows.Err()
+}
+
+// ZipEntry is a minimal representation used for bulk ZIP streaming.
+type ZipEntry struct {
+	ID        string // file UUID
+	PathInZip string // relative path within the archive (preserves folder structure)
+}
+
+// ListDescendantFiles returns all non-folder, non-deleted descendants of
+// folderID with their relative path from the folder root. Access checking for
+// each individual file is the caller's responsibility.
+func (s *Service) ListDescendantFiles(ctx context.Context, folderID string) ([]ZipEntry, error) {
+	rows, err := s.db.Query(ctx, `
+		WITH RECURSIVE tree AS (
+			SELECT
+				f.id::text,
+				f.name,
+				f.parent_id::text,
+				f.is_folder,
+				f.deleted_at,
+				f.name AS path
+			FROM files f
+			WHERE f.id = $1::uuid AND f.deleted_at IS NULL
+			UNION ALL
+			SELECT
+				c.id::text,
+				c.name,
+				c.parent_id::text,
+				c.is_folder,
+				c.deleted_at,
+				tree.path || '/' || c.name
+			FROM files c
+			JOIN tree ON c.parent_id::text = tree.id
+			WHERE c.deleted_at IS NULL
+		)
+		SELECT id, path
+		FROM tree
+		WHERE is_folder = false
+	`, folderID)
+	if err != nil {
+		return nil, fmt.Errorf("files.ListDescendantFiles: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []ZipEntry
+	for rows.Next() {
+		var e ZipEntry
+		if err := rows.Scan(&e.ID, &e.PathInZip); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -30,8 +31,11 @@ const (
 	pendingTOTPKey     = "pending_totp:"
 	pendingTOTPTTL     = 10 * time.Minute
 	uploadTokenKey     = "upload_token:"
-	uploadTokenTTL     = time.Hour
+	uploadTokenTTL     = 30 * time.Minute
 )
+
+// reUploadToken matches the 64-character lowercase hex tokens issued by IssueUploadToken.
+var reUploadToken = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // Handler provides all auth HTTP handlers.
 type Handler struct {
@@ -582,7 +586,7 @@ func (h *Handler) UploadTokenMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		token := r.Header.Get("X-Upload-Token")
-		if token == "" {
+		if token == "" || !reUploadToken.MatchString(token) {
 			next.ServeHTTP(w, r)
 			return
 		}

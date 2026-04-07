@@ -2,8 +2,10 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -396,18 +398,43 @@ func (h *Handler) AuditLogs(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
+	eventType := q.Get("event_type")
+	actorEmail := q.Get("actor_email")
+
+	// Build dynamic WHERE clause with parameterized filters.
+	var whereParts []string
+	var filterArgs []any
+	if eventType != "" {
+		filterArgs = append(filterArgs, eventType)
+		whereParts = append(whereParts, fmt.Sprintf("event_type = $%d", len(filterArgs)))
+	}
+	if actorEmail != "" {
+		filterArgs = append(filterArgs, "%"+actorEmail+"%")
+		whereParts = append(whereParts, fmt.Sprintf("actor_email ILIKE $%d", len(filterArgs)))
+	}
+	whereClause := ""
+	if len(whereParts) > 0 {
+		whereClause = "WHERE " + strings.Join(whereParts, " AND ")
+	}
 
 	var total int
-	_ = h.db.QueryRow(ctx, `SELECT count(*) FROM audit_logs`).Scan(&total)
+	_ = h.db.QueryRow(ctx, `SELECT count(*) FROM audit_logs `+whereClause, filterArgs...).Scan(&total)
 
+	paginatedArgs := append(filterArgs, limit, offset)
+	limitIdx := len(paginatedArgs) - 1
+	offsetIdx := len(paginatedArgs)
 	rows, err := h.db.Query(ctx,
-		`SELECT id, event_type, actor_id::TEXT, actor_email,
-		        target_user_id::TEXT, resource_type, resource_id::TEXT, resource_name,
-		        metadata, ip_address, user_agent, is_admin_action, created_at
-		 FROM audit_logs
-		 ORDER BY created_at DESC
-		 LIMIT $1 OFFSET $2`,
-		limit, offset,
+		fmt.Sprintf(
+			`SELECT id, event_type, actor_id::TEXT, actor_email,
+			        target_user_id::TEXT, resource_type, resource_id::TEXT, resource_name,
+			        metadata, ip_address, user_agent, is_admin_action, created_at
+			 FROM audit_logs
+			 %s
+			 ORDER BY created_at DESC
+			 LIMIT $%d OFFSET $%d`,
+			whereClause, limitIdx, offsetIdx,
+		),
+		paginatedArgs...,
 	)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
@@ -438,6 +465,53 @@ func (h *Handler) AuditLogs(w http.ResponseWriter, r *http.Request) {
 		"items": out,
 		"total": total,
 	})
+}
+
+// UserActivity handles GET /api/v1/me/activity – returns the last 50 file events
+// for the currently authenticated user.
+func (h *Handler) UserActivity(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	actor := middleware.UserFromContext(ctx)
+
+	fileEvents := []string{
+		"FILE_UPLOADED", "FILE_DOWNLOADED", "FILE_PREVIEWED",
+		"ZIP_DOWNLOADED", "FILE_DELETED", "FILE_RESTORED",
+		"FILE_MOVED", "FILE_RENAMED", "FOLDER_CREATED",
+	}
+
+	rows, err := h.db.Query(ctx,
+		`SELECT id::TEXT, event_type, resource_name, ip_address, created_at
+		 FROM audit_logs
+		 WHERE actor_id = $1 AND event_type = ANY($2)
+		 ORDER BY created_at DESC
+		 LIMIT 50`,
+		actor.ID, fileEvents,
+	)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rows.Close()
+
+	type activityEvent struct {
+		ID           string    `json:"id"`
+		EventType    string    `json:"event_type"`
+		ResourceName *string   `json:"resource_name"`
+		IPAddress    string    `json:"ip_address"`
+		CreatedAt    time.Time `json:"created_at"`
+	}
+	var out []activityEvent
+	for rows.Next() {
+		var e activityEvent
+		if err := rows.Scan(&e.ID, &e.EventType, &e.ResourceName, &e.IPAddress, &e.CreatedAt); err != nil {
+			continue
+		}
+		out = append(out, e)
+	}
+	if out == nil {
+		out = []activityEvent{}
+	}
+	httputil.Respond(w, http.StatusOK, out)
 }
 
 // ─── Dashboard Stats ─────────────────────────────────────────────────────────

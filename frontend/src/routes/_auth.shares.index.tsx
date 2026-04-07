@@ -5,6 +5,8 @@ import type { Share } from '@/types/api'
 import { FileList } from '@/components/files/FileViews'
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { PreviewModal } from '@/components/files/PreviewModal'
+import type { FileItem } from '@/types/api'
 
 export const Route = createFileRoute('/_auth/shares/')({
   component: SharedWithMePage,
@@ -27,6 +29,7 @@ interface SharedItem {
 function SharedWithMePage() {
   const navigate = useNavigate()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['files', 'shared-with-me'],
@@ -58,9 +61,9 @@ function SharedWithMePage() {
     },
   }))
 
-  const handleOpen = (item: { id: string; is_folder: boolean }) => {
+  const handleOpen = (item: FileItem) => {
     if (item.is_folder) void navigate({ to: '/shared-browse', search: { folder: item.id } })
-    else window.open(`/api/v1/files/${item.id}/download`, '_blank')
+    else setPreviewItem(item)
   }
 
   return (
@@ -81,6 +84,7 @@ function SharedWithMePage() {
           />
         </div>
       )}
+      {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
     </div>
   )
 }

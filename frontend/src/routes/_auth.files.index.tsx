@@ -9,6 +9,8 @@ import { FileList, FileGrid } from '@/components/files/FileViews'
 import { FileContextMenu, type ContextAction } from '@/components/files/FileContextMenu'
 import { DropZone, UploadProgress, useUploader } from '@/components/files/UploadZone'
 import { ShareDialog } from '@/components/files/ShareDialog'
+import { PreviewModal } from '@/components/files/PreviewModal'
+import { DownloadDialog } from '@/components/files/DownloadDialog'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -32,10 +34,6 @@ interface ContextMenuState {
 function FilesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  useEffect(() => {
-    if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
-  }, [user])
-  if (user?.role === 'guest') return null
   const { folder: folderId = null } = Route.useSearch()
   const qc = useQueryClient()
 
@@ -45,6 +43,8 @@ function FilesPage() {
   const [shareItem, setShareItem] = useState<FileItem | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
+  const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
+  const [downloadIds, setDownloadIds] = useState<string[] | null>(null)
 
   const { uploads, startUpload, dismiss, directUpload } = useUploader(folderId)
 
@@ -85,6 +85,12 @@ function FilesPage() {
     onError: () => toast.error('Failed to create folder'),
   })
 
+  useEffect(() => {
+    if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
+  }, [user, navigate])
+
+  if (user?.role === 'guest') return null
+
   const handleSelect = useCallback((id: string, additive: boolean) => {
     setSelected(prev => {
       const next = new Set(additive ? prev : [])
@@ -96,13 +102,16 @@ function FilesPage() {
 
   const handleOpen = useCallback((item: FileItem) => {
     if (item.is_folder) void navigate({ to: '/files', search: { folder: item.id } })
-    else window.open(`/api/v1/files/${item.id}/download`, '_blank')
+    else setPreviewItem(item)
   }, [navigate])
 
   const handleContextMenuAction = useCallback((action: ContextAction, item: FileItem) => {
     switch (action) {
       case 'open': handleOpen(item); break
-      case 'download': window.open(`/api/v1/files/${item.id}/download`, '_blank'); break
+      case 'download':
+        if (item.is_folder) setDownloadIds([item.id])
+        else window.open(`/api/v1/files/${item.id}/download`, '_blank')
+        break
       case 'share': setShareItem(item); break
       case 'rename': setRenameId(item.id); setRenameName(item.name); break
       case 'trash': if (confirm(`Move "${item.name}" to trash?`)) trash.mutate(item.id); break
@@ -135,8 +144,7 @@ function FilesPage() {
   }, [selected.size, sorted])
 
   const handleBulkDownload = useCallback(() => {
-    const ids = [...selected].join(',')
-    window.open(`/api/v1/files/download-zip?ids=${ids}`, '_blank')
+    setDownloadIds([...selected])
   }, [selected])
 
   const handleBulkTrash = useCallback(async () => {
@@ -275,6 +283,8 @@ function FilesPage() {
 
       {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
+      {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
+      {downloadIds && <DownloadDialog ids={downloadIds} onClose={() => setDownloadIds(null)} />}
       <UploadProgress uploads={uploads} onDismiss={dismiss} directUpload={directUpload} />
 
       {renameId && (

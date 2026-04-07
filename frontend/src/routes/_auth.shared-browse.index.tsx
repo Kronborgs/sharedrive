@@ -8,6 +8,7 @@ import { FileList } from '@/components/files/FileViews'
 import { FileContextMenu, type ContextAction } from '@/components/files/FileContextMenu'
 import { ShareDialog } from '@/components/files/ShareDialog'
 import { DropZone, UploadProgress, useUploader } from '@/components/files/UploadZone'
+import { PreviewModal } from '@/components/files/PreviewModal'
 import { ChevronRight, Users, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -55,6 +56,7 @@ function SharedBrowsePage() {
   const [shareItem, setShareItem] = useState<FileItem | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
+  const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
 
   const rootId = root ?? folderId
 
@@ -107,7 +109,7 @@ function SharedBrowsePage() {
     if (item.is_folder) {
       void navigate({ to: '/shared-browse', search: { folder: item.id, root: rootId } })
     } else {
-      window.open(`/api/v1/files/${item.id}/download`, '_blank')
+      setPreviewItem(item)
     }
   }, [navigate, rootId])
 
@@ -201,6 +203,7 @@ function SharedBrowsePage() {
         />
       )}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
+      {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
       <UploadProgress uploads={uploads} onDismiss={dismiss} directUpload={directUpload} />
 
       {renameId && (

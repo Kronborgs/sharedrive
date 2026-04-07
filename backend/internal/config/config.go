@@ -36,9 +36,10 @@ type Config struct {
 	RedisDB       int    `mapstructure:"REDIS_DB"`
 
 	// Storage paths
-	FilesRoot     string `mapstructure:"FILES_ROOT"`
-	BackupsRoot   string `mapstructure:"BACKUPS_ROOT"`
-	TusUploadDir  string `mapstructure:"TUS_UPLOAD_DIR"`
+	FilesRoot       string `mapstructure:"FILES_ROOT"`
+	BackupsRoot     string `mapstructure:"BACKUPS_ROOT"`
+	TusUploadDir    string `mapstructure:"TUS_UPLOAD_DIR"`
+	PreviewCacheDir string `mapstructure:"PREVIEW_CACHE_DIR"`
 
 	// Security secrets — all required, no defaults
 	SessionSecret      string `mapstructure:"SESSION_SECRET"`
@@ -135,6 +136,7 @@ func Load() (*Config, error) {
 	v.SetDefault("FILES_ROOT", "/data/files")
 	v.SetDefault("BACKUPS_ROOT", "/data/backups")
 	v.SetDefault("TUS_UPLOAD_DIR", "/data/files/tmp/uploads")
+	v.SetDefault("PREVIEW_CACHE_DIR", "/data/preview-cache")
 	v.SetDefault("SMTP_PORT", 587)
 	v.SetDefault("SMTP_TLS", "starttls")
 	v.SetDefault("WEBDAV_ENABLED", true)

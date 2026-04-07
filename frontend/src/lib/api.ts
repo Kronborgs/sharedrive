@@ -1,4 +1,4 @@
-import type { ApiResponse } from '@/types/api'
+import type { ActivityEvent, ApiResponse, PrepareDownloadRequest, PrepareDownloadResponse } from '@/types/api'
 
 // Base URL — empty string means same origin (correct for both dev proxy and production)
 const BASE = ''
@@ -64,6 +64,14 @@ export const api = {
   post:   <T>(path: string, body?: unknown)        => request<T>('POST',   path, body),
   patch:  <T>(path: string, body?: unknown)        => request<T>('PATCH',  path, body),
   delete: <T>(path: string)                        => request<T>('DELETE', path),
+}
+
+export function prepareDownload(req: PrepareDownloadRequest): Promise<PrepareDownloadResponse> {
+  return request<PrepareDownloadResponse>('POST', '/api/v1/files/prepare-download', req)
+}
+
+export function fetchActivity(): Promise<ActivityEvent[]> {
+  return api.get<ActivityEvent[]>('/api/v1/me/activity')
 }
 
 export { ApiClientError }

@@ -13,16 +13,18 @@ export const Route = createFileRoute('/_auth/recent/')({
 function RecentPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  useEffect(() => {
-    if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
-  }, [user])
-  if (user?.role === 'guest') return null
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const { data, isLoading } = useQuery({
     queryKey: ['files', 'recent'],
     queryFn: ({ signal }) => api.get<FileItem[]>('/api/v1/files/recent', signal),
   })
+
+  useEffect(() => {
+    if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
+  }, [user, navigate])
+
+  if (user?.role === 'guest') return null
 
   const handleOpen = (item: FileItem) => {
     if (item.is_folder) void navigate({ to: '/files', search: { folder: item.id } })

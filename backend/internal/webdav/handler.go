@@ -90,15 +90,17 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log successful WebDAV login (only once per new connection by checking OPTIONS/PROPFIND).
-	if r.Method == "PROPFIND" || r.Method == "OPTIONS" {
+	// Log successful WebDAV login only when Windows/macOS mounts the root of the
+	// share (PROPFIND on /dav/<userID> or /dav/<userID>/). Sub-directory listings
+	// also use PROPFIND but we don't want one audit entry per file/folder.
+	davRoot := "/dav/" + userID
+	if r.Method == "PROPFIND" && (r.URL.Path == davRoot || r.URL.Path == davRoot+"/") {
 		uid, _ := uuid.Parse(userID)
 		s.auditSvc.Log(r.Context(), audit.Event{
 			Type:       audit.EventWebDAVLoginSuccess,
 			ActorID:    &uid,
 			ActorEmail: email,
 			IPAddress:  middleware.ClientIP(r),
-			Metadata:   map[string]any{"method": r.Method, "path": r.URL.Path},
 		})
 	}
 

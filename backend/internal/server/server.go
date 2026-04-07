@@ -89,7 +89,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 	s.http = &http.Server{
 		Addr: cfg.ListenAddr(),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, "/dav/") {
+			if strings.HasPrefix(r.URL.Path, "/dav/") || r.URL.Path == "/dav" {
 				davSrv.ServeHTTP(w, r)
 				return
 			}

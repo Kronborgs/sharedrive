@@ -213,6 +213,33 @@ WebDAV is available at `https://drive.yourdomain.com/dav/`.
 2. Folder: `\\drive.yourdomain.com@SSL\dav`
 3. Credentials: your email + app password
 
+### Windows WebDAV troubleshooting
+
+#### Large files fail or are silently cut off
+
+Windows limits WebDAV file transfers to 50 MB by default. Raise the limit to 4 GB by running the following in an **Administrator** PowerShell:
+
+```powershell
+Set-ItemProperty `
+  -Path "HKLM:\SYSTEM\CurrentControlSet\Services\WebClient\Parameters" `
+  -Name FileSizeLimitInBytes `
+  -Value 0xFFFFFFFF
+
+Restart-Service WebClient
+```
+
+> You may need to re-map the drive after restarting the service.
+
+#### "Incorrect credentials" even though username and password are correct
+
+Windows caches WebDAV credentials in Credential Manager. If you recently changed your app password, the cached entry must be removed:
+
+1. Press **Win + R**, type `control /name Microsoft.CredentialManager`, press **Enter**
+2. Click **Windows Credentials**
+3. Find the entry for your Sharedrive host (e.g. `upload.sharedrive.yourdomain.com`) and expand it
+4. Click **Remove** → **Yes**
+5. Re-open the mapped drive — Windows will prompt for credentials again
+
 ### macOS (Finder)
 
 1. **Go** → **Connect to Server** (`⌘K`)

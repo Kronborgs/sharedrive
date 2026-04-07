@@ -101,6 +101,14 @@ export function adminRevokeTOTP(userId: string): Promise<void> {
   return api.delete(`/api/v1/admin/users/${userId}/totp`)
 }
 
+export function adminRequireTOTP(userId: string): Promise<void> {
+  return api.post(`/api/v1/admin/users/${userId}/require-totp`, {})
+}
+
+export function adminUnrequireTOTP(userId: string): Promise<void> {
+  return api.delete(`/api/v1/admin/users/${userId}/require-totp`)
+}
+
 // ── Playlist ──────────────────────────────────────────────────────────────────
 
 export interface PlaylistTrack {

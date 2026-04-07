@@ -285,6 +285,8 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Post("/api/v1/admin/users/{id}/unlock", s.userHandler.Unlock)
 			r.Post("/api/v1/admin/users/{id}/force-password-reset", s.userHandler.ForcePasswordReset)
 			r.Delete("/api/v1/admin/users/{id}/totp", s.userHandler.RevokeTOTP)
+			r.Post("/api/v1/admin/users/{id}/require-totp", s.userHandler.RequireTOTP)
+			r.Delete("/api/v1/admin/users/{id}/require-totp", s.userHandler.UnrequireTOTP)
 			r.Post("/api/v1/admin/users/{id}/invite", s.handleAdminReinviteUser)
 			r.Get("/api/v1/admin/users/{id}/sessions", s.userHandler.ListSessions)
 			r.Post("/api/v1/admin/users/{id}/support-access", s.handleAdminSupportAccess)

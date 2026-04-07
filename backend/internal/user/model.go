@@ -23,6 +23,7 @@ type User struct {
 	TrashRetentionDays        *int       `json:"trash_retention_days,omitempty"`
 	InvitedBy                 *uuid.UUID `json:"invited_by,omitempty"`
 	LastLoginAt               *time.Time `json:"last_login_at,omitempty"`
+	ForceTOTPSetup            bool       `json:"force_totp_setup"`
 	CreatedAt                 time.Time  `json:"created_at"`
 	UpdatedAt                 time.Time  `json:"updated_at"`
 }

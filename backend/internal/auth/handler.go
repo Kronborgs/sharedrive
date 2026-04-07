@@ -318,11 +318,12 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	// Embed computed fields so clients don't have to inspect role string.
 	type meResponse struct {
 		*user.User
-		IsAdmin     bool `json:"is_admin"`
-		TOTPEnabled bool `json:"totp_enabled"`
+		IsAdmin        bool `json:"is_admin"`
+		TOTPEnabled    bool `json:"totp_enabled"`
+		ForceTOTPSetup bool `json:"force_totp_setup"`
 	}
 	totpEnabled, _ := h.totpSvc.HasTOTP(ctx, u.ID.String())
-	httputil.Respond(w, http.StatusOK, meResponse{User: u, IsAdmin: u.IsAdmin(), TOTPEnabled: totpEnabled})
+	httputil.Respond(w, http.StatusOK, meResponse{User: u, IsAdmin: u.IsAdmin(), TOTPEnabled: totpEnabled, ForceTOTPSetup: u.ForceTOTPSetup})
 }
 
 // ─── Password reset ───────────────────────────────────────────────────────────
@@ -539,6 +540,8 @@ func (h *Handler) createSessionAndCookie(ctx context.Context, w http.ResponseWri
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// Update last login timestamp (best-effort, non-blocking).
+	_, _ = h.db.Exec(ctx, `UPDATE users SET last_login_at = now() WHERE id = $1`, userID)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    raw,
@@ -767,6 +770,8 @@ func (h *Handler) TOTPConfirm(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid TOTP code")
 		return
 	}
+	// Clear any admin-forced TOTP requirement now that the user has enrolled.
+	_, _ = h.db.Exec(ctx, `UPDATE users SET force_totp_setup = false WHERE id = $1`, u.ID)
 	httputil.Respond(w, http.StatusOK, totpConfirmResponse{BackupCodes: codes})
 }
 

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { X, Plus, Pencil, Trash2, UserCheck, Folder, File, ChevronDown, ChevronRight, Lock, LockOpen, KeyRound, ShieldCheck, ShieldOff } from 'lucide-react'
-import { api, adminRevokeTOTP } from '@/lib/api'
+import { api, adminRevokeTOTP, adminRequireTOTP, adminUnrequireTOTP } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import type { User, Group, PaginatedResponse, GuestUser } from '@/types/api'
 import { formatBytes, formatDate } from '@/lib/utils'
@@ -398,6 +398,24 @@ function AdminUsersPage() {
                         }
                       }
                     }}
+                    onRequireTOTP={async id => {
+                      try {
+                        await adminRequireTOTP(id)
+                        toast.success('2FA setup required for this user')
+                        void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+                      } catch {
+                        toast.error('Failed to require 2FA')
+                      }
+                    }}
+                    onUnrequireTOTP={async id => {
+                      try {
+                        await adminUnrequireTOTP(id)
+                        toast.success('2FA requirement removed')
+                        void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+                      } catch {
+                        toast.error('Failed to remove 2FA requirement')
+                      }
+                    }}
                     onDelete={id => {
                       if (confirm(`Delete user "${data?.items?.find(u => u.id === id)?.display_name ?? id}"?\n\nThis will permanently remove the user and all their files. This cannot be undone.`)) {
                         deleteMutation.mutate(id)
@@ -724,6 +742,8 @@ function UserRow({
   onDelete,
   onForceReset,
   onRevokeTOTP,
+  onRequireTOTP,
+  onUnrequireTOTP,
   isSelf,
 }: {
   user: User
@@ -733,6 +753,8 @@ function UserRow({
   onDelete: (id: string) => void
   onForceReset: (id: string) => void
   onRevokeTOTP: (id: string) => void
+  onRequireTOTP: (id: string) => void
+  onUnrequireTOTP: (id: string) => void
   isSelf: boolean
 }) {
   const percent = user.quota_bytes > 0
@@ -793,11 +815,34 @@ function UserRow({
             <ShieldCheck size={13} />
             Enabled
           </button>
+        ) : user.force_totp_setup ? (
+          <div className="inline-flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+              <ShieldCheck size={13} />
+              Required
+            </span>
+            <button
+              onClick={() => onUnrequireTOTP(user.id)}
+              title="Cancel 2FA requirement"
+              className="text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors leading-none"
+            >
+              ✕
+            </button>
+          </div>
         ) : (
-          <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
-            <ShieldOff size={13} />
-            Off
-          </span>
+          <div className="inline-flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
+              <ShieldOff size={13} />
+              Off
+            </span>
+            <button
+              onClick={() => onRequireTOTP(user.id)}
+              title="Force 2FA setup for this user"
+              className="text-xs text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors underline underline-offset-2"
+            >
+              Force
+            </button>
+          </div>
         )}
       </td>
       <td className="px-4 py-3">

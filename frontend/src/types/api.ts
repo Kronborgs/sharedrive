@@ -20,6 +20,7 @@ export interface User {
   is_admin: boolean
   is_active: boolean
   totp_enabled?: boolean
+  force_totp_setup?: boolean
   quota_bytes: number
   quota_used_bytes: number
   bandwidth_limit_bytes_per_day: number | null

@@ -13,7 +13,7 @@ func FindByID(ctx context.Context, db *pgxpool.Pool, id string) (*User, error) {
 		SELECT id, email, display_name, password_hash, role, is_active, must_change_password,
 		       quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day, max_upload_bytes,
 		       webdav_enabled, trash_retention_days, invited_by, last_login_at,
-		       created_at, updated_at
+		       force_totp_setup, created_at, updated_at
 		FROM users
 		WHERE id = $1`
 
@@ -23,7 +23,7 @@ func FindByID(ctx context.Context, db *pgxpool.Pool, id string) (*User, error) {
 		&u.Role, &u.IsActive, &u.MustChangePassword,
 		&u.QuotaBytes, &u.QuotaUsedBytes, &u.BandwidthLimitBytesPerDay, &u.MaxUploadBytes,
 		&u.WebDAVEnabled, &u.TrashRetentionDays, &u.InvitedBy, &u.LastLoginAt,
-		&u.CreatedAt, &u.UpdatedAt,
+		&u.ForceTOTPSetup, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, nil // not found
@@ -37,7 +37,7 @@ func FindByEmail(ctx context.Context, db *pgxpool.Pool, email string) (*User, er
 		SELECT id, email, display_name, password_hash, role, is_active, must_change_password,
 		       quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day, max_upload_bytes,
 		       webdav_enabled, trash_retention_days, invited_by, last_login_at,
-		       created_at, updated_at
+		       force_totp_setup, created_at, updated_at
 		FROM users
 		WHERE lower(email) = lower($1)`
 
@@ -47,7 +47,7 @@ func FindByEmail(ctx context.Context, db *pgxpool.Pool, email string) (*User, er
 		&u.Role, &u.IsActive, &u.MustChangePassword,
 		&u.QuotaBytes, &u.QuotaUsedBytes, &u.BandwidthLimitBytesPerDay, &u.MaxUploadBytes,
 		&u.WebDAVEnabled, &u.TrashRetentionDays, &u.InvitedBy, &u.LastLoginAt,
-		&u.CreatedAt, &u.UpdatedAt,
+		&u.ForceTOTPSetup, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, nil
@@ -73,7 +73,7 @@ func List(ctx context.Context, db *pgxpool.Pool, limit, offset int, activeOnly b
 	var args []interface{}
 	const cols = `id, email, display_name, password_hash, role, is_active, must_change_password,
 	              quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day, max_upload_bytes,
-	              webdav_enabled, trash_retention_days, invited_by, last_login_at, created_at, updated_at`
+	              webdav_enabled, trash_retention_days, invited_by, last_login_at, force_totp_setup, created_at, updated_at`
 	if activeOnly {
 		q = `SELECT ` + cols + ` FROM users WHERE is_active = true ORDER BY created_at DESC LIMIT $1 OFFSET $2`
 	} else {
@@ -95,7 +95,7 @@ func List(ctx context.Context, db *pgxpool.Pool, limit, offset int, activeOnly b
 			&u.Role, &u.IsActive, &u.MustChangePassword,
 			&u.QuotaBytes, &u.QuotaUsedBytes, &u.BandwidthLimitBytesPerDay, &u.MaxUploadBytes,
 			&u.WebDAVEnabled, &u.TrashRetentionDays, &u.InvitedBy, &u.LastLoginAt,
-			&u.CreatedAt, &u.UpdatedAt,
+			&u.ForceTOTPSetup, &u.CreatedAt, &u.UpdatedAt,
 		); err != nil {
 			return nil, 0, err
 		}

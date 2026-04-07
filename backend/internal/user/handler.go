@@ -415,6 +415,30 @@ func (h *Handler) ForcePasswordReset(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// RequireTOTP handles POST /api/v1/admin/users/{id}/require-totp.
+// Sets force_totp_setup = true so the user is gated into TOTP setup on next use.
+func (h *Handler) RequireTOTP(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	actor := UserFromContext(ctx)
+	id := chi.URLParam(r, "id")
+
+	if _, err := h.db.Exec(ctx,
+		`UPDATE users SET force_totp_setup = true, updated_at = now() WHERE id = $1`, id,
+	); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if actor != nil {
+		h.auditSvc.Log(ctx, audit.Event{
+			Type:      audit.EventTOTPEnabled,
+			ActorID:   &actor.ID,
+			IPAddress: clientIP(r),
+			Metadata:  map[string]any{"target_user_id": id, "action": "admin_require_totp"},
+		})
+	}
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // RevokeTOTP handles DELETE /api/v1/admin/users/{id}/totp.
 // Allows an admin to remove TOTP from any user's account.
 func (h *Handler) RevokeTOTP(w http.ResponseWriter, r *http.Request) {
@@ -439,6 +463,17 @@ func (h *Handler) RevokeTOTP(w http.ResponseWriter, r *http.Request) {
 			Metadata:  map[string]any{"target_user_id": id, "action": "admin_revoke_totp"},
 		})
 	}
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// UnrequireTOTP handles DELETE /api/v1/admin/users/{id}/require-totp.
+// Clears the force_totp_setup flag without disabling existing TOTP.
+func (h *Handler) UnrequireTOTP(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	_, _ = h.db.Exec(ctx,
+		`UPDATE users SET force_totp_setup = false, updated_at = now() WHERE id = $1`, id,
+	)
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

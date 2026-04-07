@@ -49,12 +49,13 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
       .finally(() => setLoading(false))
   }, [])
 
-  const handleVerify = async () => {
-    if (code.length !== 6) return
+  const handleVerify = async (overrideCode?: string) => {
+    const codeToSend = overrideCode ?? code
+    if (codeToSend.length !== 6) return
     setLoading(true)
     setError(null)
     try {
-      const res = await confirmTOTPSetup(secret, code)
+      const res = await confirmTOTPSetup(secret, codeToSend)
       setBackupCodes(res.backup_codes)
       setStep('backup')
     } catch {
@@ -151,7 +152,14 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
               maxLength={6}
               autoFocus
               value={code}
-              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onChange={e => {
+                const val = e.target.value.replace(/\D/g, '').slice(0, 6)
+                setCode(val)
+                if (val.length === 6) {
+                  void handleVerify(val)
+                }
+              }}
+              onKeyDown={e => { if (e.key === 'Enter') void handleVerify() }}
               autoComplete="one-time-code"
               className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2 text-center text-2xl tracking-widest font-mono text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
               placeholder="000000"

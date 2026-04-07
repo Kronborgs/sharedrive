@@ -9,8 +9,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/argon2"
 )
@@ -20,6 +22,9 @@ const (
 	backupCodeLen = 8
 	backupCount   = 10
 )
+
+// timeNow is a thin wrapper so tests can override the clock.
+var timeNow = time.Now
 
 // TOTPService manages TOTP enroll/verify/revoke for users.
 type TOTPService struct {
@@ -51,7 +56,8 @@ func (s *TOTPService) BeginEnroll(userEmail string) (secret, provisioningURI str
 // ConfirmEnroll validates the code, then encrypts and stores the secret.
 // Returns the plaintext backup codes (shown once to the user).
 func (s *TOTPService) ConfirmEnroll(ctx context.Context, userID, userEmail, secret, code string) (backupCodes []string, err error) {
-	if !totp.Validate(code, secret) {
+	valid, err := totp.ValidateCustom(code, secret, timeNow(), totp.ValidateOpts{Skew: 1, Digits: 6, Period: 30, Algorithm: otp.AlgorithmSHA1})
+	if err != nil || !valid {
 		return nil, fmt.Errorf("totp: invalid code")
 	}
 
@@ -98,7 +104,8 @@ func (s *TOTPService) Validate(ctx context.Context, userID, code string) error {
 		return err
 	}
 
-	if totp.Validate(code, secret) {
+	valid, _ := totp.ValidateCustom(code, secret, timeNow(), totp.ValidateOpts{Skew: 1, Digits: 6, Period: 30, Algorithm: otp.AlgorithmSHA1})
+	if valid {
 		return nil
 	}
 

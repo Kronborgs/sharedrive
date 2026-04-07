@@ -306,17 +306,20 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 // ─── Me ───────────────────────────────────────────────────────────────────────
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
-	u := middleware.UserFromContext(r.Context())
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
 	if u == nil {
 		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	// Embed computed is_admin field so clients don't have to inspect role string.
+	// Embed computed fields so clients don't have to inspect role string.
 	type meResponse struct {
 		*user.User
-		IsAdmin bool `json:"is_admin"`
+		IsAdmin     bool `json:"is_admin"`
+		TOTPEnabled bool `json:"totp_enabled"`
 	}
-	httputil.Respond(w, http.StatusOK, meResponse{User: u, IsAdmin: u.IsAdmin()})
+	totpEnabled, _ := h.totpSvc.HasTOTP(ctx, u.ID.String())
+	httputil.Respond(w, http.StatusOK, meResponse{User: u, IsAdmin: u.IsAdmin(), TOTPEnabled: totpEnabled})
 }
 
 // ─── Password reset ───────────────────────────────────────────────────────────

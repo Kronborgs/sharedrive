@@ -254,6 +254,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/files/{id}/preview", s.filesHandler.Preview)
 		r.Get("/api/v1/files/{id}/preview/pdf", s.filesHandler.PreviewPDF)
 		r.Get("/api/v1/files/{id}/thumbnail", s.filesHandler.Thumbnail)
+		r.Post("/api/v1/files/playlist", s.filesHandler.CreatePlaylist)
+		r.Get("/api/v1/files/{id}/playlist/tracks", s.filesHandler.PlaylistTracks)
 		r.Get("/api/v1/files/{id}", s.filesHandler.Get)
 		r.Patch("/api/v1/files/{id}", s.filesHandler.Update)
 		r.Delete("/api/v1/files/{id}", s.filesHandler.Delete)

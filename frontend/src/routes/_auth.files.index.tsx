@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useCallback, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { z } from 'zod'
-import { api } from '@/lib/api'
+import { api, createPlaylist } from '@/lib/api'
 import type { FileItem } from '@/types/api'
 import { FileList, FileGrid } from '@/components/files/FileViews'
 import { FileContextMenu, type ContextAction } from '@/components/files/FileContextMenu'
@@ -11,7 +11,7 @@ import { DropZone, UploadProgress, useUploader } from '@/components/files/Upload
 import { ShareDialog } from '@/components/files/ShareDialog'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { DownloadDialog } from '@/components/files/DownloadDialog'
-import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X } from 'lucide-react'
+import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic } from 'lucide-react'
 import { toast } from 'sonner'
 
 const searchSchema = z.object({
@@ -156,6 +156,20 @@ function FilesPage() {
     setSelected(new Set())
   }, [selected, qc, folderId])
 
+  const handleCreatePlaylist = useCallback(async () => {
+    const name = window.prompt('Playlist name:', 'My Playlist')
+    if (!name?.trim()) return
+    try {
+      const f = await createPlaylist(name.trim(), folderId, [...selected])
+      toast.success(`Playlist created`)
+      void qc.invalidateQueries({ queryKey: ['files', folderId] })
+      setSelected(new Set())
+      window.dispatchEvent(new CustomEvent('open-preview', { detail: { id: f.id } }))
+    } catch {
+      toast.error('Failed to create playlist')
+    }
+  }, [selected, folderId, qc])
+
   return (
     <DropZone folderId={folderId} onUploadStart={startUpload}>
       <div className="flex flex-col flex-1 min-h-0">
@@ -177,6 +191,14 @@ function FilesPage() {
                 >
                   <Download size={12} />
                   Download
+                </button>
+                <button
+                  onClick={() => { void handleCreatePlaylist() }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                  title="Create M3U playlist from selected audio files"
+                >
+                  <ListMusic size={12} />
+                  Playlist
                 </button>
                 <button
                   onClick={() => { void handleBulkTrash() }}

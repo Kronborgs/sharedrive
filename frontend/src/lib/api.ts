@@ -74,4 +74,44 @@ export function fetchActivity(): Promise<ActivityEvent[]> {
   return api.get<ActivityEvent[]>('/api/v1/me/activity')
 }
 
+// ── TOTP ──────────────────────────────────────────────────────────────────────
+
+export interface TOTPSetupData {
+  secret: string
+  provisioning_uri: string
+}
+
+export interface TOTPConfirmData {
+  backup_codes: string[]
+}
+
+export function fetchTOTPSetup(): Promise<TOTPSetupData> {
+  return api.get<TOTPSetupData>('/api/v1/me/totp/setup')
+}
+
+export function confirmTOTPSetup(secret: string, code: string): Promise<TOTPConfirmData> {
+  return api.post<TOTPConfirmData>('/api/v1/me/totp/confirm', { secret, code })
+}
+
+export function disableTOTP(): Promise<void> {
+  return api.delete('/api/v1/me/totp')
+}
+
+// ── Playlist ──────────────────────────────────────────────────────────────────
+
+export interface PlaylistTrack {
+  id: string
+  name: string
+  preview_url: string
+  mime_type: string | null
+}
+
+export function fetchPlaylistTracks(fileId: string): Promise<PlaylistTrack[]> {
+  return api.get<PlaylistTrack[]>(`/api/v1/files/${fileId}/playlist/tracks`)
+}
+
+export function createPlaylist(name: string, parentId: string | null, fileIds: string[]): Promise<{ id: string }> {
+  return api.post<{ id: string }>('/api/v1/files/playlist', { name, parent_id: parentId, file_ids: fileIds })
+}
+
 export { ApiClientError }

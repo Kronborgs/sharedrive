@@ -13,6 +13,7 @@ import {
   History,
   ChevronDown,
   LogOut,
+  ShieldCheck,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
@@ -20,6 +21,7 @@ import { api } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatBytes } from '@/lib/utils'
 import { WebDAVDialog } from '@/components/layout/WebDAVDialog'
+import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
 
 interface NavItem {
   to: string
@@ -70,12 +72,13 @@ function NavLink({ item }: { item: NavItem }) {
   )
 }
 
-export function Sidebar() {
+export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose?: () => void }) {
   const { user, setUser } = useAuth()
   const qc = useQueryClient()
   const state = useRouterState()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showWebDAV, setShowWebDAV] = useState(false)
+  const [showTOTP, setShowTOTP] = useState(false)
 
   const handleLogout = async () => {
     try {
@@ -92,7 +95,20 @@ export function Sidebar() {
   const pct = quota > 0 ? Math.min(100, (used / quota) * 100) : 0
 
   return (
-    <aside className="flex flex-col w-60 shrink-0 bg-white dark:bg-[#1a1d27] border-r border-zinc-200 dark:border-[#2d3148] h-screen sticky top-0 overflow-y-auto">
+    <>
+      {/* Mobile overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={onClose}
+        />
+      )}
+      <aside className={[
+        'flex flex-col w-60 shrink-0 bg-white dark:bg-[#1a1d27] border-r border-zinc-200 dark:border-[#2d3148] h-screen overflow-y-auto',
+        'fixed inset-y-0 left-0 z-40 transition-transform duration-200',
+        isOpen ? 'translate-x-0' : '-translate-x-full',
+        'md:relative md:translate-x-0 md:z-auto',
+      ].join(' ')}>
       {/* Logo */}
       <div className="px-4 h-14 flex items-center border-b border-zinc-200 dark:border-[#2d3148] shrink-0">
         <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
@@ -178,6 +194,13 @@ export function Sidebar() {
         {showUserMenu && (
           <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-lg py-1 z-50">
             <button
+              onClick={() => { setShowUserMenu(false); setShowTOTP(true) }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+            >
+              <ShieldCheck size={14} className={user?.totp_enabled ? 'text-green-500' : 'text-zinc-400'} />
+              {user?.totp_enabled ? '2FA enabled' : 'Enable 2FA'}
+            </button>
+            <button
               onClick={handleLogout}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
             >
@@ -189,6 +212,14 @@ export function Sidebar() {
       </div>
 
       {showWebDAV && <WebDAVDialog onClose={() => setShowWebDAV(false)} />}
+      {showTOTP && (
+        <TOTPSetupDialog
+          isEnabled={!!user?.totp_enabled}
+          onClose={() => setShowTOTP(false)}
+          onChanged={() => { void qc.invalidateQueries({ queryKey: ['me'] }) }}
+        />
+      )}
     </aside>
+    </>
   )
 }

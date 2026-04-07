@@ -1,8 +1,8 @@
-import { Search, Moon, Sun } from 'lucide-react'
+import { Search, Moon, Sun, Menu } from 'lucide-react'
 import { toggleTheme } from '@/lib/theme'
 import { useState, useEffect } from 'react'
 
-export function Header() {
+export function Header({ onMenuToggle }: { user?: unknown; onMenuToggle?: () => void }) {
   const [isDark, setIsDark] = useState(false)
   const [query, setQuery] = useState('')
 
@@ -11,12 +11,21 @@ export function Header() {
   }, [])
 
   const handleTheme = () => {
-    toggleTheme()
+    const current: import('@/lib/theme').Theme = isDark ? 'dark' : 'light'
+    toggleTheme(current)
     setIsDark(v => !v)
   }
 
   return (
     <header className="h-14 shrink-0 flex items-center gap-3 px-4 bg-white dark:bg-[#1a1d27] border-b border-zinc-200 dark:border-[#2d3148]">
+      {/* Hamburger — mobile only */}
+      <button
+        onClick={onMenuToggle}
+        aria-label="Toggle sidebar"
+        className="p-2 rounded-lg text-zinc-500 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors md:hidden"
+      >
+        <Menu size={18} />
+      </button>
       {/* Logo */}
       <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto shrink-0" />
       {/* Search */}

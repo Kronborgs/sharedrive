@@ -4,13 +4,14 @@ import type { FileItem } from '@/types/api'
 import { PDFRenderer } from './renderers/PDFRenderer'
 import { STLRenderer } from './renderers/STLRenderer'
 import { AudioRenderer } from './renderers/AudioRenderer'
+import { PlaylistPlayer } from './renderers/PlaylistPlayer'
 
 interface PreviewModalProps {
   item: FileItem
   onClose: () => void
 }
 
-type PreviewKind = 'pdf' | 'image' | 'text' | 'video' | 'audio' | 'stl' | 'office' | 'unsupported'
+type PreviewKind = 'pdf' | 'image' | 'text' | 'video' | 'audio' | 'stl' | 'office' | 'playlist' | 'unsupported'
 
 const TEXT_EXTS = new Set([
   'txt', 'md', 'json', 'yaml', 'yml', 'toml', 'ini', 'xml', 'csv', 'log',
@@ -30,6 +31,7 @@ function detectKind(item: FileItem): PreviewKind {
   const e = fileExt(item.name)
   if (GOOGLE_STUB_EXTS.has(e)) return 'unsupported'
   if (e === 'pdf' || mime === 'application/pdf') return 'pdf'
+  if (e === 'm3u' || mime === 'audio/mpegurl') return 'playlist'
   if (mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(e)) return 'image'
   if (mime.startsWith('video/') || ['mp4', 'webm', 'ogg', 'mov', 'm4v'].includes(e)) return 'video'
   if (mime.startsWith('audio/') || ['mp3', 'wav', 'flac', 'aac', 'm4a', 'opus'].includes(e)) return 'audio'
@@ -45,6 +47,7 @@ export function PreviewModal({ item, onClose }: PreviewModalProps) {
   const pdfUrl = `/api/v1/files/${item.id}/preview/pdf`
 
   const isPrintable = kind === 'pdf' || kind === 'office' || kind === 'image' || kind === 'text'
+  const isPlaylist = kind === 'playlist'
 
   const handlePrint = useCallback(() => {
     const url = kind === 'office' ? pdfUrl : previewUrl
@@ -144,6 +147,7 @@ export function PreviewModal({ item, onClose }: PreviewModalProps) {
           )}
           {kind === 'text' && <TextRenderer url={previewUrl} />}
           {kind === 'stl' && <STLRenderer url={previewUrl} />}
+          {isPlaylist && <PlaylistPlayer fileId={item.id} />}
           {kind === 'unsupported' && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-muted">
               <AlertTriangle size={48} className="text-zinc-300 dark:text-slate-600" />

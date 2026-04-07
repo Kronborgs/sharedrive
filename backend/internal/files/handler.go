@@ -997,3 +997,161 @@ func (h *Handler) PreviewPDF(w http.ResponseWriter, r *http.Request) {
 		Metadata:      map[string]any{"via": "pdf_conversion"},
 	})
 }
+
+// ── M3U Playlist ──────────────────────────────────────────────────────────────
+
+// isAudioFilename returns true when the file is a recognised audio type.
+func isAudioFilename(mimeType, name string) bool {
+	if strings.HasPrefix(strings.ToLower(mimeType), "audio/") {
+		return true
+	}
+	lower := strings.ToLower(name)
+	for _, ext := range []string{".mp3", ".flac", ".wav", ".aac", ".m4a", ".opus", ".ogg"} {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// CreatePlaylist handles POST /api/v1/files/playlist.
+// Accepts a JSON body with {name, parent_id, file_ids[]}, verifies access for
+// each ID, and saves a .m3u file (max 50 tracks) to the chosen folder.
+func (h *Handler) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	ctx := r.Context()
+
+	var body struct {
+		Name     string   `json:"name"`
+		ParentID *string  `json:"parent_id"`
+		FileIDs  []string `json:"file_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if body.Name == "" {
+		body.Name = "playlist"
+	}
+	if !strings.HasSuffix(strings.ToLower(body.Name), ".m3u") {
+		body.Name += ".m3u"
+	}
+	if len(body.FileIDs) == 0 {
+		httputil.RespondError(w, http.StatusBadRequest, "no files specified")
+		return
+	}
+	if len(body.FileIDs) > 50 {
+		httputil.RespondError(w, http.StatusBadRequest, "playlist cannot exceed 50 tracks")
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString("#EXTM3U\n")
+	validCount := 0
+	for _, fid := range body.FileIDs {
+		tf, err := h.svc.GetAccessible(ctx, fid, actor.ID.String())
+		if err != nil || tf == nil || tf.IsFolder {
+			continue // skip inaccessible or non-files
+		}
+		if !isAudioFilename(tf.MimeType, tf.Name) {
+			continue // skip non-audio files
+		}
+		sb.WriteString(fmt.Sprintf("#SHAREDRIVE:id=%s\n", tf.ID.String()))
+		sb.WriteString(tf.Name + "\n")
+		validCount++
+	}
+	if validCount == 0 {
+		httputil.RespondError(w, http.StatusBadRequest, "no accessible audio files in selection")
+		return
+	}
+
+	content := sb.String()
+	parentIDStr := ""
+	if body.ParentID != nil {
+		parentIDStr = *body.ParentID
+	}
+
+	f, err := h.svc.Upload(ctx, actor.ID.String(), body.Name, "audio/mpegurl", parentIDStr, strings.NewReader(content), int64(len(content)))
+	if err != nil {
+		log.Error().Err(err).Msg("files.CreatePlaylist")
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to save playlist")
+		return
+	}
+
+	h.auditSvc.Log(ctx, audit.Event{
+		Type:         audit.EventFileUploaded,
+		ActorID:      &actor.ID,
+		ResourceID:   &f.ID,
+		ResourceName: f.Name,
+		IPAddress:    middleware.ClientIP(r),
+	})
+	httputil.Respond(w, http.StatusCreated, f)
+}
+
+type playlistTrackResponse struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	PreviewURL string `json:"preview_url"`
+	MimeType   string `json:"mime_type"`
+}
+
+// PlaylistTracks handles GET /api/v1/files/{id}/playlist/tracks.
+// Reads an M3U file stored on disk, parses #SHAREDRIVE:id= lines,
+// and returns resolved track info for tracks the user can still access.
+func (h *Handler) PlaylistTracks(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+
+	// Verify access to the playlist file itself.
+	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
+	if err != nil || f == nil {
+		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	reader, err := h.svc.storage.Open(id)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "could not open playlist")
+		return
+	}
+	defer reader.Close()
+
+	data, err := io.ReadAll(io.LimitReader(reader, 1<<20)) // 1 MB max
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "could not read playlist")
+		return
+	}
+
+	var tracks []playlistTrackResponse
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "#SHAREDRIVE:id=") {
+			continue
+		}
+		trackID := strings.TrimPrefix(line, "#SHAREDRIVE:id=")
+		trackID = strings.TrimSpace(trackID)
+		if _, parseErr := uuid.Parse(trackID); parseErr != nil {
+			continue
+		}
+		tf, tfErr := h.svc.GetAccessible(ctx, trackID, actor.ID.String())
+		if tfErr != nil || tf == nil || tf.IsFolder {
+			continue // skip inaccessible tracks
+		}
+		mt := tf.MimeType
+		if mt == "" {
+			mt = "audio/mpeg"
+		}
+		tracks = append(tracks, playlistTrackResponse{
+			ID:         tf.ID.String(),
+			Name:       tf.Name,
+			PreviewURL: fmt.Sprintf("/api/v1/files/%s/preview", tf.ID.String()),
+			MimeType:   mt,
+		})
+	}
+
+	if tracks == nil {
+		tracks = []playlistTrackResponse{}
+	}
+	httputil.Respond(w, http.StatusOK, tracks)
+}

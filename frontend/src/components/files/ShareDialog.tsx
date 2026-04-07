@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { FileItem, Share, SharePermissions, Group } from '@/types/api'
@@ -404,3 +404,4 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
     </div>
   )
 }
+

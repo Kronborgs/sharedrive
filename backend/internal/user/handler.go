@@ -75,15 +75,17 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, u)
 }
 
-// createUserRequest is the body for admin-created (invited) users.
+// createUserRequest is the body for direct admin user creation.
 type createUserRequest struct {
-	Email   string `json:"email"`
-	Name    string `json:"name"`
-	Role    string `json:"role"`
-	QuotaGB int    `json:"quota_gb"`
+	Email       string   `json:"email"`
+	DisplayName string   `json:"display_name"`
+	Password    string   `json:"password"`
+	Role        string   `json:"role"`
+	QuotaBytes  int64    `json:"quota_bytes"`
+	GroupIDs    []string `json:"group_ids"`
 }
 
-// Create handles POST /api/v1/admin/users — creates an invitation token.
+// Create handles POST /api/v1/admin/users — creates a user directly with a password.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	actor := UserFromContext(ctx)
@@ -98,18 +100,25 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "email is required")
 		return
 	}
+	if len(req.Password) < 8 {
+		httputil.RespondError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
 	if req.Role == "" {
 		req.Role = "user"
 	}
-	quotaBytes := int64(req.QuotaGB) * 1_073_741_824
-	if quotaBytes <= 0 {
-		quotaBytes = 10_737_418_240 // 10 GB default
+	if req.DisplayName == "" {
+		req.DisplayName = req.Email
+	}
+	if req.QuotaBytes <= 0 {
+		req.QuotaBytes = 10_737_418_240 // 10 GB default
 	}
 
-	// Generate invite token.
-	token := uuid.New().String()
-	tokenHash := hashToken(token)
-	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	hash, err := argon2id.CreateHash(req.Password, argon2id.DefaultParams)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
@@ -118,14 +127,22 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
-	_, err = tx.Exec(ctx,
-		`INSERT INTO invitation_tokens (email, created_by, token_hash, expires_at)
-		 VALUES ($1, $2, $3, $4)`,
-		req.Email, actor.ID, tokenHash, expiresAt,
-	)
+	var newID string
+	err = tx.QueryRow(ctx,
+		`INSERT INTO users (email, display_name, password_hash, role, is_active, quota_bytes)
+		 VALUES ($1, $2, $3, $4, true, $5) RETURNING id`,
+		req.Email, req.DisplayName, hash, req.Role, req.QuotaBytes,
+	).Scan(&newID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusConflict, "invitation already pending for this email")
+		httputil.RespondError(w, http.StatusConflict, "email already in use")
 		return
+	}
+
+	for _, gid := range req.GroupIDs {
+		_, _ = tx.Exec(ctx,
+			`INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+			gid, newID,
+		)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -133,21 +150,26 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.auditSvc.Log(ctx, audit.Event{
-		Type:      audit.EventUserCreated,
-		ActorID:   &actor.ID,
-		IPAddress: r.RemoteAddr,
-		Metadata:  map[string]any{"email": req.Email, "role": req.Role},
-	})
-	httputil.Respond(w, http.StatusCreated, map[string]string{"invite_token": token})
+	if actor != nil {
+		h.auditSvc.Log(ctx, audit.Event{
+			Type:       audit.EventUserCreated,
+			ActorID:    &actor.ID,
+			ActorEmail: actor.Email,
+			IPAddress:  clientIP(r),
+			Metadata:   map[string]any{"email": req.Email, "role": req.Role},
+		})
+	}
+	httputil.Respond(w, http.StatusCreated, map[string]string{"id": newID})
 }
 
 // updateUserRequest fields that admin may change.
 type updateUserRequest struct {
-	Role              *string `json:"role"`
-	IsActive          *bool   `json:"is_active"`
-	QuotaBytes        *int64  `json:"quota_bytes"`
-	WebDAVEnabled     *bool   `json:"webdav_enabled"`
+	Role               *string `json:"role"`
+	IsActive           *bool   `json:"is_active"`
+	QuotaBytes         *int64  `json:"quota_bytes"`
+	MaxUploadBytes     *int64  `json:"max_upload_bytes"`
+	WebDAVEnabled      *bool   `json:"webdav_enabled"`
+	TrashRetentionDays *int    `json:"trash_retention_days"`
 }
 
 // Update handles PATCH /api/v1/admin/users/{id}
@@ -182,9 +204,19 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		args = append(args, *req.QuotaBytes)
 		argN++
 	}
+	if req.MaxUploadBytes != nil {
+		sets = append(sets, "max_upload_bytes = $"+strconv.Itoa(argN))
+		args = append(args, *req.MaxUploadBytes)
+		argN++
+	}
 	if req.WebDAVEnabled != nil {
 		sets = append(sets, "webdav_enabled = $"+strconv.Itoa(argN))
 		args = append(args, *req.WebDAVEnabled)
+		argN++
+	}
+	if req.TrashRetentionDays != nil {
+		sets = append(sets, "trash_retention_days = $"+strconv.Itoa(argN))
+		args = append(args, *req.TrashRetentionDays)
 		argN++
 	}
 
@@ -200,7 +232,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	h.auditSvc.Log(ctx, audit.Event{
 		Type:      audit.EventUserActivated,
 		ActorID:   &actor.ID,
-		IPAddress: r.RemoteAddr,
+		IPAddress: clientIP(r),
 		Metadata:  map[string]any{"target_user_id": id},
 	})
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
@@ -274,7 +306,9 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var exists bool
-	if err := h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`, id).Scan(&exists); err != nil || !exists {
+	if err := h.db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`, id,
+	).Scan(&exists); err != nil || !exists {
 		httputil.RespondError(w, http.StatusNotFound, "user not found")
 		return
 	}
@@ -287,7 +321,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(ctx)
 
 	// Explicitly clean up all FK-constrained rows so the delete works
-	// even if migration 0023 cascade changes have not applied yet.
+	// even if ON DELETE CASCADE/SET NULL migrations have not applied yet.
 	tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, id)
 	tx.Exec(ctx, `DELETE FROM device_trust_tokens WHERE user_id = $1`, id)
 	tx.Exec(ctx, `DELETE FROM password_reset_tokens WHERE user_id = $1`, id)
@@ -421,7 +455,7 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	h.auditSvc.Log(ctx, audit.Event{
 		Type:      audit.EventPasswordChanged,
 		ActorID:   &actor.ID,
-		IPAddress: r.RemoteAddr,
+		IPAddress: clientIP(r),
 		Metadata:  map[string]any{"target_user_id": id, "admin_action": true},
 	})
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
@@ -473,14 +507,15 @@ func (h *Handler) Reinvite(w http.ResponseWriter, r *http.Request) {
 			"target_email": email,
 			"target_id":    targetID,
 		},
-		IPAddress: r.RemoteAddr,
+		IPAddress: clientIP(r),
 	})
 
 	if h.mailer != nil {
 		inviteLink := h.appURL + "/accept-invite?token=" + rawToken
+		inviterName := actor.Email
 		go func() {
-			if err := h.mailer.SendInvitation(context.Background(), email, actor.Email, inviteLink); err != nil {
-				log.Warn().Err(err).Str("to", email).Msg("reinvite: send invitation email")
+			if err := h.mailer.SendInvitation(context.Background(), email, inviterName, inviteLink); err != nil {
+				log.Warn().Err(err).Str("to", email).Msg("reinvite: failed to send invitation email")
 			}
 		}()
 	}
@@ -491,188 +526,186 @@ func (h *Handler) Reinvite(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-//  Guest management 
+// ─── Guest management ─────────────────────────────────────────────────────────
 
 // GuestSharedItem is a resource that has been shared with a guest user.
 type GuestSharedItem struct {
-ResourceID string `json:"resource_id"`
-Name       string `json:"name"`
-IsFolder   bool   `json:"is_folder"`
-OwnerEmail string `json:"owner_email"`
+	ResourceID string `json:"resource_id"`
+	Name       string `json:"name"`
+	IsFolder   bool   `json:"is_folder"`
+	OwnerEmail string `json:"owner_email"`
 }
 
 // GuestUser is returned by ListGuests.
 type GuestUser struct {
-ID            string            `json:"id"`
-Email         string            `json:"email"`
-DisplayName   string            `json:"display_name"`
-LastLoginAt   *time.Time        `json:"last_login_at"`
-CreatedAt     time.Time         `json:"created_at"`
-InvitedByName *string           `json:"invited_by_name"`
-SharedItems   []GuestSharedItem `json:"shared_items"`
+	ID            string            `json:"id"`
+	Email         string            `json:"email"`
+	DisplayName   string            `json:"display_name"`
+	LastLoginAt   *time.Time        `json:"last_login_at"`
+	CreatedAt     time.Time         `json:"created_at"`
+	InvitedByName *string           `json:"invited_by_name"`
+	SharedItems   []GuestSharedItem `json:"shared_items"`
 }
 
 // ListGuests handles GET /api/v1/admin/guests
 func (h *Handler) ListGuests(w http.ResponseWriter, r *http.Request) {
-ctx := r.Context()
+	ctx := r.Context()
 
-rows, err := h.db.Query(ctx,
-`SELECT u.id, u.email, u.display_name, u.last_login_at, u.created_at,
-        inviter.display_name
- FROM users u
- LEFT JOIN users inviter ON inviter.id = u.invited_by
- WHERE u.role = 'guest'
- ORDER BY u.created_at DESC`,
-)
-if err != nil {
-httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-return
-}
-defer rows.Close()
+	rows, err := h.db.Query(ctx,
+		`SELECT u.id, u.email, u.display_name, u.last_login_at, u.created_at,
+		        inviter.display_name
+		 FROM users u
+		 LEFT JOIN users inviter ON inviter.id = u.invited_by
+		 WHERE u.role = 'guest' AND u.is_active = true
+		 ORDER BY u.created_at DESC`,
+	)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rows.Close()
 
-guests := []GuestUser{}
-for rows.Next() {
-var g GuestUser
-if err := rows.Scan(&g.ID, &g.Email, &g.DisplayName, &g.LastLoginAt, &g.CreatedAt, &g.InvitedByName); err != nil {
-httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-return
-}
-g.SharedItems = []GuestSharedItem{}
-guests = append(guests, g)
-}
-if err := rows.Err(); err != nil {
-httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-return
-}
+	guests := []GuestUser{}
+	for rows.Next() {
+		var g GuestUser
+		if err := rows.Scan(&g.ID, &g.Email, &g.DisplayName, &g.LastLoginAt, &g.CreatedAt, &g.InvitedByName); err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		g.SharedItems = []GuestSharedItem{}
+		guests = append(guests, g)
+	}
+	if err := rows.Err(); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 
-// Fetch shared items for each guest in a single batched query.
-if len(guests) > 0 {
-ids := make([]string, len(guests))
-for i, g := range guests {
-ids[i] = g.ID
-}
-sRows, err := h.db.Query(ctx,
-`SELECT s.grantee_id, f.id, f.name, f.is_folder, owner.email
- FROM shares s
- JOIN files f ON f.id = s.resource_id AND f.deleted_at IS NULL
- JOIN users owner ON owner.id = s.owner_id
- WHERE s.grantee_type = 'user'
-   AND s.grantee_id = ANY($1::uuid[])
-   AND s.revoked_at IS NULL
-   AND (s.expires_at IS NULL OR s.expires_at > now())
- ORDER BY f.name ASC`,
-ids,
-)
-if err == nil {
-defer sRows.Close()
-itemMap := make(map[string][]GuestSharedItem)
-for sRows.Next() {
-var granteeID string
-var item GuestSharedItem
-if err := sRows.Scan(&granteeID, &item.ResourceID, &item.Name, &item.IsFolder, &item.OwnerEmail); err == nil {
-itemMap[granteeID] = append(itemMap[granteeID], item)
-}
-}
-for i := range guests {
-if items, ok := itemMap[guests[i].ID]; ok {
-guests[i].SharedItems = items
-}
-}
-}
-}
+	// Fetch shared items for each guest in a single batched query.
+	if len(guests) > 0 {
+		ids := make([]string, len(guests))
+		for i, g := range guests {
+			ids[i] = g.ID
+		}
+		sRows, err := h.db.Query(ctx,
+			`SELECT s.grantee_id, f.id, f.name, f.is_folder, owner.email
+			 FROM shares s
+			 JOIN files f ON f.id = s.resource_id AND f.deleted_at IS NULL
+			 JOIN users owner ON owner.id = s.owner_id
+			 WHERE s.grantee_type = 'user'
+			   AND s.grantee_id = ANY($1::uuid[])
+			   AND s.revoked_at IS NULL
+			   AND (s.expires_at IS NULL OR s.expires_at > now())
+			 ORDER BY f.name ASC`,
+			ids,
+		)
+		if err == nil {
+			defer sRows.Close()
+			// Build a map from guestID -> items
+			itemMap := make(map[string][]GuestSharedItem)
+			for sRows.Next() {
+				var granteeID string
+				var item GuestSharedItem
+				if err := sRows.Scan(&granteeID, &item.ResourceID, &item.Name, &item.IsFolder, &item.OwnerEmail); err == nil {
+					itemMap[granteeID] = append(itemMap[granteeID], item)
+				}
+			}
+			for i := range guests {
+				if items, ok := itemMap[guests[i].ID]; ok {
+					guests[i].SharedItems = items
+				}
+			}
+		}
+	}
 
-httputil.Respond(w, http.StatusOK, guests)
+	httputil.Respond(w, http.StatusOK, guests)
 }
 
 // PromoteGuest handles POST /api/v1/admin/guests/{id}/promote
 // Converts a guest user to a regular user with role='user'.
 func (h *Handler) PromoteGuest(w http.ResponseWriter, r *http.Request) {
-ctx := r.Context()
-actor := UserFromContext(ctx)
-id := chi.URLParam(r, "id")
+	ctx := r.Context()
+	actor := UserFromContext(ctx)
+	id := chi.URLParam(r, "id")
 
-var currentRole string
-if err := h.db.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&currentRole); err != nil {
-httputil.RespondError(w, http.StatusNotFound, "user not found")
-return
-}
-if currentRole != "guest" {
-httputil.RespondError(w, http.StatusBadRequest, "user is not a guest")
-return
-}
+	// Verify the target is actually a guest.
+	var currentRole string
+	if err := h.db.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&currentRole); err != nil {
+		httputil.RespondError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if currentRole != "guest" {
+		httputil.RespondError(w, http.StatusBadRequest, "user is not a guest")
+		return
+	}
 
-if _, err := h.db.Exec(ctx,
-`UPDATE users SET role = 'user', updated_at = now() WHERE id = $1`, id,
-); err != nil {
-httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-return
-}
+	if _, err := h.db.Exec(ctx,
+		`UPDATE users SET role = 'user', updated_at = now() WHERE id = $1`, id,
+	); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 
-h.auditSvc.Log(ctx, audit.Event{
-Type:      audit.EventUserActivated,
-ActorID:   &actor.ID,
-IPAddress: r.RemoteAddr,
-Metadata:  map[string]any{"target_user_id": id, "promoted_from_guest": true},
-})
-httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+	h.auditSvc.Log(ctx, audit.Event{
+		Type:      audit.EventUserActivated,
+		ActorID:   &actor.ID,
+		IPAddress: r.RemoteAddr,
+		Metadata:  map[string]any{"target_user_id": id, "promoted_from_guest": true},
+	})
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // DeleteGuest handles DELETE /api/v1/admin/guests/{id}.
-// Hard-deletes a guest user and all their associated data.
+// It revokes the guest's share access and permanently removes the user record.
 func (h *Handler) DeleteGuest(w http.ResponseWriter, r *http.Request) {
-ctx := r.Context()
-actor := UserFromContext(ctx)
-id := chi.URLParam(r, "id")
+	ctx := r.Context()
+	actor := UserFromContext(ctx)
+	id := chi.URLParam(r, "id")
 
-var currentRole string
-if err := h.db.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&currentRole); err != nil {
-httputil.RespondError(w, http.StatusNotFound, "user not found")
-return
-}
-if currentRole != "guest" {
-httputil.RespondError(w, http.StatusBadRequest, "user is not a guest")
-return
+	// Verify the target is actually a guest.
+	var currentRole string
+	if err := h.db.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&currentRole); err != nil {
+		httputil.RespondError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if currentRole != "guest" {
+		httputil.RespondError(w, http.StatusBadRequest, "user is not a guest")
+		return
+	}
+
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Revoke all shares granted to this guest.
+	tx.Exec(ctx, `UPDATE shares SET revoked_at = now() WHERE grantee_id = $1 AND revoked_at IS NULL`, id)
+	// Delete shares owned or created by this guest.
+	tx.Exec(ctx, `DELETE FROM shares WHERE owner_id = $1 OR created_by = $1`, id)
+	// Revoke sessions (also covered by ON DELETE CASCADE, but be explicit).
+	tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, id)
+	// Nullify invitation_token references to this guest.
+	tx.Exec(ctx, `UPDATE invitation_tokens SET used_by = NULL WHERE used_by = $1`, id)
+	// Delete files owned by this guest (uploaded by them into other folders).
+	tx.Exec(ctx, `DELETE FROM files WHERE owner_id = $1`, id)
+	// Hard-delete the user record.
+	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	h.auditSvc.Log(ctx, audit.Event{
+		Type:      audit.EventUserDeactivated,
+		ActorID:   &actor.ID,
+		IPAddress: r.RemoteAddr,
+		Metadata:  map[string]any{"target_user_id": id, "deleted_guest": true},
+	})
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-tx, err := h.db.Begin(ctx)
-if err != nil {
-httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-return
-}
-defer tx.Rollback(ctx)
-
-// Remove all FK-referencing rows before deleting the user.
-tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, id)
-tx.Exec(ctx, `DELETE FROM device_trust_tokens WHERE user_id = $1`, id)
-tx.Exec(ctx, `DELETE FROM password_reset_tokens WHERE user_id = $1`, id)
-tx.Exec(ctx, `DELETE FROM totp_credentials WHERE user_id = $1`, id)
-tx.Exec(ctx, `DELETE FROM app_passwords WHERE user_id = $1`, id)
-tx.Exec(ctx, `DELETE FROM bandwidth_usage WHERE user_id = $1`, id)
-tx.Exec(ctx, `UPDATE invitation_tokens SET used_by = NULL WHERE used_by = $1`, id)
-tx.Exec(ctx, `UPDATE audit_logs SET actor_id = NULL WHERE actor_id = $1`, id)
-tx.Exec(ctx, `UPDATE audit_logs SET target_user_id = NULL WHERE target_user_id = $1`, id)
-// Revoke all shares granted to this guest.
-tx.Exec(ctx, `UPDATE shares SET revoked_at = now() WHERE grantee_id = $1 AND revoked_at IS NULL`, id)
-// Delete shares owned or created by this guest.
-tx.Exec(ctx, `DELETE FROM shares WHERE owner_id = $1 OR created_by = $1`, id)
-// Delete files owned by this guest (uploaded by them into other folders).
-tx.Exec(ctx, `DELETE FROM files WHERE owner_id = $1`, id)
-// Hard-delete the user record.
-if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
-httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-return
-}
-
-if err := tx.Commit(ctx); err != nil {
-httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-return
-}
-
-h.auditSvc.Log(ctx, audit.Event{
-Type:      audit.EventUserDeactivated,
-ActorID:   &actor.ID,
-IPAddress: r.RemoteAddr,
-Metadata:  map[string]any{"target_user_id": id, "deleted_guest": true},
-})
-httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
-}

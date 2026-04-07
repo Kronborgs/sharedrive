@@ -211,8 +211,9 @@ func (fs *userFS) OpenFile(ctx context.Context, name string, flag int, _ os.File
 			return nil, err
 		}
 		dir := &davDir{fi: rec.info(), children: children}
-		// For the root directory, fetch quota so Windows Explorer can display
-		// the used/available space bar on the network drive icon.
+		// For the root directory, fetch quota + physical disk stats so Windows
+		// Explorer can display the used/available space bar on the drive icon.
+		// Quota takes precedence; disk stats are the fallback for unlimited users.
 		if rec.id == "" {
 			var qTotal, qUsed int64
 			_ = fs.db.QueryRow(ctx,
@@ -223,6 +224,9 @@ func (fs *userFS) OpenFile(ctx context.Context, name string, flag int, _ os.File
 				dir.quotaTotal = qTotal
 				dir.quotaUsed = qUsed
 				dir.hasQuota = true
+			} else {
+				// No quota cap — populate physical disk stats as fallback.
+				dir.diskTotal, dir.diskFree = diskStats(fs.filesRoot)
 			}
 		}
 		return dir, nil
@@ -449,6 +453,9 @@ type davDir struct {
 	quotaTotal int64
 	quotaUsed  int64
 	hasQuota   bool
+	// Physical disk totals used as fallback when the user has no quota cap.
+	diskTotal int64
+	diskFree  int64
 }
 
 func (d *davDir) Close() error                               { return nil }
@@ -458,14 +465,29 @@ func (d *davDir) Write([]byte) (int, error)                  { return 0, os.ErrP
 func (d *davDir) Stat() (os.FileInfo, error)                 { return d.fi, nil }
 
 // DeadProps implements webdav.DeadPropsHolder — reports quota to WebDAV clients.
+// When the user has no quota cap, falls back to physical disk stats so that
+// Windows Explorer always shows a storage gauge on the network drive icon.
 func (d *davDir) DeadProps() (map[xml.Name]gowebdav.Property, error) {
-	if !d.hasQuota {
+	var avail, used int64
+
+	if d.hasQuota {
+		avail = d.quotaTotal - d.quotaUsed
+		if avail < 0 {
+			avail = 0
+		}
+		used = d.quotaUsed
+	} else if d.diskTotal > 0 {
+		// No per-user quota — report physical disk space so clients can still
+		// display a meaningful storage gauge.
+		avail = d.diskFree
+		used = d.diskTotal - d.diskFree
+		if used < 0 {
+			used = 0
+		}
+	} else {
 		return nil, nil
 	}
-	avail := d.quotaTotal - d.quotaUsed
-	if avail < 0 {
-		avail = 0
-	}
+
 	return map[xml.Name]gowebdav.Property{
 		{Space: "DAV:", Local: "quota-available-bytes"}: {
 			XMLName:  xml.Name{Space: "DAV:", Local: "quota-available-bytes"},
@@ -473,7 +495,7 @@ func (d *davDir) DeadProps() (map[xml.Name]gowebdav.Property, error) {
 		},
 		{Space: "DAV:", Local: "quota-used-bytes"}: {
 			XMLName:  xml.Name{Space: "DAV:", Local: "quota-used-bytes"},
-			InnerXML: []byte(strconv.FormatInt(d.quotaUsed, 10)),
+			InnerXML: []byte(strconv.FormatInt(used, 10)),
 		},
 	}, nil
 }

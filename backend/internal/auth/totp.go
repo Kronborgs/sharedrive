@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	totpIssuer    = "PrivateDrive"
+	totpIssuer    = "Sharedrive"
 	backupCodeLen = 8
 	backupCount   = 10
 )

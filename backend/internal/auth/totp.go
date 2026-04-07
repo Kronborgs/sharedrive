@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -56,8 +57,22 @@ func (s *TOTPService) BeginEnroll(userEmail string) (secret, provisioningURI str
 // ConfirmEnroll validates the code, then encrypts and stores the secret.
 // Returns the plaintext backup codes (shown once to the user).
 func (s *TOTPService) ConfirmEnroll(ctx context.Context, userID, userEmail, secret, code string) (backupCodes []string, err error) {
-	valid, err := totp.ValidateCustom(code, secret, timeNow(), totp.ValidateOpts{Skew: 1, Digits: 6, Period: 30, Algorithm: otp.AlgorithmSHA1})
-	if err != nil || !valid {
+	now := timeNow()
+	valid, valErr := totp.ValidateCustom(code, secret, now, totp.ValidateOpts{
+		Skew:      20, // ±10 minutes tolerance for clock drift
+		Digits:    otp.DigitsSix,
+		Period:    30,
+		Algorithm: otp.AlgorithmSHA1,
+	})
+	log.Debug().
+		Str("user_id", userID).
+		Int("secret_len", len(secret)).
+		Str("code", code).
+		Int64("server_period", now.Unix()/30).
+		Bool("valid", valid).
+		Err(valErr).
+		Msg("totp: confirm enroll validation")
+	if valErr != nil || !valid {
 		return nil, fmt.Errorf("totp: invalid code")
 	}
 

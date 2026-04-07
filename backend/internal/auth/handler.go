@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -736,6 +737,27 @@ func (h *Handler) TOTPSetup(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	redisKey := "totp_pending:" + u.ID.String()
+
+	// If a pending setup already exists (e.g. dialog re-mounted), reuse the
+	// same secret so the user doesn't need to rescan the QR code.
+	if existingSecret, err := h.rdb.Get(ctx, redisKey).Result(); err == nil && existingSecret != "" {
+		v := url.Values{}
+		v.Set("secret", existingSecret)
+		v.Set("issuer", totpIssuer)
+		v.Set("algorithm", "SHA1")
+		v.Set("digits", "6")
+		v.Set("period", "30")
+		provURI := (&url.URL{
+			Scheme:   "otpauth",
+			Host:     "totp",
+			Path:     "/" + totpIssuer + ":" + u.Email,
+			RawQuery: v.Encode(),
+		}).String()
+		httputil.Respond(w, http.StatusOK, totpSetupResponse{Secret: existingSecret, ProvisioningURI: provURI})
+		return
+	}
+
 	secret, uri, err := h.totpSvc.BeginEnroll(u.Email)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
@@ -743,11 +765,11 @@ func (h *Handler) TOTPSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	// Store the pending secret server-side so the confirm step doesn't trust
 	// a client-supplied secret.
-	redisKey := "totp_pending:" + u.ID.String()
 	if err := h.rdb.Set(ctx, redisKey, secret, 10*time.Minute).Err(); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	log.Debug().Str("user_id", u.ID.String()).Int("secret_len", len(secret)).Msg("totp: setup secret stored in Redis")
 	httputil.Respond(w, http.StatusOK, totpSetupResponse{Secret: secret, ProvisioningURI: uri})
 }
 
@@ -771,13 +793,14 @@ func (h *Handler) TOTPConfirm(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	// Fetch the pending secret stored in Redis by TOTPSetup — never trust the client.
 	redisKey := "totp_pending:" + u.ID.String()
 	secret, err := h.rdb.GetDel(ctx, redisKey).Result()
 	if err != nil {
+		log.Warn().Str("user_id", u.ID.String()).Err(err).Msg("totp: confirm — Redis key not found")
 		httputil.RespondError(w, http.StatusBadRequest, "setup session expired — please restart 2FA setup")
 		return
 	}
+	log.Debug().Str("user_id", u.ID.String()).Int("secret_len", len(secret)).Str("code", req.Code).Msg("totp: confirm attempt")
 	codes, err := h.totpSvc.ConfirmEnroll(ctx, u.ID.String(), u.Email, secret, req.Code)
 	if err != nil {
 		// Re-store the secret so the user can retry without rescanning.

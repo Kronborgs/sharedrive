@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import type { AppPassword, CreatedAppPassword } from '@/types/api'
-import { X, Copy, Check, Trash2, Plus, HardDrive } from 'lucide-react'
+import { X, Copy, Check, Trash2, Plus, HardDrive, Monitor, Apple, Terminal } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDate } from '@/lib/utils'
 
@@ -12,12 +12,39 @@ interface Props {
   onClose: () => void
 }
 
+type Tab = 'windows' | 'macos' | 'linux'
+
+function CopyButton({ text, copyKey, copied, onCopy }: { text: string; copyKey: string; copied: string | null; onCopy: (t: string, k: string) => void }) {
+  return (
+    <button
+      onClick={() => onCopy(text, copyKey)}
+      className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+      title="Copy"
+    >
+      {copied === copyKey ? <Check size={13} /> : <Copy size={13} />}
+    </button>
+  )
+}
+
+function CodeRow({ label, value, copyKey, copied, onCopy }: { label: string; value: string; copyKey: string; copied: string | null; onCopy: (t: string, k: string) => void }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">{label}</p>
+      <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
+        <span className="flex-1 text-xs font-mono text-zinc-900 dark:text-slate-100 break-all select-all">{value}</span>
+        <CopyButton text={value} copyKey={copyKey} copied={copied} onCopy={onCopy} />
+      </div>
+    </div>
+  )
+}
+
 export function WebDAVDialog({ onClose }: Props) {
   const { user } = useAuth()
   const qc = useQueryClient()
   const [newName, setNewName] = useState('')
   const [revealed, setRevealed] = useState<CreatedAppPassword | null>(null)
-  const [copied, setCopied] = useState<'url' | 'pwd' | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>('windows')
 
   const { data: settings } = useQuery({
     queryKey: ['system', 'settings'],
@@ -27,6 +54,15 @@ export function WebDAVDialog({ onClose }: Props) {
 
   const davBase = settings?.direct_upload_url?.trim().replace(/\/+$/, '') || window.location.origin
   const davUrl = `${davBase}/dav/${user?.id ?? ''}`
+
+  // Windows UNC path: \\hostname@SSL@443\dav\userid
+  const hostname = (() => { try { return new URL(davBase).hostname } catch { return davBase.replace(/^https?:\/\//, '') } })()
+  const windowsUnc = `\\\\${hostname}@SSL@443\\dav\\${user?.id ?? ''}`
+
+  // Linux davfs2 mount
+  const linuxMount = `sudo mount -t davfs ${davUrl} /mnt/sharedrive`
+  const linuxFstab = `${davUrl} /mnt/sharedrive davfs _netdev,noauto,user 0 0`
+  const windowsRegCmd = `Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters" -Name FileSizeLimitInBytes -Value 0xFFFFFFFF; net stop webclient; net start webclient`
 
   const { data: passwords } = useQuery({
     queryKey: ['app-passwords'],
@@ -50,15 +86,21 @@ export function WebDAVDialog({ onClose }: Props) {
     onError: () => toast.error('Failed to revoke app password'),
   })
 
-  const copy = (text: string, key: 'url' | 'pwd') => {
+  const copy = (text: string, key: string) => {
     void navigator.clipboard.writeText(text)
     setCopied(key)
     setTimeout(() => setCopied(null), 2000)
   }
 
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'windows', label: 'Windows', icon: <Monitor size={13} /> },
+    { id: 'macos',   label: 'macOS',   icon: <Apple size={13} /> },
+    { id: 'linux',   label: 'Linux',   icon: <Terminal size={13} /> },
+  ]
+
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 dark:border-[#2d3148]">
           <div className="flex items-center gap-2">
@@ -71,72 +113,101 @@ export function WebDAVDialog({ onClose }: Props) {
         </div>
 
         <div className="p-5 space-y-5 overflow-y-auto flex-1">
-          {/* WebDAV URL */}
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">WebDAV URL</p>
-            <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
-              <span className="flex-1 text-sm text-zinc-900 dark:text-slate-100 truncate font-mono">{davUrl}</span>
+
+          {/* Platform tabs */}
+          <div className="flex gap-1 rounded-lg bg-zinc-100 dark:bg-[#0f1117] p-1">
+            {tabs.map(t => (
               <button
-                onClick={() => copy(davUrl, 'url')}
-                className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                title="Copy URL"
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  tab === t.id
+                    ? 'bg-white dark:bg-[#1a1d27] text-zinc-900 dark:text-slate-100 shadow-sm'
+                    : 'text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-300'
+                }`}
               >
-                {copied === 'url' ? <Check size={14} /> : <Copy size={14} />}
+                {t.icon}{t.label}
               </button>
-            </div>
-            <p className="text-[11px] text-muted">
-              Use this URL in Windows (Map Network Drive), macOS Finder (Connect to Server), or any WebDAV client.
-              Log in with your <strong>email address</strong> and an <strong>app password</strong> below.
-            </p>
-            <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 space-y-2">
-              <p className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">Windows tip — raise file size limit to 4 GB</p>
-              <p className="text-[11px] text-blue-700 dark:text-blue-400">By default Windows WebDAV only allows files up to 50 MB. Run the command below in an <strong>Administrator PowerShell</strong>, then disconnect and reconnect the network drive.</p>
-              <div className="flex items-start gap-2 rounded border border-blue-200 dark:border-blue-700 bg-white dark:bg-[#0f1117] px-3 py-2">
-                <code className="flex-1 text-[11px] font-mono text-zinc-800 dark:text-slate-200 break-all select-all">{`Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\WebClient\Parameters" -Name FileSizeLimitInBytes -Value 0xFFFFFFFF; net stop webclient; net start webclient`}</code>
-                <button
-                  onClick={() => copy(`Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters" -Name FileSizeLimitInBytes -Value 0xFFFFFFFF; net stop webclient; net start webclient`, 'url')}
-                  className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors mt-0.5"
-                  title="Copy command"
-                >
-                  {copied === 'url' ? <Check size={13} /> : <Copy size={13} />}
-                </button>
+            ))}
+          </div>
+
+          {/* ── Windows ── */}
+          {tab === 'windows' && (
+            <div className="space-y-3">
+              <CodeRow label="Netværksdrev-sti (UNC)" value={windowsUnc} copyKey="winunc" copied={copied} onCopy={copy} />
+              <ol className="text-[11px] text-zinc-600 dark:text-slate-400 space-y-1 list-decimal list-inside">
+                <li>Åbn <strong>Stifinder</strong> → højreklik på <strong>Denne computer</strong> → <strong>Tilknyt netværksdrev</strong></li>
+                <li>Vælg et drevbogstav (f.eks. <strong>S:</strong>)</li>
+                <li>Indsæt stien ovenfor i <strong>Mappe</strong>-feltet</li>
+                <li>Sæt hak i <strong>Opret forbindelse med andre legitimationsoplysninger</strong></li>
+                <li>Log ind med din <strong>email</strong> og en <strong>app password</strong> nedenfor</li>
+              </ol>
+              <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 space-y-2">
+                <p className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">Hæv filstørrelsesgrænseren til 4 GB</p>
+                <p className="text-[11px] text-blue-700 dark:text-blue-400">Windows tillader som standard kun filer op til 50 MB via WebDAV. Kør kommandoen nedenfor i <strong>Administrator PowerShell</strong>, frakobl og tilslut drevet igen.</p>
+                <div className="flex items-start gap-2 rounded border border-blue-200 dark:border-blue-700 bg-white dark:bg-[#0f1117] px-3 py-2">
+                  <code className="flex-1 text-[10px] font-mono text-zinc-800 dark:text-slate-200 break-all select-all">{windowsRegCmd}</code>
+                  <CopyButton text={windowsRegCmd} copyKey="winreg" copied={copied} onCopy={copy} />
+                </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* ── macOS ── */}
+          {tab === 'macos' && (
+            <div className="space-y-3">
+              <CodeRow label="URL" value={davUrl} copyKey="macurl" copied={copied} onCopy={copy} />
+              <ol className="text-[11px] text-zinc-600 dark:text-slate-400 space-y-1 list-decimal list-inside">
+                <li>Finder → <strong>Gå</strong> → <strong>Opret forbindelse til server…</strong> (⌘K)</li>
+                <li>Indsæt URL'en ovenfor og klik <strong>Opret forbindelse</strong></li>
+                <li>Log ind med din <strong>email</strong> og en <strong>app password</strong> nedenfor</li>
+              </ol>
+            </div>
+          )}
+
+          {/* ── Linux ── */}
+          {tab === 'linux' && (
+            <div className="space-y-3">
+              <CodeRow label="WebDAV URL" value={davUrl} copyKey="linurl" copied={copied} onCopy={copy} />
+              <p className="text-[11px] text-zinc-500 dark:text-slate-500">Installer <code className="font-mono">davfs2</code> og mount engangsmount:</p>
+              <CodeRow label="Mount-kommando" value={linuxMount} copyKey="linmnt" copied={copied} onCopy={copy} />
+              <p className="text-[11px] text-zinc-500 dark:text-slate-500">Eller tilføj til <code className="font-mono">/etc/fstab</code> for automatisk mount ved boot:</p>
+              <CodeRow label="/etc/fstab entry" value={linuxFstab} copyKey="linfstab" copied={copied} onCopy={copy} />
+              <p className="text-[11px] text-zinc-500 dark:text-slate-500">
+                Gem legitimationsoplysninger i <code className="font-mono">/etc/davfs2/secrets</code>:<br />
+                <code className="font-mono">{davUrl}  din@email.dk  dit-app-password</code>
+              </p>
+            </div>
+          )}
 
           {/* Revealed new password — show once */}
           {revealed && (
             <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 space-y-2">
               <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                Copy this password now — it won't be shown again
+                Kopiér adgangskoden nu — den vises ikke igen
               </p>
               <div className="flex items-center gap-2 rounded border border-amber-200 dark:border-amber-700 bg-white dark:bg-[#0f1117] px-3 py-1.5">
                 <span className="flex-1 text-sm font-mono text-zinc-900 dark:text-slate-100 break-all">{revealed.password}</span>
-                <button
-                  onClick={() => copy(revealed.password, 'pwd')}
-                  className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                >
-                  {copied === 'pwd' ? <Check size={14} /> : <Copy size={14} />}
-                </button>
+                <CopyButton text={revealed.password} copyKey="pwd" copied={copied} onCopy={copy} />
               </div>
               <button
                 onClick={() => setRevealed(null)}
                 className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
               >
-                I've saved it, dismiss
+                Jeg har gemt den, luk
               </button>
             </div>
           )}
 
           {/* Create new app password */}
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Create app password</p>
+            <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Opret app password</p>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
-                placeholder="e.g. Windows PC, iPhone…"
+                placeholder="f.eks. Windows-PC, iPhone…"
                 className="flex-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) create.mutate(newName.trim()) }}
               />
@@ -146,7 +217,7 @@ export function WebDAVDialog({ onClose }: Props) {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
               >
                 <Plus size={14} />
-                Create
+                Opret
               </button>
             </div>
           </div>
@@ -154,21 +225,21 @@ export function WebDAVDialog({ onClose }: Props) {
           {/* Existing app passwords */}
           {passwords && passwords.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Active app passwords</p>
+              <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Aktive app passwords</p>
               <ul className="space-y-1">
                 {passwords.map(p => (
                   <li key={p.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117]">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 truncate">{p.name}</p>
                       <p className="text-[11px] text-muted">
-                        {p.last_used_at ? `Last used ${formatDate(p.last_used_at)}` : 'Never used'}
-                        {' · '}Created {formatDate(p.created_at)}
+                        {p.last_used_at ? `Sidst brugt ${formatDate(p.last_used_at)}` : 'Aldrig brugt'}
+                        {' · '}Oprettet {formatDate(p.created_at)}
                       </p>
                     </div>
                     <button
                       onClick={() => revoke.mutate(p.id)}
                       className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                      title="Revoke"
+                      title="Tilbagekald"
                     >
                       <Trash2 size={13} />
                     </button>

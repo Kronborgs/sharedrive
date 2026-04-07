@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { z } from 'zod'
 import { api, ApiClientError } from '@/lib/api'
@@ -65,6 +65,13 @@ export default function TOTPPage() {
           {error && (
             <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
               {error}
+              {error.toLowerCase().includes('expired') && (
+                <div className="mt-1">
+                  <Link to="/login" className="underline font-medium">
+                    Return to login →
+                  </Link>
+                </div>
+              )}
             </div>
           )}
 
@@ -102,9 +109,9 @@ export default function TOTPPage() {
           </button>
 
           <div className="text-center">
-            <a href="/login" className="text-xs text-brand-600 dark:text-brand-400 hover:underline">
+            <Link to="/login" className="text-xs text-brand-600 dark:text-brand-400 hover:underline">
               ← Back to login
-            </a>
+            </Link>
           </div>
         </form>
       </div>

@@ -230,6 +230,13 @@ func (h *Handler) TOTPVerify(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ip := middleware.ClientIP(r)
 
+	// Rate-limit TOTP verify by IP to prevent brute-force on leaked pending tokens.
+	allowed, rlErr := h.limiter.Allow(ctx, KeyIPTOTPVerify, ip, 10, 60)
+	if rlErr != nil || !allowed {
+		httputil.RespondError(w, http.StatusTooManyRequests, "too many requests")
+		return
+	}
+
 	var req totpVerifyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
@@ -238,14 +245,19 @@ func (h *Handler) TOTPVerify(w http.ResponseWriter, r *http.Request) {
 
 	userID, trustDevice, err := h.resolvePendingTOTP(ctx, req.PendingToken)
 	if err != nil {
+		log.Debug().Str("ip", ip).Msg("totp: verify rejected — invalid or expired pending token")
 		httputil.RespondError(w, http.StatusUnauthorized, "invalid or expired TOTP session")
 		return
 	}
 
 	if err := h.totpSvc.Validate(ctx, userID, req.Code); err != nil {
+		log.Debug().Str("user_id", userID).Str("ip", ip).Msg("totp: verify failed — invalid code")
 		httputil.RespondError(w, http.StatusUnauthorized, "invalid TOTP code")
 		return
 	}
+
+	// Code valid — consume the pending token so it cannot be reused.
+	h.rdb.Del(ctx, pendingTOTPKey+req.PendingToken)
 
 	// Issue session
 	h.createSessionAndCookie(ctx, w, r, userID, ip)
@@ -629,7 +641,9 @@ func (h *Handler) storePendingTOTP(ctx context.Context, userID string, trustDevi
 }
 
 func (h *Handler) resolvePendingTOTP(ctx context.Context, token string) (userID string, trustDevice bool, err error) {
-	data, err := h.rdb.GetDel(ctx, pendingTOTPKey+token).Result()
+	// Use Get (not GetDel) so the token survives a wrong-code attempt;
+	// the caller must delete it explicitly after successful validation.
+	data, err := h.rdb.Get(ctx, pendingTOTPKey+token).Result()
 	if err != nil {
 		return "", false, fmt.Errorf("pending totp: not found")
 	}

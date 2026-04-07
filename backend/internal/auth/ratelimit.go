@@ -21,4 +21,5 @@ const (
 	KeyIPGlobal        = "ip_global:"
 	KeyIPPasswordReset = "ip_pwreset:"
 	KeyIPInviteAccept  = "ip_invite:"
+	KeyIPTOTPVerify    = "ip_totp_verify:"
 )

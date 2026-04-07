@@ -18,6 +18,8 @@ const TEXT_EXTS = new Set([
   'html', 'css', 'sql', 'env', 'gitignore',
 ])
 const OFFICE_EXTS = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp'])
+// Google Drive stub files — contain a URL/JSON pointer, not real office content
+const GOOGLE_STUB_EXTS = new Set(['gsheet', 'gdoc', 'gslides', 'gdraw', 'gform', 'gmap', 'gsite'])
 
 function fileExt(name: string) {
   return name.split('.').pop()?.toLowerCase() ?? ''
@@ -26,6 +28,7 @@ function fileExt(name: string) {
 function detectKind(item: FileItem): PreviewKind {
   const mime = item.mime_type ?? ''
   const e = fileExt(item.name)
+  if (GOOGLE_STUB_EXTS.has(e)) return 'unsupported'
   if (e === 'pdf' || mime === 'application/pdf') return 'pdf'
   if (mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(e)) return 'image'
   if (mime.startsWith('video/') || ['mp4', 'webm', 'ogg', 'mov', 'm4v'].includes(e)) return 'video'
@@ -144,7 +147,11 @@ export function PreviewModal({ item, onClose }: PreviewModalProps) {
           {kind === 'unsupported' && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-muted">
               <AlertTriangle size={48} className="text-zinc-300 dark:text-slate-600" />
-              <p className="text-sm">This file type cannot be previewed.</p>
+              <p className="text-sm">
+                {GOOGLE_STUB_EXTS.has(fileExt(item.name))
+                  ? 'This is a Google Drive file and can only be opened in Google Drive.'
+                  : 'This file type cannot be previewed.'}
+              </p>
               <a
                 href={`/api/v1/files/${item.id}/download`}
                 download={item.name}

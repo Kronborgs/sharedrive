@@ -7,6 +7,7 @@ services:
     volumes:
       - /mnt/user/files/sharedrive:/data/files:rw
       - /mnt/user/backups/sharedrive:/data/backups:rw
+      - /mnt/user/appdata/sharedrive/preview-cache:/data/preview-cache:rw
     environment:
       TZ: ${TZ:-Europe/Copenhagen}
       APP_BASE_URL: ${APP_BASE_URL}

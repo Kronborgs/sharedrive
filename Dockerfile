@@ -40,7 +40,9 @@ RUN go build \
 FROM alpine:3.20
 
 RUN apk add --no-cache ca-certificates tzdata libreoffice font-noto && \
-    adduser -D -u 1000 -g privatedrive privatedrive
+    adduser -D -u 1000 -g privatedrive privatedrive && \
+    mkdir -p /data/files /data/backups /data/preview-cache && \
+    chown -R privatedrive:privatedrive /data
 
 WORKDIR /app
 

@@ -18,7 +18,7 @@ const TEXT_EXTS = new Set([
   'sh', 'bash', 'py', 'js', 'ts', 'jsx', 'tsx', 'go', 'rs', 'rb', 'php',
   'html', 'css', 'sql', 'env', 'gitignore',
 ])
-const OFFICE_EXTS = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp'])
+const OFFICE_EXTS = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'epub'])
 // Google Drive stub files — contain a URL/JSON pointer, not real office content
 const GOOGLE_STUB_EXTS = new Set(['gsheet', 'gdoc', 'gslides', 'gdraw', 'gform', 'gmap', 'gsite'])
 

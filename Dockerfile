@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1: Build frontend
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
 ARG VERSION=dev
 
 WORKDIR /fe
@@ -14,9 +14,11 @@ RUN APP_VERSION=${VERSION} npm run build
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: Build backend (embeds frontend dist)
 # ─────────────────────────────────────────────────────────────────────────────
-FROM golang:1.25-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
 ARG VERSION=dev
 ARG BUILD_DATE=unknown
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
 
 RUN apk add --no-cache git ca-certificates tzdata
 
@@ -30,7 +32,7 @@ RUN go mod tidy
 # Embed the built frontend into the Go binary
 COPY --from=frontend-builder /fe/dist ./internal/embed/dist
 
-RUN go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags "-X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -s -w" \
     -o /app/server ./cmd/server
 

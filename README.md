@@ -24,7 +24,11 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 
 ### File Preview
 - **PDF** — rendered page-by-page in the browser via PDF.js with a loading spinner
-- **Office documents** (DOCX, XLSX, PPTX, ODT, ODS, ODP) — converted server-side to PDF via LibreOffice; shows a "Preparing preview…" spinner while conversion runs
+- **Office documents** — converted server-side to PDF via [Gotenberg](https://gotenberg.dev/) (built-in, no separate container); shows a "Preparing preview…" spinner while conversion runs. Supported formats include:
+  - **Word**: DOC, DOCX, DOCM, DOT, DOTX, RTF, ODT, OTT
+  - **Excel**: XLS, XLSX, XLSM, XLSB, XLTX, CSV, ODS, OTS
+  - **PowerPoint**: PPT, PPTX, PPTM, POTX, ODP, OTP
+  - **Other**: EPUB, HTML, XHTML, VSD, VSDX, PUB, and many more
 - **Images** (JPEG, PNG, GIF, WebP, SVG) — full-size preview with a fade-in loading state
 - **Video** (MP4, WebM, OGG, MOV) — native browser player
 - **Audio** (MP3, WAV, AAC, M4A, Opus) — native browser player; FLAC detected at render time — shows a download-to-play fallback if the browser does not support it
@@ -89,8 +93,10 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 
 ### Infrastructure
 - Single Go binary serves the embedded React SPA, REST API, TUS upload endpoint, and WebDAV
+- **Gotenberg built-in** — Office-to-PDF conversion runs inside the same container; no separate service needed
 - **Cloudflare Tunnel ready** — designed for reverse-proxy-free deployments on Unraid or any Docker Compose host
 - PostgreSQL for all metadata; Redis for rate limiting and ephemeral state (ephemeral — no volume needed)
+- **Multi-platform image** — supports `linux/amd64` and `linux/arm64` (Raspberry Pi 4/5, Apple Silicon VMs, ARM servers)
 - Dark mode — system-detected with manual toggle
 
 ---

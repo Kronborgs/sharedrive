@@ -5,20 +5,21 @@ import { PDFRenderer } from './renderers/PDFRenderer'
 import { STLRenderer } from './renderers/STLRenderer'
 import { AudioRenderer } from './renderers/AudioRenderer'
 import { PlaylistPlayer } from './renderers/PlaylistPlayer'
+import { EPUBRenderer } from './renderers/EPUBRenderer'
 
 interface PreviewModalProps {
   item: FileItem
   onClose: () => void
 }
 
-type PreviewKind = 'pdf' | 'image' | 'text' | 'video' | 'audio' | 'stl' | 'office' | 'playlist' | 'unsupported'
+type PreviewKind = 'pdf' | 'image' | 'text' | 'video' | 'audio' | 'stl' | 'office' | 'epub' | 'playlist' | 'unsupported'
 
 const TEXT_EXTS = new Set([
   'txt', 'md', 'json', 'yaml', 'yml', 'toml', 'ini', 'xml', 'csv', 'log',
   'sh', 'bash', 'py', 'js', 'ts', 'jsx', 'tsx', 'go', 'rs', 'rb', 'php',
   'html', 'css', 'sql', 'env', 'gitignore',
 ])
-const OFFICE_EXTS = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'epub'])
+const OFFICE_EXTS = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp'])
 // Google Drive stub files — contain a URL/JSON pointer, not real office content
 const GOOGLE_STUB_EXTS = new Set(['gsheet', 'gdoc', 'gslides', 'gdraw', 'gform', 'gmap', 'gsite'])
 
@@ -36,6 +37,7 @@ function detectKind(item: FileItem): PreviewKind {
   if (mime.startsWith('video/') || ['mp4', 'webm', 'ogg', 'mov', 'm4v'].includes(e)) return 'video'
   if (mime.startsWith('audio/') || ['mp3', 'wav', 'flac', 'aac', 'm4a', 'opus'].includes(e)) return 'audio'
   if (e === 'stl') return 'stl'
+  if (e === 'epub') return 'epub'
   if (OFFICE_EXTS.has(e)) return 'office'
   if (mime.startsWith('text/') || mime === 'application/json' || mime === 'application/xml' || TEXT_EXTS.has(e)) return 'text'
   return 'unsupported'
@@ -130,6 +132,7 @@ export function PreviewModal({ item, onClose }: PreviewModalProps) {
         <div className="flex-1 min-h-0 overflow-hidden">
           {kind === 'pdf' && <PDFRenderer url={previewUrl} loadingText="Loading PDF…" />}
           {kind === 'office' && <PDFRenderer url={pdfUrl} loadingText="Preparing preview…" />}
+          {kind === 'epub' && <EPUBRenderer url={previewUrl} />}
           {kind === 'image' && <ImageRenderer url={previewUrl} name={item.name} />}
           {kind === 'video' && (
             <div className="flex items-center justify-center h-full bg-black p-2">

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { ChevronLeft, ChevronRight, Loader2, ZoomIn, ZoomOut } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, ZoomIn, ZoomOut } from 'lucide-react'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -18,11 +18,13 @@ export function PDFRenderer({ url, loadingText = 'Loading PDF…' }: PDFRenderer
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(0)
   const [scale, setScale] = useState(1.5)
+  const [loadError, setLoadError] = useState(false)
   const renderTaskRef = useRef<RenderTask | null>(null)
 
   useEffect(() => {
     let cancelled = false
     let loadedDoc: PDFDocumentProxy | null = null
+    setLoadError(false)
     // getDocument returns a PDFDocumentLoadingTask with its own .destroy()
     const loadingTask = pdfjsLib.getDocument(url)
     loadingTask.promise
@@ -39,7 +41,10 @@ export function PDFRenderer({ url, loadingText = 'Loading PDF…' }: PDFRenderer
         setPage(1)
       })
       .catch(err => {
-        if (!cancelled) console.error(err)
+        if (!cancelled) {
+          console.error(err)
+          setLoadError(true)
+        }
       })
     return () => {
       cancelled = true
@@ -119,10 +124,16 @@ export function PDFRenderer({ url, loadingText = 'Loading PDF…' }: PDFRenderer
         </button>
       </div>
       <div className="flex-1 overflow-auto flex justify-center p-4 bg-zinc-100 dark:bg-[#0f1117] relative">
-        {!pdf && (
+        {!pdf && !loadError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <Loader2 size={28} className="animate-spin text-brand-500" />
             <span className="text-sm text-muted">{loadingText}</span>
+          </div>
+        )}
+        {loadError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <AlertTriangle size={36} className="text-zinc-300 dark:text-slate-600" />
+            <span className="text-sm text-muted">Preview generation failed.</span>
           </div>
         )}
         <canvas ref={canvasRef} className="shadow-lg" />

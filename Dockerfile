@@ -41,12 +41,14 @@ FROM gotenberg/gotenberg:8
 
 USER root
 
-# Install curl (for healthcheck) and create data directories owned by
-# the gotenberg user (uid 1001) that the container runs as.
+# Create a sharedrive user (uid 1000) — matches ownership of existing host-mounted
+# data directories. Gotenberg only requires non-root, any uid works.
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/* && \
+    groupadd -g 1000 sharedrive && \
+    useradd -u 1000 -g 1000 -m -s /sbin/nologin sharedrive && \
     mkdir -p /data/files /data/backups /data/preview-cache && \
-    chown -R 1001:1001 /data
+    chown -R 1000:1000 /data
 
 WORKDIR /app
 
@@ -54,8 +56,8 @@ COPY --from=backend-builder /app/server /usr/local/bin/privatedrive
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Run as the gotenberg user (non-root) — required for LibreOffice sandboxing
-USER 1001
+# Run as uid 1000 — matches existing host bind-mount ownership
+USER 1000
 
 EXPOSE 8080
 

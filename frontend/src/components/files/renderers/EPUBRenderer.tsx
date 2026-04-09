@@ -22,36 +22,49 @@ export function EPUBRenderer({ url }: EPUBRendererProps) {
     setLoading(true)
     setError(false)
 
-    const book = ePub(url)
-    bookRef.current = book
+    let cancelled = false
+    let book: Book | null = null
 
-    const rendition = book.renderTo(viewerRef.current, {
-      width: '100%',
-      height: '100%',
-      allowScriptedContent: false,
-    })
-    renditionRef.current = rendition
+    // Fetch the EPUB as an ArrayBuffer so epub.js unzips it in the browser
+    // instead of trying to fetch EPUB-internal paths from the server.
+    fetch(url)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.arrayBuffer()
+      })
+      .then(buffer => {
+        if (cancelled || !viewerRef.current) return
+        book = ePub(buffer)
+        bookRef.current = book
 
-    rendition.display().then(() => {
-      setLoading(false)
-    }).catch(() => {
-      setLoading(false)
-      setError(true)
-    })
+        const rendition = book.renderTo(viewerRef.current, {
+          width: '100%',
+          height: '100%',
+          allowScriptedContent: false,
+        })
+        renditionRef.current = rendition
 
-    rendition.on('relocated', (location: { atStart: boolean; atEnd: boolean }) => {
-      setCanPrev(!location.atStart)
-      setCanNext(!location.atEnd)
-    })
+        rendition.on('relocated', (location: { atStart: boolean; atEnd: boolean }) => {
+          setCanPrev(!location.atStart)
+          setCanNext(!location.atEnd)
+        })
 
-    book.ready.catch(() => {
-      setLoading(false)
-      setError(true)
-    })
+        return rendition.display()
+      })
+      .then(() => {
+        if (!cancelled) setLoading(false)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoading(false)
+          setError(true)
+        }
+      })
 
     return () => {
-      rendition.destroy()
-      book.destroy()
+      cancelled = true
+      renditionRef.current?.destroy()
+      book?.destroy()
       bookRef.current = null
       renditionRef.current = null
     }

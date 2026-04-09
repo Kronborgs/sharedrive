@@ -965,7 +965,7 @@ func (h *Handler) PreviewPDF(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sourcePath := h.svc.storage.Path(id)
-	pdfPath, err := h.converter.PDFPath(ctx, id, sourcePath, f.UpdatedAt)
+	pdfPath, err := h.converter.PDFPath(ctx, id, sourcePath, f.Name, f.UpdatedAt)
 	if err != nil {
 		log.Error().Err(err).Str("file_id", id).Msg("files.PreviewPDF: convert")
 		httputil.RespondError(w, http.StatusInternalServerError, "PDF conversion failed")

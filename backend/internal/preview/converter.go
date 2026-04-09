@@ -47,8 +47,9 @@ func New(cacheDir, gotenbergURL string) (*Converter, error) {
 
 // PDFPath returns the path to the cached PDF for fileID, converting the
 // source file via Gotenberg if the cache is missing or stale.
-// updatedAt is the file's last-modified timestamp used for staleness checks.
-func (c *Converter) PDFPath(ctx context.Context, fileID, sourcePath string, updatedAt time.Time) (string, error) {
+// fileName is the original file name (including extension) used so Gotenberg
+// can detect the document type. updatedAt is used for staleness checks.
+func (c *Converter) PDFPath(ctx context.Context, fileID, sourcePath, fileName string, updatedAt time.Time) (string, error) {
 	// Serialize per-fileID to prevent redundant concurrent conversions of the
 	// same source file.
 	lock, _ := c.locks.LoadOrStore(fileID, &sync.Mutex{})
@@ -88,8 +89,9 @@ func (c *Converter) PDFPath(ctx context.Context, fileID, sourcePath string, upda
 	defer f.Close()
 
 	// Field name must be "files" and the filename must carry the correct extension
-	// so Gotenberg can identify the document type.
-	fw, err := mw.CreateFormFile("files", filepath.Base(sourcePath))
+	// so Gotenberg can identify the document type. Use the original file name
+	// (not the UUID-based storage path) to preserve the extension.
+	fw, err := mw.CreateFormFile("files", fileName)
 	if err != nil {
 		return "", fmt.Errorf("preview.Converter: create form file: %w", err)
 	}

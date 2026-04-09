@@ -35,25 +35,31 @@ RUN go build \
     -o /app/server ./cmd/server
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Stage 3: Minimal runtime image
+# Stage 3: Final runtime — Gotenberg image includes LibreOffice for Office → PDF
 # ─────────────────────────────────────────────────────────────────────────────
-FROM alpine:3.20
+FROM gotenberg/gotenberg:8
 
-RUN apk add --no-cache ca-certificates tzdata && \
-    adduser -D -u 1000 -g privatedrive privatedrive && \
+USER root
+
+# Install curl (for healthcheck) and create data directories owned by
+# the gotenberg user (uid 1001) that the container runs as.
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/* && \
     mkdir -p /data/files /data/backups /data/preview-cache && \
-    chown -R privatedrive:privatedrive /data
+    chown -R 1001:1001 /data
 
 WORKDIR /app
 
 COPY --from=backend-builder /app/server /usr/local/bin/privatedrive
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Non-root user
-USER privatedrive
+# Run as the gotenberg user (non-root) — required for LibreOffice sandboxing
+USER 1001
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD wget -qO- http://localhost:8080/api/v1/system/health || exit 1
+  CMD curl -fsS http://localhost:8080/api/v1/system/health || exit 1
 
-ENTRYPOINT ["privatedrive"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

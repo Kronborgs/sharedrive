@@ -23,14 +23,11 @@ services:
       BACKUP_HMAC_SECRET: ${BACKUP_HMAC_SECRET}
       TOTP_ENCRYPT_KEY: ${TOTP_ENCRYPT_KEY}
       DEVICE_TRUST_SECRET: ${DEVICE_TRUST_SECRET}
-      GOTENBERG_URL: http://sharedrive-gotenberg:3000
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      gotenberg:
-        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/v1/system/health"]
       interval: 30s
@@ -39,18 +36,6 @@ services:
     networks:
       - sharedrive-net
       - cloudflare   # shared Cloudflare tunnel network on Unraid
-
-  gotenberg:
-    image: gotenberg/gotenberg:8
-    container_name: sharedrive-gotenberg
-    restart: unless-stopped
-    command:
-      - gotenberg
-      - --libreoffice-restart-after=10
-      - --api-timeout=60s
-      - --log-level=warn
-    networks:
-      - sharedrive-net
 
   postgres:
     image: postgres:16-alpine

@@ -63,6 +63,9 @@ type Config struct {
 	RegistrationOpen      bool `mapstructure:"REGISTRATION_OPEN"`
 	TOTPRequiredForAdmin  bool `mapstructure:"TOTP_REQUIRED_FOR_ADMIN"`
 
+	// Gotenberg — Office document → PDF conversion service
+	GotenbergURL string `mapstructure:"GOTENBERG_URL"`
+
 	// Rate limiting defaults
 	RLUserLockoutThreshold    int           `mapstructure:"RL_USER_LOCKOUT_THRESHOLD"`
 	RLUserLockoutDuration     time.Duration // parsed from RL_USER_LOCKOUT_DURATION_MIN
@@ -150,6 +153,7 @@ func Load() (*Config, error) {
 	v.SetDefault("RL_WINDOW_SECONDS", 900)
 	v.SetDefault("DEFAULT_QUOTA_BYTES", int64(10*1024*1024*1024)) // 10 GB
 	v.SetDefault("CLOUDFLARE_NETWORK_NAME", "cloudflare-net")
+	v.SetDefault("GOTENBERG_URL", "http://gotenberg:3000")
 
 	cfg := &Config{}
 	if err := v.Unmarshal(cfg); err != nil {

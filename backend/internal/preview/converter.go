@@ -1,51 +1,56 @@
 package preview
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
 )
 
-// maxConcurrentConversions caps simultaneous LibreOffice processes to prevent
-// a flood of large Office documents from exhausting server memory.
-// LibreOffice typically allocates 200–500 MB per instance.
-const maxConcurrentConversions = 2
+// maxConcurrentConversions caps simultaneous Gotenberg requests to prevent
+// saturating the Gotenberg service with parallel large document conversions.
+const maxConcurrentConversions = 4
 
-// conversionTimeout limits how long a single LibreOffice invocation may run.
-// A hung LibreOffice process will be killed after this duration.
+// conversionTimeout limits how long a single Gotenberg HTTP call may run.
 const conversionTimeout = 3 * time.Minute
 
-// Converter wraps a LibreOffice headless process to convert Office documents
-// to PDF for in-browser preview. Converted PDFs are cached on disk and
-// revalidated against the source file's updated_at timestamp.
+// Converter sends Office documents to a Gotenberg instance for PDF conversion.
+// Converted PDFs are cached on disk and revalidated against the source file's
+// updated_at timestamp.
 type Converter struct {
-	cacheDir string
-	locks    sync.Map     // per-fileID *sync.Mutex — prevents duplicate conversions
-	sem      chan struct{} // global concurrency limit for LibreOffice processes
+	cacheDir    string
+	gotenbergURL string
+	client      *http.Client
+	locks       sync.Map     // per-fileID *sync.Mutex — prevents duplicate conversions
+	sem         chan struct{} // global concurrency limit
 }
 
-// New creates a Converter that stores cached PDFs in cacheDir.
-// The directory is created if it does not exist.
-func New(cacheDir string) (*Converter, error) {
+// New creates a Converter that stores cached PDFs in cacheDir and sends
+// conversion requests to gotenbergURL (e.g. "http://gotenberg:3000").
+func New(cacheDir, gotenbergURL string) (*Converter, error) {
 	if err := os.MkdirAll(cacheDir, 0750); err != nil {
 		return nil, fmt.Errorf("preview.Converter: mkdir %s: %w", cacheDir, err)
 	}
 	return &Converter{
-		cacheDir: cacheDir,
-		sem:      make(chan struct{}, maxConcurrentConversions),
+		cacheDir:     cacheDir,
+		gotenbergURL: gotenbergURL,
+		client:       &http.Client{},
+		sem:          make(chan struct{}, maxConcurrentConversions),
 	}, nil
 }
 
 // PDFPath returns the path to the cached PDF for fileID, converting the
-// source file via LibreOffice if the cache is missing or stale.
+// source file via Gotenberg if the cache is missing or stale.
 // updatedAt is the file's last-modified timestamp used for staleness checks.
 func (c *Converter) PDFPath(ctx context.Context, fileID, sourcePath string, updatedAt time.Time) (string, error) {
 	// Serialize per-fileID to prevent redundant concurrent conversions of the
-	// same source file. Different files proceed in parallel (up to the semaphore).
+	// same source file.
 	lock, _ := c.locks.LoadOrStore(fileID, &sync.Mutex{})
 	lock.(*sync.Mutex).Lock()
 	defer lock.(*sync.Mutex).Unlock()
@@ -60,8 +65,7 @@ func (c *Converter) PDFPath(ctx context.Context, fileID, sourcePath string, upda
 		_ = os.Remove(dest)
 	}
 
-	// Acquire semaphore slot — blocks until a conversion slot is free or ctx is
-	// cancelled (e.g. client disconnected before LibreOffice even started).
+	// Acquire semaphore slot.
 	select {
 	case c.sem <- struct{}{}:
 		defer func() { <-c.sem }()
@@ -69,49 +73,64 @@ func (c *Converter) PDFPath(ctx context.Context, fileID, sourcePath string, upda
 		return "", fmt.Errorf("preview.Converter: context cancelled waiting for slot: %w", ctx.Err())
 	}
 
-	// Each invocation gets its own temporary user-profile directory. Sharing the
-	// default profile (~/.config/libreoffice) between concurrent processes causes
-	// file-lock conflicts and corrupted conversions.
-	profileDir, err := os.MkdirTemp("", "lo-profile-")
-	if err != nil {
-		return "", fmt.Errorf("preview.Converter: create profile dir: %w", err)
-	}
-	defer os.RemoveAll(profileDir)
-
-	// Wrap in a hard conversion timeout so a hanging LibreOffice process cannot
-	// tie up a goroutine indefinitely. This timeout is independent of the outer
-	// HTTP request context (which has WriteTimeout disabled for large files).
+	// Hard conversion timeout, independent of the outer HTTP request context.
 	convCtx, convCancel := context.WithTimeout(ctx, conversionTimeout)
 	defer convCancel()
 
-	profileURL := fmt.Sprintf("file://%s", filepath.ToSlash(profileDir))
+	// Build multipart form for Gotenberg's LibreOffice endpoint.
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
 
-	cmd := exec.CommandContext(convCtx,
-		"libreoffice",
-		"--headless",
-		"--norestore",
-		"-env:UserInstallation="+profileURL,
-		"--convert-to", "pdf",
-		"--outdir", c.cacheDir,
-		sourcePath,
-	)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("preview.Converter: libreoffice: %w — %s", err, out)
+	f, err := os.Open(sourcePath)
+	if err != nil {
+		return "", fmt.Errorf("preview.Converter: open source: %w", err)
+	}
+	defer f.Close()
+
+	// Field name must be "files" and the filename must carry the correct extension
+	// so Gotenberg can identify the document type.
+	fw, err := mw.CreateFormFile("files", filepath.Base(sourcePath))
+	if err != nil {
+		return "", fmt.Errorf("preview.Converter: create form file: %w", err)
+	}
+	if _, err := io.Copy(fw, f); err != nil {
+		return "", fmt.Errorf("preview.Converter: copy source: %w", err)
+	}
+	mw.Close()
+
+	endpoint := c.gotenbergURL + "/forms/libreoffice/convert"
+	req, err := http.NewRequestWithContext(convCtx, http.MethodPost, endpoint, &buf)
+	if err != nil {
+		return "", fmt.Errorf("preview.Converter: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("preview.Converter: gotenberg request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return "", fmt.Errorf("preview.Converter: gotenberg returned %d — %s", resp.StatusCode, body)
 	}
 
-	// LibreOffice names the output after the source basename, e.g.
-	// "abc123.docx" → "abc123.pdf". Rename it to fileID.pdf.
-	base := filepath.Base(sourcePath)
-	ext := filepath.Ext(base)
-	libreOut := filepath.Join(c.cacheDir, base[:len(base)-len(ext)]+".pdf")
-	if libreOut != dest {
-		if err := os.Rename(libreOut, dest); err != nil {
-			// libreOut may not exist if LibreOffice used a different naming;
-			// check dest directly before failing.
-			if _, serr := os.Stat(dest); serr != nil {
-				return "", fmt.Errorf("preview.Converter: rename output: %w", err)
-			}
-		}
+	// Write the returned PDF to the cache atomically via a temp file.
+	tmp, err := os.CreateTemp(c.cacheDir, "gotenberg-*.pdf")
+	if err != nil {
+		return "", fmt.Errorf("preview.Converter: create temp: %w", err)
+	}
+	if _, err := io.Copy(tmp, resp.Body); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", fmt.Errorf("preview.Converter: write pdf: %w", err)
+	}
+	tmp.Close()
+
+	if err := os.Rename(tmp.Name(), dest); err != nil {
+		os.Remove(tmp.Name())
+		return "", fmt.Errorf("preview.Converter: rename output: %w", err)
 	}
 
 	return dest, nil

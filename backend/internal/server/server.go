@@ -65,8 +65,8 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 	trashSvc := files.NewTrashService(db, storage)
 
 	var conv *preview.Converter
-	if cfg.PreviewCacheDir != "" {
-		if c, err := preview.New(cfg.PreviewCacheDir); err != nil {
+	if cfg.PreviewCacheDir != "" && cfg.GotenbergURL != "" {
+		if c, err := preview.New(cfg.PreviewCacheDir, cfg.GotenbergURL); err != nil {
 			log.Warn().Err(err).Msg("preview: converter init failed — Office preview unavailable")
 		} else {
 			conv = c

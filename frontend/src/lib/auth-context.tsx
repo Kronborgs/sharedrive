@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiClientError } from '@/lib/api'
 import type { User } from '@/types/api'
 
@@ -13,28 +14,33 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const qc = useQueryClient()
 
-  const fetchUser = async () => {
-    try {
-      const u = await api.get<User>('/api/v1/me')
-      setUser(u)
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        setUser(null)
-      } else {
-        // Network error — keep previous state
-        console.error('Auth check failed:', err)
+  const { data: user, isLoading } = useQuery<User | null>({
+    queryKey: ['me'],
+    queryFn: async () => {
+      try {
+        return await api.get<User>('/api/v1/me')
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) return null
+        throw err
       }
-    } finally {
-      setIsLoading(false)
-    }
+    },
+    // Re-fetch every 60 s, on window focus, and when the tab becomes visible
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    staleTime: 30_000,
+    initialData: null,
+  })
+
+  const refetch = async () => {
+    await qc.invalidateQueries({ queryKey: ['me'] })
   }
 
-  useEffect(() => {
-    void fetchUser()
-  }, [])
+  const setUser = (u: User | null) => {
+    qc.setQueryData<User | null>(['me'], u)
+  }
 
   const logout = async () => {
     try {
@@ -42,11 +48,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Best effort
     }
-    setUser(null)
+    qc.setQueryData(['me'], null)
+    void qc.clear()
+    window.location.href = '/login'
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, refetch: fetchUser, logout, setUser }}>
+    <AuthContext.Provider value={{ user: user ?? null, isLoading, refetch, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   )

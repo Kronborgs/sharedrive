@@ -71,7 +71,10 @@ function FilesPage() {
 
   const trash = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/files/${id}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['files', folderId] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['files', folderId] })
+      void qc.invalidateQueries({ queryKey: ['me'] })
+    },
     onError: () => toast.error('Move to trash failed'),
   })
 
@@ -153,6 +156,7 @@ function FilesPage() {
     const failed = results.filter(r => r.status === 'rejected').length
     if (failed > 0) toast.error(`${failed} item(s) could not be moved to trash`)
     void qc.invalidateQueries({ queryKey: ['files', folderId] })
+    void qc.invalidateQueries({ queryKey: ['me'] })
     setSelected(new Set())
   }, [selected, qc, folderId])
 
@@ -258,6 +262,7 @@ function FilesPage() {
                             ? breadcrumbs[breadcrumbs.length - 2].id
                             : null
                           void qc.invalidateQueries({ queryKey: ['files', parentId] })
+                          void qc.invalidateQueries({ queryKey: ['me'] })
                           void navigate({ to: '/files', search: parentId ? { folder: parentId } : {} })
                         } catch {
                           toast.error('Failed to delete folder')

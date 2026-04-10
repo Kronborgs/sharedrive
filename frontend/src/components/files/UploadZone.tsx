@@ -294,6 +294,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
             speedSamples.current.delete(entry.id)
             update(entry.id, { status: 'done', progress: 100 })
             void qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] })
+            void qc.invalidateQueries({ queryKey: ['me'] })
             setTimeout(() => {
               setUploads(prev => {
                 const next = prev.filter(u => u.id !== entry.id)

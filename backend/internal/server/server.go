@@ -15,9 +15,9 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	goredis "github.com/redis/go-redis/v9"
-	tusd "github.com/tus/tusd/v2/pkg/handler"
-	"github.com/tus/tusd/v2/pkg/filestore"
 	"github.com/rs/zerolog/log"
+	"github.com/tus/tusd/v2/pkg/filestore"
+	tusd "github.com/tus/tusd/v2/pkg/handler"
 
 	"github.com/yourname/privatedrive/internal/admin"
 	"github.com/yourname/privatedrive/internal/audit"
@@ -118,6 +118,37 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		}
 	}()
 
+	// At startup: cascade deleted_at to orphaned children of soft-deleted folders.
+	// These are files whose parent has deleted_at IS NOT NULL but the child still
+	// has deleted_at IS NULL (created by older SoftDelete that didn't cascade).
+	// After this they will appear in each owner's trash and be purged by EmptyTrash.
+	go func() {
+		ctx := context.Background()
+		tag, err := db.Exec(ctx, `
+			WITH RECURSIVE orphans AS (
+			  SELECT f.id, p.deleted_at AS p_deleted_at, p.owner_id AS p_owner_id
+			  FROM files f
+			  JOIN files p ON p.id = f.parent_id
+			  WHERE p.deleted_at IS NOT NULL AND f.deleted_at IS NULL
+			  UNION ALL
+			  SELECT f.id, o.p_deleted_at, o.p_owner_id
+			  FROM files f
+			  JOIN orphans o ON o.id = f.parent_id
+			  WHERE f.deleted_at IS NULL
+			)
+			UPDATE files
+			SET deleted_at = o.p_deleted_at,
+			    owner_id   = o.p_owner_id,
+			    updated_at = now()
+			FROM orphans o
+			WHERE files.id = o.id`)
+		if err != nil {
+			log.Warn().Err(err).Msg("startup orphan cascade failed")
+		} else {
+			log.Info().Int64("rows", tag.RowsAffected()).Msg("startup orphan cascade completed")
+		}
+	}()
+
 	// At startup: recalculate quota_used_bytes for all users from actual DB rows
 	// to correct any drift caused by the folder-cascade bug or crashes.
 	go func() {
@@ -195,8 +226,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		return v
 	}))
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   s.cfg.CORSOrigins,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},
+		AllowedOrigins: s.cfg.CORSOrigins,
+		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},
 		AllowedHeaders: []string{
 			"Accept", "Authorization", "Content-Type", "X-Request-ID",
 			// Tus resumable-upload protocol headers
@@ -471,73 +502,161 @@ func (s *Server) handleAcceptInviteRedirect(w http.ResponseWriter, r *http.Reque
 }
 
 // Remaining stub handlers — bodies implemented module by module.
-func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request)            { s.onboarding.Setup(w, r) }
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request)                  { s.authHandler.Login(w, r) }
-func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request)                 { s.authHandler.Logout(w, r) }
-func (s *Server) handleTOTPVerify(w http.ResponseWriter, r *http.Request)             { s.authHandler.TOTPVerify(w, r) }
-func (s *Server) handlePasswordResetRequest(w http.ResponseWriter, r *http.Request)   { s.authHandler.PasswordResetRequest(w, r) }
-func (s *Server) handlePasswordResetConfirm(w http.ResponseWriter, r *http.Request)   { s.authHandler.PasswordResetConfirm(w, r) }
-func (s *Server) handleAcceptInvite(w http.ResponseWriter, r *http.Request)           { s.notImplemented(w) }
-func (s *Server) handleGetMe(w http.ResponseWriter, r *http.Request)                  { s.authHandler.Me(w, r) }
-func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request)               { s.authHandler.UpdateMe(w, r) }
-func (s *Server) handleListAppPasswords(w http.ResponseWriter, r *http.Request)       { s.appPwdHandler.List(w, r) }
-func (s *Server) handleCreateAppPassword(w http.ResponseWriter, r *http.Request)      { s.appPwdHandler.Create(w, r) }
-func (s *Server) handleRevokeAppPassword(w http.ResponseWriter, r *http.Request)      { s.appPwdHandler.Revoke(w, r) }
-func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request)              { s.authHandler.TOTPSetup(w, r) }
-func (s *Server) handleTOTPConfirm(w http.ResponseWriter, r *http.Request)            { s.authHandler.TOTPConfirm(w, r) }
-func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request)            { s.authHandler.TOTPDisable(w, r) }
-func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request)           { s.authHandler.ListSessions(w, r) }
-func (s *Server) handleRevokeSession(w http.ResponseWriter, r *http.Request)          { s.authHandler.RevokeSession(w, r) }
-func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request)              { s.notImplemented(w) }
-func (s *Server) handleCreateFolder(w http.ResponseWriter, r *http.Request)           { s.notImplemented(w) }
-func (s *Server) handleRecentFiles(w http.ResponseWriter, r *http.Request)            { s.notImplemented(w) }
-func (s *Server) handleSharedWithMe(w http.ResponseWriter, r *http.Request)           { s.sharesHandler.SharedWithMe(w, r) }
-func (s *Server) handleSharedByLink(w http.ResponseWriter, r *http.Request)            { s.sharesHandler.SharedByLink(w, r) }
-func (s *Server) handleListTrash(w http.ResponseWriter, r *http.Request)              { s.notImplemented(w) }
-func (s *Server) handleGetFile(w http.ResponseWriter, r *http.Request)                { s.notImplemented(w) }
-func (s *Server) handleUpdateFile(w http.ResponseWriter, r *http.Request)             { s.notImplemented(w) }
-func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request)             { s.notImplemented(w) }
-func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request)           { s.notImplemented(w) }
-func (s *Server) handleRestoreFile(w http.ResponseWriter, r *http.Request)            { s.notImplemented(w) }
-func (s *Server) handlePermanentDelete(w http.ResponseWriter, r *http.Request)        { s.notImplemented(w) }
-func (s *Server) handleListShares(w http.ResponseWriter, r *http.Request)             { s.sharesHandler.List(w, r) }
-func (s *Server) handleCreateShare(w http.ResponseWriter, r *http.Request)            { s.sharesHandler.Create(w, r) }
-func (s *Server) handleUpdateShare(w http.ResponseWriter, r *http.Request)            { s.sharesHandler.Update(w, r) }
-func (s *Server) handleRevokeShare(w http.ResponseWriter, r *http.Request)            { s.sharesHandler.Revoke(w, r) }
-func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request)                    { s.sseHandler.Events(w, r) }
-func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request)         { s.notImplemented(w) }
-func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request)        { s.notImplemented(w) }
-func (s *Server) handleAdminGetUser(w http.ResponseWriter, r *http.Request)           { s.notImplemented(w) }
-func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request)        { s.notImplemented(w) }
-func (s *Server) handleAdminDeactivateUser(w http.ResponseWriter, r *http.Request)    { s.notImplemented(w) }
-func (s *Server) handleAdminReinviteUser(w http.ResponseWriter, r *http.Request)      { s.userHandler.Reinvite(w, r) }
-func (s *Server) handleAdminListUserSessions(w http.ResponseWriter, r *http.Request)  { s.notImplemented(w) }
-func (s *Server) handleAdminSupportAccess(w http.ResponseWriter, r *http.Request)     { s.supportHandler.Begin(w, r) }
-func (s *Server) handleAdminListGroups(w http.ResponseWriter, r *http.Request)        { s.adminHandler.ListGroups(w, r) }
-func (s *Server) handleAdminCreateGroup(w http.ResponseWriter, r *http.Request)       { s.adminHandler.CreateGroup(w, r) }
-func (s *Server) handleAdminUpdateGroup(w http.ResponseWriter, r *http.Request)       { s.adminHandler.UpdateGroup(w, r) }
-func (s *Server) handleAdminDeleteGroup(w http.ResponseWriter, r *http.Request)       { s.adminHandler.DeleteGroup(w, r) }
-func (s *Server) handleAdminListGroupMembers(w http.ResponseWriter, r *http.Request)  { s.adminHandler.ListGroupMembers(w, r) }
-func (s *Server) handleAdminAddGroupMember(w http.ResponseWriter, r *http.Request)    { s.adminHandler.AddGroupMember(w, r) }
-func (s *Server) handleAdminRemoveGroupMember(w http.ResponseWriter, r *http.Request) { s.adminHandler.RemoveGroupMember(w, r) }
-func (s *Server) handleAdminListTags(w http.ResponseWriter, r *http.Request)          { s.adminHandler.ListTags(w, r) }
-func (s *Server) handleAdminCreateTag(w http.ResponseWriter, r *http.Request)         { s.adminHandler.CreateTag(w, r) }
-func (s *Server) handleAdminUpdateTag(w http.ResponseWriter, r *http.Request)         { s.adminHandler.UpdateTag(w, r) }
-func (s *Server) handleAdminDeleteTag(w http.ResponseWriter, r *http.Request)         { s.adminHandler.DeleteTag(w, r) }
-func (s *Server) handleAdminAuditLogs(w http.ResponseWriter, r *http.Request)         { s.adminHandler.AuditLogs(w, r) }
-func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request)              { s.adminHandler.Stats(w, r) }
-func (s *Server) handleAdminListBlockedIPs(w http.ResponseWriter, r *http.Request)    { s.adminHandler.ListBlockedIPs(w, r) }
-func (s *Server) handleAdminUnblockIP(w http.ResponseWriter, r *http.Request)         { s.adminHandler.UnblockIP(w, r) }
-func (s *Server) handleAdminListWhitelist(w http.ResponseWriter, r *http.Request)     { s.adminHandler.ListWhitelist(w, r) }
-func (s *Server) handleAdminAddWhitelist(w http.ResponseWriter, r *http.Request)      { s.adminHandler.AddWhitelist(w, r) }
-func (s *Server) handleAdminRemoveWhitelist(w http.ResponseWriter, r *http.Request)   { s.adminHandler.RemoveWhitelist(w, r) }
-func (s *Server) handleAdminGetSettings(w http.ResponseWriter, r *http.Request)       { s.adminHandler.GetSettings(w, r) }
-func (s *Server) handleAdminUpdateSettings(w http.ResponseWriter, r *http.Request)    { s.adminHandler.UpdateSettings(w, r) }
-func (s *Server) handleAdminSMTPTest(w http.ResponseWriter, r *http.Request)          { s.adminHandler.SMTPTest(w, r) }
-func (s *Server) handleAdminListBackups(w http.ResponseWriter, r *http.Request)        { s.adminHandler.ListBackups(w, r) }
-func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request)            { s.adminHandler.Export(w, r) }
-func (s *Server) handleAdminImport(w http.ResponseWriter, r *http.Request)            { s.adminHandler.Import(w, r) }
-func (s *Server) handleAdminEndSupportAccess(w http.ResponseWriter, r *http.Request)  { s.supportHandler.End(w, r) }
+func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) { s.onboarding.Setup(w, r) }
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request)      { s.authHandler.Login(w, r) }
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request)     { s.authHandler.Logout(w, r) }
+func (s *Server) handleTOTPVerify(w http.ResponseWriter, r *http.Request) {
+	s.authHandler.TOTPVerify(w, r)
+}
+func (s *Server) handlePasswordResetRequest(w http.ResponseWriter, r *http.Request) {
+	s.authHandler.PasswordResetRequest(w, r)
+}
+func (s *Server) handlePasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
+	s.authHandler.PasswordResetConfirm(w, r)
+}
+func (s *Server) handleAcceptInvite(w http.ResponseWriter, r *http.Request) { s.notImplemented(w) }
+func (s *Server) handleGetMe(w http.ResponseWriter, r *http.Request)        { s.authHandler.Me(w, r) }
+func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request)     { s.authHandler.UpdateMe(w, r) }
+func (s *Server) handleListAppPasswords(w http.ResponseWriter, r *http.Request) {
+	s.appPwdHandler.List(w, r)
+}
+func (s *Server) handleCreateAppPassword(w http.ResponseWriter, r *http.Request) {
+	s.appPwdHandler.Create(w, r)
+}
+func (s *Server) handleRevokeAppPassword(w http.ResponseWriter, r *http.Request) {
+	s.appPwdHandler.Revoke(w, r)
+}
+func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
+	s.authHandler.TOTPSetup(w, r)
+}
+func (s *Server) handleTOTPConfirm(w http.ResponseWriter, r *http.Request) {
+	s.authHandler.TOTPConfirm(w, r)
+}
+func (s *Server) handleTOTPDisable(w http.ResponseWriter, r *http.Request) {
+	s.authHandler.TOTPDisable(w, r)
+}
+func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	s.authHandler.ListSessions(w, r)
+}
+func (s *Server) handleRevokeSession(w http.ResponseWriter, r *http.Request) {
+	s.authHandler.RevokeSession(w, r)
+}
+func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request)    { s.notImplemented(w) }
+func (s *Server) handleCreateFolder(w http.ResponseWriter, r *http.Request) { s.notImplemented(w) }
+func (s *Server) handleRecentFiles(w http.ResponseWriter, r *http.Request)  { s.notImplemented(w) }
+func (s *Server) handleSharedWithMe(w http.ResponseWriter, r *http.Request) {
+	s.sharesHandler.SharedWithMe(w, r)
+}
+func (s *Server) handleSharedByLink(w http.ResponseWriter, r *http.Request) {
+	s.sharesHandler.SharedByLink(w, r)
+}
+func (s *Server) handleListTrash(w http.ResponseWriter, r *http.Request)       { s.notImplemented(w) }
+func (s *Server) handleGetFile(w http.ResponseWriter, r *http.Request)         { s.notImplemented(w) }
+func (s *Server) handleUpdateFile(w http.ResponseWriter, r *http.Request)      { s.notImplemented(w) }
+func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request)      { s.notImplemented(w) }
+func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request)    { s.notImplemented(w) }
+func (s *Server) handleRestoreFile(w http.ResponseWriter, r *http.Request)     { s.notImplemented(w) }
+func (s *Server) handlePermanentDelete(w http.ResponseWriter, r *http.Request) { s.notImplemented(w) }
+func (s *Server) handleListShares(w http.ResponseWriter, r *http.Request)      { s.sharesHandler.List(w, r) }
+func (s *Server) handleCreateShare(w http.ResponseWriter, r *http.Request) {
+	s.sharesHandler.Create(w, r)
+}
+func (s *Server) handleUpdateShare(w http.ResponseWriter, r *http.Request) {
+	s.sharesHandler.Update(w, r)
+}
+func (s *Server) handleRevokeShare(w http.ResponseWriter, r *http.Request) {
+	s.sharesHandler.Revoke(w, r)
+}
+func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request)             { s.sseHandler.Events(w, r) }
+func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request)  { s.notImplemented(w) }
+func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) { s.notImplemented(w) }
+func (s *Server) handleAdminGetUser(w http.ResponseWriter, r *http.Request)    { s.notImplemented(w) }
+func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) { s.notImplemented(w) }
+func (s *Server) handleAdminDeactivateUser(w http.ResponseWriter, r *http.Request) {
+	s.notImplemented(w)
+}
+func (s *Server) handleAdminReinviteUser(w http.ResponseWriter, r *http.Request) {
+	s.userHandler.Reinvite(w, r)
+}
+func (s *Server) handleAdminListUserSessions(w http.ResponseWriter, r *http.Request) {
+	s.notImplemented(w)
+}
+func (s *Server) handleAdminSupportAccess(w http.ResponseWriter, r *http.Request) {
+	s.supportHandler.Begin(w, r)
+}
+func (s *Server) handleAdminListGroups(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.ListGroups(w, r)
+}
+func (s *Server) handleAdminCreateGroup(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.CreateGroup(w, r)
+}
+func (s *Server) handleAdminUpdateGroup(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.UpdateGroup(w, r)
+}
+func (s *Server) handleAdminDeleteGroup(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.DeleteGroup(w, r)
+}
+func (s *Server) handleAdminListGroupMembers(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.ListGroupMembers(w, r)
+}
+func (s *Server) handleAdminAddGroupMember(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.AddGroupMember(w, r)
+}
+func (s *Server) handleAdminRemoveGroupMember(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.RemoveGroupMember(w, r)
+}
+func (s *Server) handleAdminListTags(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.ListTags(w, r)
+}
+func (s *Server) handleAdminCreateTag(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.CreateTag(w, r)
+}
+func (s *Server) handleAdminUpdateTag(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.UpdateTag(w, r)
+}
+func (s *Server) handleAdminDeleteTag(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.DeleteTag(w, r)
+}
+func (s *Server) handleAdminAuditLogs(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.AuditLogs(w, r)
+}
+func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) { s.adminHandler.Stats(w, r) }
+func (s *Server) handleAdminListBlockedIPs(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.ListBlockedIPs(w, r)
+}
+func (s *Server) handleAdminUnblockIP(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.UnblockIP(w, r)
+}
+func (s *Server) handleAdminListWhitelist(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.ListWhitelist(w, r)
+}
+func (s *Server) handleAdminAddWhitelist(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.AddWhitelist(w, r)
+}
+func (s *Server) handleAdminRemoveWhitelist(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.RemoveWhitelist(w, r)
+}
+func (s *Server) handleAdminGetSettings(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.GetSettings(w, r)
+}
+func (s *Server) handleAdminUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.UpdateSettings(w, r)
+}
+func (s *Server) handleAdminSMTPTest(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.SMTPTest(w, r)
+}
+func (s *Server) handleAdminListBackups(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.ListBackups(w, r)
+}
+func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.Export(w, r)
+}
+func (s *Server) handleAdminImport(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.Import(w, r)
+}
+func (s *Server) handleAdminEndSupportAccess(w http.ResponseWriter, r *http.Request) {
+	s.supportHandler.End(w, r)
+}
 
 func (s *Server) sessionMiddleware(next http.Handler) http.Handler {
 	// This is no longer called — s.authHandler.SessionMiddleware is used directly.

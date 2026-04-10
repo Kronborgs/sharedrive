@@ -2,7 +2,9 @@
 
 A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, granular sharing, TOTP 2FA, full admin dashboard — packaged as a single Docker container.
 
-> **Screenshots coming soon.**
+![Admin Dashboard](pics/dashboard.png)
+
+*Admin dashboard — disk usage, 30-day stats, live bandwidth per user (updates every 3 s), and real-time activity feed.*
 
 ---
 
@@ -77,6 +79,7 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 - **User management** — create, edit, lock/unlock, force password reset, re-invite, view sessions
 - **Quota management** — per-user storage quota with presets (10 GB – 1 TB) and custom values
 - **Per-user limits** — max upload size, daily bandwidth cap, WebDAV toggle
+- **Live Bandwidth panel** — real-time per-user upload/download rate (updated every 3 s); tracks both browser (TUS resumable) and WebDAV (Windows Explorer / macOS Finder) transfers as they stream
 - **Guest accounts** — limited role; redirect to Shares view; promotable to full user
 - **Group management** — create groups, add/remove members, use groups as share targets
 - **Tag management** — admin-defined tags with custom colours; applicable to any file

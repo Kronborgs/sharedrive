@@ -48,8 +48,8 @@ type Handler struct {
 }
 
 // NewHandler creates a Handler.
-func NewHandler(svc *Service, trash *TrashService, auditSvc audit.Logger, rdb *goredis.Client, conv *preview.Converter, lim *ratelimit.Limiter) *Handler {
-	return &Handler{svc: svc, trash: trash, auditSvc: auditSvc, redis: rdb, converter: conv, limiter: lim, ioTracker: NewIOTracker(rdb)}
+func NewHandler(svc *Service, trash *TrashService, auditSvc audit.Logger, rdb *goredis.Client, conv *preview.Converter, lim *ratelimit.Limiter, ioTracker *IOTracker) *Handler {
+	return &Handler{svc: svc, trash: trash, auditSvc: auditSvc, redis: rdb, converter: conv, limiter: lim, ioTracker: ioTracker}
 }
 
 // FolderSize handles GET /api/v1/files/{id}/size — recursive byte + file count.

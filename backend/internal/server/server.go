@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"strconv"
+
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -56,6 +58,7 @@ type Server struct {
 	supportHandler *admin.SupportAccessHandler
 	appPwdHandler  *webdav.AppPasswordHandler
 	auditSvc       audit.Logger
+	ioTracker      *files.IOTracker
 }
 
 // New constructs a Server with all routes and middleware registered.
@@ -73,6 +76,8 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		}
 	}
 
+	ioTracker := files.NewIOTracker(rdb)
+
 	s := &Server{
 		cfg:            cfg,
 		db:             db,
@@ -83,13 +88,14 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		onboarding:     onboarding.New(db, cfg),
 		userHandler:    user.NewHandler(db, auditSvc, smtp.New(cfg, db), cfg.AppBaseURL, authHandler.TOTPService()),
 		fileSvc:        fileSvc,
-		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc, rdb, conv, ratelimit.New(rdb)),
+		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc, rdb, conv, ratelimit.New(rdb), ioTracker),
 		sharesHandler:  shares.NewHandler(db, smtp.New(cfg, db), cfg.AppBaseURL),
-		adminHandler:   admin.NewHandler(db, cfg, files.NewIOTracker(rdb)),
+		adminHandler:   admin.NewHandler(db, cfg, ioTracker),
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
 		auditSvc:       auditSvc,
+		ioTracker:      ioTracker,
 	}
 	s.router = s.buildRouter()
 
@@ -789,6 +795,22 @@ func (s *Server) tusHandler() http.Handler {
 		r.Use(s.authHandler.UploadTokenMiddleware)
 		r.Use(mw.RequireAuth)
 		r.Use(h.Middleware)
+		// Track each PATCH chunk so the admin bandwidth dashboard shows
+		// live upload activity while transfers are in progress.
+		r.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPatch {
+					if actor := mw.UserFromContext(r.Context()); actor != nil {
+						if cl := r.Header.Get("Content-Length"); cl != "" {
+							if n, err := strconv.ParseInt(cl, 10, 64); err == nil && n > 0 {
+								go s.ioTracker.TrackUpload(context.Background(), actor.ID.String(), n)
+							}
+						}
+					}
+				}
+				next.ServeHTTP(w, r)
+			})
+		})
 		r.Post("/", h.PostFile)
 		r.Head("/{id}", h.HeadFile)
 		r.Patch("/{id}", h.PatchFile)

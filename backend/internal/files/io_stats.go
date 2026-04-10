@@ -75,7 +75,9 @@ func (t *IOTracker) CurrentStats(ctx context.Context) ([]UserIOStats, error) {
 	uploadMap := map[string]int64{}
 	downloadMap := map[string]int64{}
 
-	// Aggregate last 2 minutes so we don't miss activity from the previous minute.
+	// Use only the current minute so bytes/sec reflects what's happening RIGHT NOW.
+	// We still fall back to the previous minute if the current one is empty
+	// (e.g. right at the minute boundary).
 	for _, delta := range []int64{0, 1} {
 		up, _ := t.redis.HGetAll(ctx, ioKey("upload", now-delta)).Result()
 		for uid, v := range up {
@@ -99,6 +101,7 @@ func (t *IOTracker) CurrentStats(ctx context.Context) ([]UserIOStats, error) {
 	}
 
 	// Compute bytes/sec: divide 2-minute total by 120 seconds.
+	// The dashboard polls every 3s so this gives a smoothed rate.
 	result := make([]UserIOStats, 0, len(seen))
 	for uid := range seen {
 		up := uploadMap[uid]

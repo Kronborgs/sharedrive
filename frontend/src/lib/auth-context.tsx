@@ -31,7 +31,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refetchOnWindowFocus: true,
     refetchOnMount: true,
     staleTime: 30_000,
-    initialData: null,
   })
 
   const refetch = async () => {

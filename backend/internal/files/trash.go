@@ -94,6 +94,43 @@ func (t *TrashService) SoftDelete(ctx context.Context, id, actorID string) error
 		return fmt.Errorf("trash.SoftDelete: not found or access denied")
 	}
 
+	// For folders: cascade deleted_at to all descendants so they appear in
+	// trash and are cleaned up properly when the trash is emptied.
+	if isFolder {
+		// Sum sizes of all descendants for quota adjustment.
+		var childrenSize int64
+		tx.QueryRow(ctx, `
+			WITH RECURSIVE descendants AS (
+			  SELECT id, size_bytes FROM files WHERE parent_id = $1::uuid AND deleted_at IS NULL
+			  UNION ALL
+			  SELECT f.id, f.size_bytes FROM files f
+			    JOIN descendants d ON f.parent_id = d.id WHERE f.deleted_at IS NULL
+			)
+			SELECT COALESCE(SUM(size_bytes), 0) FROM descendants WHERE size_bytes IS NOT NULL`, id,
+		).Scan(&childrenSize)
+
+		// Mark all descendants deleted and assign them to the same trash owner.
+		tx.Exec(ctx, `
+			WITH RECURSIVE descendants AS (
+			  SELECT id FROM files WHERE parent_id = $1::uuid AND deleted_at IS NULL
+			  UNION ALL
+			  SELECT f.id FROM files f
+			    JOIN descendants d ON f.parent_id = d.id WHERE f.deleted_at IS NULL
+			)
+			UPDATE files SET deleted_at = now(), updated_at = now(), owner_id = $2::uuid
+			WHERE id IN (SELECT id FROM descendants)`, id, trashOwner)
+
+		// Adjust quota for all descendants.
+		if currentOwner != trashOwner && childrenSize > 0 {
+			tx.Exec(ctx,
+				`UPDATE users SET quota_used_bytes = GREATEST(0, quota_used_bytes - $1), updated_at = now()
+				 WHERE id = $2::uuid`, childrenSize, currentOwner)
+			tx.Exec(ctx,
+				`UPDATE users SET quota_used_bytes = quota_used_bytes + $1, updated_at = now()
+				 WHERE id = $2::uuid`, childrenSize, trashOwner)
+		}
+	}
+
 	// Fix quota when ownership changed (non-folder files only).
 	// Decrement old owner; increment new owner so PermanentDelete reclaims correctly.
 	if currentOwner != trashOwner && !isFolder && sizeBytes > 0 {
@@ -183,9 +220,17 @@ func (t *TrashService) ListTrash(ctx context.Context, ownerID string) ([]*File, 
 func (t *TrashService) EmptyTrash(ctx context.Context, ownerID string, retentionDays int) error {
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
 
-	rows, err := t.db.Query(ctx,
-		`SELECT id, size_bytes, storage_path FROM files
-		 WHERE owner_id = $1 AND deleted_at IS NOT NULL AND deleted_at < $2`,
+	// Collect trashed files + any orphaned descendants (children of deleted folders
+	// that weren't cascaded by an older version of SoftDelete).
+	rows, err := t.db.Query(ctx, `
+		WITH RECURSIVE trashed AS (
+		  SELECT id, size_bytes, storage_path FROM files
+		  WHERE owner_id = $1 AND deleted_at IS NOT NULL AND deleted_at < $2
+		  UNION ALL
+		  SELECT f.id, f.size_bytes, f.storage_path FROM files f
+		    JOIN trashed t ON f.parent_id = t.id WHERE f.deleted_at IS NULL
+		)
+		SELECT id, COALESCE(size_bytes,0), storage_path FROM trashed`,
 		ownerID, cutoff,
 	)
 	if err != nil {
@@ -208,15 +253,14 @@ func (t *TrashService) EmptyTrash(ctx context.Context, ownerID string, retention
 			toDelete = append(toDelete, item)
 		}
 	}
+	rows.Close()
 
 	var totalFreed int64
 	for _, item := range toDelete {
 		if _, err := t.db.Exec(ctx,
 			`DELETE FROM files WHERE id = $1`, item.id,
 		); err == nil {
-			if item.storagePath != nil && *item.storagePath != "" {
-				_ = t.storage.Delete(item.id)
-			}
+			_ = t.storage.Delete(item.id)
 			totalFreed += item.sizeBytes
 		}
 	}
@@ -228,9 +272,17 @@ func (t *TrashService) EmptyTrash(ctx context.Context, ownerID string, retention
 
 // EmptyTrashAll permanently deletes every trashed file for ownerID regardless of age.
 func (t *TrashService) EmptyTrashAll(ctx context.Context, ownerID string) error {
-	rows, err := t.db.Query(ctx,
-		`SELECT id, size_bytes, storage_path FROM files
-		 WHERE owner_id = $1 AND deleted_at IS NOT NULL`,
+	// Collect trashed files + any orphaned descendants (children of deleted folders
+	// that weren't cascaded by an older version of SoftDelete).
+	rows, err := t.db.Query(ctx, `
+		WITH RECURSIVE trashed AS (
+		  SELECT id, size_bytes, storage_path FROM files
+		  WHERE owner_id = $1 AND deleted_at IS NOT NULL
+		  UNION ALL
+		  SELECT f.id, f.size_bytes, f.storage_path FROM files f
+		    JOIN trashed t ON f.parent_id = t.id WHERE f.deleted_at IS NULL
+		)
+		SELECT id, COALESCE(size_bytes,0), storage_path FROM trashed`,
 		ownerID,
 	)
 	if err != nil {
@@ -253,13 +305,12 @@ func (t *TrashService) EmptyTrashAll(ctx context.Context, ownerID string) error 
 			toDelete = append(toDelete, item)
 		}
 	}
+	rows.Close()
 
 	var totalFreed int64
 	for _, item := range toDelete {
 		if _, err := t.db.Exec(ctx, `DELETE FROM files WHERE id = $1`, item.id); err == nil {
-			if item.storagePath != nil && *item.storagePath != "" {
-				_ = t.storage.Delete(item.id)
-			}
+			_ = t.storage.Delete(item.id)
 			totalFreed += item.sizeBytes
 		}
 	}

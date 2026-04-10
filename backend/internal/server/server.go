@@ -118,6 +118,24 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		}
 	}()
 
+	// At startup: recalculate quota_used_bytes for all users from actual DB rows
+	// to correct any drift caused by the folder-cascade bug or crashes.
+	go func() {
+		ctx := context.Background()
+		if _, err := db.Exec(ctx, `
+			UPDATE users u
+			SET quota_used_bytes = COALESCE((
+			      SELECT sum(size_bytes)
+			      FROM files
+			      WHERE owner_id = u.id AND deleted_at IS NULL AND is_folder = false
+			    ), 0),
+			    updated_at = now()`); err != nil {
+			log.Warn().Err(err).Msg("startup quota recalc failed")
+		} else {
+			log.Info().Msg("startup quota recalc completed")
+		}
+	}()
+
 	// WebDAV is mounted OUTSIDE Chi so that non-standard HTTP methods such as
 	// PROPFIND, MKCOL, PROPPATCH, COPY, MOVE, LOCK and UNLOCK are accepted.
 	// Chi only recognises the standard nine methods and returns 405 for the rest.
@@ -290,6 +308,7 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Post("/api/v1/admin/users/{id}/invite", s.handleAdminReinviteUser)
 			r.Get("/api/v1/admin/users/{id}/sessions", s.userHandler.ListSessions)
 			r.Post("/api/v1/admin/users/{id}/support-access", s.handleAdminSupportAccess)
+			r.Post("/api/v1/admin/users/{id}/recalculate-quota", s.userHandler.RecalculateQuota)
 
 			r.Get("/api/v1/admin/guests", s.userHandler.ListGuests)
 			r.Post("/api/v1/admin/guests/{id}/promote", s.userHandler.PromoteGuest)

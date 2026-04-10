@@ -792,3 +792,35 @@ func (h *Handler) DeleteGuest(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// RecalculateQuota recomputes quota_used_bytes for a single user from the
+// actual non-deleted files in the database, correcting any counter drift.
+func (h *Handler) RecalculateQuota(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+
+	var before int64
+	if err := h.db.QueryRow(ctx, `SELECT quota_used_bytes FROM users WHERE id = $1`, id).Scan(&before); err != nil {
+		httputil.RespondError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	_, err := h.db.Exec(ctx, `
+		UPDATE users u
+		SET quota_used_bytes = COALESCE((
+		      SELECT sum(size_bytes)
+		      FROM files
+		      WHERE owner_id = u.id AND deleted_at IS NULL AND is_folder = false
+		    ), 0),
+		    updated_at = now()
+		WHERE u.id = $1`, id)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "recalculate failed")
+		return
+	}
+
+	var after int64
+	_ = h.db.QueryRow(ctx, `SELECT quota_used_bytes FROM users WHERE id = $1`, id).Scan(&after)
+
+	log.Info().Str("user_id", id).Int64("before_bytes", before).Int64("after_bytes", after).Msg("admin: quota recalculated")
+	httputil.Respond(w, http.StatusOK, map[string]any{"before_bytes": before, "after_bytes": after})
+}

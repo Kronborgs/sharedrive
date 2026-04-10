@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { APP_VERSION } from '@/version'
 import type { AuditLog, PaginatedResponse } from '@/types/api'
 import { formatDate, formatBytes, formatRelative } from '@/lib/utils'
+import { ArrowUpCircle, ArrowDownCircle } from 'lucide-react'
 
 export const Route = createFileRoute('/_auth/admin/')({
   component: AdminDashboard,
@@ -22,6 +23,20 @@ interface DashboardStats {
     downloads: number
     lockouts: number
   }
+}
+
+interface IOUserStats {
+  user_id: string
+  email: string
+  display_name: string
+  upload_bytes: number
+  download_bytes: number
+  upload_bytes_per_sec: number
+  download_bytes_per_sec: number
+}
+
+interface IOStatsResponse {
+  users: IOUserStats[]
 }
 
 // Colour coding for audit log event types
@@ -55,6 +70,16 @@ function AdminDashboard() {
       api.get<{ version: string; build_date: string }>('/api/v1/system/version', signal),
     staleTime: Infinity,
   })
+
+  const { data: ioStats } = useQuery({
+    queryKey: ['admin', 'io-stats'],
+    queryFn: ({ signal }) => api.get<IOStatsResponse>('/api/v1/admin/io-stats', signal),
+    refetchInterval: 3_000,
+  })
+
+  const activeUsers = (ioStats?.users ?? []).filter(
+    u => u.upload_bytes_per_sec > 0 || u.download_bytes_per_sec > 0,
+  )
 
   const diskTotal = stats?.disk_total_bytes ?? 0
   const diskFree = stats?.disk_free_bytes ?? 0
@@ -98,6 +123,47 @@ function AdminDashboard() {
         <StatCard label="Uploads (30d)" value={stats?.last_30_days.uploads ?? '…'} small accent="green" />
         <StatCard label="Downloads (30d)" value={stats?.last_30_days.downloads ?? '…'} small accent="green" />
         <StatCard label="Lockouts (30d)" value={stats?.last_30_days.lockouts ?? '…'} small accent="red" />
+      </div>
+
+      {/* Live I/O bandwidth panel */}
+      <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148] flex items-center justify-between">
+          <h2 className="text-sm font-medium text-zinc-900 dark:text-slate-100">Live Bandwidth</h2>
+          <span className="text-[10px] text-muted">updates every 3 s • 2-min window</span>
+        </div>
+        {activeUsers.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-muted text-center">No active transfers</p>
+        ) : (
+          <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
+            {activeUsers.map(u => (
+              <div key={u.user_id} className="px-4 py-3 flex items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-zinc-900 dark:text-slate-100 truncate font-medium">
+                    {u.display_name || u.email}
+                  </p>
+                  <p className="text-xs text-muted truncate">{u.email}</p>
+                </div>
+                <div className="flex items-center gap-4 tabular-nums text-xs shrink-0">
+                  {u.upload_bytes_per_sec > 0 && (
+                    <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                      <ArrowUpCircle size={14} />
+                      {formatBytes(u.upload_bytes_per_sec)}/s
+                    </span>
+                  )}
+                  {u.download_bytes_per_sec > 0 && (
+                    <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                      <ArrowDownCircle size={14} />
+                      {formatBytes(u.download_bytes_per_sec)}/s
+                    </span>
+                  )}
+                  <span className="text-muted hidden lg:inline">
+                    ↑ {formatBytes(u.upload_bytes)} / ↓ {formatBytes(u.download_bytes)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Recent activity */}

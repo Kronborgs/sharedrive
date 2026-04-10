@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	_ "image/gif" // register GIF decoder
 	"image/jpeg"
-	_ "image/gif"  // register GIF decoder
-	_ "image/png"  // register PNG decoder
+	_ "image/png" // register PNG decoder
 	"io"
 	"math/big"
 	"net/http"
@@ -44,11 +44,25 @@ type Handler struct {
 	redis     *goredis.Client
 	converter *preview.Converter // nil when LibreOffice is not configured
 	limiter   *ratelimit.Limiter // nil when Redis is unavailable
+	ioTracker *IOTracker
 }
 
 // NewHandler creates a Handler.
 func NewHandler(svc *Service, trash *TrashService, auditSvc audit.Logger, rdb *goredis.Client, conv *preview.Converter, lim *ratelimit.Limiter) *Handler {
-	return &Handler{svc: svc, trash: trash, auditSvc: auditSvc, redis: rdb, converter: conv, limiter: lim}
+	return &Handler{svc: svc, trash: trash, auditSvc: auditSvc, redis: rdb, converter: conv, limiter: lim, ioTracker: NewIOTracker(rdb)}
+}
+
+// FolderSize handles GET /api/v1/files/{id}/size — recursive byte + file count.
+func (h *Handler) FolderSize(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+
+	sizeBytes, fileCount, err := h.svc.GetFolderSize(r.Context(), id, actor.ID.String())
+	if err != nil {
+		httputil.RespondError(w, http.StatusNotFound, "folder not found")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]int64{"size_bytes": sizeBytes, "file_count": fileCount})
 }
 
 // List handles GET /api/v1/files — list contents of a folder (default: root).
@@ -237,6 +251,10 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	// the request context may already be cancelled (client disconnect).
 	auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer auditCancel()
+
+	// Track I/O bytes in Redis for the admin bandwidth dashboard.
+	go h.ioTracker.TrackDownload(context.Background(), actor.ID.String(), f.SizeBytes)
+
 	h.auditSvc.Log(auditCtx, audit.Event{
 		Type:          audit.EventFileDownloaded,
 		ActorID:       &actor.ID,
@@ -395,6 +413,9 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusInternalServerError, "upload failed")
 		return
 	}
+
+	// Track I/O bytes in Redis for the admin bandwidth dashboard.
+	go h.ioTracker.TrackUpload(context.Background(), actor.ID.String(), f.SizeBytes)
 
 	h.auditSvc.Log(r.Context(), audit.Event{
 		Type:         audit.EventFileUploaded,
@@ -677,7 +698,7 @@ func (h *Handler) PrepareDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.Respond(w, http.StatusOK, resp)
 }
-//
+
 //	GET /api/v1/files/download-zip?ids=id1,id2,...  (plain ZIP, folders expanded)
 //	GET /api/v1/files/download-zip?token=<token>    (optional AES-256 encryption)
 //

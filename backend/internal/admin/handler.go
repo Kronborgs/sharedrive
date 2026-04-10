@@ -19,17 +19,20 @@ import (
 	"github.com/yourname/privatedrive/internal/config"
 	"github.com/yourname/privatedrive/internal/httputil"
 	"github.com/yourname/privatedrive/internal/middleware"
+
+	"github.com/yourname/privatedrive/internal/files"
 )
 
 // Handler provides all admin HTTP handlers (settings, blocked IPs, audit logs,
 // groups, tags, backup stubs).
 type Handler struct {
-	db  *pgxpool.Pool
-	cfg *config.Config
+	db        *pgxpool.Pool
+	cfg       *config.Config
+	ioTracker *files.IOTracker
 }
 
-func NewHandler(db *pgxpool.Pool, cfg *config.Config) *Handler {
-	return &Handler{db: db, cfg: cfg}
+func NewHandler(db *pgxpool.Pool, cfg *config.Config, ioTracker *files.IOTracker) *Handler {
+	return &Handler{db: db, cfg: cfg, ioTracker: ioTracker}
 }
 
 // ─── System Settings ─────────────────────────────────────────────────────────
@@ -957,4 +960,79 @@ func RunStorageScrub(ctx context.Context, db *pgxpool.Pool, filesRoot string) (*
 		Msg("storage scrub completed")
 
 	return result, nil
+}
+
+// ─── I/O Stats ───────────────────────────────────────────────────────────────
+
+// IOStatsResponse is the response for GET /api/v1/admin/io-stats.
+type IOStatsResponse struct {
+	Users []IOUserStats `json:"users"`
+}
+
+// IOUserStats holds I/O stats for one user, enriched with DB display info.
+type IOUserStats struct {
+	UserID          string `json:"user_id"`
+	Email           string `json:"email"`
+	DisplayName     string `json:"display_name"`
+	UploadBytes     int64  `json:"upload_bytes"`
+	DownloadBytes   int64  `json:"download_bytes"`
+	UploadBytesPS   int64  `json:"upload_bytes_per_sec"`
+	DownloadBytesPS int64  `json:"download_bytes_per_sec"`
+}
+
+// IOStats handles GET /api/v1/admin/io-stats — returns near-real-time per-user
+// upload/download rates for the last ~2 minutes.
+func (h *Handler) IOStats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if h.ioTracker == nil {
+		httputil.Respond(w, http.StatusOK, IOStatsResponse{Users: []IOUserStats{}})
+		return
+	}
+
+	rawStats, err := h.ioTracker.CurrentStats(ctx)
+	if err != nil || len(rawStats) == 0 {
+		httputil.Respond(w, http.StatusOK, IOStatsResponse{Users: []IOUserStats{}})
+		return
+	}
+
+	// Collect unique user IDs.
+	ids := make([]string, len(rawStats))
+	for i, s := range rawStats {
+		ids[i] = s.UserID
+	}
+
+	// Batch-fetch email + display_name from DB.
+	rows, err := h.db.Query(ctx,
+		`SELECT id::text, email, display_name FROM users WHERE id = ANY($1::uuid[])`, ids)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rows.Close()
+
+	type userInfo struct{ email, displayName string }
+	userMap := map[string]userInfo{}
+	for rows.Next() {
+		var id, email, name string
+		if err := rows.Scan(&id, &email, &name); err == nil {
+			userMap[id] = userInfo{email, name}
+		}
+	}
+
+	out := make([]IOUserStats, 0, len(rawStats))
+	for _, s := range rawStats {
+		info := userMap[s.UserID]
+		out = append(out, IOUserStats{
+			UserID:          s.UserID,
+			Email:           info.email,
+			DisplayName:     info.displayName,
+			UploadBytes:     s.UploadBytes,
+			DownloadBytes:   s.DownloadBytes,
+			UploadBytesPS:   s.UploadBytesPS,
+			DownloadBytesPS: s.DownloadBytesPS,
+		})
+	}
+
+	httputil.Respond(w, http.StatusOK, IOStatsResponse{Users: out})
 }

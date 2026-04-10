@@ -17,24 +17,29 @@ import (
 
 // File represents a row in the files table.
 type File struct {
-	ID           uuid.UUID  `json:"id"`
-	ParentID     *uuid.UUID `json:"parent_id,omitempty"`
-	OwnerID      uuid.UUID  `json:"owner_id"`
-	IsFolder     bool       `json:"is_folder"`
-	Name         string     `json:"name"`
-	MimeType     string     `json:"mime_type,omitempty"`
-	SizeBytes    int64      `json:"size_bytes"`
-	StoragePath  string     `json:"-"`
-	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID          uuid.UUID  `json:"id"`
+	ParentID    *uuid.UUID `json:"parent_id,omitempty"`
+	OwnerID     uuid.UUID  `json:"owner_id"`
+	IsFolder    bool       `json:"is_folder"`
+	Name        string     `json:"name"`
+	MimeType    string     `json:"mime_type,omitempty"`
+	SizeBytes   int64      `json:"size_bytes"`
+	StoragePath string     `json:"-"`
+	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // nullableString is used to scan nullable TEXT columns into a plain string.
 type nullableString struct{ s *string }
+
 func (n *nullableString) Scan(src any) error {
-	if src == nil { return nil }
-	if v, ok := src.(string); ok { *n.s = v }
+	if src == nil {
+		return nil
+	}
+	if v, ok := src.(string); ok {
+		*n.s = v
+	}
 	return nil
 }
 
@@ -231,6 +236,27 @@ func (s *Service) Move(ctx context.Context, id, ownerID string, newParentID *uui
 		newParentID, id, ownerID,
 	)
 	return err
+}
+
+// GetFolderSize computes the recursive total size and file count of a folder.
+// The caller must have access to the folder (ownership or share grant).
+func (s *Service) GetFolderSize(ctx context.Context, id, userID string) (sizeBytes int64, fileCount int64, err error) {
+	f, err := s.GetAccessible(ctx, id, userID)
+	if err != nil || f == nil || !f.IsFolder {
+		return 0, 0, fmt.Errorf("folder not found")
+	}
+
+	err = s.db.QueryRow(ctx, `
+		WITH RECURSIVE tree AS (
+		  SELECT id, size_bytes, is_folder FROM files WHERE id = $1::uuid AND deleted_at IS NULL
+		  UNION ALL
+		  SELECT f.id, f.size_bytes, f.is_folder FROM files f
+		    JOIN tree t ON f.parent_id = t.id WHERE f.deleted_at IS NULL
+		)
+		SELECT COALESCE(SUM(size_bytes),0), COUNT(*) FILTER (WHERE NOT is_folder)
+		FROM tree WHERE id != $1::uuid`, id,
+	).Scan(&sizeBytes, &fileCount)
+	return sizeBytes, fileCount, err
 }
 
 // Recent returns the most recently updated non-deleted files for ownerID.

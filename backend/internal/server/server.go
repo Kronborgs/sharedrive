@@ -85,7 +85,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		fileSvc:        fileSvc,
 		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc, rdb, conv, ratelimit.New(rdb)),
 		sharesHandler:  shares.NewHandler(db, smtp.New(cfg, db), cfg.AppBaseURL),
-		adminHandler:   admin.NewHandler(db, cfg),
+		adminHandler:   admin.NewHandler(db, cfg, files.NewIOTracker(rdb)),
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
@@ -322,6 +322,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Patch("/api/v1/files/{id}", s.filesHandler.Update)
 		r.Delete("/api/v1/files/{id}", s.filesHandler.Delete)
 		r.Get("/api/v1/files/{id}/download", s.filesHandler.Download)
+		r.Get("/api/v1/files/{id}/size", s.filesHandler.FolderSize)
 		r.Post("/api/v1/files/trash/{id}/restore", s.filesHandler.RestoreTrash)
 		r.Delete("/api/v1/files/trash/{id}", s.filesHandler.PermanentDelete)
 
@@ -388,6 +389,7 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Post("/api/v1/admin/backup/restore", s.handleAdminImport)
 
 			r.Post("/api/v1/admin/storage/scrub", s.adminHandler.StorageScrub)
+			r.Get("/api/v1/admin/io-stats", s.adminHandler.IOStats)
 
 			r.Post("/api/v1/admin/support-access/{id}/end", s.handleAdminEndSupportAccess)
 		})

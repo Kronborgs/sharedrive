@@ -2,6 +2,8 @@ import type { FileItem } from '@/types/api'
 import { formatBytes, formatRelative, cn } from '@/lib/utils'
 import { MoreVertical, Folder, UserPlus } from 'lucide-react'
 import { useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
 import { FileThumbnail } from './FileThumbnail'
 
 interface FileListProps {
@@ -140,7 +142,7 @@ function FileRow({
         </div>
       </td>
       <td className="px-3 py-2.5 text-right text-xs text-muted hidden md:table-cell tabular-nums">
-        {item.is_folder ? '—' : formatBytes(item.size_bytes)}
+        {item.is_folder ? <FolderSize id={item.id} /> : formatBytes(item.size_bytes)}
       </td>
       <td className="px-3 py-2.5 text-right text-xs text-muted hidden md:table-cell whitespace-nowrap">
         {formatRelative(item.updated_at)}
@@ -217,8 +219,28 @@ export function FileGrid({ items, selectedIds, onSelect, onOpen, onContextMenu }
           {!item.is_folder && (
             <span className="text-[10px] text-muted">{formatBytes(item.size_bytes)}</span>
           )}
+          {item.is_folder && (
+            <span className="text-[10px] text-muted"><FolderSize id={item.id} /></span>
+          )}
         </div>
       ))}
     </div>
   )
+}
+
+// ── FolderSize ────────────────────────────────────────────────────────────────
+// Lazily fetches recursive folder size via GET /api/v1/files/{id}/size.
+// Shows "…" while loading, then the formatted size + file count.
+function FolderSize({ id }: { id: string }) {
+  const { data } = useQuery({
+    queryKey: ['folder-size', id],
+    queryFn: ({ signal }) =>
+      api.get<{ size_bytes: number; file_count: number }>(`/api/v1/files/${id}/size`, signal),
+    staleTime: 60_000,   // re-fetch after 1 min
+    gcTime: 120_000,
+  })
+
+  if (!data) return <span className="text-zinc-400">…</span>
+  if (data.size_bytes === 0) return <span className="text-zinc-400">Empty</span>
+  return <>{formatBytes(data.size_bytes)}</>
 }

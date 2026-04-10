@@ -22,6 +22,7 @@ import (
 	gowebdav "golang.org/x/net/webdav"
 
 	"github.com/yourname/privatedrive/internal/audit"
+	"github.com/yourname/privatedrive/internal/files"
 	"github.com/yourname/privatedrive/internal/middleware"
 )
 
@@ -35,14 +36,16 @@ type AuthDAVServer struct {
 	filesRoot string
 	locks     gowebdav.LockSystem // shared across requests so LOCK tokens survive to PUT
 	auditSvc  audit.Logger
+	ioTracker *files.IOTracker
 }
 
-func NewAuthDAVServer(db *pgxpool.Pool, filesRoot string, auditSvc audit.Logger) *AuthDAVServer {
+func NewAuthDAVServer(db *pgxpool.Pool, filesRoot string, auditSvc audit.Logger, ioTracker *files.IOTracker) *AuthDAVServer {
 	return &AuthDAVServer{
 		db:        db,
 		filesRoot: filesRoot,
 		locks:     gowebdav.NewMemLS(),
 		auditSvc:  auditSvc,
+		ioTracker: ioTracker,
 	}
 }
 
@@ -106,7 +109,7 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h := &gowebdav.Handler{
 		Prefix:     "/dav/" + userID,
-		FileSystem: &userFS{db: s.db, filesRoot: s.filesRoot, userID: userID},
+		FileSystem: &userFS{db: s.db, filesRoot: s.filesRoot, userID: userID, ioTracker: s.ioTracker},
 		LockSystem: s.locks,
 		Logger: func(r *http.Request, err error) {
 			if err != nil {
@@ -128,6 +131,7 @@ type userFS struct {
 	db        *pgxpool.Pool
 	filesRoot string
 	userID    string
+	ioTracker *files.IOTracker
 }
 
 func (fs *userFS) Mkdir(ctx context.Context, name string, _ os.FileMode) error {
@@ -306,6 +310,7 @@ func (fs *userFS) openForWrite(ctx context.Context, name string) (gowebdav.File,
 		base:         base,
 		existingID:   existingID,
 		existingSize: existingSize,
+		ioTracker:    fs.ioTracker,
 	}, nil
 }
 
@@ -586,7 +591,13 @@ type davWriteFile struct {
 	base         string
 	existingID   string
 	existingSize int64
+
+	// I/O bandwidth tracking — flushed to Redis every 512 KB during streaming.
+	ioTracker    *files.IOTracker
+	pendingBytes int64
 }
+
+const davIOFlushThreshold = 512 * 1024 // flush to Redis every 512 KB
 
 func (f *davWriteFile) Write(p []byte) (int, error) {
 	n, err := f.tmp.Write(p)
@@ -594,6 +605,17 @@ func (f *davWriteFile) Write(p []byte) (int, error) {
 		_, _ = f.hash.Write(p[:n])
 		f.size += int64(n)
 		f.fi.size = f.size // keep Stat() accurate; webdav library reads it after io.Copy
+		// Batch I/O tracking — flush to Redis every 512 KB so the admin bandwidth
+		// dashboard shows live activity without hammering Redis on every write.
+		if f.ioTracker != nil {
+			f.pendingBytes += int64(n)
+			if f.pendingBytes >= davIOFlushThreshold {
+				idleCtx := context.Background()
+				pending := f.pendingBytes
+				f.pendingBytes = 0
+				go f.ioTracker.TrackUpload(idleCtx, f.userID, pending)
+			}
+		}
 	}
 	return n, err
 }
@@ -622,6 +644,12 @@ func (f *davWriteFile) Close() error {
 		}
 		// Overwrite with 0 bytes — refuse to corrupt the existing file.
 		return nil
+	}
+
+	// Flush any remaining tracked bytes that didn't hit the 512 KB threshold.
+	if f.ioTracker != nil && f.pendingBytes > 0 {
+		go f.ioTracker.TrackUpload(context.Background(), f.userID, f.pendingBytes)
+		f.pendingBytes = 0
 	}
 
 	fileID := f.existingID

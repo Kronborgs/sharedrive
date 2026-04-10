@@ -74,21 +74,31 @@ func (t *IOTracker) CurrentStats(ctx context.Context) ([]UserIOStats, error) {
 	now := epochMinute()
 	uploadMap := map[string]int64{}
 	downloadMap := map[string]int64{}
+	// Current minute only — gives the most up-to-date picture for the live dashboard.
+	// We fall back to including the previous minute so activity isn't lost at the
+	// exact second a new minute rolls over.
+	curUp, _ := t.redis.HGetAll(ctx, ioKey("upload", now)).Result()
+	curDown, _ := t.redis.HGetAll(ctx, ioKey("download", now)).Result()
+	prevUp, _ := t.redis.HGetAll(ctx, ioKey("upload", now-1)).Result()
+	prevDown, _ := t.redis.HGetAll(ctx, ioKey("download", now-1)).Result()
 
-	// Use only the current minute so bytes/sec reflects what's happening RIGHT NOW.
-	// We still fall back to the previous minute if the current one is empty
-	// (e.g. right at the minute boundary).
-	for _, delta := range []int64{0, 1} {
-		up, _ := t.redis.HGetAll(ctx, ioKey("upload", now-delta)).Result()
-		for uid, v := range up {
-			n, _ := strconv.ParseInt(v, 10, 64)
-			uploadMap[uid] += n
-		}
-		down, _ := t.redis.HGetAll(ctx, ioKey("download", now-delta)).Result()
-		for uid, v := range down {
-			n, _ := strconv.ParseInt(v, 10, 64)
-			downloadMap[uid] += n
-		}
+	// Use whichever minute has more activity (prefer current).
+	activeUp := curUp
+	if len(curUp) == 0 {
+		activeUp = prevUp
+	}
+	activeDown := curDown
+	if len(curDown) == 0 {
+		activeDown = prevDown
+	}
+
+	for uid, v := range activeUp {
+		n, _ := strconv.ParseInt(v, 10, 64)
+		uploadMap[uid] += n
+	}
+	for uid, v := range activeDown {
+		n, _ := strconv.ParseInt(v, 10, 64)
+		downloadMap[uid] += n
 	}
 
 	// Merge into result slice (only users with non-zero activity).
@@ -110,8 +120,8 @@ func (t *IOTracker) CurrentStats(ctx context.Context) ([]UserIOStats, error) {
 			UserID:          uid,
 			UploadBytes:     up,
 			DownloadBytes:   down,
-			UploadBytesPS:   up / 120,
-			DownloadBytesPS: down / 120,
+			UploadBytesPS:   up / 60,
+			DownloadBytesPS: down / 60,
 		})
 	}
 	return result, nil

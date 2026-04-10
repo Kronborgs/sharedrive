@@ -1,9 +1,12 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -834,4 +837,124 @@ func (h *Handler) DeleteTag(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// ─── Storage Scrub ────────────────────────────────────────────────────────────
 
+// ScrubResult holds the stats returned from a storage scrub.
+type ScrubResult struct {
+	ScannedBlobs int64 `json:"scanned_blobs"`
+	DeletedBlobs int64 `json:"deleted_blobs"`
+	FreedBytes   int64 `json:"freed_bytes"`
+}
+
+// StorageScrub walks the files root, finds blobs with no matching DB record,
+// and deletes them. Safe to call at any time; only touches files in the
+// two-level UUID-shard layout ({root}/{2-char-prefix}/{uuid}).
+func (h *Handler) StorageScrub(w http.ResponseWriter, r *http.Request) {
+	result, err := RunStorageScrub(r.Context(), h.db, h.cfg.FilesRoot)
+	if err != nil {
+		log.Error().Err(err).Msg("storage scrub failed")
+		httputil.RespondError(w, http.StatusInternalServerError, "scrub failed")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, result)
+}
+
+// RunStorageScrub is the core scrub logic — exported so it can also be called
+// from the server startup goroutine.
+func RunStorageScrub(ctx context.Context, db *pgxpool.Pool, filesRoot string) (*ScrubResult, error) {
+	// Collect all UUIDs found on disk (only files exactly 2 levels deep).
+	type blob struct {
+		id   string
+		path string
+		size int64
+	}
+	var blobs []blob
+
+	entries, err := os.ReadDir(filesRoot)
+	if err != nil {
+		return nil, fmt.Errorf("storage scrub: read root: %w", err)
+	}
+	for _, shard := range entries {
+		if !shard.IsDir() || len(shard.Name()) != 2 {
+			continue
+		}
+		shardPath := filepath.Join(filesRoot, shard.Name())
+		files, err := os.ReadDir(shardPath)
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if f.IsDir() {
+				continue
+			}
+			name := f.Name()
+			// Must look like a UUID (36 chars with dashes)
+			if len(name) != 36 {
+				continue
+			}
+			info, err := f.Info()
+			if err != nil {
+				continue
+			}
+			blobs = append(blobs, blob{
+				id:   name,
+				path: filepath.Join(shardPath, name),
+				size: info.Size(),
+			})
+		}
+	}
+
+	result := &ScrubResult{ScannedBlobs: int64(len(blobs))}
+
+	// Process in batches of 500 to avoid huge IN() clauses.
+	const batchSize = 500
+	for i := 0; i < len(blobs); i += batchSize {
+		end := i + batchSize
+		if end > len(blobs) {
+			end = len(blobs)
+		}
+		batch := blobs[i:end]
+
+		// Build a set of IDs to check.
+		ids := make([]string, len(batch))
+		for j, b := range batch {
+			ids[j] = b.id
+		}
+
+		// Query which IDs actually exist in the files table.
+		rows, err := db.Query(ctx, `SELECT id::text FROM files WHERE id = ANY($1::uuid[])`, ids)
+		if err != nil {
+			return nil, fmt.Errorf("storage scrub: db query: %w", err)
+		}
+		known := make(map[string]struct{})
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err == nil {
+				known[id] = struct{}{}
+			}
+		}
+		rows.Close()
+
+		// Delete blobs not in DB.
+		for _, b := range batch {
+			if _, exists := known[b.id]; exists {
+				continue
+			}
+			if err := os.Remove(b.path); err != nil && !os.IsNotExist(err) {
+				log.Warn().Str("path", b.path).Err(err).Msg("storage scrub: failed to delete orphan")
+				continue
+			}
+			result.DeletedBlobs++
+			result.FreedBytes += b.size
+			log.Debug().Str("id", b.id).Int64("bytes", b.size).Msg("storage scrub: deleted orphan blob")
+		}
+	}
+
+	log.Info().
+		Int64("scanned", result.ScannedBlobs).
+		Int64("deleted", result.DeletedBlobs).
+		Int64("freed_bytes", result.FreedBytes).
+		Msg("storage scrub completed")
+
+	return result, nil
+}

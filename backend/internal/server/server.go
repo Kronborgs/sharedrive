@@ -167,6 +167,19 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		}
 	}()
 
+	// At startup: scrub orphaned blobs from disk (UUIDs on disk with no DB record).
+	go func() {
+		result, err := admin.RunStorageScrub(context.Background(), db, cfg.FilesRoot)
+		if err != nil {
+			log.Warn().Err(err).Msg("startup storage scrub failed")
+		} else {
+			log.Info().
+				Int64("deleted", result.DeletedBlobs).
+				Int64("freed_bytes", result.FreedBytes).
+				Msg("startup storage scrub completed")
+		}
+	}()
+
 	// WebDAV is mounted OUTSIDE Chi so that non-standard HTTP methods such as
 	// PROPFIND, MKCOL, PROPPATCH, COPY, MOVE, LOCK and UNLOCK are accepted.
 	// Chi only recognises the standard nine methods and returns 405 for the rest.
@@ -373,6 +386,8 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Get("/api/v1/admin/backup", s.handleAdminListBackups)
 			r.Post("/api/v1/admin/backup", s.handleAdminExport)
 			r.Post("/api/v1/admin/backup/restore", s.handleAdminImport)
+
+			r.Post("/api/v1/admin/storage/scrub", s.adminHandler.StorageScrub)
 
 			r.Post("/api/v1/admin/support-access/{id}/end", s.handleAdminEndSupportAccess)
 		})

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { z } from 'zod'
 import { api, createPlaylist } from '@/lib/api'
-import type { FileItem } from '@/types/api'
+import type { FileItem, BackupPasswordStatus, AutoBackupConfig, BackupConfig } from '@/types/api'
 import { FileList, FileGrid } from '@/components/files/FileViews'
 import { FileContextMenu, type ContextAction } from '@/components/files/FileContextMenu'
 import { DropZone, UploadProgress, useUploader } from '@/components/files/UploadZone'
@@ -118,8 +118,42 @@ function FilesPage() {
       case 'share': setShareItem(item); break
       case 'rename': setRenameId(item.id); setRenameName(item.name); break
       case 'trash': if (confirm(`Move "${item.name}" to trash?`)) trash.mutate(item.id); break
+      case 'backup': {
+        // Add the item (or its parent folder for files) to auto backup
+        const addToBackup = async () => {
+          try {
+            const [pwStatus, bkConfig, autoCfg] = await Promise.all([
+              api.get<BackupPasswordStatus>('/api/v1/backup/password'),
+              api.get<BackupConfig>('/api/v1/backup/config'),
+              api.get<AutoBackupConfig>('/api/v1/backup/auto'),
+            ])
+            // If no backup token or tertiary not enabled → send to backup page
+            if (!pwStatus.has_password || !bkConfig.tertiary_enabled) {
+              void navigate({ to: '/backup' })
+              return
+            }
+            const targetId = item.is_folder ? item.id : (item.parent_id ?? item.id)
+            const existing = autoCfg.folder_ids ?? []
+            if (existing.includes(targetId)) {
+              toast.info(`"${item.name}" is already included in auto backup`)
+              return
+            }
+            const newIds = [...existing, targetId]
+            await api.put('/api/v1/backup/auto', {
+              enabled: autoCfg.enabled || true,
+              interval_hours: autoCfg.interval_hours || 24,
+              folder_ids: newIds,
+            })
+            toast.success(`"${item.name}" added to auto backup`)
+          } catch {
+            void navigate({ to: '/backup' })
+          }
+        }
+        void addToBackup()
+        break
+      }
     }
-  }, [handleOpen, trash])
+  }, [handleOpen, trash, navigate])
 
   const items = files ?? []
   const sorted = [...items.filter(f => f.is_folder), ...items.filter(f => !f.is_folder)]

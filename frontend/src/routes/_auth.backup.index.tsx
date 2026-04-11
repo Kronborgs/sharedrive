@@ -765,7 +765,7 @@ function BackupPage() {
                   interval_hours: Number(e.target.value),
                   folder_ids: autoFolderIDs,
                 })}
-                className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-1.5 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] px-3 py-1.5 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 [&>option]:bg-white [&>option]:dark:bg-[#1a1d27] [&>option]:text-zinc-900 [&>option]:dark:text-slate-100"
               >
                 <option value={6}>Every 6 hours</option>
                 <option value={12}>Every 12 hours</option>

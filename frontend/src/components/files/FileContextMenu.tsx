@@ -10,6 +10,7 @@ import {
   Scissors,
   Copy,
   Info,
+  Archive,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -20,6 +21,7 @@ export type ContextAction =
   | 'rename'
   | 'move'
   | 'copy'
+  | 'backup'
   | 'trash'
   | 'restore'
   | 'delete'
@@ -50,6 +52,7 @@ const normalItems: MenuItem[] = [
   { action: 'rename',   label: 'Rename',    icon: <Pencil size={14} /> },
   { action: 'move',     label: 'Move',      icon: <Scissors size={14} /> },
   { action: 'copy',     label: 'Duplicate', icon: <Copy size={14} />, divider: true },
+  { action: 'backup',   label: 'Add to backup', icon: <Archive size={14} /> },
   { action: 'info',     label: 'Details',   icon: <Info size={14} />, divider: true },
   { action: 'trash',    label: 'Move to Trash', icon: <Trash2 size={14} />, danger: true },
 ]

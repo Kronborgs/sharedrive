@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,12 +22,13 @@ import (
 
 // Handler is the thin HTTP layer for all backup operations.
 type Handler struct {
-	passwords *PasswordService
-	backups   *Service
-	restores  *RestoreService
-	tertiary  *TertiaryService
-	buddy     *BuddyService
-	buddyCfg  *BuddyConfigService
+	passwords  *PasswordService
+	backups    *Service
+	restores   *RestoreService
+	tertiary   *TertiaryService
+	buddy      *BuddyService
+	buddyCfg   *BuddyConfigService
+	autoBackup *AutoBackupService
 
 	tertiaryEnabled bool // true when backupsRoot volume is mounted
 }
@@ -34,13 +36,15 @@ type Handler struct {
 // NewHandler creates a backup Handler.
 func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot string) *Handler {
 	svc := NewService(db, storage)
+	tert := NewTertiaryService(backupsRoot, svc)
 	return &Handler{
 		passwords:       NewPasswordService(db, wrapKey),
 		backups:         svc,
 		restores:        NewRestoreService(db, storage),
-		tertiary:        NewTertiaryService(backupsRoot, svc),
+		tertiary:        tert,
 		buddy:           NewBuddyService(backupsRoot, svc),
 		buddyCfg:        NewBuddyConfigService(db, wrapKey),
+		autoBackup:      NewAutoBackupService(db, wrapKey, tert),
 		tertiaryEnabled: backupsRoot != "",
 	}
 }
@@ -603,7 +607,71 @@ func (h *Handler) DeleteBuddyReceived(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ── GET /api/v1/backup/auto ──────────────────────────────────────────────────
+
+func (h *Handler) GetAutoConfig(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	cfg, err := h.autoBackup.Get(ctx, u.ID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, cfg)
+}
+
+// ── PUT /api/v1/backup/auto ───────────────────────────────────────────────────
+
+type autoConfigRequest struct {
+	Enabled       bool     `json:"enabled"`
+	IntervalHours int      `json:"interval_hours"`
+	FolderIDs     []string `json:"folder_ids"`
+}
+
+func (h *Handler) SetAutoConfig(w http.ResponseWriter, r *http.Request) {
+	if !h.tertiaryEnabled {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "tertiary backup not configured")
+		return
+	}
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req autoConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if req.IntervalHours < 1 {
+		req.IntervalHours = 24
+	}
+	if err := h.autoBackup.Set(ctx, u.ID, req.Enabled, req.IntervalHours, req.FolderIDs); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	cfg, err := h.autoBackup.Get(ctx, u.ID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, cfg)
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+// RunScheduled delegates to AutoBackupService.RunScheduled. Called by the
+// server scheduler goroutine every 15 minutes.
+func (h *Handler) RunScheduled(ctx context.Context) {
+	if h.autoBackup != nil {
+		h.autoBackup.RunScheduled(ctx)
+	}
+}
 
 // parseUUIDs converts a slice of UUID strings to []uuid.UUID.
 func parseUUIDs(strs []string) ([]uuid.UUID, error) {
@@ -620,3 +688,4 @@ func parseUUIDs(strs []string) ([]uuid.UUID, error) {
 	}
 	return out, nil
 }
+

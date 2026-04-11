@@ -127,6 +127,16 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		}
 	}()
 
+	// Start auto-backup scheduler — runs every 15 minutes and backs up any user
+	// whose schedule interval has elapsed and whose file tree has changed.
+	go func() {
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			s.backupHandler.RunScheduled(context.Background())
+		}
+	}()
+
 	// At startup: cascade deleted_at to orphaned children of soft-deleted folders.
 	// These are files whose parent has deleted_at IS NOT NULL but the child still
 	// has deleted_at IS NULL (created by older SoftDelete that didn't cascade).
@@ -356,6 +366,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/backup/tertiary", s.backupHandler.ListTertiary)
 		r.Get("/api/v1/backup/tertiary/{filename}", s.backupHandler.DownloadTertiary)
 		r.Delete("/api/v1/backup/tertiary/{filename}", s.backupHandler.DeleteTertiary)
+		// Auto backup schedule
+		r.Get("/api/v1/backup/auto", s.backupHandler.GetAutoConfig)
+		r.Put("/api/v1/backup/auto", s.backupHandler.SetAutoConfig)
 		// Buddy backup (per-user config + push to peer)
 		r.Get("/api/v1/backup/buddy/config", s.backupHandler.GetBuddyConfig)
 		r.Put("/api/v1/backup/buddy/config", s.backupHandler.SetBuddyPeerConfig)

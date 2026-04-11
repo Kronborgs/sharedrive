@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { formatBytes } from '@/lib/utils'
 import type {
@@ -12,6 +12,7 @@ import type {
   BuddyArchive,
   BuddyUserConfig,
   GeneratedBuddyReceiveToken,
+  AutoBackupConfig,
 } from '@/types/api'
 import type { FileItem } from '@/types/api'
 import {
@@ -30,6 +31,9 @@ import {
   ChevronDown,
   ChevronRight,
   File as FileIcon,
+  Clock,
+  ToggleLeft,
+  ToggleRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -208,6 +212,22 @@ function BackupPage() {
   const [newReceiveToken, setNewReceiveToken] = useState<string | null>(null)
   const [receiveTokenCopied, setReceiveTokenCopied] = useState(false)
   const [peerURLInput, setPeerURLInput] = useState('')
+
+  // Restore token from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('sharedrive_backup_token')
+    if (saved) {
+      setExportToken(saved)
+      setRestoreToken(saved)
+      setTertiaryToken(saved)
+      setBuddyToken(saved)
+    }
+  }, [])
+
+  // Persist token to localStorage whenever any token field changes
+  const saveToken = (t: string) => {
+    if (t) localStorage.setItem('sharedrive_backup_token', t)
+  }
   const [peerUserIDInput, setPeerUserIDInput] = useState('')
   const [peerTokenInput, setPeerTokenInput] = useState('')
 
@@ -226,6 +246,12 @@ function BackupPage() {
   const { data: tertiaryList, refetch: refetchTertiary } = useQuery({
     queryKey: ['backup', 'tertiary'],
     queryFn: ({ signal }) => api.get<TertiaryArchive[]>('/api/v1/backup/tertiary', signal),
+    enabled: config?.tertiary_enabled ?? false,
+  })
+
+  const { data: autoConfig, refetch: refetchAutoConfig } = useQuery({
+    queryKey: ['backup', 'auto'],
+    queryFn: ({ signal }) => api.get<AutoBackupConfig>('/api/v1/backup/auto', signal),
     enabled: config?.tertiary_enabled ?? false,
   })
 
@@ -252,6 +278,7 @@ function BackupPage() {
       setRestoreToken(data.token)
       setTertiaryToken(data.token)
       setBuddyToken(data.token)
+      localStorage.setItem('sharedrive_backup_token', data.token)
       void qc.invalidateQueries({ queryKey: ['backup', 'password'] })
     },
     onError: () => toast.error('Failed to generate backup password'),
@@ -277,6 +304,13 @@ function BackupPage() {
     mutationFn: (filename: string) => api.delete(`/api/v1/backup/buddy/received/${encodeURIComponent(filename)}`),
     onSuccess: () => { void refetchBuddyReceived(); toast.success('Archive deleted') },
     onError: () => toast.error('Delete failed'),
+  })
+
+  const saveAutoConfigMutation = useMutation({
+    mutationFn: (body: { enabled: boolean; interval_hours: number; folder_ids: string[] }) =>
+      api.put('/api/v1/backup/auto', body),
+    onSuccess: () => { void refetchAutoConfig(); toast.success('Auto backup settings saved') },
+    onError: () => toast.error('Failed to save auto backup settings'),
   })
 
   const generateReceiveTokenMutation = useMutation({
@@ -501,10 +535,7 @@ function BackupPage() {
         {newToken && (
           <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
             <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400">
-              <div className="space-y-0.5">
-                <p className="text-sm font-medium">Save this token now \u2014 it will never be shown again.</p>
-                <p className="text-xs opacity-80">This token is also the password to open .shdbak archives in 7-Zip, WinZip, or any AES-ZIP tool.</p>
-              </div>
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
               <p className="text-sm font-medium">Save this token now — it will never be shown again.</p>
             </div>
             <div className="flex items-center gap-2">
@@ -536,7 +567,7 @@ function BackupPage() {
           <input
             type="password"
             value={exportToken}
-            onChange={e => setExportToken(e.target.value)}
+            onChange={e => { setExportToken(e.target.value); saveToken(e.target.value) }}
             placeholder="Backup token"
             className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
@@ -619,7 +650,7 @@ function BackupPage() {
               <input
                 type="password"
                 value={tertiaryToken}
-                onChange={e => setTertiaryToken(e.target.value)}
+                onChange={e => { setTertiaryToken(e.target.value); saveToken(e.target.value) }}
                 placeholder="Backup token"
                 className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
@@ -670,6 +701,64 @@ function BackupPage() {
           </>
         )}
       </section>
+
+      {/* ── Auto backup schedule ──────────────────────────────────────────── */}
+      {config?.tertiary_enabled && status?.has_password && (
+        <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Clock size={16} className="text-brand-500" />
+            <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Automatic backup</h2>
+          </div>
+          <p className="text-sm text-zinc-500 dark:text-slate-400">
+            Schedule automatic backups to server storage. A new archive is only created when your files have changed.
+          </p>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-zinc-700 dark:text-slate-300">Enable auto backup</span>
+              <button
+                type="button"
+                onClick={() => saveAutoConfigMutation.mutate({
+                  enabled: !(autoConfig?.enabled ?? false),
+                  interval_hours: autoConfig?.interval_hours ?? 24,
+                  folder_ids: autoConfig?.folder_ids ?? [],
+                })}
+                className="transition-colors"
+                title={autoConfig?.enabled ? 'Disable' : 'Enable'}
+              >
+                {autoConfig?.enabled
+                  ? <ToggleRight size={28} className="text-brand-500" />
+                  : <ToggleLeft size={28} className="text-zinc-400" />}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">Interval</label>
+              <select
+                value={autoConfig?.interval_hours ?? 24}
+                onChange={e => saveAutoConfigMutation.mutate({
+                  enabled: autoConfig?.enabled ?? false,
+                  interval_hours: Number(e.target.value),
+                  folder_ids: autoConfig?.folder_ids ?? [],
+                })}
+                className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-1.5 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value={6}>Every 6 hours</option>
+                <option value={12}>Every 12 hours</option>
+                <option value={24}>Every 24 hours</option>
+                <option value={48}>Every 48 hours</option>
+                <option value={168}>Weekly</option>
+              </select>
+            </div>
+
+            {autoConfig?.last_run_at && (
+              <p className="text-xs text-zinc-400">
+                Last auto-backup: {new Date(autoConfig.last_run_at).toLocaleString()}
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ── Buddy backup ──────────────────────────────────────────────────── */}
       <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-5">
@@ -785,7 +874,7 @@ function BackupPage() {
                 <input
                   type="password"
                   value={buddyToken}
-                  onChange={e => setBuddyToken(e.target.value)}
+                  onChange={e => { setBuddyToken(e.target.value); saveToken(e.target.value) }}
                   placeholder="Your backup token"
                   className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />

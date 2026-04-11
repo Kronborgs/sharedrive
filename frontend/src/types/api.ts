@@ -228,6 +228,13 @@ export interface BuddyArchive {
   received_at: string
 }
 
+export interface AutoBackupConfig {
+  enabled: boolean
+  interval_hours: number
+  folder_ids: string[]
+  last_run_at?: string | null
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export interface AuditLog {

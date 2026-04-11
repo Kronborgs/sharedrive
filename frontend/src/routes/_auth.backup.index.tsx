@@ -521,114 +521,130 @@ function BackupPage() {
       </section>
 
       {/* ── Tertiary — server storage ─────────────────────────────────────── */}
-      {config?.tertiary_enabled && (
-        <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <HardDrive size={16} className="text-brand-500" />
-            <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Server storage backup</h2>
-          </div>
-          <p className="text-sm text-zinc-500 dark:text-slate-400">
-            Writes an encrypted archive to a mounted disk or storage box on the server
-            (configured via <code className="text-xs">BACKUPS_ROOT</code>).
-          </p>
+      <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <HardDrive size={16} className="text-brand-500" />
+          <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Server storage backup</h2>
+        </div>
+        <p className="text-sm text-zinc-500 dark:text-slate-400">
+          Writes an encrypted archive directly to a mounted disk or storage box on the server.
+        </p>
 
-          <div className="flex gap-2">
-            <input
-              type="password"
-              value={tertiaryToken}
-              onChange={e => setTertiaryToken(e.target.value)}
-              placeholder="Backup token"
-              className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-            <button
-              onClick={handleStoreTertiary}
-              disabled={!tertiaryToken.trim()}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
-            >
-              <HardDrive size={14} /> Save
-            </button>
+        {!config?.tertiary_enabled ? (
+          <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-4 py-3 text-xs text-zinc-500 dark:text-slate-400 space-y-1">
+            <p className="font-medium text-zinc-700 dark:text-slate-300">Not configured</p>
+            <p>Set <code className="bg-zinc-100 dark:bg-[#1a1d27] px-1 rounded">BACKUPS_ROOT=/mnt/backup</code> in your environment to enable this feature.</p>
           </div>
-          <FolderPicker selectedIDs={tertiaryFolderIDs} onChange={setTertiaryFolderIDs} />
-
-          {/* Archive list */}
-          {tertiaryList && tertiaryList.length > 0 && (
-            <div className="space-y-1 pt-1">
-              <p className="text-xs font-medium text-zinc-500 dark:text-slate-400">Stored archives</p>
-              {tertiaryList.map(a => (
-                <div
-                  key={a.filename}
-                  className="flex items-center gap-2 rounded-lg border border-zinc-100 dark:border-[#2d3148] px-3 py-2 text-xs"
-                >
-                  <span className="flex-1 font-mono text-zinc-700 dark:text-slate-300 truncate">{a.filename}</span>
-                  <span className="text-zinc-400 shrink-0">{formatBytes(a.size_bytes)}</span>
-                  <a
-                    href={`/api/v1/backup/tertiary/${encodeURIComponent(a.filename)}`}
-                    download={a.filename}
-                    className="shrink-0 p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-                    title="Download"
-                  >
-                    <Download size={12} />
-                  </a>
-                  <button
-                    onClick={() => deleteTertiaryMutation.mutate(a.filename)}
-                    className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
+        ) : (
+          <>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={tertiaryToken}
+                onChange={e => setTertiaryToken(e.target.value)}
+                placeholder="Backup token"
+                className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <button
+                onClick={handleStoreTertiary}
+                disabled={!tertiaryToken.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+              >
+                <HardDrive size={14} /> Save
+              </button>
             </div>
-          )}
+            <FolderPicker selectedIDs={tertiaryFolderIDs} onChange={setTertiaryFolderIDs} />
 
-          {tertiaryList?.length === 0 && (
-            <p className="text-xs text-zinc-400">No archives stored yet.</p>
-          )}
-        </section>
-      )}
+            {tertiaryList && tertiaryList.length > 0 && (
+              <div className="space-y-1 pt-1">
+                <p className="text-xs font-medium text-zinc-500 dark:text-slate-400">Stored archives</p>
+                {tertiaryList.map(a => (
+                  <div
+                    key={a.filename}
+                    className="flex items-center gap-2 rounded-lg border border-zinc-100 dark:border-[#2d3148] px-3 py-2 text-xs"
+                  >
+                    <span className="flex-1 font-mono text-zinc-700 dark:text-slate-300 truncate">{a.filename}</span>
+                    <span className="text-zinc-400 shrink-0">{formatBytes(a.size_bytes)}</span>
+                    <a
+                      href={`/api/v1/backup/tertiary/${encodeURIComponent(a.filename)}`}
+                      download={a.filename}
+                      className="shrink-0 p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
+                      title="Download"
+                    >
+                      <Download size={12} />
+                    </a>
+                    <button
+                      onClick={() => deleteTertiaryMutation.mutate(a.filename)}
+                      className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {tertiaryList?.length === 0 && (
+              <p className="text-xs text-zinc-400">No archives stored yet.</p>
+            )}
+          </>
+        )}
+      </section>
 
       {/* ── Buddy — push to peer ──────────────────────────────────────────── */}
-      {config?.buddy_push_enabled && (
-        <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Server size={16} className="text-brand-500" />
-            <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Buddy backup — push to peer</h2>
-          </div>
-          <p className="text-sm text-zinc-500 dark:text-slate-400">
-            Pushes an encrypted archive to a peer Sharedrive server in a different location
-            (configured via <code className="text-xs">BUDDY_URL</code>).
-          </p>
+      <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Server size={16} className="text-brand-500" />
+          <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Buddy backup — push to peer</h2>
+        </div>
+        <p className="text-sm text-zinc-500 dark:text-slate-400">
+          Pushes an encrypted archive to a second Sharedrive server in a different location.
+        </p>
 
-          <div className="flex gap-2">
-            <input
-              type="password"
-              value={buddyToken}
-              onChange={e => setBuddyToken(e.target.value)}
-              placeholder="Backup token"
-              className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-            <button
-              onClick={handleBuddyPush}
-              disabled={!buddyToken.trim()}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
-            >
-              <Server size={14} /> Push
-            </button>
+        {!config?.buddy_push_enabled ? (
+          <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-4 py-3 text-xs text-zinc-500 dark:text-slate-400 space-y-1">
+            <p className="font-medium text-zinc-700 dark:text-slate-300">Not configured</p>
+            <p>Set <code className="bg-zinc-100 dark:bg-[#1a1d27] px-1 rounded">BUDDY_URL=https://peer.example.com</code> and <code className="bg-zinc-100 dark:bg-[#1a1d27] px-1 rounded">BUDDY_SECRET=&lt;token&gt;</code> to enable pushing to a peer server.</p>
           </div>
-          <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
-        </section>
-      )}
+        ) : (
+          <>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={buddyToken}
+                onChange={e => setBuddyToken(e.target.value)}
+                placeholder="Backup token"
+                className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <button
+                onClick={handleBuddyPush}
+                disabled={!buddyToken.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+              >
+                <Server size={14} /> Push
+              </button>
+            </div>
+            <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
+          </>
+        )}
+      </section>
 
       {/* ── Buddy — received archives ─────────────────────────────────────── */}
-      {config?.buddy_receive_enabled && buddyReceived && buddyReceived.length > 0 && (
-        <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Server size={16} className="text-brand-500" />
-            <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Received buddy archives</h2>
+      <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Server size={16} className="text-brand-500" />
+          <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Received buddy archives</h2>
+        </div>
+        <p className="text-sm text-zinc-500 dark:text-slate-400">
+          Archives received from a peer server. Download and restore to recover files.
+        </p>
+
+        {!config?.buddy_receive_enabled ? (
+          <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-4 py-3 text-xs text-zinc-500 dark:text-slate-400 space-y-1">
+            <p className="font-medium text-zinc-700 dark:text-slate-300">Not configured</p>
+            <p>Set <code className="bg-zinc-100 dark:bg-[#1a1d27] px-1 rounded">BUDDY_RECEIVE_SECRET=&lt;token&gt;</code> to allow a peer server to push archives here.</p>
           </div>
-          <p className="text-sm text-zinc-500 dark:text-slate-400">
-            Archives received from peer servers. Download and use "Restore from backup" above to recover files.
-          </p>
+        ) : buddyReceived && buddyReceived.length > 0 ? (
           <div className="space-y-1">
             {buddyReceived.map(a => (
               <div
@@ -656,8 +672,10 @@ function BackupPage() {
               </div>
             ))}
           </div>
-        </section>
-      )}
+        ) : (
+          <p className="text-xs text-zinc-400">No archives received yet.</p>
+        )}
+      </section>
     </div>
   )
 }

@@ -58,9 +58,9 @@ COPY --from=backend-builder /app/server /usr/local/bin/privatedrive
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Default to uid 1000 — can be overridden at runtime with --user if the
-# host bind-mounts require a different uid (e.g. USB drives owned by root).
-USER 1000
+# Run as root so the entrypoint can create subdirectories in host-mounted
+# volumes regardless of their ownership (e.g. USB drives owned by root).
+# Gotenberg (also in this image) likewise requires no specific uid.
 
 EXPOSE 8080
 

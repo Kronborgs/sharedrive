@@ -119,7 +119,6 @@ function FilesPage() {
       case 'rename': setRenameId(item.id); setRenameName(item.name); break
       case 'trash': if (confirm(`Move "${item.name}" to trash?`)) trash.mutate(item.id); break
       case 'backup': {
-        // Add the item (or its parent folder for files) to auto backup
         const addToBackup = async () => {
           try {
             const [pwStatus, bkConfig, autoCfg] = await Promise.all([
@@ -127,33 +126,35 @@ function FilesPage() {
               api.get<BackupConfig>('/api/v1/backup/config'),
               api.get<AutoBackupConfig>('/api/v1/backup/auto'),
             ])
-            // If no backup token or tertiary not enabled → send to backup page
             if (!pwStatus.has_password || !bkConfig.tertiary_enabled) {
+              toast.info('Set up backup first')
               void navigate({ to: '/backup' })
               return
             }
             const targetId = item.is_folder ? item.id : (item.parent_id ?? item.id)
             const existing = autoCfg.folder_ids ?? []
             if (existing.includes(targetId)) {
-              toast.info(`"${item.name}" is already included in auto backup`)
+              toast.info(`"${item.name}" is already in auto backup`)
               return
             }
             const newIds = [...existing, targetId]
             await api.put('/api/v1/backup/auto', {
-              enabled: autoCfg.enabled || true,
+              enabled: true,
               interval_hours: autoCfg.interval_hours || 24,
               folder_ids: newIds,
             })
+            void qc.invalidateQueries({ queryKey: ['backup', 'auto'] })
             toast.success(`"${item.name}" added to auto backup`)
-          } catch {
-            void navigate({ to: '/backup' })
+          } catch (err) {
+            console.error('Add to backup failed:', err)
+            toast.error('Could not add to backup')
           }
         }
         void addToBackup()
         break
       }
     }
-  }, [handleOpen, trash, navigate])
+  }, [handleOpen, trash, navigate, qc])
 
   const items = files ?? []
   const sorted = [...items.filter(f => f.is_folder), ...items.filter(f => !f.is_folder)]

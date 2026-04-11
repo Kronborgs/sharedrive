@@ -854,13 +854,19 @@ func (s *Server) notImplemented(w http.ResponseWriter) {
 
 // backupsRoot returns the backups root path only if the directory is actually
 // mounted and accessible; otherwise returns "" to disable tertiary/buddy storage.
+// If BACKUPS_ROOT is not configured, /mnt/backup is tried as a convention —
+// this is the container path used in the Unraid template Path config.
 func backupsRoot(configured string) string {
-	if configured == "" {
-		return ""
+	candidates := []string{configured, "/mnt/backup"}
+	for _, p := range candidates {
+		if p == "" {
+			continue
+		}
+		info, err := os.Stat(p)
+		if err == nil && info.IsDir() {
+			log.Info().Str("path", p).Msg("backups root: using path")
+			return p
+		}
 	}
-	info, err := os.Stat(configured)
-	if err != nil || !info.IsDir() {
-		return ""
-	}
-	return configured
+	return ""
 }

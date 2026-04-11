@@ -71,6 +71,10 @@ func (s *TertiaryService) Store(ctx context.Context, userID uuid.UUID, rawToken 
 	}
 
 	log.Info().Str("user_id", userID.String()).Str("file", path).Msg("tertiary: archive stored")
+
+	// Auto-prune: keep only the 10 newest archives per user.
+	s.prune(userID, 10)
+
 	return &TertiaryArchive{Filename: filename, SizeBytes: fi.Size(), CreatedAt: time.Now().UTC()}, nil
 }
 
@@ -151,4 +155,39 @@ func isValidArchiveName(name string) bool {
 	return filepath.Ext(name) == ".zip" &&
 		!strings.ContainsAny(name, "/\\") &&
 		!strings.Contains(name, "..")
+}
+
+// prune removes the oldest archives for userID, keeping at most keep files.
+func (s *TertiaryService) prune(userID uuid.UUID, keep int) {
+	dir := filepath.Join(s.root, "tertiary", userID.String())
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	type entry struct {
+		name string
+		mod  time.Time
+	}
+	var zips []entry
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".zip" {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		zips = append(zips, entry{name: e.Name(), mod: fi.ModTime()})
+	}
+	if len(zips) <= keep {
+		return
+	}
+	// Sort oldest first.
+	sort.Slice(zips, func(i, j int) bool { return zips[i].mod.Before(zips[j].mod) })
+	for _, z := range zips[:len(zips)-keep] {
+		path := filepath.Join(dir, z.name)
+		if err := os.Remove(path); err == nil {
+			log.Info().Str("user_id", userID.String()).Str("file", z.name).Msg("tertiary: pruned old archive")
+		}
+	}
 }

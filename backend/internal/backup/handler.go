@@ -30,7 +30,8 @@ type Handler struct {
 	buddyCfg   *BuddyConfigService
 	autoBackup *AutoBackupService
 
-	tertiaryEnabled bool // true when backupsRoot volume is mounted
+	tertiaryEnabled bool   // true when backupsRoot volume is mounted
+	backupsRoot     string // BACKUPS_ROOT path for disk stats
 }
 
 // NewHandler creates a backup Handler.
@@ -46,21 +47,28 @@ func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot s
 		buddyCfg:        NewBuddyConfigService(db, wrapKey),
 		autoBackup:      NewAutoBackupService(db, wrapKey, tert),
 		tertiaryEnabled: backupsRoot != "",
+		backupsRoot:     backupsRoot,
 	}
 }
 
 // ── GET /api/v1/backup/config ────────────────────────────────────────────────
 
 type backupConfigResponse struct {
-	TertiaryEnabled bool `json:"tertiary_enabled"`
-	BuddyEnabled    bool `json:"buddy_enabled"`
+	TertiaryEnabled bool  `json:"tertiary_enabled"`
+	BuddyEnabled    bool  `json:"buddy_enabled"`
+	DiskTotalBytes  int64 `json:"disk_total_bytes,omitempty"`
+	DiskFreeBytes   int64 `json:"disk_free_bytes,omitempty"`
 }
 
 func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
-	httputil.Respond(w, http.StatusOK, backupConfigResponse{
+	resp := backupConfigResponse{
 		TertiaryEnabled: h.tertiaryEnabled,
 		BuddyEnabled:    true, // always on — per-user configuration via web GUI
-	})
+	}
+	if h.tertiaryEnabled {
+		resp.DiskTotalBytes, resp.DiskFreeBytes = diskStats(h.backupsRoot)
+	}
+	httputil.Respond(w, http.StatusOK, resp)
 }
 
 // ── GET /api/v1/backup/password ───────────────────────────────────────────────
@@ -688,4 +696,3 @@ func parseUUIDs(strs []string) ([]uuid.UUID, error) {
 	}
 	return out, nil
 }
-

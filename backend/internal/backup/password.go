@@ -4,12 +4,8 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
-
-	"golang.org/x/crypto/hkdf"
 )
 
 // generateRawToken returns 32 cryptographically-random bytes encoded as a
@@ -20,19 +16,6 @@ func generateRawToken() (string, error) {
 		return "", fmt.Errorf("backup: rand: %w", err)
 	}
 	return hex.EncodeToString(b), nil
-}
-
-// DeriveZipKey derives a 32-byte ZIP encryption key from rawToken using
-// HKDF-SHA256 with the domain separator "sharedrive-backup-v1".
-// The same rawToken always produces the same zipKey, so the archive can be
-// re-derived at restore time without storing the key.
-func DeriveZipKey(rawToken string) ([]byte, error) {
-	r := hkdf.New(sha256.New, []byte(rawToken), nil, []byte("sharedrive-backup-v1"))
-	key := make([]byte, 32)
-	if _, err := io.ReadFull(r, key); err != nil {
-		return nil, fmt.Errorf("backup: hkdf: %w", err)
-	}
-	return key, nil
 }
 
 // ZipPassword returns the password used for ZIP AES-256 encryption of .shdbak

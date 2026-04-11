@@ -201,6 +201,8 @@ export interface RestoreResult {
 export interface BackupConfig {
   tertiary_enabled: boolean
   buddy_enabled: boolean
+  disk_total_bytes?: number
+  disk_free_bytes?: number
 }
 
 export interface BuddyUserConfig {

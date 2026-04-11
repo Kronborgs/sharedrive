@@ -208,6 +208,9 @@ function BackupPage() {
   const [buddyFolderIDs, setBuddyFolderIDs] = useState<string[]>([])
   const [buddyPushing, setBuddyPushing] = useState(false)
 
+  // auto backup folder state
+  const [autoFolderIDs, setAutoFolderIDs] = useState<string[]>([])
+
   // buddy config state
   const [newReceiveToken, setNewReceiveToken] = useState<string | null>(null)
   const [receiveTokenCopied, setReceiveTokenCopied] = useState(false)
@@ -228,6 +231,7 @@ function BackupPage() {
   const saveToken = (t: string) => {
     if (t) localStorage.setItem('sharedrive_backup_token', t)
   }
+
   const [peerUserIDInput, setPeerUserIDInput] = useState('')
   const [peerTokenInput, setPeerTokenInput] = useState('')
 
@@ -254,6 +258,11 @@ function BackupPage() {
     queryFn: ({ signal }) => api.get<AutoBackupConfig>('/api/v1/backup/auto', signal),
     enabled: config?.tertiary_enabled ?? false,
   })
+
+  // Sync auto folder IDs when config loads
+  useEffect(() => {
+    if (autoConfig?.folder_ids) setAutoFolderIDs(autoConfig.folder_ids)
+  }, [autoConfig?.folder_ids])
 
   const { data: buddyConfig, refetch: refetchBuddyConfig } = useQuery({
     queryKey: ['backup', 'buddy-config'],
@@ -484,6 +493,12 @@ function BackupPage() {
           <ShieldCheck size={16} className="text-brand-500" />
           <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Backup token</h2>
         </div>
+        <p className="text-sm text-zinc-500 dark:text-slate-400">
+          This password is used to extract encrypted backup archives outside Sharedrive.
+        </p>
+        <p className="text-sm text-zinc-500 dark:text-slate-400">
+          Store it safely. It may be required for disaster recovery.
+        </p>
 
         {isLoading ? (
           <p className="text-sm text-zinc-400">Loading…</p>
@@ -497,7 +512,7 @@ function BackupPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  if (confirm('Generate a new token? The current one will be permanently revoked.')) {
+                  if (confirm('Generate a new token? The current one will be permanently revoked. Existing backups encrypted with the old token will still require the old token to restore.')) {
                     generateMutation.mutate()
                   }
                 }}
@@ -635,6 +650,15 @@ function BackupPage() {
           Writes an encrypted archive directly to a mounted disk or storage box on the server.
         </p>
 
+        {config?.tertiary_enabled && config.disk_total_bytes != null && config.disk_total_bytes > 0 && (
+          <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-slate-400">
+            <HardDrive size={12} />
+            <span>
+              {formatBytes(config.disk_free_bytes ?? 0)} free of {formatBytes(config.disk_total_bytes)}
+            </span>
+          </div>
+        )}
+
         {!config?.tertiary_enabled ? (
           <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-4 py-3 text-xs text-zinc-500 dark:text-slate-400 space-y-1">
             <p className="font-medium text-zinc-700 dark:text-slate-300">Not configured</p>
@@ -721,7 +745,7 @@ function BackupPage() {
                 onClick={() => saveAutoConfigMutation.mutate({
                   enabled: !(autoConfig?.enabled ?? false),
                   interval_hours: autoConfig?.interval_hours ?? 24,
-                  folder_ids: autoConfig?.folder_ids ?? [],
+                  folder_ids: autoFolderIDs,
                 })}
                 className="transition-colors"
                 title={autoConfig?.enabled ? 'Disable' : 'Enable'}
@@ -739,7 +763,7 @@ function BackupPage() {
                 onChange={e => saveAutoConfigMutation.mutate({
                   enabled: autoConfig?.enabled ?? false,
                   interval_hours: Number(e.target.value),
-                  folder_ids: autoConfig?.folder_ids ?? [],
+                  folder_ids: autoFolderIDs,
                 })}
                 className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-1.5 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
@@ -750,6 +774,15 @@ function BackupPage() {
                 <option value={168}>Weekly</option>
               </select>
             </div>
+
+            <FolderPicker selectedIDs={autoFolderIDs} onChange={ids => {
+              setAutoFolderIDs(ids)
+              saveAutoConfigMutation.mutate({
+                enabled: autoConfig?.enabled ?? false,
+                interval_hours: autoConfig?.interval_hours ?? 24,
+                folder_ids: ids,
+              })
+            }} />
 
             {autoConfig?.last_run_at && (
               <p className="text-xs text-zinc-400">

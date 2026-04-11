@@ -309,10 +309,35 @@
     Target="/data/backups"
     Default="/mnt/user/backups/sharedrive"
     Mode="rw"
-    Description="Path on the host where exported backup archives are stored."
+    Description="Path on the host where backup archives are stored (default internal path)."
     Type="Path"
     Display="always"
     Required="true"
     Mask="false"
   >/mnt/user/backups/sharedrive</Config>
+
+  <Config
+    Name="External Backup Disk (optional)"
+    Target="/mnt/backup"
+    Default=""
+    Mode="rw"
+    Description="Optional: mount an external disk or NAS share for server-side backup storage. Leave blank if not using this feature. Set BACKUPS_ROOT to /mnt/backup to enable it."
+    Type="Path"
+    Display="always"
+    Required="false"
+    Mask="false"
+  ></Config>
+
+  <Config
+    Name="BACKUPS_ROOT"
+    Target="BACKUPS_ROOT"
+    Default=""
+    Mode=""
+    Description="Set to the container path of your external backup disk (e.g. /mnt/backup) to enable server-side backup storage. Leave blank to use the default /data/backups path (no extra mount needed)."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  ></Config>
+
 </Container>

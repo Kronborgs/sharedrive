@@ -108,7 +108,6 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 	}
 
 	zw := NewWriter(w, zipPwd)
-	defer zw.Close()
 
 	if err := zw.AddJSON("manifest.json", archiveManifest{
 		Version:     archiveVersion,
@@ -117,10 +116,12 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 		FileCount:   fileCount,
 		FolderCount: folderCount,
 	}); err != nil {
+		zw.Close() //nolint:errcheck
 		return fmt.Errorf("export: manifest: %w", err)
 	}
 
 	if err := zw.AddJSON("metadata.json", records); err != nil {
+		zw.Close() //nolint:errcheck
 		return fmt.Errorf("export: metadata: %w", err)
 	}
 
@@ -141,5 +142,10 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 		f.Close()
 	}
 
+	// Close MUST be called last — it writes the ZIP central directory.
+	// Without it the archive is invalid and cannot be opened by any tool.
+	if err := zw.Close(); err != nil {
+		return fmt.Errorf("export: close zip: %w", err)
+	}
 	return nil
 }

@@ -80,7 +80,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	_ = mw.WriteField("receiver_user_id", peerUserID)
-	archiveName := time.Now().UTC().Format("20060102T150405Z") + ".shdbak"
+	archiveName := time.Now().UTC().Format("20060102T150405Z") + ".zip"
 	fw, err := mw.CreateFormFile("file", archiveName)
 	if err != nil {
 		return fmt.Errorf("buddy push: form file: %w", err)
@@ -120,7 +120,7 @@ func (s *BuddyService) Receive(ctx context.Context, receiverUserID uuid.UUID, r 
 		return nil, err
 	}
 
-	filename := time.Now().UTC().Format("20060102T150405Z") + ".shdbak"
+	filename := time.Now().UTC().Format("20060102T150405Z") + ".zip"
 	path := filepath.Join(dir, filename)
 
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
@@ -160,7 +160,7 @@ func (s *BuddyService) ListReceived(userID uuid.UUID) ([]BuddyArchive, error) {
 
 	var archives []BuddyArchive
 	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".shdbak" {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".zip" {
 			continue
 		}
 		fi, err := e.Info()

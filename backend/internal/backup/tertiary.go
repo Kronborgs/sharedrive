@@ -51,7 +51,7 @@ func (s *TertiaryService) Store(ctx context.Context, userID uuid.UUID, rawToken 
 		return nil, err
 	}
 
-	filename := time.Now().UTC().Format("20060102T150405Z") + ".shdbak"
+	filename := time.Now().UTC().Format("20060102T150405Z") + ".zip"
 	path := filepath.Join(dir, filename)
 
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
@@ -90,7 +90,7 @@ func (s *TertiaryService) List(ctx context.Context, userID uuid.UUID) ([]Tertiar
 
 	var archives []TertiaryArchive
 	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".shdbak" {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".zip" {
 			continue
 		}
 		fi, err := e.Info()
@@ -145,10 +145,10 @@ func (s *TertiaryService) Delete(userID uuid.UUID, filename string) error {
 	return nil
 }
 
-// isValidArchiveName guards against path traversal; only bare .shdbak filenames
+// isValidArchiveName guards against path traversal; only bare .zip filenames
 // with no directory separators or ".." components are accepted.
 func isValidArchiveName(name string) bool {
-	return filepath.Ext(name) == ".shdbak" &&
+	return filepath.Ext(name) == ".zip" &&
 		!strings.ContainsAny(name, "/\\") &&
 		!strings.Contains(name, "..")
 }

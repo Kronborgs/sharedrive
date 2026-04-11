@@ -76,11 +76,10 @@ func (s *TertiaryService) Store(ctx context.Context, userID uuid.UUID, rawToken 
 
 // List returns all archives for userID, newest first.
 func (s *TertiaryService) List(ctx context.Context, userID uuid.UUID) ([]TertiaryArchive, error) {
-	dir, err := s.userDir(userID)
-	if err != nil {
-		return nil, err
-	}
-
+	// Do NOT call userDir here — we don't want to create directories on a
+	// read path. If the directory doesn't exist yet (no archives stored)
+	// return empty rather than 500.
+	dir := filepath.Join(s.root, "tertiary", userID.String())
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {

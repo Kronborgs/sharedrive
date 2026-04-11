@@ -35,15 +35,14 @@ func NewBuddyService(root string, backups *Service) *BuddyService {
 
 // BuddyArchive describes an archive received from a peer.
 type BuddyArchive struct {
-	Filename     string    `json:"filename"`
-	SenderUserID string    `json:"sender_user_id"`
-	SizeBytes    int64     `json:"size_bytes"`
-	ReceivedAt   time.Time `json:"received_at"`
+	Filename   string    `json:"filename"`
+	SizeBytes  int64     `json:"size_bytes"`
+	ReceivedAt time.Time `json:"received_at"`
 }
 
-// buddyDir returns (and creates) the per-sender directory for received archives.
-func (s *BuddyService) buddyDir(senderUserID uuid.UUID) (string, error) {
-	dir := filepath.Join(s.root, "buddy", senderUserID.String())
+// buddyDir returns (and creates) the per-user directory for received archives.
+func (s *BuddyService) buddyDir(userID uuid.UUID) (string, error) {
+	dir := filepath.Join(s.root, "buddy", userID.String())
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return "", fmt.Errorf("buddy: mkdir: %w", err)
 	}
@@ -51,9 +50,10 @@ func (s *BuddyService) buddyDir(senderUserID uuid.UUID) (string, error) {
 }
 
 // Push exports the user's archive to a peer Sharedrive server.
-// buddyURL is the base URL of the peer; buddySecret is the pre-shared bearer token.
+// peerBaseURL is the peer's base URL; peerUserID is the peer's user UUID;
+// peerToken is the receive token the peer generated for us to authenticate.
 // folderIDs restricts scope; pass nil to include all files.
-func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken string, folderIDs []uuid.UUID, buddyURL, buddySecret string) error {
+func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken string, folderIDs []uuid.UUID, peerBaseURL, peerUserID, peerToken string) error {
 	// Export to a temp file first — multipart needs io.ReaderAt/Seeker semantics.
 	tmp, err := os.CreateTemp("", "shdbak-buddy-push-*")
 	if err != nil {
@@ -79,7 +79,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	// Assemble multipart body.
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
-	_ = mw.WriteField("user_id", userID.String())
+	_ = mw.WriteField("receiver_user_id", peerUserID)
 	archiveName := time.Now().UTC().Format("20060102T150405Z") + ".shdbak"
 	fw, err := mw.CreateFormFile("file", archiveName)
 	if err != nil {
@@ -90,13 +90,13 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	}
 	mw.Close()
 
-	endpoint := strings.TrimRight(buddyURL, "/") + "/api/v1/backup/buddy/receive"
+	endpoint := strings.TrimRight(peerBaseURL, "/") + "/api/v1/backup/buddy/receive"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &body)
 	if err != nil {
 		return fmt.Errorf("buddy push: request: %w", err)
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+buddySecret)
+	req.Header.Set("Authorization", "Bearer "+peerToken)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -108,14 +108,14 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 		return fmt.Errorf("buddy push: peer returned HTTP %d", resp.StatusCode)
 	}
 
-	log.Info().Str("user_id", userID.String()).Str("peer", buddyURL).Msg("buddy: archive pushed")
+	log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Msg("buddy: archive pushed")
 	return nil
 }
 
-// Receive stores an archive sent from a peer server.
-// senderUserID is the UUID of the user on the sending server.
-func (s *BuddyService) Receive(ctx context.Context, senderUserID uuid.UUID, r io.Reader) (*BuddyArchive, error) {
-	dir, err := s.buddyDir(senderUserID)
+// Receive stores an archive pushed from a peer under the receiving user's directory.
+// receiverUserID is the UUID of the local user who owns the receive token.
+func (s *BuddyService) Receive(ctx context.Context, receiverUserID uuid.UUID, r io.Reader) (*BuddyArchive, error) {
+	dir, err := s.buddyDir(receiverUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -135,19 +135,17 @@ func (s *BuddyService) Receive(ctx context.Context, senderUserID uuid.UUID, r io
 		return nil, fmt.Errorf("buddy receive: write: %w", err)
 	}
 
-	log.Info().Str("sender_user_id", senderUserID.String()).Int64("bytes", n).Msg("buddy: archive received")
+	log.Info().Str("receiver_user_id", receiverUserID.String()).Int64("bytes", n).Msg("buddy: archive received")
 	return &BuddyArchive{
-		Filename:     filename,
-		SenderUserID: senderUserID.String(),
-		SizeBytes:    n,
-		ReceivedAt:   time.Now().UTC(),
+		Filename:   filename,
+		SizeBytes:  n,
+		ReceivedAt: time.Now().UTC(),
 	}, nil
 }
 
-// ListReceived returns archives stored for senderUserID, newest first.
-// senderUserID is the UUID of the user on the originating server.
-func (s *BuddyService) ListReceived(senderUserID uuid.UUID) ([]BuddyArchive, error) {
-	dir, err := s.buddyDir(senderUserID)
+// ListReceived returns archives stored for userID (the local receiving user), newest first.
+func (s *BuddyService) ListReceived(userID uuid.UUID) ([]BuddyArchive, error) {
+	dir, err := s.buddyDir(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -170,10 +168,9 @@ func (s *BuddyService) ListReceived(senderUserID uuid.UUID) ([]BuddyArchive, err
 			continue
 		}
 		archives = append(archives, BuddyArchive{
-			Filename:     e.Name(),
-			SenderUserID: senderUserID.String(),
-			SizeBytes:    fi.Size(),
-			ReceivedAt:   fi.ModTime().UTC(),
+			Filename:   e.Name(),
+			SizeBytes:  fi.Size(),
+			ReceivedAt: fi.ModTime().UTC(),
 		})
 	}
 	sort.Slice(archives, func(i, j int) bool {
@@ -183,11 +180,11 @@ func (s *BuddyService) ListReceived(senderUserID uuid.UUID) ([]BuddyArchive, err
 }
 
 // DownloadReceived opens the named received archive for reading.
-func (s *BuddyService) DownloadReceived(senderUserID uuid.UUID, filename string) (io.ReadCloser, int64, error) {
+func (s *BuddyService) DownloadReceived(userID uuid.UUID, filename string) (io.ReadCloser, int64, error) {
 	if !isValidArchiveName(filename) {
 		return nil, 0, fmt.Errorf("buddy: invalid filename")
 	}
-	dir, err := s.buddyDir(senderUserID)
+	dir, err := s.buddyDir(userID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -204,11 +201,11 @@ func (s *BuddyService) DownloadReceived(senderUserID uuid.UUID, filename string)
 }
 
 // DeleteReceived removes the named received archive.
-func (s *BuddyService) DeleteReceived(senderUserID uuid.UUID, filename string) error {
+func (s *BuddyService) DeleteReceived(userID uuid.UUID, filename string) error {
 	if !isValidArchiveName(filename) {
 		return fmt.Errorf("buddy: invalid filename")
 	}
-	dir, err := s.buddyDir(senderUserID)
+	dir, err := s.buddyDir(userID)
 	if err != nil {
 		return err
 	}

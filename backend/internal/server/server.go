@@ -96,7 +96,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
-		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, cfg.BackupsRoot, cfg.BuddyURL, cfg.BuddySecret, cfg.BuddyReceiveSecret),
+		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, backupsRoot(cfg.BackupsRoot)),
 		auditSvc:       auditSvc,
 		ioTracker:      ioTracker,
 	}
@@ -287,7 +287,7 @@ func (s *Server) buildRouter() *chi.Mux {
 	// ── Public shared-link endpoint (no auth) ─────────────────────────────
 	r.Get("/api/v1/public/shared/{token}", s.handleSharedByLink)
 
-	// ── Buddy backup receive (shared-secret auth, no user session) ─────────
+	// ── Buddy backup receive (per-user token auth, no user session) ──────────
 	r.Post("/api/v1/backup/buddy/receive", s.backupHandler.BuddyReceive)
 
 	// ── Authenticated API routes ───────────────────────────────────────────
@@ -356,7 +356,12 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/backup/tertiary", s.backupHandler.ListTertiary)
 		r.Get("/api/v1/backup/tertiary/{filename}", s.backupHandler.DownloadTertiary)
 		r.Delete("/api/v1/backup/tertiary/{filename}", s.backupHandler.DeleteTertiary)
-		// Buddy backup (push to peer)
+		// Buddy backup (per-user config + push to peer)
+		r.Get("/api/v1/backup/buddy/config", s.backupHandler.GetBuddyConfig)
+		r.Put("/api/v1/backup/buddy/config", s.backupHandler.SetBuddyPeerConfig)
+		r.Delete("/api/v1/backup/buddy/config", s.backupHandler.ClearBuddyPeerConfig)
+		r.Post("/api/v1/backup/buddy/receive-token", s.backupHandler.GenerateBuddyReceiveToken)
+		r.Delete("/api/v1/backup/buddy/receive-token", s.backupHandler.RevokeBuddyReceiveToken)
 		r.Post("/api/v1/backup/buddy/push", s.backupHandler.BuddyPush)
 		r.Get("/api/v1/backup/buddy/received", s.backupHandler.ListBuddyReceived)
 		r.Get("/api/v1/backup/buddy/received/{filename}", s.backupHandler.DownloadBuddyReceived)
@@ -845,4 +850,17 @@ func (s *Server) tusHandler() http.Handler {
 
 func (s *Server) notImplemented(w http.ResponseWriter) {
 	respondError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "This endpoint is not yet implemented.")
+}
+
+// backupsRoot returns the backups root path only if the directory is actually
+// mounted and accessible; otherwise returns "" to disable tertiary/buddy storage.
+func backupsRoot(configured string) string {
+	if configured == "" {
+		return ""
+	}
+	info, err := os.Stat(configured)
+	if err != nil || !info.IsDir() {
+		return ""
+	}
+	return configured
 }

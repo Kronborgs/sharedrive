@@ -15,16 +15,17 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SharedIndexRouteImport } from './routes/shared.index'
 import { Route as SetupIndexRouteImport } from './routes/setup.index'
 import { Route as ResetPasswordIndexRouteImport } from './routes/reset-password.index'
-import { Route as AcceptInviteIndexRouteImport } from './routes/accept-invite.index'
 import { Route as LoginIndexRouteImport } from './routes/login.index'
+import { Route as AcceptInviteIndexRouteImport } from './routes/accept-invite.index'
 import { Route as LoginTotpRouteImport } from './routes/login.totp'
 import { Route as AuthTrashIndexRouteImport } from './routes/_auth.trash.index'
-import { Route as AuthBackupIndexRouteImport } from './routes/_auth.backup.index'
 import { Route as AuthSharesIndexRouteImport } from './routes/_auth.shares.index'
 import { Route as AuthSharedBrowseIndexRouteImport } from './routes/_auth.shared-browse.index'
 import { Route as AuthRecentIndexRouteImport } from './routes/_auth.recent.index'
 import { Route as AuthFilesIndexRouteImport } from './routes/_auth.files.index'
+import { Route as AuthBackupIndexRouteImport } from './routes/_auth.backup.index'
 import { Route as AuthAdminIndexRouteImport } from './routes/_auth.admin.index'
+import { Route as AuthActivityIndexRouteImport } from './routes/_auth.activity.index'
 import { Route as AuthAdminUsersIndexRouteImport } from './routes/_auth.admin.users.index'
 import { Route as AuthAdminTagsIndexRouteImport } from './routes/_auth.admin.tags.index'
 import { Route as AuthAdminSettingsIndexRouteImport } from './routes/_auth.admin.settings.index'
@@ -32,7 +33,6 @@ import { Route as AuthAdminGroupsIndexRouteImport } from './routes/_auth.admin.g
 import { Route as AuthAdminBlockedIpsIndexRouteImport } from './routes/_auth.admin.blocked-ips.index'
 import { Route as AuthAdminBackupIndexRouteImport } from './routes/_auth.admin.backup.index'
 import { Route as AuthAdminAuditLogsIndexRouteImport } from './routes/_auth.admin.audit-logs.index'
-import { Route as AuthActivityIndexRouteImport } from './routes/_auth.activity.index'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -63,15 +63,15 @@ const ResetPasswordIndexRoute = ResetPasswordIndexRouteImport.update({
   path: '/reset-password/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginIndexRoute = LoginIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => LoginRoute,
+} as any)
 const AcceptInviteIndexRoute = AcceptInviteIndexRouteImport.update({
   id: '/accept-invite/',
   path: '/accept-invite/',
   getParentRoute: () => rootRouteImport,
-} as any)
-const LoginIndexRoute = LoginIndexRouteImport.update({
-  id: '/login/',
-  path: '/',
-  getParentRoute: () => LoginRoute,
 } as any)
 const LoginTotpRoute = LoginTotpRouteImport.update({
   id: '/totp',
@@ -81,11 +81,6 @@ const LoginTotpRoute = LoginTotpRouteImport.update({
 const AuthTrashIndexRoute = AuthTrashIndexRouteImport.update({
   id: '/trash/',
   path: '/trash/',
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthBackupIndexRoute = AuthBackupIndexRouteImport.update({
-  id: '/backup/',
-  path: '/backup/',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthSharesIndexRoute = AuthSharesIndexRouteImport.update({
@@ -108,9 +103,19 @@ const AuthFilesIndexRoute = AuthFilesIndexRouteImport.update({
   path: '/files/',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthBackupIndexRoute = AuthBackupIndexRouteImport.update({
+  id: '/backup/',
+  path: '/backup/',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthAdminIndexRoute = AuthAdminIndexRouteImport.update({
   id: '/admin/',
   path: '/admin/',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthActivityIndexRoute = AuthActivityIndexRouteImport.update({
+  id: '/activity/',
+  path: '/activity/',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthAdminUsersIndexRoute = AuthAdminUsersIndexRouteImport.update({
@@ -149,28 +154,24 @@ const AuthAdminAuditLogsIndexRoute = AuthAdminAuditLogsIndexRouteImport.update({
   path: '/admin/audit-logs/',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthActivityIndexRoute = AuthActivityIndexRouteImport.update({
-  id: '/activity/',
-  path: '/activity/',
-  getParentRoute: () => AuthRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRouteWithChildren
-  '/login/': typeof LoginIndexRoute
   '/login/totp': typeof LoginTotpRoute
   '/accept-invite/': typeof AcceptInviteIndexRoute
+  '/login/': typeof LoginIndexRoute
   '/reset-password/': typeof ResetPasswordIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/shared/': typeof SharedIndexRoute
+  '/activity/': typeof AuthActivityIndexRoute
   '/admin/': typeof AuthAdminIndexRoute
+  '/backup/': typeof AuthBackupIndexRoute
   '/files/': typeof AuthFilesIndexRoute
   '/recent/': typeof AuthRecentIndexRoute
   '/shared-browse/': typeof AuthSharedBrowseIndexRoute
   '/shares/': typeof AuthSharesIndexRoute
   '/trash/': typeof AuthTrashIndexRoute
-  '/backup/': typeof AuthBackupIndexRoute
   '/admin/audit-logs/': typeof AuthAdminAuditLogsIndexRoute
   '/admin/backup/': typeof AuthAdminBackupIndexRoute
   '/admin/blocked-ips/': typeof AuthAdminBlockedIpsIndexRoute
@@ -178,23 +179,23 @@ export interface FileRoutesByFullPath {
   '/admin/settings/': typeof AuthAdminSettingsIndexRoute
   '/admin/tags/': typeof AuthAdminTagsIndexRoute
   '/admin/users/': typeof AuthAdminUsersIndexRoute
-  '/activity/': typeof AuthActivityIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/login': typeof LoginIndexRoute
   '/login/totp': typeof LoginTotpRoute
   '/accept-invite': typeof AcceptInviteIndexRoute
+  '/login': typeof LoginIndexRoute
   '/reset-password': typeof ResetPasswordIndexRoute
   '/setup': typeof SetupIndexRoute
   '/shared': typeof SharedIndexRoute
+  '/activity': typeof AuthActivityIndexRoute
   '/admin': typeof AuthAdminIndexRoute
+  '/backup': typeof AuthBackupIndexRoute
   '/files': typeof AuthFilesIndexRoute
   '/recent': typeof AuthRecentIndexRoute
   '/shared-browse': typeof AuthSharedBrowseIndexRoute
   '/shares': typeof AuthSharesIndexRoute
   '/trash': typeof AuthTrashIndexRoute
-  '/backup': typeof AuthBackupIndexRoute
   '/admin/audit-logs': typeof AuthAdminAuditLogsIndexRoute
   '/admin/backup': typeof AuthAdminBackupIndexRoute
   '/admin/blocked-ips': typeof AuthAdminBlockedIpsIndexRoute
@@ -202,26 +203,26 @@ export interface FileRoutesByTo {
   '/admin/settings': typeof AuthAdminSettingsIndexRoute
   '/admin/tags': typeof AuthAdminTagsIndexRoute
   '/admin/users': typeof AuthAdminUsersIndexRoute
-  '/activity': typeof AuthActivityIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_auth': typeof AuthRouteWithChildren
   '/login': typeof LoginRouteWithChildren
-  '/login/': typeof LoginIndexRoute
   '/login/totp': typeof LoginTotpRoute
   '/accept-invite/': typeof AcceptInviteIndexRoute
+  '/login/': typeof LoginIndexRoute
   '/reset-password/': typeof ResetPasswordIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/shared/': typeof SharedIndexRoute
+  '/_auth/activity/': typeof AuthActivityIndexRoute
   '/_auth/admin/': typeof AuthAdminIndexRoute
+  '/_auth/backup/': typeof AuthBackupIndexRoute
   '/_auth/files/': typeof AuthFilesIndexRoute
   '/_auth/recent/': typeof AuthRecentIndexRoute
   '/_auth/shared-browse/': typeof AuthSharedBrowseIndexRoute
   '/_auth/shares/': typeof AuthSharesIndexRoute
   '/_auth/trash/': typeof AuthTrashIndexRoute
-  '/_auth/backup/': typeof AuthBackupIndexRoute
   '/_auth/admin/audit-logs/': typeof AuthAdminAuditLogsIndexRoute
   '/_auth/admin/backup/': typeof AuthAdminBackupIndexRoute
   '/_auth/admin/blocked-ips/': typeof AuthAdminBlockedIpsIndexRoute
@@ -229,26 +230,26 @@ export interface FileRoutesById {
   '/_auth/admin/settings/': typeof AuthAdminSettingsIndexRoute
   '/_auth/admin/tags/': typeof AuthAdminTagsIndexRoute
   '/_auth/admin/users/': typeof AuthAdminUsersIndexRoute
-  '/_auth/activity/': typeof AuthActivityIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
-    | '/login/'
     | '/login/totp'
     | '/accept-invite/'
+    | '/login/'
     | '/reset-password/'
     | '/setup/'
     | '/shared/'
+    | '/activity/'
     | '/admin/'
+    | '/backup/'
     | '/files/'
     | '/recent/'
     | '/shared-browse/'
     | '/shares/'
     | '/trash/'
-    | '/backup/'
     | '/admin/audit-logs/'
     | '/admin/backup/'
     | '/admin/blocked-ips/'
@@ -256,24 +257,23 @@ export interface FileRouteTypes {
     | '/admin/settings/'
     | '/admin/tags/'
     | '/admin/users/'
-    | '/activity/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/login'
     | '/login/totp'
-    | '/login'
     | '/accept-invite'
+    | '/login'
     | '/reset-password'
     | '/setup'
     | '/shared'
+    | '/activity'
     | '/admin'
+    | '/backup'
     | '/files'
     | '/recent'
     | '/shared-browse'
     | '/shares'
     | '/trash'
-    | '/backup'
     | '/admin/audit-logs'
     | '/admin/backup'
     | '/admin/blocked-ips'
@@ -281,25 +281,25 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/tags'
     | '/admin/users'
-    | '/activity'
   id:
     | '__root__'
     | '/'
     | '/_auth'
     | '/login'
-    | '/login/'
     | '/login/totp'
     | '/accept-invite/'
+    | '/login/'
     | '/reset-password/'
     | '/setup/'
     | '/shared/'
+    | '/_auth/activity/'
     | '/_auth/admin/'
+    | '/_auth/backup/'
     | '/_auth/files/'
     | '/_auth/recent/'
     | '/_auth/shared-browse/'
     | '/_auth/shares/'
     | '/_auth/trash/'
-    | '/_auth/backup/'
     | '/_auth/admin/audit-logs/'
     | '/_auth/admin/backup/'
     | '/_auth/admin/blocked-ips/'
@@ -307,7 +307,6 @@ export interface FileRouteTypes {
     | '/_auth/admin/settings/'
     | '/_auth/admin/tags/'
     | '/_auth/admin/users/'
-    | '/_auth/activity/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -364,19 +363,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResetPasswordIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login/': {
+      id: '/login/'
+      path: '/'
+      fullPath: '/login/'
+      preLoaderRoute: typeof LoginIndexRouteImport
+      parentRoute: typeof LoginRoute
+    }
     '/accept-invite/': {
       id: '/accept-invite/'
       path: '/accept-invite'
       fullPath: '/accept-invite/'
       preLoaderRoute: typeof AcceptInviteIndexRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/login/': {
-      id: '/login/'
-      path: '/login'
-      fullPath: '/login/'
-      preLoaderRoute: typeof LoginIndexRouteImport
-      parentRoute: typeof LoginRoute
     }
     '/login/totp': {
       id: '/login/totp'
@@ -390,13 +389,6 @@ declare module '@tanstack/react-router' {
       path: '/trash'
       fullPath: '/trash/'
       preLoaderRoute: typeof AuthTrashIndexRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    '/_auth/backup/': {
-      id: '/_auth/backup/'
-      path: '/backup'
-      fullPath: '/backup/'
-      preLoaderRoute: typeof AuthBackupIndexRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/shares/': {
@@ -427,11 +419,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthFilesIndexRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/backup/': {
+      id: '/_auth/backup/'
+      path: '/backup'
+      fullPath: '/backup/'
+      preLoaderRoute: typeof AuthBackupIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/admin/': {
       id: '/_auth/admin/'
       path: '/admin'
       fullPath: '/admin/'
       preLoaderRoute: typeof AuthAdminIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/activity/': {
+      id: '/_auth/activity/'
+      path: '/activity'
+      fullPath: '/activity/'
+      preLoaderRoute: typeof AuthActivityIndexRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/admin/users/': {
@@ -483,24 +489,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAdminAuditLogsIndexRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/activity/': {
-      id: '/_auth/activity/'
-      path: '/activity'
-      fullPath: '/activity/'
-      preLoaderRoute: typeof AuthActivityIndexRouteImport
-      parentRoute: typeof AuthRoute
-    }
   }
 }
 
 interface AuthRouteChildren {
+  AuthActivityIndexRoute: typeof AuthActivityIndexRoute
   AuthAdminIndexRoute: typeof AuthAdminIndexRoute
+  AuthBackupIndexRoute: typeof AuthBackupIndexRoute
   AuthFilesIndexRoute: typeof AuthFilesIndexRoute
   AuthRecentIndexRoute: typeof AuthRecentIndexRoute
   AuthSharedBrowseIndexRoute: typeof AuthSharedBrowseIndexRoute
   AuthSharesIndexRoute: typeof AuthSharesIndexRoute
   AuthTrashIndexRoute: typeof AuthTrashIndexRoute
-  AuthBackupIndexRoute: typeof AuthBackupIndexRoute
   AuthAdminAuditLogsIndexRoute: typeof AuthAdminAuditLogsIndexRoute
   AuthAdminBackupIndexRoute: typeof AuthAdminBackupIndexRoute
   AuthAdminBlockedIpsIndexRoute: typeof AuthAdminBlockedIpsIndexRoute
@@ -508,17 +508,17 @@ interface AuthRouteChildren {
   AuthAdminSettingsIndexRoute: typeof AuthAdminSettingsIndexRoute
   AuthAdminTagsIndexRoute: typeof AuthAdminTagsIndexRoute
   AuthAdminUsersIndexRoute: typeof AuthAdminUsersIndexRoute
-  AuthActivityIndexRoute: typeof AuthActivityIndexRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
+  AuthActivityIndexRoute: AuthActivityIndexRoute,
   AuthAdminIndexRoute: AuthAdminIndexRoute,
+  AuthBackupIndexRoute: AuthBackupIndexRoute,
   AuthFilesIndexRoute: AuthFilesIndexRoute,
   AuthRecentIndexRoute: AuthRecentIndexRoute,
   AuthSharedBrowseIndexRoute: AuthSharedBrowseIndexRoute,
   AuthSharesIndexRoute: AuthSharesIndexRoute,
   AuthTrashIndexRoute: AuthTrashIndexRoute,
-  AuthBackupIndexRoute: AuthBackupIndexRoute,
   AuthAdminAuditLogsIndexRoute: AuthAdminAuditLogsIndexRoute,
   AuthAdminBackupIndexRoute: AuthAdminBackupIndexRoute,
   AuthAdminBlockedIpsIndexRoute: AuthAdminBlockedIpsIndexRoute,
@@ -526,19 +526,18 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthAdminSettingsIndexRoute: AuthAdminSettingsIndexRoute,
   AuthAdminTagsIndexRoute: AuthAdminTagsIndexRoute,
   AuthAdminUsersIndexRoute: AuthAdminUsersIndexRoute,
-  AuthActivityIndexRoute: AuthActivityIndexRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
 interface LoginRouteChildren {
-  LoginIndexRoute: typeof LoginIndexRoute
   LoginTotpRoute: typeof LoginTotpRoute
+  LoginIndexRoute: typeof LoginIndexRoute
 }
 
 const LoginRouteChildren: LoginRouteChildren = {
-  LoginIndexRoute: LoginIndexRoute,
   LoginTotpRoute: LoginTotpRoute,
+  LoginIndexRoute: LoginIndexRoute,
 }
 
 const LoginRouteWithChildren = LoginRoute._addFileChildren(LoginRouteChildren)

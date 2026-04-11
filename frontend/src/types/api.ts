@@ -200,8 +200,20 @@ export interface RestoreResult {
 
 export interface BackupConfig {
   tertiary_enabled: boolean
-  buddy_push_enabled: boolean
-  buddy_receive_enabled: boolean
+  buddy_enabled: boolean
+}
+
+export interface BuddyUserConfig {
+  user_id: string
+  peer_configured: boolean
+  peer_url: string
+  has_receive_token: boolean
+  receive_token_prefix: string
+}
+
+export interface GeneratedBuddyReceiveToken {
+  token: string
+  prefix: string
 }
 
 export interface TertiaryArchive {
@@ -212,7 +224,6 @@ export interface TertiaryArchive {
 
 export interface BuddyArchive {
   filename: string
-  sender_user_id: string
   size_bytes: number
   received_at: string
 }

@@ -10,6 +10,8 @@ import type {
   BackupConfig,
   TertiaryArchive,
   BuddyArchive,
+  BuddyUserConfig,
+  GeneratedBuddyReceiveToken,
 } from '@/types/api'
 import type { FileItem } from '@/types/api'
 import {
@@ -200,6 +202,13 @@ function BackupPage() {
   const [buddyToken, setBuddyToken] = useState('')
   const [buddyFolderIDs, setBuddyFolderIDs] = useState<string[]>([])
 
+  // buddy config state
+  const [newReceiveToken, setNewReceiveToken] = useState<string | null>(null)
+  const [receiveTokenCopied, setReceiveTokenCopied] = useState(false)
+  const [peerURLInput, setPeerURLInput] = useState('')
+  const [peerUserIDInput, setPeerUserIDInput] = useState('')
+  const [peerTokenInput, setPeerTokenInput] = useState('')
+
   // ── queries ──────────────────────────────────────────────────────────────
 
   const { data: status, isLoading } = useQuery({
@@ -218,10 +227,15 @@ function BackupPage() {
     enabled: config?.tertiary_enabled ?? false,
   })
 
+  const { data: buddyConfig, refetch: refetchBuddyConfig } = useQuery({
+    queryKey: ['backup', 'buddy-config'],
+    queryFn: ({ signal }) => api.get<BuddyUserConfig>('/api/v1/backup/buddy/config', signal),
+  })
+
   const { data: buddyReceived, refetch: refetchBuddyReceived } = useQuery({
     queryKey: ['backup', 'buddy-received'],
     queryFn: ({ signal }) => api.get<BuddyArchive[]>('/api/v1/backup/buddy/received', signal),
-    enabled: config?.buddy_receive_enabled ?? false,
+    enabled: buddyConfig?.has_receive_token ?? false,
   })
 
   // ── mutations ─────────────────────────────────────────────────────────────
@@ -256,6 +270,50 @@ function BackupPage() {
     mutationFn: (filename: string) => api.delete(`/api/v1/backup/buddy/received/${encodeURIComponent(filename)}`),
     onSuccess: () => { void refetchBuddyReceived(); toast.success('Archive deleted') },
     onError: () => toast.error('Delete failed'),
+  })
+
+  const generateReceiveTokenMutation = useMutation({
+    mutationFn: () => api.post<GeneratedBuddyReceiveToken>('/api/v1/backup/buddy/receive-token', {}),
+    onSuccess: (data) => {
+      setNewReceiveToken(data.token)
+      setReceiveTokenCopied(false)
+      void refetchBuddyConfig()
+    },
+    onError: () => toast.error('Failed to generate receive token'),
+  })
+
+  const revokeReceiveTokenMutation = useMutation({
+    mutationFn: () => api.delete('/api/v1/backup/buddy/receive-token'),
+    onSuccess: () => {
+      setNewReceiveToken(null)
+      void refetchBuddyConfig()
+      toast.success('Receive token revoked')
+    },
+    onError: () => toast.error('Failed to revoke receive token'),
+  })
+
+  const savePeerConfigMutation = useMutation({
+    mutationFn: () => api.put('/api/v1/backup/buddy/config', {
+      peer_url: peerURLInput.trim(),
+      peer_user_id: peerUserIDInput.trim(),
+      peer_token: peerTokenInput.trim(),
+    }),
+    onSuccess: () => {
+      void refetchBuddyConfig()
+      setPeerURLInput(''); setPeerUserIDInput(''); setPeerTokenInput('')
+      toast.success('Peer configuration saved')
+    },
+    onError: () => toast.error('Failed to save peer configuration'),
+  })
+
+  const clearPeerConfigMutation = useMutation({
+    mutationFn: () => api.delete('/api/v1/backup/buddy/config'),
+    onSuccess: () => {
+      void refetchBuddyConfig()
+      setBuddyToken('')
+      toast.success('Peer configuration cleared')
+    },
+    onError: () => toast.error('Failed to clear peer configuration'),
   })
 
   // ── handlers ──────────────────────────────────────────────────────────────
@@ -335,6 +393,13 @@ function BackupPage() {
     } catch (e: unknown) {
       toast.error((e as Error).message ?? 'Failed to save archive')
     }
+  }
+
+  const handleCopyReceiveToken = async () => {
+    if (!newReceiveToken) return
+    await navigator.clipboard.writeText(newReceiveToken)
+    setReceiveTokenCopied(true)
+    setTimeout(() => setReceiveTokenCopied(false), 2500)
   }
 
   const handleBuddyPush = async () => {
@@ -591,59 +656,183 @@ function BackupPage() {
         )}
       </section>
 
-      {/* ── Buddy — push to peer ──────────────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+      {/* ── Buddy backup ──────────────────────────────────────────────────── */}
+      <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-5">
         <div className="flex items-center gap-2">
           <Server size={16} className="text-brand-500" />
-          <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Buddy backup — push to peer</h2>
+          <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Buddy backup</h2>
         </div>
         <p className="text-sm text-zinc-500 dark:text-slate-400">
-          Pushes an encrypted archive to a second Sharedrive server in a different location.
+          Push encrypted archives to a peer Sharedrive server for off-site redundancy.
+          Exchange your receive info with a trusted friend — they configure your details on their side, you configure theirs on yours.
         </p>
 
-        {!config?.buddy_push_enabled ? (
-          <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-4 py-3 text-xs text-zinc-500 dark:text-slate-400 space-y-1">
-            <p className="font-medium text-zinc-700 dark:text-slate-300">Not configured</p>
-            <p>Set <code className="bg-zinc-100 dark:bg-[#1a1d27] px-1 rounded">BUDDY_URL=https://peer.example.com</code> and <code className="bg-zinc-100 dark:bg-[#1a1d27] px-1 rounded">BUDDY_SECRET=&lt;token&gt;</code> to enable pushing to a peer server.</p>
+        {/* ── Your receive info ─────────────────────────────────────────── */}
+        <div className="space-y-3 border-t border-zinc-100 dark:border-[#2d3148] pt-4">
+          <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Your receive info — share with your buddy</p>
+          <p className="text-xs text-zinc-500 dark:text-slate-400">Give these three values to your buddy so they can push archives to you.</p>
+
+          {/* URL */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Server URL</span>
+            <code className="flex-1 text-xs font-mono bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] rounded px-2 py-1 truncate">{window.location.origin}</code>
+            <button
+              onClick={() => { void navigator.clipboard.writeText(window.location.origin); toast.success('URL copied') }}
+              className="shrink-0 p-1.5 rounded border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+              title="Copy URL"
+            >
+              <Copy size={12} />
+            </button>
           </div>
-        ) : (
-          <>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={buddyToken}
-                onChange={e => setBuddyToken(e.target.value)}
-                placeholder="Backup token"
-                className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
+
+          {/* User ID */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Your User ID</span>
+            <code className="flex-1 text-xs font-mono bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] rounded px-2 py-1 truncate">{buddyConfig?.user_id ?? '…'}</code>
+            <button
+              onClick={() => { if (buddyConfig?.user_id) { void navigator.clipboard.writeText(buddyConfig.user_id); toast.success('User ID copied') } }}
+              className="shrink-0 p-1.5 rounded border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+              title="Copy User ID"
+            >
+              <Copy size={12} />
+            </button>
+          </div>
+
+          {/* Receive token */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Receive token</span>
+            {buddyConfig?.has_receive_token ? (
+              <span className="flex-1 text-xs font-mono text-zinc-500 dark:text-slate-400">
+                {buddyConfig.receive_token_prefix}••••••••••••••••••••••••••••••••••••
+              </span>
+            ) : (
+              <span className="flex-1 text-xs text-zinc-400">Not generated yet</span>
+            )}
+            <button
+              onClick={() => generateReceiveTokenMutation.mutate()}
+              disabled={generateReceiveTokenMutation.isPending}
+              className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={10} /> {buddyConfig?.has_receive_token ? 'Rotate' : 'Generate'}
+            </button>
+            {buddyConfig?.has_receive_token && (
               <button
-                onClick={handleBuddyPush}
-                disabled={!buddyToken.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+                onClick={() => { if (confirm('Revoke receive token? Your buddy will no longer be able to push archives to you.')) revokeReceiveTokenMutation.mutate() }}
+                disabled={revokeReceiveTokenMutation.isPending}
+                className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
               >
-                <Server size={14} /> Push
+                <Trash2 size={10} /> Revoke
               </button>
+            )}
+          </div>
+
+          {newReceiveToken && (
+            <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
+              <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                <p className="text-xs font-medium">Save this token now — it will never be shown again. Give it to your buddy.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs font-mono bg-white dark:bg-[#0f1117] border border-amber-200 dark:border-amber-800 rounded px-3 py-2 break-all text-zinc-800 dark:text-slate-200 select-all">
+                  {newReceiveToken}
+                </code>
+                <button
+                  onClick={handleCopyReceiveToken}
+                  className="shrink-0 p-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                  title="Copy token"
+                >
+                  {receiveTokenCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                </button>
+              </div>
             </div>
-            <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
-          </>
-        )}
+          )}
+        </div>
+
+        {/* ── Push to peer ──────────────────────────────────────────────── */}
+        <div className="space-y-3 border-t border-zinc-100 dark:border-[#2d3148] pt-4">
+          <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Push to peer</p>
+          <p className="text-xs text-zinc-500 dark:text-slate-400">Enter the receive info your buddy gave you.</p>
+
+          {buddyConfig?.peer_configured ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] px-3 py-2">
+                <span className="text-xs text-zinc-500 dark:text-slate-400">Peer:</span>
+                <span className="flex-1 text-xs font-mono text-zinc-700 dark:text-slate-300 truncate">{buddyConfig.peer_url}</span>
+                <button
+                  onClick={() => { if (confirm('Clear peer configuration? You will no longer be able to push to this peer.')) clearPeerConfigMutation.mutate() }}
+                  disabled={clearPeerConfigMutation.isPending}
+                  className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                >
+                  <Trash2 size={10} /> Clear
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={buddyToken}
+                  onChange={e => setBuddyToken(e.target.value)}
+                  placeholder="Your backup token"
+                  className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <button
+                  onClick={handleBuddyPush}
+                  disabled={!buddyToken.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+                >
+                  <Server size={14} /> Push
+                </button>
+              </div>
+              <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <input
+                type="url"
+                value={peerURLInput}
+                onChange={e => setPeerURLInput(e.target.value)}
+                placeholder="Peer server URL (e.g. https://peer.example.com)"
+                className="w-full text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <input
+                type="text"
+                value={peerUserIDInput}
+                onChange={e => setPeerUserIDInput(e.target.value)}
+                placeholder="Peer user ID (UUID from their backup page)"
+                className="w-full text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={peerTokenInput}
+                  onChange={e => setPeerTokenInput(e.target.value)}
+                  placeholder="Peer receive token (from their backup page)"
+                  className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <button
+                  onClick={() => savePeerConfigMutation.mutate()}
+                  disabled={!peerURLInput.trim() || !peerUserIDInput.trim() || !peerTokenInput.trim() || savePeerConfigMutation.isPending}
+                  className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </section>
 
-      {/* ── Buddy — received archives ─────────────────────────────────────── */}
+      {/* ── Received buddy archives ───────────────────────────────────────── */}
       <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
         <div className="flex items-center gap-2">
           <Server size={16} className="text-brand-500" />
           <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Received buddy archives</h2>
         </div>
         <p className="text-sm text-zinc-500 dark:text-slate-400">
-          Archives received from a peer server. Download and restore to recover files.
+          Archives pushed here by your buddy. Download and restore to recover files.
         </p>
 
-        {!config?.buddy_receive_enabled ? (
-          <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-4 py-3 text-xs text-zinc-500 dark:text-slate-400 space-y-1">
-            <p className="font-medium text-zinc-700 dark:text-slate-300">Not configured</p>
-            <p>Set <code className="bg-zinc-100 dark:bg-[#1a1d27] px-1 rounded">BUDDY_RECEIVE_SECRET=&lt;token&gt;</code> to allow a peer server to push archives here.</p>
-          </div>
+        {!buddyConfig?.has_receive_token ? (
+          <p className="text-xs text-zinc-400 dark:text-slate-500">Generate a receive token above to allow your buddy to push archives here.</p>
         ) : buddyReceived && buddyReceived.length > 0 ? (
           <div className="space-y-1">
             {buddyReceived.map(a => (

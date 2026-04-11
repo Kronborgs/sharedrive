@@ -488,11 +488,11 @@ type davDir struct {
 	diskFree  int64
 }
 
-func (d *davDir) Close() error                               { return nil }
-func (d *davDir) Read([]byte) (int, error)                   { return 0, os.ErrInvalid }
-func (d *davDir) Seek(int64, int) (int64, error)             { return 0, os.ErrInvalid }
-func (d *davDir) Write([]byte) (int, error)                  { return 0, os.ErrPermission }
-func (d *davDir) Stat() (os.FileInfo, error)                 { return d.fi, nil }
+func (d *davDir) Close() error                   { return nil }
+func (d *davDir) Read([]byte) (int, error)       { return 0, os.ErrInvalid }
+func (d *davDir) Seek(int64, int) (int64, error) { return 0, os.ErrInvalid }
+func (d *davDir) Write([]byte) (int, error)      { return 0, os.ErrPermission }
+func (d *davDir) Stat() (os.FileInfo, error)     { return d.fi, nil }
 
 // DeadProps implements webdav.DeadPropsHolder — reports quota to WebDAV clients.
 // When the user has no quota cap, falls back to physical disk stats so that
@@ -564,12 +564,12 @@ type davFile struct {
 	f  *os.File
 }
 
-func (f *davFile) Close() error                                { return f.f.Close() }
-func (f *davFile) Read(p []byte) (int, error)                  { return f.f.Read(p) }
+func (f *davFile) Close() error                                 { return f.f.Close() }
+func (f *davFile) Read(p []byte) (int, error)                   { return f.f.Read(p) }
 func (f *davFile) Seek(offset int64, whence int) (int64, error) { return f.f.Seek(offset, whence) }
-func (f *davFile) Write([]byte) (int, error)                   { return 0, os.ErrPermission }
-func (f *davFile) Stat() (os.FileInfo, error)                  { return f.fi, nil }
-func (f *davFile) Readdir(int) ([]os.FileInfo, error)          { return nil, os.ErrInvalid }
+func (f *davFile) Write([]byte) (int, error)                    { return 0, os.ErrPermission }
+func (f *davFile) Stat() (os.FileInfo, error)                   { return f.fi, nil }
+func (f *davFile) Readdir(int) ([]os.FileInfo, error)           { return nil, os.ErrInvalid }
 
 // ── webdav.File: write-buffered file ─────────────────────────────────────────
 
@@ -620,10 +620,12 @@ func (f *davWriteFile) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func (f *davWriteFile) Read(p []byte) (int, error)                   { return f.tmp.Read(p) }
-func (f *davWriteFile) Seek(offset int64, whence int) (int64, error) { return f.tmp.Seek(offset, whence) }
-func (f *davWriteFile) Readdir(int) ([]os.FileInfo, error)           { return nil, os.ErrInvalid }
-func (f *davWriteFile) Stat() (os.FileInfo, error)                   { return f.fi, nil }
+func (f *davWriteFile) Read(p []byte) (int, error) { return f.tmp.Read(p) }
+func (f *davWriteFile) Seek(offset int64, whence int) (int64, error) {
+	return f.tmp.Seek(offset, whence)
+}
+func (f *davWriteFile) Readdir(int) ([]os.FileInfo, error) { return nil, os.ErrInvalid }
+func (f *davWriteFile) Stat() (os.FileInfo, error)         { return f.fi, nil }
 
 func (f *davWriteFile) Close() error {
 	// Close the temp file handle before renaming.

@@ -11,6 +11,7 @@ import {
   HardDrive,
   Database,
   History,
+  Archive,
   ChevronDown,
   LogOut,
   ShieldCheck,
@@ -36,6 +37,7 @@ const mainNav: NavItem[] = [
   { to: '/recent',   label: 'Recent',    icon: <Clock size={16} /> },
   { to: '/activity', label: 'Activity',  icon: <History size={16} /> },
   { to: '/trash',    label: 'Trash',     icon: <Trash2 size={16} /> },
+  { to: '/backup',   label: 'Backup',    icon: <Archive size={16} /> },
 ]
 
 const guestNav: NavItem[] = [

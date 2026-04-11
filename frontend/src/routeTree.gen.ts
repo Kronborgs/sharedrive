@@ -19,6 +19,7 @@ import { Route as AcceptInviteIndexRouteImport } from './routes/accept-invite.in
 import { Route as LoginIndexRouteImport } from './routes/login.index'
 import { Route as LoginTotpRouteImport } from './routes/login.totp'
 import { Route as AuthTrashIndexRouteImport } from './routes/_auth.trash.index'
+import { Route as AuthBackupIndexRouteImport } from './routes/_auth.backup.index'
 import { Route as AuthSharesIndexRouteImport } from './routes/_auth.shares.index'
 import { Route as AuthSharedBrowseIndexRouteImport } from './routes/_auth.shared-browse.index'
 import { Route as AuthRecentIndexRouteImport } from './routes/_auth.recent.index'
@@ -80,6 +81,11 @@ const LoginTotpRoute = LoginTotpRouteImport.update({
 const AuthTrashIndexRoute = AuthTrashIndexRouteImport.update({
   id: '/trash/',
   path: '/trash/',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthBackupIndexRoute = AuthBackupIndexRouteImport.update({
+  id: '/backup/',
+  path: '/backup/',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthSharesIndexRoute = AuthSharesIndexRouteImport.update({
@@ -164,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/shared-browse/': typeof AuthSharedBrowseIndexRoute
   '/shares/': typeof AuthSharesIndexRoute
   '/trash/': typeof AuthTrashIndexRoute
+  '/backup/': typeof AuthBackupIndexRoute
   '/admin/audit-logs/': typeof AuthAdminAuditLogsIndexRoute
   '/admin/backup/': typeof AuthAdminBackupIndexRoute
   '/admin/blocked-ips/': typeof AuthAdminBlockedIpsIndexRoute
@@ -187,6 +194,7 @@ export interface FileRoutesByTo {
   '/shared-browse': typeof AuthSharedBrowseIndexRoute
   '/shares': typeof AuthSharesIndexRoute
   '/trash': typeof AuthTrashIndexRoute
+  '/backup': typeof AuthBackupIndexRoute
   '/admin/audit-logs': typeof AuthAdminAuditLogsIndexRoute
   '/admin/backup': typeof AuthAdminBackupIndexRoute
   '/admin/blocked-ips': typeof AuthAdminBlockedIpsIndexRoute
@@ -213,6 +221,7 @@ export interface FileRoutesById {
   '/_auth/shared-browse/': typeof AuthSharedBrowseIndexRoute
   '/_auth/shares/': typeof AuthSharesIndexRoute
   '/_auth/trash/': typeof AuthTrashIndexRoute
+  '/_auth/backup/': typeof AuthBackupIndexRoute
   '/_auth/admin/audit-logs/': typeof AuthAdminAuditLogsIndexRoute
   '/_auth/admin/backup/': typeof AuthAdminBackupIndexRoute
   '/_auth/admin/blocked-ips/': typeof AuthAdminBlockedIpsIndexRoute
@@ -239,6 +248,7 @@ export interface FileRouteTypes {
     | '/shared-browse/'
     | '/shares/'
     | '/trash/'
+    | '/backup/'
     | '/admin/audit-logs/'
     | '/admin/backup/'
     | '/admin/blocked-ips/'
@@ -263,6 +273,7 @@ export interface FileRouteTypes {
     | '/shared-browse'
     | '/shares'
     | '/trash'
+    | '/backup'
     | '/admin/audit-logs'
     | '/admin/backup'
     | '/admin/blocked-ips'
@@ -288,6 +299,7 @@ export interface FileRouteTypes {
     | '/_auth/shared-browse/'
     | '/_auth/shares/'
     | '/_auth/trash/'
+    | '/_auth/backup/'
     | '/_auth/admin/audit-logs/'
     | '/_auth/admin/backup/'
     | '/_auth/admin/blocked-ips/'
@@ -378,6 +390,13 @@ declare module '@tanstack/react-router' {
       path: '/trash'
       fullPath: '/trash/'
       preLoaderRoute: typeof AuthTrashIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/backup/': {
+      id: '/_auth/backup/'
+      path: '/backup'
+      fullPath: '/backup/'
+      preLoaderRoute: typeof AuthBackupIndexRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/shares/': {
@@ -481,6 +500,7 @@ interface AuthRouteChildren {
   AuthSharedBrowseIndexRoute: typeof AuthSharedBrowseIndexRoute
   AuthSharesIndexRoute: typeof AuthSharesIndexRoute
   AuthTrashIndexRoute: typeof AuthTrashIndexRoute
+  AuthBackupIndexRoute: typeof AuthBackupIndexRoute
   AuthAdminAuditLogsIndexRoute: typeof AuthAdminAuditLogsIndexRoute
   AuthAdminBackupIndexRoute: typeof AuthAdminBackupIndexRoute
   AuthAdminBlockedIpsIndexRoute: typeof AuthAdminBlockedIpsIndexRoute
@@ -498,6 +518,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthSharedBrowseIndexRoute: AuthSharedBrowseIndexRoute,
   AuthSharesIndexRoute: AuthSharesIndexRoute,
   AuthTrashIndexRoute: AuthTrashIndexRoute,
+  AuthBackupIndexRoute: AuthBackupIndexRoute,
   AuthAdminAuditLogsIndexRoute: AuthAdminAuditLogsIndexRoute,
   AuthAdminBackupIndexRoute: AuthAdminBackupIndexRoute,
   AuthAdminBlockedIpsIndexRoute: AuthAdminBlockedIpsIndexRoute,

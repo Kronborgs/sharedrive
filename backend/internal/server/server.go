@@ -24,6 +24,7 @@ import (
 	"github.com/yourname/privatedrive/internal/admin"
 	"github.com/yourname/privatedrive/internal/audit"
 	"github.com/yourname/privatedrive/internal/auth"
+	"github.com/yourname/privatedrive/internal/backup"
 
 	"github.com/yourname/privatedrive/internal/config"
 	"github.com/yourname/privatedrive/internal/embed"
@@ -57,6 +58,7 @@ type Server struct {
 	sseHandler     *admin.SSEHandler
 	supportHandler *admin.SupportAccessHandler
 	appPwdHandler  *webdav.AppPasswordHandler
+	backupHandler  *backup.Handler
 	auditSvc       audit.Logger
 	ioTracker      *files.IOTracker
 }
@@ -94,6 +96,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
+		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey),
 		auditSvc:       auditSvc,
 		ioTracker:      ioTracker,
 	}
@@ -337,6 +340,13 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/shares", s.handleCreateShare)
 		r.Patch("/api/v1/shares/{id}", s.handleUpdateShare)
 		r.Delete("/api/v1/shares/{id}", s.handleRevokeShare)
+
+		// Backup
+		r.Get("/api/v1/backup/password", s.backupHandler.GetPassword)
+		r.Post("/api/v1/backup/password", s.backupHandler.GeneratePassword)
+		r.Delete("/api/v1/backup/password", s.backupHandler.RevokePassword)
+		r.Post("/api/v1/backup/export", s.backupHandler.Export)
+		r.Post("/api/v1/backup/restore", s.backupHandler.Restore)
 
 		// SSE (admin-in-account banner)
 		r.Get("/api/v1/me/events", s.handleSSE)

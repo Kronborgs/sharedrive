@@ -42,10 +42,11 @@ type Config struct {
 	PreviewCacheDir string `mapstructure:"PREVIEW_CACHE_DIR"`
 
 	// Security secrets — all required, no defaults
-	SessionSecret      string `mapstructure:"SESSION_SECRET"`
-	BackupHMACSecret   string `mapstructure:"BACKUP_HMAC_SECRET"`
-	TOTPEncryptKey     string `mapstructure:"TOTP_ENCRYPT_KEY"`
-	DeviceTrustSecret  string `mapstructure:"DEVICE_TRUST_SECRET"`
+	SessionSecret     string `mapstructure:"SESSION_SECRET"`
+	BackupHMACSecret  string `mapstructure:"BACKUP_HMAC_SECRET"`
+	BackupWrapKey     string `mapstructure:"BACKUP_WRAP_KEY"` // 32 hex bytes; wraps per-user ZIP key for scheduled backups
+	TOTPEncryptKey    string `mapstructure:"TOTP_ENCRYPT_KEY"`
+	DeviceTrustSecret string `mapstructure:"DEVICE_TRUST_SECRET"`
 
 	// SMTP
 	SMTPHost     string `mapstructure:"SMTP_HOST"`
@@ -59,20 +60,20 @@ type Config struct {
 	CloudflareNetworkName string `mapstructure:"CLOUDFLARE_NETWORK_NAME"`
 
 	// Feature flags
-	WebDAVEnabled         bool `mapstructure:"WEBDAV_ENABLED"`
-	RegistrationOpen      bool `mapstructure:"REGISTRATION_OPEN"`
-	TOTPRequiredForAdmin  bool `mapstructure:"TOTP_REQUIRED_FOR_ADMIN"`
+	WebDAVEnabled        bool `mapstructure:"WEBDAV_ENABLED"`
+	RegistrationOpen     bool `mapstructure:"REGISTRATION_OPEN"`
+	TOTPRequiredForAdmin bool `mapstructure:"TOTP_REQUIRED_FOR_ADMIN"`
 
 	// Gotenberg — Office document → PDF conversion service
 	GotenbergURL string `mapstructure:"GOTENBERG_URL"`
 
 	// Rate limiting defaults
-	RLUserLockoutThreshold    int           `mapstructure:"RL_USER_LOCKOUT_THRESHOLD"`
-	RLUserLockoutDuration     time.Duration // parsed from RL_USER_LOCKOUT_DURATION_MIN
-	RLIPThreshold60M          int           `mapstructure:"RL_IP_THRESHOLD_60M"`
-	RLIPThreshold6H           int           `mapstructure:"RL_IP_THRESHOLD_6H"`
-	RLIPThreshold24H          int           `mapstructure:"RL_IP_THRESHOLD_24H"`
-	RLWindowSeconds           int           `mapstructure:"RL_WINDOW_SECONDS"`
+	RLUserLockoutThreshold int           `mapstructure:"RL_USER_LOCKOUT_THRESHOLD"`
+	RLUserLockoutDuration  time.Duration // parsed from RL_USER_LOCKOUT_DURATION_MIN
+	RLIPThreshold60M       int           `mapstructure:"RL_IP_THRESHOLD_60M"`
+	RLIPThreshold6H        int           `mapstructure:"RL_IP_THRESHOLD_6H"`
+	RLIPThreshold24H       int           `mapstructure:"RL_IP_THRESHOLD_24H"`
+	RLWindowSeconds        int           `mapstructure:"RL_WINDOW_SECONDS"`
 
 	// Default quota
 	DefaultQuotaBytes int64 `mapstructure:"DEFAULT_QUOTA_BYTES"`
@@ -82,11 +83,11 @@ type Config struct {
 	DeviceTrustDuration time.Duration
 
 	// Auth handler convenience fields (derived from RL_* and SESSION_* above)
-	SessionIdleTimeout    time.Duration
-	BaseURL               string
-	CookieDomain          string // e.g. ".kronborgs.dk" — covers all subdomains
+	SessionIdleTimeout     time.Duration
+	BaseURL                string
+	CookieDomain           string // e.g. ".kronborgs.dk" — covers all subdomains
 	RateLimitLoginAttempts int
-	RateLimitLoginWindow  time.Duration
+	RateLimitLoginWindow   time.Duration
 }
 
 // Load reads configuration from environment variables and optional .env file.
@@ -106,6 +107,7 @@ func Load() (*Config, error) {
 		"REDIS_PASSWORD",
 		"SESSION_SECRET",
 		"BACKUP_HMAC_SECRET",
+		"BACKUP_WRAP_KEY",
 		"TOTP_ENCRYPT_KEY",
 		"DEVICE_TRUST_SECRET",
 		"SMTP_HOST",
@@ -226,11 +228,11 @@ func Load() (*Config, error) {
 
 	// ── Required secrets validation ────────────────────────────────────────
 	required := map[string]string{
-		"SESSION_SECRET":     cfg.SessionSecret,
-		"BACKUP_HMAC_SECRET": cfg.BackupHMACSecret,
-		"TOTP_ENCRYPT_KEY":   cfg.TOTPEncryptKey,
+		"SESSION_SECRET":      cfg.SessionSecret,
+		"BACKUP_HMAC_SECRET":  cfg.BackupHMACSecret,
+		"TOTP_ENCRYPT_KEY":    cfg.TOTPEncryptKey,
 		"DEVICE_TRUST_SECRET": cfg.DeviceTrustSecret,
-		"POSTGRES_PASSWORD":  cfg.PostgresPassword,
+		"POSTGRES_PASSWORD":   cfg.PostgresPassword,
 	}
 	for name, val := range required {
 		if strings.TrimSpace(val) == "" {

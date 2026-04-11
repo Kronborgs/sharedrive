@@ -179,6 +179,25 @@ export interface CreatedAppPassword extends AppPassword {
   password: string // shown once only
 }
 
+export interface BackupPasswordStatus {
+  has_password: boolean
+  id?: string
+  last_used_at?: string | null
+  created_at?: string
+}
+
+export interface GeneratedBackupPassword {
+  id: string
+  token: string // shown exactly once — the raw backup token
+}
+
+export interface RestoreResult {
+  files_restored: number
+  folders_restored: number
+  bytes_restored: number
+  skipped: number
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export interface AuditLog {

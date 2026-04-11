@@ -853,7 +853,7 @@ func (s *Server) notImplemented(w http.ResponseWriter) {
 }
 
 // backupsRoot returns the backups root path only if the directory is actually
-// mounted and accessible; otherwise returns "" to disable tertiary/buddy storage.
+// mounted and writable; otherwise returns "" to disable tertiary/buddy storage.
 func backupsRoot(configured string) string {
 	if configured == "" {
 		return ""
@@ -862,5 +862,13 @@ func backupsRoot(configured string) string {
 	if err != nil || !info.IsDir() {
 		return ""
 	}
+	// Verify writability — os.Stat succeeds even for read-only mounts.
+	tmp, err := os.CreateTemp(configured, ".writable-check-*")
+	if err != nil {
+		log.Warn().Err(err).Str("path", configured).Msg("backups root not writable — tertiary/buddy backup disabled")
+		return ""
+	}
+	tmp.Close()
+	os.Remove(tmp.Name())
 	return configured
 }

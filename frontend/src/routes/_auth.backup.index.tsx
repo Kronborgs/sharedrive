@@ -245,6 +245,11 @@ function BackupPage() {
     onSuccess: (data) => {
       setNewToken(data.token)
       setTokenCopied(false)
+      // Auto-fill token into all fields so the user can act immediately
+      setExportToken(data.token)
+      setRestoreToken(data.token)
+      setTertiaryToken(data.token)
+      setBuddyToken(data.token)
       void qc.invalidateQueries({ queryKey: ['backup', 'password'] })
     },
     onError: () => toast.error('Failed to generate backup password'),

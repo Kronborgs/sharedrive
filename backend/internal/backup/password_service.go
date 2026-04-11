@@ -70,12 +70,9 @@ func (s *PasswordService) Generate(ctx context.Context, userID uuid.UUID) (id, t
 		return "", "", fmt.Errorf("password: hash token: %w", err)
 	}
 
-	// Derive and optionally wrap the ZIP key so scheduled exports can use it.
-	zipKey, err := DeriveZipKey(token)
-	if err != nil {
-		return "", "", fmt.Errorf("password: derive zip key: %w", err)
-	}
-	wrappedKey, err := WrapKey(zipKey, s.wrapKey)
+	// Optionally wrap the raw token so scheduled exports can use it later.
+	// The token itself is the ZIP password, so we store it encrypted.
+	wrappedKey, err := WrapKey([]byte(token), s.wrapKey)
 	if err != nil {
 		log.Warn().Err(err).Msg("backup: wrap key failed — storing without wrapped key")
 		wrappedKey = nil

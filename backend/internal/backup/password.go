@@ -35,14 +35,12 @@ func DeriveZipKey(rawToken string) ([]byte, error) {
 	return key, nil
 }
 
-// ZipPassword returns the yeka/zip password string for archives created from
-// rawToken (hex-encoded 32-byte derived key = 64 ASCII characters).
+// ZipPassword returns the password used for ZIP AES-256 encryption of .shdbak
+// archives. The raw backup token is used directly so that the user can open
+// their archive in 7-Zip, WinZip, or any AES-ZIP compatible tool by entering
+// their backup token as the password.
 func ZipPassword(rawToken string) (string, error) {
-	key, err := DeriveZipKey(rawToken)
-	if err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(key), nil
+	return rawToken, nil
 }
 
 // WrapKey encrypts zipKey with AES-256-GCM using wrapKeyHex (64-char hex = 32 bytes).

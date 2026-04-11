@@ -140,7 +140,7 @@ func Load() (*Config, error) {
 	v.SetDefault("REDIS_ADDR", "redis:6379")
 	v.SetDefault("REDIS_DB", 0)
 	v.SetDefault("FILES_ROOT", "/data/files")
-	v.SetDefault("BACKUPS_ROOT", "/data/backups")
+	v.SetDefault("BACKUPS_ROOT", "")
 	v.SetDefault("TUS_UPLOAD_DIR", "/data/files/tmp/uploads")
 	v.SetDefault("PREVIEW_CACHE_DIR", "/data/preview-cache")
 	v.SetDefault("SMTP_PORT", 587)

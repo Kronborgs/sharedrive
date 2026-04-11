@@ -23,6 +23,10 @@ services:
       BACKUP_HMAC_SECRET: ${BACKUP_HMAC_SECRET}
       TOTP_ENCRYPT_KEY: ${TOTP_ENCRYPT_KEY}
       DEVICE_TRUST_SECRET: ${DEVICE_TRUST_SECRET}
+      # Set BACKUPS_ROOT to the container path of your external backup disk to
+      # enable server-side backup storage (e.g. BACKUPS_ROOT=/mnt/backup).
+      # You must also mount the disk at that path in the volumes section above.
+      BACKUPS_ROOT: ${BACKUPS_ROOT:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -19,6 +19,7 @@ import (
 type AutoConfig struct {
 	Enabled       bool       `json:"enabled"`
 	IntervalHours int        `json:"interval_hours"`
+	RetentionDays int        `json:"retention_days"`
 	FolderIDs     []string   `json:"folder_ids"`
 	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
 }
@@ -42,12 +43,12 @@ func (s *AutoBackupService) Get(ctx context.Context, userID uuid.UUID) (*AutoCon
 	var cfg AutoConfig
 	var folderIDs []string
 	err := s.db.QueryRow(ctx,
-		`SELECT enabled, interval_hours, COALESCE(folder_ids, '{}'), last_run_at
+		`SELECT enabled, interval_hours, retention_days, COALESCE(folder_ids, '{}'), last_run_at
 		 FROM user_backup_auto_config WHERE user_id = $1`,
 		userID,
-	).Scan(&cfg.Enabled, &cfg.IntervalHours, &folderIDs, &cfg.LastRunAt)
+	).Scan(&cfg.Enabled, &cfg.IntervalHours, &cfg.RetentionDays, &folderIDs, &cfg.LastRunAt)
 	if err == pgx.ErrNoRows {
-		return &AutoConfig{Enabled: false, IntervalHours: 24, FolderIDs: []string{}}, nil
+		return &AutoConfig{Enabled: false, IntervalHours: 24, RetentionDays: 30, FolderIDs: []string{}}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("auto backup: get: %w", err)
@@ -57,22 +58,26 @@ func (s *AutoBackupService) Get(ctx context.Context, userID uuid.UUID) (*AutoCon
 }
 
 // Set upserts the auto backup schedule for userID.
-func (s *AutoBackupService) Set(ctx context.Context, userID uuid.UUID, enabled bool, intervalHours int, folderIDs []string) error {
+func (s *AutoBackupService) Set(ctx context.Context, userID uuid.UUID, enabled bool, intervalHours int, retentionDays int, folderIDs []string) error {
 	if intervalHours < 1 {
 		intervalHours = 24
+	}
+	if retentionDays < 1 {
+		retentionDays = 30
 	}
 	if folderIDs == nil {
 		folderIDs = []string{}
 	}
 	_, err := s.db.Exec(ctx,
-		`INSERT INTO user_backup_auto_config (user_id, enabled, interval_hours, folder_ids, updated_at)
-		 VALUES ($1, $2, $3, $4, NOW())
+		`INSERT INTO user_backup_auto_config (user_id, enabled, interval_hours, retention_days, folder_ids, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, NOW())
 		 ON CONFLICT (user_id) DO UPDATE
 		 SET enabled        = EXCLUDED.enabled,
 		     interval_hours = EXCLUDED.interval_hours,
+		     retention_days = EXCLUDED.retention_days,
 		     folder_ids     = EXCLUDED.folder_ids,
 		     updated_at     = NOW()`,
-		userID, enabled, intervalHours, folderIDs,
+		userID, enabled, intervalHours, retentionDays, folderIDs,
 	)
 	if err != nil {
 		return fmt.Errorf("auto backup: set: %w", err)
@@ -216,6 +221,9 @@ func (s *AutoBackupService) RunForUser(ctx context.Context, userID uuid.UUID) (s
 	if _, err := s.tertiary.Store(ctx, userID, rawToken, folderUUIDs); err != nil {
 		return false, fmt.Errorf("auto backup: store: %w", err)
 	}
+
+	// Prune archives older than retention_days.
+	s.tertiary.PruneByAge(userID, cfg.RetentionDays)
 
 	_, _ = s.db.Exec(ctx,
 		`UPDATE user_backup_auto_config

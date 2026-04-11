@@ -39,6 +39,11 @@ async function request<T>(
     signal,
   })
 
+  // 204 No Content — nothing to parse
+  if (res.status === 204) {
+    return undefined as T
+  }
+
   // Parse JSON envelope — the proxy (Cloudflare) may replace 5xx bodies with
   // its own HTML error page, so we must handle non-JSON responses gracefully.
   let json: ApiResponse<T>

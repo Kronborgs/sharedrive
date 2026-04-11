@@ -191,3 +191,31 @@ func (s *TertiaryService) prune(userID uuid.UUID, keep int) {
 		}
 	}
 }
+
+// PruneByAge removes archives older than retentionDays for userID.
+func (s *TertiaryService) PruneByAge(userID uuid.UUID, retentionDays int) {
+	if retentionDays <= 0 {
+		return
+	}
+	dir := filepath.Join(s.root, "tertiary", userID.String())
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour)
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".zip" {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if fi.ModTime().Before(cutoff) {
+			path := filepath.Join(dir, e.Name())
+			if err := os.Remove(path); err == nil {
+				log.Info().Str("user_id", userID.String()).Str("file", e.Name()).Msg("tertiary: pruned by age")
+			}
+		}
+	}
+}

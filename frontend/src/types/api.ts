@@ -233,6 +233,7 @@ export interface BuddyArchive {
 export interface AutoBackupConfig {
   enabled: boolean
   interval_hours: number
+  retention_days: number
   folder_ids: string[]
   last_run_at?: string | null
 }

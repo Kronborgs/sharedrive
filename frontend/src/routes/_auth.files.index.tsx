@@ -141,6 +141,7 @@ function FilesPage() {
             await api.put('/api/v1/backup/auto', {
               enabled: true,
               interval_hours: autoCfg.interval_hours || 24,
+              retention_days: autoCfg.retention_days || 30,
               folder_ids: newIds,
             })
             void qc.invalidateQueries({ queryKey: ['backup', 'auto'] })

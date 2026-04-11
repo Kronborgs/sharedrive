@@ -197,10 +197,12 @@ function BackupPage() {
   // tertiary state
   const [tertiaryToken, setTertiaryToken] = useState('')
   const [tertiaryFolderIDs, setTertiaryFolderIDs] = useState<string[]>([])
+  const [tertiarySaving, setTertiarySaving] = useState(false)
 
   // buddy push state
   const [buddyToken, setBuddyToken] = useState('')
   const [buddyFolderIDs, setBuddyFolderIDs] = useState<string[]>([])
+  const [buddyPushing, setBuddyPushing] = useState(false)
 
   // buddy config state
   const [newReceiveToken, setNewReceiveToken] = useState<string | null>(null)
@@ -388,6 +390,7 @@ function BackupPage() {
 
   const handleStoreTertiary = async () => {
     if (!tertiaryToken.trim()) { toast.error('Enter your backup token'); return }
+    setTertiarySaving(true)
     try {
       await api.post('/api/v1/backup/tertiary', {
         token: tertiaryToken.trim(),
@@ -397,6 +400,8 @@ function BackupPage() {
       void refetchTertiary()
     } catch (e: unknown) {
       toast.error((e as Error).message ?? 'Failed to save archive')
+    } finally {
+      setTertiarySaving(false)
     }
   }
 
@@ -410,6 +415,7 @@ function BackupPage() {
   const handleBuddyPush = async () => {
     if (!buddyToken.trim()) { toast.error('Enter your backup token'); return }
     if (!status?.has_password) { toast.error('Generate a backup token first'); return }
+    setBuddyPushing(true)
     try {
       await api.post('/api/v1/backup/buddy/push', {
         token: buddyToken.trim(),
@@ -418,6 +424,8 @@ function BackupPage() {
       toast.success('Archive pushed to buddy server')
     } catch (e: unknown) {
       toast.error((e as Error).message ?? 'Buddy push failed')
+    } finally {
+      setBuddyPushing(false)
     }
   }
 
@@ -614,10 +622,12 @@ function BackupPage() {
               />
               <button
                 onClick={handleStoreTertiary}
-                disabled={!tertiaryToken.trim()}
+                disabled={!tertiaryToken.trim() || tertiarySaving}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
               >
-                <HardDrive size={14} /> Save
+                {tertiarySaving
+                  ? <><RefreshCw size={14} className="animate-spin" /> Saving…</>
+                  : <><HardDrive size={14} /> Save</>}
               </button>
             </div>
             <FolderPicker selectedIDs={tertiaryFolderIDs} onChange={setTertiaryFolderIDs} />
@@ -778,10 +788,12 @@ function BackupPage() {
                 />
                 <button
                   onClick={handleBuddyPush}
-                  disabled={!buddyToken.trim()}
+                  disabled={!buddyToken.trim() || buddyPushing}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
                 >
-                  <Server size={14} /> Push
+                  {buddyPushing
+                    ? <><RefreshCw size={14} className="animate-spin" /> Pushing…</>
+                    : <><Server size={14} /> Push</>}
                 </button>
               </div>
               <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />

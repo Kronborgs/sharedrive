@@ -107,6 +107,57 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 		}
 	}
 
+	// Build folder path lookup: folderID → "Folder/Subfolder/..."
+	folderPath := make(map[string]string, folderCount)
+	for _, r := range records {
+		if r.IsFolder {
+			folderPath[r.ID] = r.Name
+		}
+	}
+	// Resolve full paths (parents are ordered first in the query).
+	for _, r := range records {
+		if r.IsFolder && r.ParentID != nil {
+			if parent, ok := folderPath[*r.ParentID]; ok {
+				folderPath[r.ID] = parent + "/" + r.Name
+			}
+		}
+	}
+
+	// Assign archive paths: real folder structure with real filenames.
+	for i := range records {
+		rec := &records[i]
+		if rec.IsFolder {
+			rec.ArchivePath = "files/" + folderPath[rec.ID] + "/"
+		} else if rec.ParentID != nil {
+			if parent, ok := folderPath[*rec.ParentID]; ok {
+				rec.ArchivePath = "files/" + parent + "/" + rec.Name
+			} else {
+				rec.ArchivePath = "files/" + rec.Name
+			}
+		} else {
+			rec.ArchivePath = "files/" + rec.Name
+		}
+	}
+
+	// Deduplicate archive paths: if two files share a name in the same
+	// folder, append the UUID to disambiguate.
+	seen := make(map[string]int, len(records))
+	for i := range records {
+		rec := &records[i]
+		if rec.IsFolder {
+			continue
+		}
+		if prev, ok := seen[rec.ArchivePath]; ok {
+			// Rename the first occurrence too if not yet renamed.
+			if records[prev].ArchivePath == rec.ArchivePath {
+				records[prev].ArchivePath = rec.ArchivePath + "." + records[prev].ID
+			}
+			rec.ArchivePath = rec.ArchivePath + "." + rec.ID
+		} else {
+			seen[rec.ArchivePath] = i
+		}
+	}
+
 	zw := NewWriter(w, zipPwd)
 
 	if err := zw.AddJSON("manifest.json", archiveManifest{
@@ -134,7 +185,7 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 			log.Warn().Err(err).Str("file_id", rec.ID).Msg("export: open blob — skipping")
 			continue
 		}
-		if err := zw.AddBlob("files/"+rec.ID, f); err != nil {
+		if err := zw.AddBlob(rec.ArchivePath, f); err != nil {
 			f.Close()
 			log.Warn().Err(err).Str("file_id", rec.ID).Msg("export: write blob — skipping")
 			continue

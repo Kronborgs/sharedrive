@@ -128,7 +128,17 @@ func (s *RestoreService) restoreRecord(
 	}
 
 	if !rec.IsFolder {
-		entry, ok := index["files/"+rec.ID]
+		// v2 archives store the blob at ArchivePath (real folder/filename);
+		// v1 archives use "files/{uuid}".  Try ArchivePath first, fall back.
+		blobKey := "files/" + rec.ID
+		if rec.ArchivePath != "" {
+			blobKey = rec.ArchivePath
+		}
+		entry, ok := index[blobKey]
+		if !ok && rec.ArchivePath != "" {
+			// Fallback for safety (e.g. hand-edited archive).
+			entry, ok = index["files/"+rec.ID]
+		}
 		if !ok {
 			_, _ = s.db.Exec(ctx, `DELETE FROM files WHERE id = $1`, rec.ID)
 			return false, fmt.Errorf("blob missing for file %s", rec.ID)

@@ -3,7 +3,7 @@ package backup
 import "time"
 
 // archiveVersion is embedded in manifest.json for future format migrations.
-const archiveVersion = "1"
+const archiveVersion = "2"
 
 // archiveManifest is the first JSON entry in every .shdbak archive.
 type archiveManifest struct {
@@ -27,4 +27,5 @@ type archiveFileRecord struct {
 	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
+	ArchivePath    string     `json:"archive_path,omitempty"`
 }

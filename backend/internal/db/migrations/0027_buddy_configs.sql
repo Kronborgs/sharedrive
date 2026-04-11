@@ -1,3 +1,4 @@
+-- +goose Up
 -- Per-user buddy backup configuration.
 -- Each user can configure a peer Sharedrive they push to (peer_url / peer_user_id / peer_token_enc)
 -- and generate a receive token so a peer can push archives to them.

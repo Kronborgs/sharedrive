@@ -42,9 +42,15 @@ type Config struct {
 	PreviewCacheDir string `mapstructure:"PREVIEW_CACHE_DIR"`
 
 	// Security secrets — all required, no defaults
-	SessionSecret     string `mapstructure:"SESSION_SECRET"`
-	BackupHMACSecret  string `mapstructure:"BACKUP_HMAC_SECRET"`
-	BackupWrapKey     string `mapstructure:"BACKUP_WRAP_KEY"` // 32 hex bytes; wraps per-user ZIP key for scheduled backups
+	SessionSecret    string `mapstructure:"SESSION_SECRET"`
+	BackupHMACSecret string `mapstructure:"BACKUP_HMAC_SECRET"`
+	BackupWrapKey    string `mapstructure:"BACKUP_WRAP_KEY"` // 32 hex bytes; wraps per-user ZIP key for scheduled backups
+
+	// Buddy backup — secondary peer Sharedrive
+	BuddyURL           string `mapstructure:"BUDDY_URL"`
+	BuddySecret        string `mapstructure:"BUDDY_SECRET"`         // sent when pushing to peer
+	BuddyReceiveSecret string `mapstructure:"BUDDY_RECEIVE_SECRET"` // required to accept pushes from peer
+
 	TOTPEncryptKey    string `mapstructure:"TOTP_ENCRYPT_KEY"`
 	DeviceTrustSecret string `mapstructure:"DEVICE_TRUST_SECRET"`
 
@@ -108,6 +114,9 @@ func Load() (*Config, error) {
 		"SESSION_SECRET",
 		"BACKUP_HMAC_SECRET",
 		"BACKUP_WRAP_KEY",
+		"BUDDY_URL",
+		"BUDDY_SECRET",
+		"BUDDY_RECEIVE_SECRET",
 		"TOTP_ENCRYPT_KEY",
 		"DEVICE_TRUST_SECRET",
 		"SMTP_HOST",
@@ -165,20 +174,23 @@ func Load() (*Config, error) {
 	// Override with direct env reads — viper's AutomaticEnv+Unmarshal does not
 	// reliably populate fields that have no SetDefault when using uppercase keys.
 	envStrings := map[*string]string{
-		&cfg.SessionSecret:     "SESSION_SECRET",
-		&cfg.BackupHMACSecret:  "BACKUP_HMAC_SECRET",
-		&cfg.TOTPEncryptKey:    "TOTP_ENCRYPT_KEY",
-		&cfg.DeviceTrustSecret: "DEVICE_TRUST_SECRET",
-		&cfg.PostgresPassword:  "POSTGRES_PASSWORD",
-		&cfg.PostgresHost:      "POSTGRES_HOST",
-		&cfg.PostgresDB:        "POSTGRES_DB",
-		&cfg.PostgresUser:      "POSTGRES_USER",
-		&cfg.RedisAddr:         "REDIS_ADDR",
-		&cfg.AppBaseURL:        "APP_BASE_URL",
-		&cfg.SMTPHost:          "SMTP_HOST",
-		&cfg.SMTPUser:          "SMTP_USER",
-		&cfg.SMTPPassword:      "SMTP_PASSWORD",
-		&cfg.SMTPFrom:          "SMTP_FROM",
+		&cfg.SessionSecret:      "SESSION_SECRET",
+		&cfg.BackupHMACSecret:   "BACKUP_HMAC_SECRET",
+		&cfg.TOTPEncryptKey:     "TOTP_ENCRYPT_KEY",
+		&cfg.DeviceTrustSecret:  "DEVICE_TRUST_SECRET",
+		&cfg.PostgresPassword:   "POSTGRES_PASSWORD",
+		&cfg.PostgresHost:       "POSTGRES_HOST",
+		&cfg.PostgresDB:         "POSTGRES_DB",
+		&cfg.PostgresUser:       "POSTGRES_USER",
+		&cfg.RedisAddr:          "REDIS_ADDR",
+		&cfg.AppBaseURL:         "APP_BASE_URL",
+		&cfg.SMTPHost:           "SMTP_HOST",
+		&cfg.SMTPUser:           "SMTP_USER",
+		&cfg.SMTPPassword:       "SMTP_PASSWORD",
+		&cfg.SMTPFrom:           "SMTP_FROM",
+		&cfg.BuddyURL:           "BUDDY_URL",
+		&cfg.BuddySecret:        "BUDDY_SECRET",
+		&cfg.BuddyReceiveSecret: "BUDDY_RECEIVE_SECRET",
 	}
 	for ptr, key := range envStrings {
 		if val := os.Getenv(key); val != "" {

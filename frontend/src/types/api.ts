@@ -198,6 +198,25 @@ export interface RestoreResult {
   skipped: number
 }
 
+export interface BackupConfig {
+  tertiary_enabled: boolean
+  buddy_push_enabled: boolean
+  buddy_receive_enabled: boolean
+}
+
+export interface TertiaryArchive {
+  filename: string
+  size_bytes: number
+  created_at: string
+}
+
+export interface BuddyArchive {
+  filename: string
+  sender_user_id: string
+  size_bytes: number
+  received_at: string
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export interface AuditLog {

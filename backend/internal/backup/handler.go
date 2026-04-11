@@ -6,8 +6,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 
@@ -16,27 +19,54 @@ import (
 	"github.com/yourname/privatedrive/internal/middleware"
 )
 
-// Handler is the thin HTTP layer for backup operations.
-// All business logic lives in PasswordService, Service, and RestoreService.
+// Handler is the thin HTTP layer for all backup operations.
 type Handler struct {
 	passwords *PasswordService
 	backups   *Service
 	restores  *RestoreService
+	tertiary  *TertiaryService
+	buddy     *BuddyService
+
+	buddyURL           string // BUDDY_URL — peer to push to
+	buddySecret        string // BUDDY_SECRET — auth token sent to peer
+	buddyReceiveSecret string // BUDDY_RECEIVE_SECRET — token peer must send us
+	tertiaryEnabled    bool   // true when BACKUPS_ROOT is configured
 }
 
-// NewHandler creates a backup Handler. The db and storage instances are
-// shared across all three services.
-func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey string) *Handler {
+// NewHandler creates a backup Handler.
+func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot, buddyURL, buddySecret, buddyReceiveSecret string) *Handler {
+	svc := NewService(db, storage)
 	return &Handler{
-		passwords: NewPasswordService(db, wrapKey),
-		backups:   NewService(db, storage),
-		restores:  NewRestoreService(db, storage),
+		passwords:          NewPasswordService(db, wrapKey),
+		backups:            svc,
+		restores:           NewRestoreService(db, storage),
+		tertiary:           NewTertiaryService(backupsRoot, svc),
+		buddy:              NewBuddyService(backupsRoot, svc),
+		buddyURL:           buddyURL,
+		buddySecret:        buddySecret,
+		buddyReceiveSecret: buddyReceiveSecret,
+		tertiaryEnabled:    backupsRoot != "",
 	}
+}
+
+// ── GET /api/v1/backup/config ────────────────────────────────────────────────
+
+type backupConfigResponse struct {
+	TertiaryEnabled     bool `json:"tertiary_enabled"`
+	BuddyPushEnabled    bool `json:"buddy_push_enabled"`
+	BuddyReceiveEnabled bool `json:"buddy_receive_enabled"`
+}
+
+func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
+	httputil.Respond(w, http.StatusOK, backupConfigResponse{
+		TertiaryEnabled:     h.tertiaryEnabled,
+		BuddyPushEnabled:    h.buddyURL != "" && h.buddySecret != "",
+		BuddyReceiveEnabled: h.buddyReceiveSecret != "",
+	})
 }
 
 // ── GET /api/v1/backup/password ───────────────────────────────────────────────
 
-// GetPassword returns the active backup-password status (no secret material).
 func (h *Handler) GetPassword(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := middleware.UserFromContext(ctx)
@@ -54,8 +84,6 @@ func (h *Handler) GetPassword(w http.ResponseWriter, r *http.Request) {
 
 // ── POST /api/v1/backup/password ─────────────────────────────────────────────
 
-// GeneratePassword creates a new backup token, revoking any existing one.
-// The raw token is returned exactly once and must be saved by the user.
 func (h *Handler) GeneratePassword(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := middleware.UserFromContext(ctx)
@@ -73,7 +101,6 @@ func (h *Handler) GeneratePassword(w http.ResponseWriter, r *http.Request) {
 
 // ── DELETE /api/v1/backup/password ───────────────────────────────────────────
 
-// RevokePassword revokes the active backup password without creating a new one.
 func (h *Handler) RevokePassword(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := middleware.UserFromContext(ctx)
@@ -96,11 +123,12 @@ func (h *Handler) RevokePassword(w http.ResponseWriter, r *http.Request) {
 // ── POST /api/v1/backup/export ────────────────────────────────────────────────
 
 type exportRequest struct {
-	Token string `json:"token"`
+	Token     string   `json:"token"`
+	FolderIDs []string `json:"folder_ids,omitempty"` // nil/empty = export all
 }
 
-// Export streams an AES-256 encrypted .shdbak archive of all the user's files.
-// The request body must contain {"token": "<raw backup token>"}.
+// Export streams an AES-256 encrypted .shdbak archive.
+// Optional folder_ids restricts scope to the listed folders (recursive).
 func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := middleware.UserFromContext(ctx)
@@ -115,6 +143,12 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	folderIDs, err := parseUUIDs(req.FolderIDs)
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid folder_id: "+err.Error())
+		return
+	}
+
 	if !h.passwords.Verify(ctx, u.ID, req.Token) {
 		httputil.RespondError(w, http.StatusForbidden, "invalid backup token")
 		return
@@ -122,13 +156,12 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	h.passwords.TouchLastUsed(ctx, u.ID)
 
 	now := time.Now().UTC()
-	filename := fmt.Sprintf("sharedrive-backup-%s.shdbak", now.Format("2006-01-02"))
+	fname := fmt.Sprintf("sharedrive-backup-%s.shdbak", now.Format("2006-01-02"))
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, fname))
 	w.Header().Set("Cache-Control", "private, no-store")
 
-	if err := h.backups.Export(ctx, w, u.ID, req.Token); err != nil {
-		// Headers already sent — status code cannot change. Log only.
+	if err := h.backups.Export(ctx, w, u.ID, req.Token, folderIDs); err != nil {
 		log.Error().Err(err).Str("user_id", u.ID.String()).Msg("backup export")
 	}
 }
@@ -137,9 +170,6 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 
 const maxRestoreSize = 10 << 30 // 10 GB
 
-// Restore reads a .shdbak archive from a multipart upload and restores all
-// files to the current user's account. Existing files (matched by ID) are
-// skipped — the operation is fully idempotent.
 func (h *Handler) Restore(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := middleware.UserFromContext(ctx)
@@ -159,7 +189,6 @@ func (h *Handler) Restore(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "token is required")
 		return
 	}
-
 	if !h.passwords.Verify(ctx, u.ID, token) {
 		httputil.RespondError(w, http.StatusForbidden, "invalid backup token")
 		return
@@ -172,16 +201,12 @@ func (h *Handler) Restore(w http.ResponseWriter, r *http.Request) {
 	}
 	defer uploadedFile.Close()
 
-	// yeka/zip.NewReader requires io.ReaderAt + size; buffer to a temp file.
 	tmp, err := os.CreateTemp("", "shdbak-restore-*")
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	defer func() {
-		tmp.Close()
-		os.Remove(tmp.Name())
-	}()
+	defer func() { tmp.Close(); os.Remove(tmp.Name()) }()
 
 	size, err := io.Copy(tmp, uploadedFile)
 	if err != nil {
@@ -196,6 +221,288 @@ func (h *Handler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.passwords.TouchLastUsed(ctx, u.ID)
-
 	httputil.Respond(w, http.StatusOK, result)
+}
+
+// ── Tertiary backup ───────────────────────────────────────────────────────────
+
+type tertiaryStoreRequest struct {
+	Token     string   `json:"token"`
+	FolderIDs []string `json:"folder_ids,omitempty"`
+}
+
+func (h *Handler) StoreTertiary(w http.ResponseWriter, r *http.Request) {
+	if !h.tertiaryEnabled {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "tertiary backup not configured")
+		return
+	}
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req tertiaryStoreRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Token == "" {
+		httputil.RespondError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+
+	folderIDs, err := parseUUIDs(req.FolderIDs)
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid folder_id: "+err.Error())
+		return
+	}
+
+	if !h.passwords.Verify(ctx, u.ID, req.Token) {
+		httputil.RespondError(w, http.StatusForbidden, "invalid backup token")
+		return
+	}
+
+	archive, err := h.tertiary.Store(ctx, u.ID, req.Token, folderIDs)
+	if err != nil {
+		log.Error().Err(err).Str("user_id", u.ID.String()).Msg("tertiary store")
+		httputil.RespondError(w, http.StatusInternalServerError, "tertiary store failed")
+		return
+	}
+	h.passwords.TouchLastUsed(ctx, u.ID)
+	httputil.Respond(w, http.StatusCreated, archive)
+}
+
+func (h *Handler) ListTertiary(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if !h.tertiaryEnabled {
+		httputil.Respond(w, http.StatusOK, []TertiaryArchive{})
+		return
+	}
+	archives, err := h.tertiary.List(ctx, u.ID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, archives)
+}
+
+func (h *Handler) DownloadTertiary(w http.ResponseWriter, r *http.Request) {
+	if !h.tertiaryEnabled {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "tertiary backup not configured")
+		return
+	}
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	filename := chi.URLParam(r, "filename")
+	rc, size, err := h.tertiary.Download(u.ID, filename)
+	if err != nil {
+		if os.IsNotExist(err) || strings.Contains(err.Error(), "invalid filename") {
+			httputil.RespondError(w, http.StatusNotFound, "not found")
+			return
+		}
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rc.Close()
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
+	w.Header().Set("Cache-Control", "private, no-store")
+	io.Copy(w, rc) //nolint:errcheck
+}
+
+func (h *Handler) DeleteTertiary(w http.ResponseWriter, r *http.Request) {
+	if !h.tertiaryEnabled {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "tertiary backup not configured")
+		return
+	}
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	filename := chi.URLParam(r, "filename")
+	if err := h.tertiary.Delete(u.ID, filename); err != nil {
+		if strings.Contains(err.Error(), "invalid filename") {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid filename")
+			return
+		}
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── Buddy backup ──────────────────────────────────────────────────────────────
+
+type buddyPushRequest struct {
+	Token     string   `json:"token"`
+	FolderIDs []string `json:"folder_ids,omitempty"`
+}
+
+func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
+	if h.buddyURL == "" || h.buddySecret == "" {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "buddy backup not configured")
+		return
+	}
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req buddyPushRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Token == "" {
+		httputil.RespondError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+
+	folderIDs, err := parseUUIDs(req.FolderIDs)
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid folder_id: "+err.Error())
+		return
+	}
+
+	if !h.passwords.Verify(ctx, u.ID, req.Token) {
+		httputil.RespondError(w, http.StatusForbidden, "invalid backup token")
+		return
+	}
+
+	if err := h.buddy.Push(ctx, u.ID, req.Token, folderIDs, h.buddyURL, h.buddySecret); err != nil {
+		log.Error().Err(err).Str("user_id", u.ID.String()).Msg("buddy push")
+		httputil.RespondError(w, http.StatusBadGateway, "buddy push failed: "+err.Error())
+		return
+	}
+	h.passwords.TouchLastUsed(ctx, u.ID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// BuddyReceive accepts an archive pushed from a peer. Authentication is via
+// a pre-shared secret in the Authorization header — no user session required.
+func (h *Handler) BuddyReceive(w http.ResponseWriter, r *http.Request) {
+	if h.buddyReceiveSecret == "" {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "buddy receive not configured")
+		return
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") || auth[7:] != h.buddyReceiveSecret {
+		httputil.RespondError(w, http.StatusUnauthorized, "invalid buddy secret")
+		return
+	}
+
+	const maxBuddySize = 10 << 30
+	r.Body = http.MaxBytesReader(w, r.Body, maxBuddySize)
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid multipart form")
+		return
+	}
+
+	senderID, err := uuid.Parse(r.FormValue("user_id"))
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid user_id")
+		return
+	}
+
+	archiveFile, _, err := r.FormFile("file")
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer archiveFile.Close()
+
+	archive, err := h.buddy.Receive(r.Context(), senderID, archiveFile)
+	if err != nil {
+		log.Error().Err(err).Str("sender_user_id", senderID.String()).Msg("buddy receive")
+		httputil.RespondError(w, http.StatusInternalServerError, "receive failed")
+		return
+	}
+	httputil.Respond(w, http.StatusCreated, archive)
+}
+
+func (h *Handler) ListBuddyReceived(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	archives, err := h.buddy.ListReceived(u.ID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, archives)
+}
+
+func (h *Handler) DownloadBuddyReceived(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	filename := chi.URLParam(r, "filename")
+	rc, size, err := h.buddy.DownloadReceived(u.ID, filename)
+	if err != nil {
+		if os.IsNotExist(err) || strings.Contains(err.Error(), "invalid filename") {
+			httputil.RespondError(w, http.StatusNotFound, "not found")
+			return
+		}
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rc.Close()
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
+	w.Header().Set("Cache-Control", "private, no-store")
+	io.Copy(w, rc) //nolint:errcheck
+}
+
+func (h *Handler) DeleteBuddyReceived(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	filename := chi.URLParam(r, "filename")
+	if err := h.buddy.DeleteReceived(u.ID, filename); err != nil {
+		if strings.Contains(err.Error(), "invalid filename") {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid filename")
+			return
+		}
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+// parseUUIDs converts a slice of UUID strings to []uuid.UUID.
+func parseUUIDs(strs []string) ([]uuid.UUID, error) {
+	if len(strs) == 0 {
+		return nil, nil
+	}
+	out := make([]uuid.UUID, 0, len(strs))
+	for _, s := range strs {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, nil
 }

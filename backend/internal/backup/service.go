@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 
@@ -31,24 +32,54 @@ func NewService(db *pgxpool.Pool, storage *files.Storage) *Service {
 // owned by userID into w.  The archive password is derived from rawToken via
 // HKDF-SHA256 — the token is never stored in the archive.
 //
+// folderIDs restricts the archive to the specified folders and all their
+// recursive descendants; an empty slice exports every file.
+//
 // Missing blobs are skipped with a warning; they do not abort the export so
 // partial archives can still be restored.
-func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, rawToken string) error {
+func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, rawToken string, folderIDs []uuid.UUID) error {
 	zipPwd, err := ZipPassword(rawToken)
 	if err != nil {
 		return fmt.Errorf("export: derive zip password: %w", err)
 	}
 
-	rows, err := s.db.Query(ctx,
-		`SELECT id, parent_id, owner_id, is_folder, name, mime_type,
-		        size_bytes, checksum_sha256, deleted_at, created_at, updated_at
-		 FROM files
-		 WHERE owner_id = $1 AND deleted_at IS NULL
-		 ORDER BY is_folder DESC, created_at`,
-		userID,
-	)
-	if err != nil {
-		return fmt.Errorf("export: query: %w", err)
+	var rows pgx.Rows
+	if len(folderIDs) == 0 {
+		// Export everything owned by this user.
+		var err error
+		rows, err = s.db.Query(ctx,
+			`SELECT id, parent_id, owner_id, is_folder, name, mime_type,
+			        size_bytes, checksum_sha256, deleted_at, created_at, updated_at
+			 FROM files
+			 WHERE owner_id = $1 AND deleted_at IS NULL
+			 ORDER BY is_folder DESC, created_at`,
+			userID,
+		)
+		if err != nil {
+			return fmt.Errorf("export: query: %w", err)
+		}
+	} else {
+		// Export only the selected folders and their entire recursive subtrees.
+		var err error
+		rows, err = s.db.Query(ctx,
+			`WITH RECURSIVE subtree AS (
+			   SELECT id FROM files
+			   WHERE id = ANY($2) AND owner_id = $1 AND deleted_at IS NULL
+			   UNION ALL
+			   SELECT f.id FROM files f
+			   JOIN subtree s ON f.parent_id = s.id
+			   WHERE f.deleted_at IS NULL
+			 )
+			 SELECT f.id, f.parent_id, f.owner_id, f.is_folder, f.name, f.mime_type,
+			        f.size_bytes, f.checksum_sha256, f.deleted_at, f.created_at, f.updated_at
+			 FROM files f
+			 JOIN subtree s ON f.id = s.id
+			 ORDER BY f.is_folder DESC, f.created_at`,
+			userID, folderIDs,
+		)
+		if err != nil {
+			return fmt.Errorf("export: query (selective): %w", err)
+		}
 	}
 	defer rows.Close()
 

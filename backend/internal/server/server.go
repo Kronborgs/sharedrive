@@ -96,7 +96,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
-		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey),
+		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, cfg.BackupsRoot, cfg.BuddyURL, cfg.BuddySecret, cfg.BuddyReceiveSecret),
 		auditSvc:       auditSvc,
 		ioTracker:      ioTracker,
 	}
@@ -287,6 +287,9 @@ func (s *Server) buildRouter() *chi.Mux {
 	// ── Public shared-link endpoint (no auth) ─────────────────────────────
 	r.Get("/api/v1/public/shared/{token}", s.handleSharedByLink)
 
+	// ── Buddy backup receive (shared-secret auth, no user session) ─────────
+	r.Post("/api/v1/backup/buddy/receive", s.backupHandler.BuddyReceive)
+
 	// ── Authenticated API routes ───────────────────────────────────────────
 	r.Group(func(r chi.Router) {
 		r.Use(s.authHandler.SessionMiddleware)
@@ -342,11 +345,22 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/v1/shares/{id}", s.handleRevokeShare)
 
 		// Backup
+		r.Get("/api/v1/backup/config", s.backupHandler.GetConfig)
 		r.Get("/api/v1/backup/password", s.backupHandler.GetPassword)
 		r.Post("/api/v1/backup/password", s.backupHandler.GeneratePassword)
 		r.Delete("/api/v1/backup/password", s.backupHandler.RevokePassword)
 		r.Post("/api/v1/backup/export", s.backupHandler.Export)
 		r.Post("/api/v1/backup/restore", s.backupHandler.Restore)
+		// Tertiary backup (server-side storage)
+		r.Post("/api/v1/backup/tertiary", s.backupHandler.StoreTertiary)
+		r.Get("/api/v1/backup/tertiary", s.backupHandler.ListTertiary)
+		r.Get("/api/v1/backup/tertiary/{filename}", s.backupHandler.DownloadTertiary)
+		r.Delete("/api/v1/backup/tertiary/{filename}", s.backupHandler.DeleteTertiary)
+		// Buddy backup (push to peer)
+		r.Post("/api/v1/backup/buddy/push", s.backupHandler.BuddyPush)
+		r.Get("/api/v1/backup/buddy/received", s.backupHandler.ListBuddyReceived)
+		r.Get("/api/v1/backup/buddy/received/{filename}", s.backupHandler.DownloadBuddyReceived)
+		r.Delete("/api/v1/backup/buddy/received/{filename}", s.backupHandler.DeleteBuddyReceived)
 
 		// SSE (admin-in-account banner)
 		r.Get("/api/v1/me/events", s.handleSSE)

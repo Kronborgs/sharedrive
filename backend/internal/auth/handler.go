@@ -573,13 +573,12 @@ type uploadTokenData struct {
 	UserID   string `json:"user_id"`
 	FolderID string `json:"folder_id,omitempty"`
 	Purpose  string `json:"purpose"` // "tus_upload"
-	IP       string `json:"ip,omitempty"`
 }
 
-// IssueUploadToken generates a short-lived, scoped, single-use token for
-// cross-subdomain TUS upload auth. The token is bound to the user, an
-// optional folder, and the client IP.
-func (h *Handler) IssueUploadToken(ctx context.Context, userID, folderID, ip string) (string, error) {
+// IssueUploadToken generates a short-lived, scoped token for cross-subdomain
+// TUS upload auth. The token is bound to the user and an optional folder.
+// It survives the full upload (POST create + PATCH data) within the TTL.
+func (h *Handler) IssueUploadToken(ctx context.Context, userID, folderID string) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("upload token: generate: %w", err)
@@ -590,7 +589,6 @@ func (h *Handler) IssueUploadToken(ctx context.Context, userID, folderID, ip str
 		UserID:   userID,
 		FolderID: folderID,
 		Purpose:  "tus_upload",
-		IP:       ip,
 	}
 	encoded, _ := json.Marshal(data)
 	if err := h.rdb.Set(ctx, uploadTokenKey+token, encoded, uploadTokenTTL).Err(); err != nil {
@@ -614,8 +612,7 @@ func (h *Handler) HandleIssueUploadToken(w http.ResponseWriter, r *http.Request)
 	// Body is optional; if absent, folder_id is empty (root).
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	ip := middleware.ClientIP(r)
-	token, err := h.IssueUploadToken(r.Context(), actor.ID.String(), body.FolderID, ip)
+	token, err := h.IssueUploadToken(r.Context(), actor.ID.String(), body.FolderID)
 	if err != nil {
 		log.Error().Err(err).Msg("issue upload token")
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
@@ -640,8 +637,9 @@ func (h *Handler) UploadTokenMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Use GetDel for single-use semantics — token is consumed on first use.
-		raw, err := h.rdb.GetDel(r.Context(), uploadTokenKey+token).Result()
+		// Use Get (not GetDel) because TUS uploads span multiple HTTP requests
+		// (POST to create + PATCH to send data). The token expires via TTL.
+		raw, err := h.rdb.Get(r.Context(), uploadTokenKey+token).Result()
 		if err != nil {
 			next.ServeHTTP(w, r)
 			return
@@ -657,15 +655,6 @@ func (h *Handler) UploadTokenMiddleware(next http.Handler) http.Handler {
 		if data.Purpose != "tus_upload" {
 			next.ServeHTTP(w, r)
 			return
-		}
-
-		// Optional IP binding — if the token was issued with an IP, enforce it.
-		if data.IP != "" {
-			clientIP := middleware.ClientIP(r)
-			if clientIP != data.IP {
-				next.ServeHTTP(w, r)
-				return
-			}
 		}
 
 		u, err := user.FindByID(r.Context(), h.db, data.UserID)

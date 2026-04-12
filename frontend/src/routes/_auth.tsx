@@ -6,7 +6,8 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { AdminBanner } from '@/components/layout/AdminBanner'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
-import { PlaylistProvider } from '@/lib/playlist-context'
+import { PlaylistProvider, usePlaylist } from '@/lib/playlist-context'
+import { cn } from '@/lib/utils'
 
 // All authenticated routes live under this layout route.
 // The _auth prefix means this is a pathless layout route.
@@ -26,7 +27,16 @@ export const Route = createFileRoute('/_auth')({
 })
 
 function AuthLayout() {
+  return (
+    <PlaylistProvider>
+      <AuthLayoutContent />
+    </PlaylistProvider>
+  )
+}
+
+function AuthLayoutContent() {
   const { user, refetch } = useAuth()
+  const { activePlaylistId } = usePlaylist()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   if (!user) {
@@ -36,7 +46,6 @@ function AuthLayout() {
   const needsTOTPSetup = !!user.force_totp_setup && !user.totp_enabled
 
   return (
-    <PlaylistProvider>
     <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-[#0f1117]">
       {/* Admin assistance banner — fixed at top */}
       <AdminBanner />
@@ -47,7 +56,7 @@ function AuthLayout() {
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header user={user} onMenuToggle={() => setSidebarOpen(v => !v)} />
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className={cn('flex-1 overflow-y-auto p-6', activePlaylistId ? 'pb-24 md:pb-6' : '')}>
           <Outlet />
         </main>
         <Footer />
@@ -69,6 +78,5 @@ function AuthLayout() {
         </div>
       )}
     </div>
-    </PlaylistProvider>
   )
 }

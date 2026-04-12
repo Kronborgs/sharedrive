@@ -97,6 +97,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
   const [showWebDAV, setShowWebDAV] = useState(false)
   const [showTOTP, setShowTOTP] = useState(false)
   const [playerExpanded, setPlayerExpanded] = useState(true)
+  const [mobilePlayerOpen, setMobilePlayerOpen] = useState(false)
 
   const {
     activePlaylistId,
@@ -144,7 +145,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
         <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={onClose} />
       )}
       <aside className={[
-        'flex flex-col w-60 shrink-0 bg-white dark:bg-[#1a1d27] border-r border-zinc-200 dark:border-[#2d3148] h-screen overflow-y-auto',
+        'flex flex-col w-60 shrink-0 bg-white dark:bg-[#1a1d27] border-r border-zinc-200 dark:border-[#2d3148] h-screen',
         'fixed inset-y-0 left-0 z-40 transition-transform duration-200',
         isOpen ? 'translate-x-0' : '-translate-x-full',
         'md:relative md:translate-x-0 md:z-auto',
@@ -154,6 +155,9 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
         <div className="px-4 h-14 flex items-center border-b border-zinc-200 dark:border-[#2d3148] shrink-0">
           <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
         </div>
+
+        {/* Scrollable middle — nav, player, admin nav */}
+        <div className="flex-1 overflow-y-auto min-h-0">
 
         {/* Main nav */}
         <nav className="px-2 py-3 space-y-0.5">
@@ -325,8 +329,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
           </>
         )}
 
-        {/* Spacer */}
-        <div className="flex-1" />
+        </div>{/* /scrollable middle */}
 
         {/* Quota */}
         {quota > 0 && (
@@ -391,6 +394,188 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
           />
         )}
       </aside>
+
+      {/* ── Mobile bottom player bar ─────────────────────────── */}
+      {activePlaylistId && (
+        <>
+          {/* Expanded sheet backdrop */}
+          {mobilePlayerOpen && (
+            <div
+              className="md:hidden fixed inset-0 z-[55] bg-black/60"
+              onClick={() => setMobilePlayerOpen(false)}
+            />
+          )}
+
+          {/* Expanded full player sheet */}
+          {mobilePlayerOpen && (
+            <div
+              className="md:hidden fixed bottom-0 left-0 right-0 z-[60] bg-white dark:bg-[#1a1d27] rounded-t-2xl border-t border-zinc-200 dark:border-[#2d3148] shadow-2xl flex flex-col"
+              style={{ maxHeight: '85dvh' }}
+            >
+              {/* Sheet header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148] shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Music size={14} className="text-brand-500 shrink-0" />
+                  <span className="font-semibold text-sm text-zinc-900 dark:text-slate-100 truncate">{activePlaylistName ?? 'Playlist'}</span>
+                </div>
+                <button
+                  onClick={() => setMobilePlayerOpen(false)}
+                  className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 shrink-0"
+                >
+                  <ChevronDown size={22} />
+                </button>
+              </div>
+
+              {/* Controls */}
+              <div className="px-4 py-3 shrink-0">
+                <p className="text-sm font-semibold text-zinc-900 dark:text-slate-100 truncate mb-3">
+                  {currentTrack?.name ?? '—'}
+                </p>
+                <div
+                  className="w-full h-1.5 bg-zinc-200 dark:bg-[#2d3148] rounded-full cursor-pointer mb-1"
+                  onClick={handleSeekClick}
+                >
+                  <div
+                    className="h-full bg-brand-500 rounded-full"
+                    style={{ width: duration ? `${(progress / duration) * 100}%` : '0%' }}
+                  />
+                </div>
+                <div className="flex justify-between mb-4">
+                  <span className="text-[10px] text-zinc-400 tabular-nums">{fmt(progress)}</span>
+                  <span className="text-[10px] text-zinc-400 tabular-nums">{fmt(duration)}</span>
+                </div>
+                <div className="flex items-center justify-center gap-8 mb-4">
+                  <button
+                    onClick={prev}
+                    disabled={currentIndex === 0}
+                    className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
+                  >
+                    <SkipBack size={26} />
+                  </button>
+                  <button
+                    onClick={togglePlay}
+                    disabled={!currentTrack}
+                    className="p-3.5 rounded-full bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-30 transition-colors"
+                  >
+                    {isPlaying ? <Pause size={26} /> : <Play size={26} />}
+                  </button>
+                  <button
+                    onClick={next}
+                    disabled={currentIndex >= tracks.length - 1}
+                    className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
+                  >
+                    <SkipForward size={26} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Volume2 size={16} className="text-zinc-400 shrink-0" />
+                  <input
+                    type="range" min="0" max="1" step="0.02"
+                    value={volume}
+                    onChange={e => setVolume(parseFloat(e.target.value))}
+                    className="flex-1 accent-brand-600"
+                  />
+                </div>
+              </div>
+
+              {/* Track list */}
+              <div className="flex-1 overflow-y-auto border-t border-zinc-100 dark:border-[#2d3148] divide-y divide-zinc-50 dark:divide-[#2d3148]">
+                {tracks.map((track, i) => (
+                  <div
+                    key={track.id}
+                    className={cn(
+                      'flex items-center gap-2 px-4 py-3 group',
+                      i === currentIndex && 'bg-brand-50 dark:bg-brand-900/20',
+                    )}
+                  >
+                    <button
+                      onClick={() => { jumpTo(i); setMobilePlayerOpen(false) }}
+                      className="flex-1 min-w-0 flex items-center gap-3 text-left"
+                    >
+                      <span className="text-xs text-zinc-400 tabular-nums w-5 shrink-0 text-right">{i + 1}</span>
+                      <span className={cn(
+                        'text-sm truncate',
+                        i === currentIndex
+                          ? 'font-semibold text-brand-600 dark:text-brand-400'
+                          : 'text-zinc-700 dark:text-slate-300',
+                      )}>
+                        {track.name}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => { void removeTrack(track.id) }}
+                      className="p-1.5 text-zinc-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Mini bottom bar */}
+          <div
+            className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-[#1a1d27]/95 backdrop-blur-sm border-t border-zinc-200 dark:border-[#2d3148] shadow-lg"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+          >
+            {/* Progress strip */}
+            <div
+              className="h-0.5 bg-zinc-200 dark:bg-[#2d3148] cursor-pointer"
+              onClick={handleSeekClick}
+            >
+              <div
+                className="h-full bg-brand-500"
+                style={{ width: duration ? `${(progress / duration) * 100}%` : '0%' }}
+              />
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-2">
+              {/* Track info — tap to expand */}
+              <button
+                onClick={() => setMobilePlayerOpen(v => !v)}
+                className="flex-1 min-w-0 flex items-center gap-2.5 text-left"
+              >
+                <div className="w-9 h-9 rounded-lg bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center shrink-0">
+                  <Music size={16} className="text-brand-600 dark:text-brand-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-zinc-900 dark:text-slate-100 truncate">
+                    {currentTrack?.name ?? activePlaylistName}
+                  </p>
+                  <p className="text-[10px] text-zinc-400 truncate">{activePlaylistName}</p>
+                </div>
+              </button>
+              <button
+                onClick={prev}
+                disabled={currentIndex === 0}
+                className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors shrink-0"
+              >
+                <SkipBack size={18} />
+              </button>
+              <button
+                onClick={togglePlay}
+                disabled={!currentTrack}
+                className="p-2.5 rounded-full bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-30 transition-colors shrink-0"
+              >
+                {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+              </button>
+              <button
+                onClick={next}
+                disabled={currentIndex >= tracks.length - 1}
+                className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors shrink-0"
+              >
+                <SkipForward size={18} />
+              </button>
+              <button
+                onClick={clearPlaylist}
+                className="p-2 text-zinc-300 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   )
 }

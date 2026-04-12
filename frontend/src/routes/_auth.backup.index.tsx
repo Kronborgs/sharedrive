@@ -256,6 +256,11 @@ function BackupPage() {
     enabled: config?.tertiary_enabled ?? false,
   })
 
+  // Sync folder selection from persisted auto config
+  useEffect(() => {
+    if (autoConfig?.folder_ids) setTertiaryFolderIDs(autoConfig.folder_ids)
+  }, [autoConfig?.folder_ids])
+
   const { data: buddyConfig, refetch: refetchBuddyConfig } = useQuery({
     queryKey: ['backup', 'buddy-config'],
     queryFn: ({ signal }) => api.get<BuddyUserConfig>('/api/v1/backup/buddy/config', signal),
@@ -680,7 +685,15 @@ function BackupPage() {
                   : <><HardDrive size={14} /> Save</>}
               </button>
             </div>
-            <FolderPicker selectedIDs={tertiaryFolderIDs} onChange={setTertiaryFolderIDs} />
+            <FolderPicker selectedIDs={tertiaryFolderIDs} onChange={ids => {
+              setTertiaryFolderIDs(ids)
+              saveAutoConfigMutation.mutate({
+                enabled: autoConfig?.enabled ?? false,
+                interval_hours: autoConfig?.interval_hours ?? 24,
+                retention_days: autoConfig?.retention_days ?? 30,
+                folder_ids: ids,
+              })
+            }} />
 
             {tertiaryList && tertiaryList.length > 0 && (
               <div className="space-y-1 pt-1">

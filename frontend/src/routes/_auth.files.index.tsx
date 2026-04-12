@@ -32,6 +32,21 @@ interface ContextMenuState {
   y: number
 }
 
+// ─── Playlist helpers ─────────────────────────────────────────────────────────
+
+const AUDIO_EXTENSIONS = ['.mp3', '.flac', '.wav', '.aac', '.m4a', '.opus', '.ogg', '.m4b']
+const isAudioFile = (f: FileItem) =>
+  !f.is_folder && AUDIO_EXTENSIONS.some(ext => f.name.toLowerCase().endsWith(ext))
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
 function FilesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -49,6 +64,11 @@ function FilesPage() {
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
   const [moveItem, setMoveItem] = useState<FileItem | null>(null)
   const [duplicateItem, setDuplicateItem] = useState<FileItem | null>(null)
+  const [folderPlaylistJob, setFolderPlaylistJob] = useState<{
+    folder: FileItem
+    audioFiles: FileItem[]
+    existingM3u: FileItem | null
+  } | null>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
   const { uploads, startUpload, dismiss, directUpload } = useUploader(folderId)
@@ -146,6 +166,33 @@ function FilesPage() {
     else setPreviewItem(item)
   }, [navigate])
 
+  const doCreateFolderPlaylist = useCallback(async (
+    folder: FileItem,
+    audioFiles: FileItem[],
+    existingM3u: FileItem | null,
+    mode: 'all' | 'first50' | 'random50',
+  ) => {
+    const ids =
+      mode === 'random50' ? shuffleArray(audioFiles).slice(0, 50).map(f => f.id)
+      : mode === 'first50' ? audioFiles.slice(0, 50).map(f => f.id)
+      : audioFiles.map(f => f.id)
+
+    // Soft-delete any existing .m3u in the folder (moves to trash)
+    if (existingM3u) {
+      try { await api.delete(`/api/v1/files/${existingM3u.id}`) } catch { /* ignore */ }
+    }
+
+    try {
+      const result = await createPlaylist(folder.name, folder.id, ids)
+      void qc.invalidateQueries({ queryKey: ['files', folder.id] })
+      toast.success(`Playlist opdateret — ${ids.length} ${ids.length === 1 ? 'nummer' : 'numre'}`)
+      setFolderPlaylistJob(null)
+      window.dispatchEvent(new CustomEvent('open-preview', { detail: { id: result.id } }))
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Kunne ikke oprette playlist')
+    }
+  }, [qc])
+
   const handleContextMenuAction = useCallback((action: ContextAction, item: FileItem) => {
     switch (action) {
       case 'open': handleOpen(item); break
@@ -194,8 +241,32 @@ function FilesPage() {
         void addToBackup()
         break
       }
+      case 'playlist': {
+        if (!item.is_folder) break
+        void (async () => {
+          try {
+            const contents = await api.get<FileItem[]>(`/api/v1/files?parent_id=${item.id}`)
+            const audio = contents.filter(isAudioFile)
+            const existingM3u = contents.find(
+              f => !f.is_folder && f.name.toLowerCase().endsWith('.m3u')
+            ) ?? null
+            if (audio.length === 0) {
+              toast.info('Ingen lydfiler fundet i denne mappe')
+              return
+            }
+            if (audio.length <= 50) {
+              await doCreateFolderPlaylist(item, audio, existingM3u, 'all')
+            } else {
+              setFolderPlaylistJob({ folder: item, audioFiles: audio, existingM3u })
+            }
+          } catch {
+            toast.error('Kunne ikke læse mappeindhold')
+          }
+        })()
+        break
+      }
     }
-  }, [handleOpen, trash, navigate, qc])
+  }, [handleOpen, trash, navigate, qc, doCreateFolderPlaylist])
 
   const items = files ?? []
   const sorted = [...items.filter(f => f.is_folder), ...items.filter(f => !f.is_folder)]
@@ -474,6 +545,53 @@ function FilesPage() {
           onConfirm={destFolderId => copyFile.mutate({ id: duplicateItem.id, destFolderId })}
           onClose={() => setDuplicateItem(null)}
         />
+      )}
+      {folderPlaylistJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setFolderPlaylistJob(null)}>
+          <div
+            className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-80 space-y-4 shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100 mb-1">Tilføj til playlist</h3>
+              <p className="text-sm text-muted">
+                Mappen “{folderPlaylistJob.folder.name}” indeholder{' '}
+                <span className="font-medium text-zinc-700 dark:text-slate-200">{folderPlaylistJob.audioFiles.length}</span>{' '}
+                lydfiler — en playlist kan max indeholde 50 numre.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => void doCreateFolderPlaylist(
+                  folderPlaylistJob.folder,
+                  folderPlaylistJob.audioFiles,
+                  folderPlaylistJob.existingM3u,
+                  'first50',
+                )}
+                className="w-full px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
+              >
+                Første 50 numre
+              </button>
+              <button
+                onClick={() => void doCreateFolderPlaylist(
+                  folderPlaylistJob.folder,
+                  folderPlaylistJob.audioFiles,
+                  folderPlaylistJob.existingM3u,
+                  'random50',
+                )}
+                className="w-full px-4 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+              >
+                Vælg 50 tilfældigt
+              </button>
+              <button
+                onClick={() => setFolderPlaylistJob(null)}
+                className="w-full px-4 py-2 rounded-lg text-sm text-muted hover:text-zinc-700 dark:hover:text-slate-200 transition-colors"
+              >
+                Annullér
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       <UploadProgress uploads={uploads} onDismiss={dismiss} directUpload={directUpload} />
 

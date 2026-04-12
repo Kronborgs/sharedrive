@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { z } from 'zod'
 import { api, createPlaylist } from '@/lib/api'
+import { usePlaylist } from '@/lib/playlist-context'
 import type { FileItem, BackupPasswordStatus, AutoBackupConfig, BackupConfig } from '@/types/api'
 import { FileList, FileGrid } from '@/components/files/FileViews'
 import { FileContextMenu, type ContextAction } from '@/components/files/FileContextMenu'
@@ -52,6 +53,7 @@ function FilesPage() {
   const navigate = useNavigate()
   const { folder: folderId = null } = Route.useSearch()
   const qc = useQueryClient()
+  const { setPlaylist } = usePlaylist()
 
   const [view, setView] = useState<ViewMode>('list')
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -187,7 +189,7 @@ function FilesPage() {
       void qc.invalidateQueries({ queryKey: ['files', folder.id] })
       toast.success(`Playlist opdateret — ${ids.length} ${ids.length === 1 ? 'nummer' : 'numre'}`)
       setFolderPlaylistJob(null)
-      window.dispatchEvent(new CustomEvent('open-preview', { detail: { id: result.id } }))
+      setPlaylist(result.id, folder.name)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Kunne ikke oprette playlist')
     }
@@ -315,7 +317,7 @@ function FilesPage() {
       toast.success(`Playlist created`)
       void qc.invalidateQueries({ queryKey: ['files', folderId] })
       setSelected(new Set())
-      window.dispatchEvent(new CustomEvent('open-preview', { detail: { id: f.id } }))
+      setPlaylist(f.id, name.trim())
     } catch {
       toast.error('Failed to create playlist')
     }

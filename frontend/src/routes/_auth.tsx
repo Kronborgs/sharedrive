@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { AdminBanner } from '@/components/layout/AdminBanner'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
+import { PlaylistProvider } from '@/lib/playlist-context'
 
 // All authenticated routes live under this layout route.
 // The _auth prefix means this is a pathless layout route.
@@ -35,6 +36,7 @@ function AuthLayout() {
   const needsTOTPSetup = !!user.force_totp_setup && !user.totp_enabled
 
   return (
+    <PlaylistProvider>
     <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-[#0f1117]">
       {/* Admin assistance banner — fixed at top */}
       <AdminBanner />
@@ -67,5 +69,6 @@ function AuthLayout() {
         </div>
       )}
     </div>
+    </PlaylistProvider>
   )
 }

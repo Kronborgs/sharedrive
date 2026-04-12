@@ -15,14 +15,18 @@ import {
   ChevronDown,
   LogOut,
   ShieldCheck,
+  Music,
+  X,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { api } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
-import { formatBytes } from '@/lib/utils'
+import { formatBytes, cn } from '@/lib/utils'
 import { WebDAVDialog } from '@/components/layout/WebDAVDialog'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
+import { usePlaylist } from '@/lib/playlist-context'
+import { PlaylistPlayer } from '@/components/files/renderers/PlaylistPlayer'
 
 interface NavItem {
   to: string
@@ -81,6 +85,8 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showWebDAV, setShowWebDAV] = useState(false)
   const [showTOTP, setShowTOTP] = useState(false)
+  const [playerOpen, setPlayerOpen] = useState(true)
+  const { activePlaylistId, activePlaylistName, clearPlaylist } = usePlaylist()
 
   const handleLogout = async () => {
     try {
@@ -158,6 +164,43 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Persistent playlist player — shown when a playlist is active */}
+      {activePlaylistId && (
+        <>
+          <div className="mx-4 border-t border-zinc-200 dark:border-[#2d3148]" />
+          <div className="shrink-0 px-2 pt-2">
+            {/* Header bar */}
+            <div className="flex items-center gap-1.5 px-2 pb-1.5">
+              <Music size={12} className="text-brand-500 shrink-0" />
+              <button
+                onClick={() => setPlayerOpen(v => !v)}
+                className="flex-1 flex items-center gap-1 text-xs font-semibold text-zinc-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors truncate text-left"
+                title={playerOpen ? 'Skjul afspiller' : 'Vis afspiller'}
+              >
+                <span className="truncate">{activePlaylistName ?? 'Playlist'}</span>
+                <ChevronDown
+                  size={11}
+                  className={cn('shrink-0 transition-transform', playerOpen ? '' : '-rotate-90')}
+                />
+              </button>
+              <button
+                onClick={clearPlaylist}
+                className="p-0.5 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0"
+                title="Luk afspiller"
+              >
+                <X size={13} />
+              </button>
+            </div>
+            {/* Player body */}
+            {playerOpen && (
+              <div className="h-[285px] rounded-lg overflow-hidden border border-zinc-200 dark:border-[#2d3148] mb-2">
+                <PlaylistPlayer fileId={activePlaylistId} />
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Quota */}
       {quota > 0 && (

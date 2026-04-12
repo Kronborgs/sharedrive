@@ -193,7 +193,7 @@ function FilesPage() {
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Kunne ikke oprette playlist')
     }
-  }, [qc])
+  }, [qc, setPlaylist])
 
   const handleContextMenuAction = useCallback((action: ContextAction, item: FileItem) => {
     switch (action) {
@@ -256,6 +256,14 @@ function FilesPage() {
               toast.info('Ingen lydfiler fundet i denne mappe')
               return
             }
+            if (activePlaylistId) {
+              const result = await addTracks(audio.map(f => f.id))
+              if (result.added > 0)
+                toast.success(`${result.added} ${result.added === 1 ? 'nummer' : 'numre'} tilføjet til playlist`)
+              else
+                toast.info('Alle numre er allerede i playlisten eller den er fuld (max 50)')
+              return
+            }
             if (audio.length <= 50) {
               await doCreateFolderPlaylist(item, audio, existingM3u, 'all')
             } else {
@@ -284,7 +292,7 @@ function FilesPage() {
         break
       }
     }
-  }, [handleOpen, trash, navigate, qc, doCreateFolderPlaylist])
+  }, [handleOpen, trash, navigate, qc, doCreateFolderPlaylist, addTracks, activePlaylistId])
 
   const items = files ?? []
   const sorted = [...items.filter(f => f.is_folder), ...items.filter(f => !f.is_folder)]
@@ -337,7 +345,7 @@ function FilesPage() {
     } catch {
       toast.error('Failed to create playlist')
     }
-  }, [selected, folderId, qc])
+  }, [selected, folderId, qc, setPlaylist])
 
   return (
     <DropZone folderId={folderId} onUploadStart={startUpload}>

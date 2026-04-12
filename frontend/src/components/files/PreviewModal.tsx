@@ -3,6 +3,7 @@ import { X, Download, AlertTriangle, Loader2, Printer } from 'lucide-react'
 import type { FileItem } from '@/types/api'
 import { PDFRenderer } from './renderers/PDFRenderer'
 import { STLRenderer } from './renderers/STLRenderer'
+import { ThreeMFRenderer } from './renderers/ThreeMFRenderer'
 import { AudioRenderer } from './renderers/AudioRenderer'
 import { PlaylistPlayer } from './renderers/PlaylistPlayer'
 import { EPUBRenderer } from './renderers/EPUBRenderer'
@@ -12,7 +13,7 @@ interface PreviewModalProps {
   onClose: () => void
 }
 
-type PreviewKind = 'pdf' | 'image' | 'text' | 'video' | 'audio' | 'stl' | 'office' | 'epub' | 'playlist' | 'unsupported'
+type PreviewKind = 'pdf' | 'image' | 'text' | 'video' | 'audio' | 'stl' | '3mf' | 'office' | 'epub' | 'playlist' | 'unsupported'
 
 const TEXT_EXTS = new Set([
   'txt', 'md', 'json', 'yaml', 'yml', 'toml', 'ini', 'xml', 'csv', 'log',
@@ -37,6 +38,7 @@ function detectKind(item: FileItem): PreviewKind {
   if (mime.startsWith('video/') || ['mp4', 'webm', 'ogg', 'mov', 'm4v'].includes(e)) return 'video'
   if (mime.startsWith('audio/') || ['mp3', 'wav', 'flac', 'aac', 'm4a', 'opus'].includes(e)) return 'audio'
   if (e === 'stl') return 'stl'
+  if (e === '3mf') return '3mf'
   if (e === 'epub') return 'epub'
   if (OFFICE_EXTS.has(e)) return 'office'
   if (mime.startsWith('text/') || mime === 'application/json' || mime === 'application/xml' || TEXT_EXTS.has(e)) return 'text'
@@ -150,6 +152,7 @@ export function PreviewModal({ item, onClose }: PreviewModalProps) {
           )}
           {kind === 'text' && <TextRenderer url={previewUrl} />}
           {kind === 'stl' && <STLRenderer url={previewUrl} />}
+          {kind === '3mf' && <ThreeMFRenderer url={previewUrl} />}
           {isPlaylist && <PlaylistPlayer fileId={item.id} />}
           {kind === 'unsupported' && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-muted">

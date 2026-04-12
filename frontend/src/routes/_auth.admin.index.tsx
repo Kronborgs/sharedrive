@@ -1,10 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api } from '@/lib/api'
 import { APP_VERSION } from '@/version'
 import type { AuditLog, PaginatedResponse } from '@/types/api'
 import { formatDate, formatBytes, formatRelative } from '@/lib/utils'
-import { ArrowUpCircle, ArrowDownCircle } from 'lucide-react'
+import { ArrowUpCircle, ArrowDownCircle, LayoutDashboard, Activity } from 'lucide-react'
 
 export const Route = createFileRoute('/_auth/admin/')({
   component: AdminDashboard,
@@ -51,6 +52,8 @@ function eventBadgeClass(eventType: string): string {
 }
 
 function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState<'overview' | 'activity'>('overview')
+
   const { data: stats } = useQuery({
     queryKey: ['admin', 'stats'],
     queryFn: ({ signal }) => api.get<DashboardStats>('/api/v1/admin/stats', signal),
@@ -87,130 +90,160 @@ function AdminDashboard() {
   const usedPct = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">
         Admin Dashboard
       </h1>
 
-      {/* Top stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Users" value={stats?.total_users ?? '…'} />
-        <StatCard label="Active Users" value={stats?.active_users ?? '…'} />
-        <StatCard label="Disk Used" value={diskTotal > 0 ? formatBytes(diskUsed) : '…'} />
-        <StatCard label="Disk Capacity" value={diskTotal > 0 ? formatBytes(diskTotal) : '…'} />
+      {/* ── Tab bar ──────────────────────────────────────────────────────── */}
+      <div className="flex border-b border-zinc-200 dark:border-[#2d3148]">
+        <button
+          type="button"
+          onClick={() => setActiveTab('overview')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'overview'
+              ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+              : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200'
+          }`}
+        >
+          <LayoutDashboard size={14} /> Overview
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('activity')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'activity'
+              ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+              : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200'
+          }`}
+        >
+          <Activity size={14} /> Recent Activity
+        </button>
       </div>
 
-      {/* Storage bar */}
-      {diskTotal > 0 && (
-        <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4">
-          <div className="flex justify-between text-xs text-muted mb-2">
-            <span>Disk usage (entire volume)</span>
-            <span>{formatBytes(diskUsed)} / {formatBytes(diskTotal)} ({usedPct}%) — {formatBytes(diskFree)} free</span>
+      {/* ── Tab 1: Overview ──────────────────────────────────────────────── */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          {/* Top stat cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard label="Total Users" value={stats?.total_users ?? '…'} />
+            <StatCard label="Active Users" value={stats?.active_users ?? '…'} />
+            <StatCard label="Disk Used" value={diskTotal > 0 ? formatBytes(diskUsed) : '…'} />
+            <StatCard label="Disk Capacity" value={diskTotal > 0 ? formatBytes(diskTotal) : '…'} />
           </div>
-          <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-brand-500 rounded-full transition-all"
-              style={{ width: `${Math.min(usedPct, 100)}%` }}
-            />
+
+          {/* Storage bar */}
+          {diskTotal > 0 && (
+            <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4">
+              <div className="flex justify-between text-xs text-muted mb-2">
+                <span>Disk usage (entire volume)</span>
+                <span>{formatBytes(diskUsed)} / {formatBytes(diskTotal)} ({usedPct}%) — {formatBytes(diskFree)} free</span>
+              </div>
+              <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-brand-500 rounded-full transition-all"
+                  style={{ width: `${Math.min(usedPct, 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Activity counts — last 30 days */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <StatCard label="Logins (30d)" value={stats?.last_30_days.logins ?? '…'} small />
+            <StatCard label="Failed logins (30d)" value={stats?.last_30_days.failed_logins ?? '…'} small accent="red" />
+            <StatCard label="Uploads (30d)" value={stats?.last_30_days.uploads ?? '…'} small accent="green" />
+            <StatCard label="Downloads (30d)" value={stats?.last_30_days.downloads ?? '…'} small accent="green" />
+            <StatCard label="Lockouts (30d)" value={stats?.last_30_days.lockouts ?? '…'} small accent="red" />
+          </div>
+
+          {/* Live I/O bandwidth panel */}
+          <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148] flex items-center justify-between">
+              <h2 className="text-sm font-medium text-zinc-900 dark:text-slate-100">Live Bandwidth</h2>
+              <span className="text-[10px] text-muted">updates every 3 s • 2-min window</span>
+            </div>
+            {activeUsers.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-muted text-center">No active transfers</p>
+            ) : (
+              <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
+                {activeUsers.map(u => (
+                  <div key={u.user_id} className="px-4 py-3 flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-zinc-900 dark:text-slate-100 truncate font-medium">
+                        {u.display_name || u.email}
+                      </p>
+                      <p className="text-xs text-muted truncate">{u.email}</p>
+                    </div>
+                    <div className="flex items-center gap-4 tabular-nums text-xs shrink-0">
+                      {u.upload_bytes_per_sec > 0 && (
+                        <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                          <ArrowUpCircle size={14} />
+                          {formatBytes(u.upload_bytes_per_sec)}/s
+                        </span>
+                      )}
+                      {u.download_bytes_per_sec > 0 && (
+                        <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                          <ArrowDownCircle size={14} />
+                          {formatBytes(u.download_bytes_per_sec)}/s
+                        </span>
+                      )}
+                      <span className="text-muted hidden lg:inline">
+                        ↑ {formatBytes(u.upload_bytes)} / ↓ {formatBytes(u.download_bytes)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* System version */}
+          <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl px-4 py-3 flex flex-wrap gap-x-8 gap-y-1 items-center">
+            <span className="text-xs text-muted font-medium uppercase tracking-wide">System</span>
+            <span className="text-xs text-zinc-700 dark:text-slate-300 font-mono">
+              frontend&nbsp;<span className="text-zinc-500 dark:text-slate-500">{APP_VERSION}</span>
+            </span>
+            <span className="text-xs text-zinc-700 dark:text-slate-300 font-mono">
+              backend&nbsp;<span className="text-zinc-500 dark:text-slate-500">{versionInfo?.version ?? '…'}</span>
+            </span>
+            {versionInfo?.build_date && (
+              <span className="text-xs text-zinc-700 dark:text-slate-300 font-mono">
+                built&nbsp;<span className="text-zinc-500 dark:text-slate-500">{versionInfo.build_date}</span>
+              </span>
+            )}
           </div>
         </div>
       )}
 
-      {/* Activity counts — last 30 days */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard label="Logins (30d)" value={stats?.last_30_days.logins ?? '…'} small />
-        <StatCard label="Failed logins (30d)" value={stats?.last_30_days.failed_logins ?? '…'} small accent="red" />
-        <StatCard label="Uploads (30d)" value={stats?.last_30_days.uploads ?? '…'} small accent="green" />
-        <StatCard label="Downloads (30d)" value={stats?.last_30_days.downloads ?? '…'} small accent="green" />
-        <StatCard label="Lockouts (30d)" value={stats?.last_30_days.lockouts ?? '…'} small accent="red" />
-      </div>
-
-      {/* Live I/O bandwidth panel */}
-      <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148] flex items-center justify-between">
-          <h2 className="text-sm font-medium text-zinc-900 dark:text-slate-100">Live Bandwidth</h2>
-          <span className="text-[10px] text-muted">updates every 3 s • 2-min window</span>
-        </div>
-        {activeUsers.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted text-center">No active transfers</p>
-        ) : (
+      {/* ── Tab 2: Recent Activity ────────────────────────────────────────── */}
+      {activeTab === 'activity' && (
+        <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
           <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
-            {activeUsers.map(u => (
-              <div key={u.user_id} className="px-4 py-3 flex items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-900 dark:text-slate-100 truncate font-medium">
-                    {u.display_name || u.email}
-                  </p>
-                  <p className="text-xs text-muted truncate">{u.email}</p>
-                </div>
-                <div className="flex items-center gap-4 tabular-nums text-xs shrink-0">
-                  {u.upload_bytes_per_sec > 0 && (
-                    <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                      <ArrowUpCircle size={14} />
-                      {formatBytes(u.upload_bytes_per_sec)}/s
-                    </span>
-                  )}
-                  {u.download_bytes_per_sec > 0 && (
-                    <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
-                      <ArrowDownCircle size={14} />
-                      {formatBytes(u.download_bytes_per_sec)}/s
-                    </span>
-                  )}
-                  <span className="text-muted hidden lg:inline">
-                    ↑ {formatBytes(u.upload_bytes)} / ↓ {formatBytes(u.download_bytes)}
+            {(logs?.items ?? []).length === 0 ? (
+              <p className="px-4 py-6 text-sm text-muted text-center">No activity yet</p>
+            ) : (
+              (logs?.items ?? []).map(log => (
+                <div key={log.id} className="px-4 py-3 flex items-start gap-3">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-mono shrink-0 ${eventBadgeClass(log.event_type)}`}>
+                    {log.event_type}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-zinc-700 dark:text-slate-300 truncate">
+                      {log.actor_email || 'System'}
+                      {log.resource_name ? ` → ${log.resource_name}` : ''}
+                    </p>
+                    <p className="text-xs text-muted">{log.ip_address}</p>
+                  </div>
+                  <span className="text-xs text-muted shrink-0" title={formatDate(log.created_at)}>
+                    {formatRelative(log.created_at)}
                   </span>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
-        )}
-      </div>
-
-      {/* Recent activity */}
-      <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148]">
-          <h2 className="text-sm font-medium text-zinc-900 dark:text-slate-100">Recent Activity</h2>
         </div>
-        <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
-          {(logs?.items ?? []).length === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted text-center">No activity yet</p>
-          ) : (
-            (logs?.items ?? []).map(log => (
-              <div key={log.id} className="px-4 py-3 flex items-start gap-3">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-mono shrink-0 ${eventBadgeClass(log.event_type)}`}>
-                  {log.event_type}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-700 dark:text-slate-300 truncate">
-                    {log.actor_email || 'System'}
-                    {log.resource_name ? ` → ${log.resource_name}` : ''}
-                  </p>
-                  <p className="text-xs text-muted">{log.ip_address}</p>
-                </div>
-                <span className="text-xs text-muted shrink-0" title={formatDate(log.created_at)}>
-                  {formatRelative(log.created_at)}
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* System version */}
-      <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl px-4 py-3 flex flex-wrap gap-x-8 gap-y-1 items-center">
-        <span className="text-xs text-muted font-medium uppercase tracking-wide">System</span>
-        <span className="text-xs text-zinc-700 dark:text-slate-300 font-mono">
-          frontend&nbsp;<span className="text-zinc-500 dark:text-slate-500">{APP_VERSION}</span>
-        </span>
-        <span className="text-xs text-zinc-700 dark:text-slate-300 font-mono">
-          backend&nbsp;<span className="text-zinc-500 dark:text-slate-500">{versionInfo?.version ?? '…'}</span>
-        </span>
-        {versionInfo?.build_date && (
-          <span className="text-xs text-zinc-700 dark:text-slate-300 font-mono">
-            built&nbsp;<span className="text-zinc-500 dark:text-slate-500">{versionInfo.build_date}</span>
-          </span>
-        )}
-      </div>
+      )}
     </div>
   )
 }

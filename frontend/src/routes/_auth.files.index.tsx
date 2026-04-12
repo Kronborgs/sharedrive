@@ -11,6 +11,7 @@ import { DropZone, UploadProgress, useUploader } from '@/components/files/Upload
 import { ShareDialog } from '@/components/files/ShareDialog'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { DownloadDialog } from '@/components/files/DownloadDialog'
+import { FolderPickerDialog } from '@/components/files/FolderPickerDialog'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -46,6 +47,8 @@ function FilesPage() {
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
   const [downloadIds, setDownloadIds] = useState<string[] | null>(null)
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
+  const [moveItem, setMoveItem] = useState<FileItem | null>(null)
+  const [duplicateItem, setDuplicateItem] = useState<FileItem | null>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
   const { uploads, startUpload, dismiss, directUpload } = useUploader(folderId)
@@ -90,6 +93,30 @@ function FilesPage() {
     onError: () => toast.error('Failed to create folder'),
   })
 
+  const moveFile = useMutation({
+    mutationFn: ({ id, destFolderId }: { id: string; destFolderId: string | null }) =>
+      api.patch(`/api/v1/files/${id}`, { parent_id: destFolderId ?? '' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['files', folderId] })
+      setMoveItem(null)
+      toast.success('Moved')
+    },
+    onError: () => toast.error('Move failed'),
+  })
+
+  const copyFile = useMutation({
+    mutationFn: ({ id, destFolderId }: { id: string; destFolderId: string | null }) =>
+      api.post<FileItem>(`/api/v1/files/${id}/copy`, destFolderId ? { destination_folder_id: destFolderId } : {}),
+    onSuccess: (_newFile, { destFolderId }) => {
+      // Refresh the destination folder (or current folder if same)
+      void qc.invalidateQueries({ queryKey: ['files', destFolderId ?? folderId] })
+      void qc.invalidateQueries({ queryKey: ['me'] })
+      setDuplicateItem(null)
+      toast.success('Duplicated')
+    },
+    onError: () => toast.error('Duplicate failed'),
+  })
+
   useEffect(() => {
     if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
   }, [user, navigate])
@@ -128,6 +155,8 @@ function FilesPage() {
         break
       case 'share': setShareItem(item); break
       case 'rename': setRenameId(item.id); setRenameName(item.name); break
+      case 'move': setMoveItem(item); break
+      case 'copy': setDuplicateItem(item); break
       case 'trash': if (confirm(`Move "${item.name}" to trash?`)) trash.mutate(item.id); break
       case 'backup': {
         const addToBackup = async () => {
@@ -428,6 +457,24 @@ function FilesPage() {
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
       {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
       {downloadIds && <DownloadDialog ids={downloadIds} onClose={() => setDownloadIds(null)} />}
+      {moveItem && (
+        <FolderPickerDialog
+          title={`Move "${moveItem.name}"`}
+          confirmLabel="Move here"
+          excludeId={moveItem.id}
+          onConfirm={destFolderId => moveFile.mutate({ id: moveItem.id, destFolderId })}
+          onClose={() => setMoveItem(null)}
+        />
+      )}
+      {duplicateItem && (
+        <FolderPickerDialog
+          title={`Duplicate "${duplicateItem.name}"`}
+          confirmLabel="Duplicate here"
+          excludeId={duplicateItem.id}
+          onConfirm={destFolderId => copyFile.mutate({ id: duplicateItem.id, destFolderId })}
+          onClose={() => setDuplicateItem(null)}
+        />
+      )}
       <UploadProgress uploads={uploads} onDismiss={dismiss} directUpload={directUpload} />
 
       {renameId && (

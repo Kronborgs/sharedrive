@@ -174,6 +174,46 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// Copy handles POST /api/v1/files/{id}/copy — duplicates a file to a destination folder.
+// Body (all optional): { "destination_folder_id": "uuid" }
+// Omitting destination_folder_id copies to the same folder as the source.
+// Returns the new file record.
+func (h *Handler) Copy(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+
+	var body struct {
+		DestinationFolderID *string `json:"destination_folder_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err.Error() != "EOF" {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	var destParentID *uuid.UUID
+	if body.DestinationFolderID != nil && *body.DestinationFolderID != "" {
+		uid, err := uuid.Parse(*body.DestinationFolderID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid destination_folder_id")
+			return
+		}
+		destParentID = &uid
+	}
+
+	f, err := h.svc.Copy(ctx, id, actor.ID.String(), destParentID)
+	if err != nil {
+		log.Error().Err(err).Msg("files.Copy")
+		if err.Error() == "quota exceeded" {
+			httputil.RespondError(w, http.StatusUnprocessableEntity, "quota exceeded")
+			return
+		}
+		httputil.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.Respond(w, http.StatusCreated, f)
+}
+
 // Delete handles DELETE /api/v1/files/{id} — soft-delete (moves to trash).
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())

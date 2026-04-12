@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -244,6 +245,115 @@ func (s *Service) Move(ctx context.Context, id, ownerID string, newParentID *uui
 		newParentID, id, ownerID,
 	)
 	return err
+}
+
+// Copy duplicates a single file (not a folder) into destParentID (nil = root).
+// The copy gets a unique name in the destination by appending " (N)".
+func (s *Service) Copy(ctx context.Context, srcID, ownerID string, destParentID *uuid.UUID) (*File, error) {
+	// Fetch source file — must be non-deleted, owned by actor, not a folder
+	src, err := scanFile(s.db.QueryRow(ctx,
+		`SELECT `+fileCols+` FROM files
+		 WHERE id = $1::uuid AND owner_id = $2::uuid AND deleted_at IS NULL AND is_folder = false`,
+		srcID, ownerID,
+	))
+	if err != nil {
+		return nil, fmt.Errorf("files.Copy: source not found: %w", err)
+	}
+
+	// Check quota
+	if err := s.quota.Check(ctx, ownerID, src.SizeBytes); err != nil {
+		return nil, err
+	}
+
+	// Build unique name in destination folder
+	newName, err := s.uniqueNameInFolder(ctx, ownerID, src.Name, destParentID)
+	if err != nil {
+		return nil, fmt.Errorf("files.Copy: unique name: %w", err)
+	}
+
+	// Open source blob, stream to new UUID with SHA-256 hashing
+	in, err := s.storage.Open(srcID)
+	if err != nil {
+		return nil, fmt.Errorf("files.Copy: open source: %w", err)
+	}
+	defer in.Close()
+
+	newID := uuid.New()
+	hash := sha256.New()
+	n, err := s.storage.Write(newID.String(), io.TeeReader(in, hash))
+	if err != nil {
+		return nil, fmt.Errorf("files.Copy: storage write: %w", err)
+	}
+	shaHex := hex.EncodeToString(hash.Sum(nil))
+	storagePath := s.storage.Path(newID.String())
+
+	// Insert new file record
+	f, err := scanFile(s.db.QueryRow(ctx,
+		`INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path, checksum_sha256)
+		 VALUES ($1, $2, $3, false, $4, $5, $6, $7, $8)
+		 RETURNING `+fileCols,
+		newID, ownerID, destParentID, newName, src.MimeType, n, storagePath, shaHex,
+	))
+	if err != nil {
+		_ = s.storage.Delete(newID.String())
+		return nil, fmt.Errorf("files.Copy: db insert: %w", err)
+	}
+
+	// Increment quota
+	if err := s.quota.Add(ctx, ownerID, n); err != nil {
+		log.Warn().Err(err).Str("file_id", newID.String()).Msg("files.Copy: quota update")
+	}
+
+	return f, nil
+}
+
+// uniqueNameInFolder returns a name that is unique within the folder (parentID,
+// nil = root) for ownerID. Tries name as-is; if taken, tries "base (1).ext",
+// "base (2).ext", …, up to 999.
+func (s *Service) uniqueNameInFolder(ctx context.Context, ownerID, name string, parentID *uuid.UUID) (string, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT name FROM files
+		 WHERE owner_id = $1::uuid AND parent_id IS NOT DISTINCT FROM $2 AND deleted_at IS NULL`,
+		ownerID, parentID,
+	)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	existing := make(map[string]struct{})
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return "", err
+		}
+		existing[n] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+
+	if _, taken := existing[name]; !taken {
+		return name, nil
+	}
+
+	base, ext := splitFileNameExt(name)
+	for i := 1; i <= 999; i++ {
+		candidate := fmt.Sprintf("%s (%d)%s", base, i, ext)
+		if _, taken := existing[candidate]; !taken {
+			return candidate, nil
+		}
+	}
+	return name + "_copy", nil
+}
+
+// splitFileNameExt splits a filename into base and extension (including dot).
+// "file.txt" → ("file", ".txt"); "archive.tar.gz" → ("archive.tar", ".gz"); "noext" → ("noext", "")
+func splitFileNameExt(name string) (base, ext string) {
+	if dot := strings.LastIndex(name, "."); dot > 0 {
+		return name[:dot], name[dot:]
+	}
+	return name, ""
 }
 
 // GetFolderSize computes the recursive total size and file count of a folder.

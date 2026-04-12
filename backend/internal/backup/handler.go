@@ -19,6 +19,7 @@ import (
 	"github.com/yourname/privatedrive/internal/files"
 	"github.com/yourname/privatedrive/internal/httputil"
 	"github.com/yourname/privatedrive/internal/middleware"
+	"github.com/yourname/privatedrive/internal/ratelimit"
 )
 
 // Handler is the thin HTTP layer for all backup operations.
@@ -31,13 +32,14 @@ type Handler struct {
 	buddyCfg   *BuddyConfigService
 	autoBackup *AutoBackupService
 	auditSvc   audit.Logger
+	limiter    *ratelimit.Limiter
 
 	tertiaryEnabled bool   // true when backupsRoot volume is mounted
 	backupsRoot     string // BACKUPS_ROOT path for disk stats
 }
 
 // NewHandler creates a backup Handler.
-func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot string, auditSvc audit.Logger) *Handler {
+func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot string, auditSvc audit.Logger, limiter *ratelimit.Limiter) *Handler {
 	svc := NewService(db, storage)
 	tert := NewTertiaryService(backupsRoot, svc)
 	return &Handler{
@@ -49,6 +51,7 @@ func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot s
 		buddyCfg:        NewBuddyConfigService(db, wrapKey),
 		autoBackup:      NewAutoBackupService(db, wrapKey, tert, auditSvc),
 		auditSvc:        auditSvc,
+		limiter:         limiter,
 		tertiaryEnabled: backupsRoot != "",
 		backupsRoot:     backupsRoot,
 	}
@@ -190,6 +193,15 @@ func (h *Handler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Rate-limit restore by user: max 5 restores per hour to prevent resource exhaustion.
+	if h.limiter != nil {
+		allowed, _, _, _ := h.limiter.Allow(ctx, "user_restore:", u.ID.String(), 5, 1*time.Hour)
+		if !allowed {
+			httputil.RespondError(w, http.StatusTooManyRequests, "too many restore requests — please wait")
+			return
+		}
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, maxRestoreSize)
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid multipart form")
@@ -281,10 +293,10 @@ func (h *Handler) StoreTertiary(w http.ResponseWriter, r *http.Request) {
 	h.passwords.TouchLastUsed(ctx, u.ID)
 	if h.auditSvc != nil {
 		h.auditSvc.Log(ctx, audit.Event{
-			Type:      audit.EventBackupRun,
-			ActorID:   &u.ID,
+			Type:       audit.EventBackupRun,
+			ActorID:    &u.ID,
 			ActorEmail: u.Email,
-			IPAddress: middleware.ClientIP(r),
+			IPAddress:  middleware.ClientIP(r),
 		})
 	}
 	httputil.Respond(w, http.StatusCreated, archive)
@@ -524,6 +536,16 @@ func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
 // BuddyReceive accepts an archive pushed from a peer. Authentication is per-user:
 // the bearer token is the receive token the local user generated and shared with their buddy.
 func (h *Handler) BuddyReceive(w http.ResponseWriter, r *http.Request) {
+	// Rate-limit buddy receive by IP to prevent abuse.
+	if h.limiter != nil {
+		ip := middleware.ClientIP(r)
+		allowed, _, _, _ := h.limiter.Allow(r.Context(), "ip_buddy_recv:", ip, 10, 1*time.Hour)
+		if !allowed {
+			httputil.RespondError(w, http.StatusTooManyRequests, "too many requests")
+			return
+		}
+	}
+
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
 		httputil.RespondError(w, http.StatusUnauthorized, "missing bearer token")

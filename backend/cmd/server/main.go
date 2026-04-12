@@ -14,6 +14,7 @@ import (
 	"github.com/yourname/privatedrive/internal/auth"
 	"github.com/yourname/privatedrive/internal/config"
 	"github.com/yourname/privatedrive/internal/db"
+	mw "github.com/yourname/privatedrive/internal/middleware"
 	redisclient "github.com/yourname/privatedrive/internal/redis"
 	"github.com/yourname/privatedrive/internal/server"
 	"github.com/yourname/privatedrive/internal/smtp"
@@ -44,6 +45,14 @@ func main() {
 	if cfg.IsDev() {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 		log.Info().Msg("running in development mode")
+	}
+
+	// ── Trusted proxies — must be set before any HTTP handling ────────────
+	mw.SetTrustedProxies(cfg.TrustedProxies)
+	if len(cfg.TrustedProxies) > 0 {
+		log.Info().Strs("cidrs", cfg.TrustedProxies).Msg("trusted proxies configured")
+	} else {
+		log.Info().Msg("no trusted proxies — proxy headers will be ignored")
 	}
 
 	// ── Context with graceful shutdown ────────────────────────────────────

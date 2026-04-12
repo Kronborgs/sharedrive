@@ -224,7 +224,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       let uploadToken: string | undefined
       if (directBase) {
         try {
-          const res = await api.post<{ token: string }>('/api/v1/upload-token', {})
+          const res = await api.post<{ token: string }>('/api/v1/upload-token', { folder_id: folderId ?? '' })
           uploadToken = res.token
         } catch (err) {
           // Cookie auth covers same-site subdomains (.kronborgs.dk domain), so

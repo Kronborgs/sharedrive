@@ -96,7 +96,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
-		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, backupsRoot(cfg.BackupsRoot), auditSvc),
+		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, backupsRoot(cfg.BackupsRoot), auditSvc, ratelimit.New(rdb)),
 		auditSvc:       auditSvc,
 		ioTracker:      ioTracker,
 	}
@@ -202,7 +202,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 	// WebDAV is mounted OUTSIDE Chi so that non-standard HTTP methods such as
 	// PROPFIND, MKCOL, PROPPATCH, COPY, MOVE, LOCK and UNLOCK are accepted.
 	// Chi only recognises the standard nine methods and returns 405 for the rest.
-	davSrv := webdav.NewAuthDAVServer(s.db, s.cfg.FilesRoot, s.auditSvc, s.ioTracker)
+	davSrv := webdav.NewAuthDAVServer(s.db, s.cfg.FilesRoot, s.auditSvc, s.ioTracker, ratelimit.New(rdb))
 	s.http = &http.Server{
 		Addr: cfg.ListenAddr(),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

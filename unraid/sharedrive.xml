@@ -10,7 +10,7 @@
   <Project>https://github.com/Kronborgs/sharedrive</Project>
   <Overview>Sharedrive — self-hosted private file drive with user management, per-user quotas, file sharing, admin dashboard, audit logging, and Cloudflare tunnel support. Requires sharedrive-postgres and sharedrive-redis to be running first.</Overview>
   <Category>Cloud: Tools:</Category>
-  <WebUI/>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Kronborgs/sharedrive/main/unraid/sharedrive.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Kronborgs/sharedrive/master/pics/logo.png</Icon>
   <!-- Also attach to the internal bridge so the app can reach postgres and redis -->
@@ -60,6 +60,30 @@
     Type="Variable"
     Display="always"
     Required="true"
+    Mask="false"
+  ></Config>
+
+  <Config
+    Name="Trusted Proxies"
+    Target="TRUSTED_PROXIES"
+    Default=""
+    Mode=""
+    Description="Comma-separated CIDR ranges whose proxy headers (CF-Connecting-IP, X-Forwarded-For) are trusted. Required behind Cloudflare — use: 173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22. Leave blank if not behind a reverse proxy."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  ></Config>
+
+  <Config
+    Name="Cookie Domain"
+    Target="COOKIE_DOMAIN"
+    Default=""
+    Mode=""
+    Description="Explicit cookie domain scope. Leave blank for host-only cookies (most secure). Set to e.g. .yourdomain.com only if you need cross-subdomain cookie sharing (e.g. separate upload subdomain)."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
     Mask="false"
   ></Config>
 

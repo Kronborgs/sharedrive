@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -64,26 +65,102 @@ func (s *DeviceTrustService) Issue(ctx context.Context, userID, ip, userAgent st
 
 // Validate checks a raw device-trust cookie value against the database.
 // Returns the ownerID (user UUID string) if the token is valid and unexpired.
-func (s *DeviceTrustService) Validate(ctx context.Context, raw string) (string, error) {
+// It also performs risk-aware checks: if the user agent family or IP prefix
+// has changed significantly since the token was issued, it is rejected.
+func (s *DeviceTrustService) Validate(ctx context.Context, raw, currentIP, currentUA string) (string, error) {
 	hash := s.tokenHash(raw)
 
-	var userID string
+	var userID, storedIP, storedUA string
 	err := s.db.QueryRow(ctx,
-		`SELECT user_id::TEXT
+		`SELECT user_id::TEXT, ip_address, user_agent
 		 FROM device_trust_tokens
 		 WHERE token_hash = $1
 		   AND revoked_at IS NULL
 		   AND expires_at > now()`,
 		hash,
-	).Scan(&userID)
+	).Scan(&userID, &storedIP, &storedUA)
 	if err != nil {
 		return "", fmt.Errorf("device trust: invalid or expired token")
 	}
 
-	// Best-effort: update last_used_at for audit purposes.
+	// Risk check: compare user-agent family (browser + OS prefix).
+	// We extract the first token (e.g. "Mozilla/5.0") and a rough OS/browser
+	// substring. If they differ substantially, reject the token.
+	if !uaFamilyMatch(storedUA, currentUA) {
+		// Revoke the token — it's been used from a different browser/device.
+		_, _ = s.db.Exec(ctx,
+			`UPDATE device_trust_tokens SET revoked_at = now() WHERE token_hash = $1`, hash)
+		return "", fmt.Errorf("device trust: user agent mismatch — token revoked")
+	}
+
+	// Risk check: coarse IP comparison (same /16 for IPv4, same /48 for IPv6).
+	// This catches cross-country jumps while allowing normal ISP DHCP changes.
+	if !coarseIPMatch(storedIP, currentIP) {
+		_, _ = s.db.Exec(ctx,
+			`UPDATE device_trust_tokens SET revoked_at = now() WHERE token_hash = $1`, hash)
+		return "", fmt.Errorf("device trust: IP range mismatch — token revoked")
+	}
+
+	// Best-effort: update last_used_at and current IP/UA for audit purposes.
 	_, _ = s.db.Exec(ctx,
-		`UPDATE device_trust_tokens SET last_used_at = now() WHERE token_hash = $1`,
-		hash,
+		`UPDATE device_trust_tokens SET last_used_at = now(), ip_address = $2, user_agent = $3 WHERE token_hash = $1`,
+		hash, currentIP, currentUA,
 	)
 	return userID, nil
+}
+
+// uaFamilyMatch does a coarse comparison of user agent strings.
+// It extracts the browser engine token (e.g. "Chrome", "Firefox", "Safari")
+// and considers them matching if they share the same engine.
+func uaFamilyMatch(stored, current string) bool {
+	// Defensive — if either is empty, skip the check (allow).
+	if stored == "" || current == "" {
+		return true
+	}
+	return extractUAFamily(stored) == extractUAFamily(current)
+}
+
+// extractUAFamily extracts a rough "browser family" from a user-agent string.
+func extractUAFamily(ua string) string {
+	ua = strings.ToLower(ua)
+	// Order matters — check specific browsers before engines.
+	families := []struct{ keyword, family string }{
+		{"edg/", "edge"},
+		{"opr/", "opera"},
+		{"opera", "opera"},
+		{"firefox/", "firefox"},
+		{"chrome/", "chrome"},
+		{"safari/", "safari"},
+		{"msie", "ie"},
+		{"trident/", "ie"},
+	}
+	for _, f := range families {
+		if strings.Contains(ua, f.keyword) {
+			return f.family
+		}
+	}
+	return "unknown"
+}
+
+// coarseIPMatch checks if two IPs are in the same coarse range.
+// IPv4: same /16. IPv6: same /48.
+func coarseIPMatch(a, b string) bool {
+	if a == "" || b == "" {
+		return true // skip check if either is missing
+	}
+	// Simple approach: compare IP prefix strings.
+	partsA := strings.Split(a, ".")
+	partsB := strings.Split(b, ".")
+	if len(partsA) == 4 && len(partsB) == 4 {
+		// IPv4: compare first two octets (/16)
+		return partsA[0] == partsB[0] && partsA[1] == partsB[1]
+	}
+	// IPv6: compare first 3 groups (/48 equivalent)
+	v6a := strings.Split(a, ":")
+	v6b := strings.Split(b, ":")
+	if len(v6a) >= 3 && len(v6b) >= 3 {
+		return v6a[0] == v6b[0] && v6a[1] == v6b[1] && v6a[2] == v6b[2]
+	}
+	// Mixed or unparseable — allow
+	return true
 }

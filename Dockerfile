@@ -45,8 +45,10 @@ USER root
 
 # Create a sharedrive user (uid 1000) — matches ownership of existing host-mounted
 # data directories. Gotenberg only requires non-root, any uid works.
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl gosu && \
     rm -rf /var/lib/apt/lists/* && \
+    # Create su-exec compatible wrapper using gosu (Debian alternative)
+    ln -sf /usr/sbin/gosu /usr/local/bin/su-exec && \
     groupadd -g 1000 sharedrive && \
     useradd -u 1000 -g 1000 -m -s /sbin/nologin sharedrive && \
     mkdir -p /data/files /data/backups /data/preview-cache && \
@@ -58,9 +60,8 @@ COPY --from=backend-builder /app/server /usr/local/bin/privatedrive
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Run as root so the entrypoint can create subdirectories in host-mounted
-# volumes regardless of their ownership (e.g. USB drives owned by root).
-# Gotenberg (also in this image) likewise requires no specific uid.
+# Entrypoint runs init as root (mkdir, chown) then drops to uid 1000 (sharedrive)
+# via su-exec/gosu before starting the application process.
 
 EXPOSE 8080
 

@@ -33,7 +33,7 @@ const (
 	pendingTOTPKey    = "pending_totp:"
 	pendingTOTPTTL    = 10 * time.Minute
 	uploadTokenKey    = "upload_token:"
-	uploadTokenTTL    = 30 * time.Minute
+	uploadTokenTTL    = 5 * time.Minute // short-lived, single-use
 )
 
 // reUploadToken matches the 64-character lowercase hex tokens issued by IssueUploadToken.
@@ -184,7 +184,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	hasTOTP, _ := h.totpSvc.HasTOTP(ctx, u.ID.String())
 	if hasTOTP {
 		if deviceCookie, err2 := r.Cookie(deviceCookieName); err2 == nil {
-			if ownerID, err3 := h.deviceTrust.Validate(ctx, deviceCookie.Value); err3 == nil && ownerID == u.ID.String() {
+			if ownerID, err3 := h.deviceTrust.Validate(ctx, deviceCookie.Value, ip, r.UserAgent()); err3 == nil && ownerID == u.ID.String() {
 				hasTOTP = false // trusted device — skip 2FA
 			}
 		}
@@ -568,15 +568,32 @@ func (h *Handler) createSessionAndCookie(ctx context.Context, w http.ResponseWri
 	})
 }
 
-// IssueUploadToken generates a short-lived token for cross-subdomain TUS upload auth.
-// The raw token is returned and stored in Redis under uploadTokenKey+token → userID.
-func (h *Handler) IssueUploadToken(ctx context.Context, userID string) (string, error) {
+// uploadTokenData holds the scoped data stored in Redis for each upload token.
+type uploadTokenData struct {
+	UserID   string `json:"user_id"`
+	FolderID string `json:"folder_id,omitempty"`
+	Purpose  string `json:"purpose"` // "tus_upload"
+	IP       string `json:"ip,omitempty"`
+}
+
+// IssueUploadToken generates a short-lived, scoped, single-use token for
+// cross-subdomain TUS upload auth. The token is bound to the user, an
+// optional folder, and the client IP.
+func (h *Handler) IssueUploadToken(ctx context.Context, userID, folderID, ip string) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("upload token: generate: %w", err)
 	}
 	token := hex.EncodeToString(b)
-	if err := h.rdb.Set(ctx, uploadTokenKey+token, userID, uploadTokenTTL).Err(); err != nil {
+
+	data := uploadTokenData{
+		UserID:   userID,
+		FolderID: folderID,
+		Purpose:  "tus_upload",
+		IP:       ip,
+	}
+	encoded, _ := json.Marshal(data)
+	if err := h.rdb.Set(ctx, uploadTokenKey+token, encoded, uploadTokenTTL).Err(); err != nil {
 		return "", fmt.Errorf("upload token: store: %w", err)
 	}
 	return token, nil
@@ -590,7 +607,15 @@ func (h *Handler) HandleIssueUploadToken(w http.ResponseWriter, r *http.Request)
 		httputil.RespondError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	token, err := h.IssueUploadToken(r.Context(), actor.ID.String())
+
+	var body struct {
+		FolderID string `json:"folder_id"`
+	}
+	// Body is optional; if absent, folder_id is empty (root).
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	ip := middleware.ClientIP(r)
+	token, err := h.IssueUploadToken(r.Context(), actor.ID.String(), body.FolderID, ip)
 	if err != nil {
 		log.Error().Err(err).Msg("issue upload token")
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
@@ -601,6 +626,7 @@ func (h *Handler) HandleIssueUploadToken(w http.ResponseWriter, r *http.Request)
 
 // UploadTokenMiddleware checks the X-Upload-Token header when no session cookie auth
 // has already populated the context (i.e. it acts as a fallback for cross-subdomain uploads).
+// Tokens are single-use: consumed (deleted from Redis) on first successful use.
 func (h *Handler) UploadTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Already authenticated via session cookie — nothing to do.
@@ -613,12 +639,36 @@ func (h *Handler) UploadTokenMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		userID, err := h.rdb.Get(r.Context(), uploadTokenKey+token).Result()
+
+		// Use GetDel for single-use semantics — token is consumed on first use.
+		raw, err := h.rdb.GetDel(r.Context(), uploadTokenKey+token).Result()
 		if err != nil {
 			next.ServeHTTP(w, r)
 			return
 		}
-		u, err := user.FindByID(r.Context(), h.db, userID)
+
+		var data uploadTokenData
+		if err := json.Unmarshal([]byte(raw), &data); err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Validate purpose
+		if data.Purpose != "tus_upload" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Optional IP binding — if the token was issued with an IP, enforce it.
+		if data.IP != "" {
+			clientIP := middleware.ClientIP(r)
+			if clientIP != data.IP {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		u, err := user.FindByID(r.Context(), h.db, data.UserID)
 		if err != nil || u == nil || !u.IsActive {
 			next.ServeHTTP(w, r)
 			return
@@ -718,6 +768,22 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 			return
+		}
+		// Revoke all OTHER sessions — keep only the current one so the user
+		// stays logged in on this device but is forced to re-authenticate everywhere else.
+		if cookie, cookieErr := r.Cookie(sessionCookieName); cookieErr == nil {
+			currentHash := hashToken(cookie.Value)
+			_, _ = h.db.Exec(ctx,
+				`UPDATE sessions SET revoked_at = now()
+				 WHERE user_id = $1 AND revoked_at IS NULL AND token_hash != $2`,
+				u.ID, currentHash,
+			)
+		} else {
+			// No cookie found (shouldn't happen) — revoke all sessions
+			_, _ = h.db.Exec(ctx,
+				`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
+				u.ID,
+			)
 		}
 	}
 	if req.DisplayName != nil {

@@ -24,6 +24,7 @@ import (
 	"github.com/yourname/privatedrive/internal/audit"
 	"github.com/yourname/privatedrive/internal/files"
 	"github.com/yourname/privatedrive/internal/middleware"
+	"github.com/yourname/privatedrive/internal/ratelimit"
 )
 
 // AuthDAVServer handles WebDAV requests authenticated via HTTP Basic Auth
@@ -37,15 +38,17 @@ type AuthDAVServer struct {
 	locks     gowebdav.LockSystem // shared across requests so LOCK tokens survive to PUT
 	auditSvc  audit.Logger
 	ioTracker *files.IOTracker
+	limiter   *ratelimit.Limiter
 }
 
-func NewAuthDAVServer(db *pgxpool.Pool, filesRoot string, auditSvc audit.Logger, ioTracker *files.IOTracker) *AuthDAVServer {
+func NewAuthDAVServer(db *pgxpool.Pool, filesRoot string, auditSvc audit.Logger, ioTracker *files.IOTracker, limiter *ratelimit.Limiter) *AuthDAVServer {
 	return &AuthDAVServer{
 		db:        db,
 		filesRoot: filesRoot,
 		locks:     gowebdav.NewMemLS(),
 		auditSvc:  auditSvc,
 		ioTracker: ioTracker,
+		limiter:   limiter,
 	}
 }
 
@@ -78,6 +81,16 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("WWW-Authenticate", `Basic realm="Sharedrive"`)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
+	}
+
+	// Rate-limit WebDAV auth attempts by IP to prevent credential brute-force.
+	if s.limiter != nil {
+		ip := middleware.ClientIP(r)
+		allowed, _, _, _ := s.limiter.Allow(r.Context(), "ip_webdav_auth:", ip, 20, 15*time.Minute)
+		if !allowed {
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
 	}
 
 	userID, err := ValidateAppPassword(r.Context(), s.db, email, password)

@@ -9,6 +9,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net/url"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -64,8 +66,37 @@ func (s *BuddyConfigService) GetStatus(ctx context.Context, userID uuid.UUID) (*
 	}, nil
 }
 
+// validatePeerURL verifies that peerURL is a valid HTTPS URL with a hostname.
+// Returns the normalised URL (no trailing slash) or an error.
+func validatePeerURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimRight(raw, "/")
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid peer URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return "", fmt.Errorf("peer URL must use HTTPS (got %q)", u.Scheme)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return "", fmt.Errorf("peer URL has no hostname")
+	}
+	// Block localhost/loopback to prevent SSRF
+	lower := strings.ToLower(host)
+	if lower == "localhost" || lower == "127.0.0.1" || lower == "::1" || lower == "[::1]" {
+		return "", fmt.Errorf("peer URL must not point to localhost")
+	}
+	return u.String(), nil
+}
+
 // SetPeerConfig stores (encrypted) the peer URL, peer user ID, and peer receive token.
+// The peer URL must use HTTPS.
 func (s *BuddyConfigService) SetPeerConfig(ctx context.Context, userID uuid.UUID, peerURL, peerUserID, peerToken string) error {
+	normalised, err := validatePeerURL(peerURL)
+	if err != nil {
+		return err
+	}
 	enc, err := encryptBuddyValue(s.wrapKey, peerToken)
 	if err != nil {
 		return fmt.Errorf("encrypt peer token: %w", err)
@@ -78,7 +109,7 @@ func (s *BuddyConfigService) SetPeerConfig(ctx context.Context, userID uuid.UUID
 		       peer_user_id   = EXCLUDED.peer_user_id,
 		       peer_token_enc = EXCLUDED.peer_token_enc,
 		       updated_at     = NOW()`,
-		userID, peerURL, peerUserID, enc,
+		userID, normalised, peerUserID, enc,
 	)
 	return err
 }

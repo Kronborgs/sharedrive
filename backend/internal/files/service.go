@@ -60,6 +60,65 @@ func NewService(db *pgxpool.Pool, storage *Storage) *Service {
 	}
 }
 
+// AuthorizeParentWrite checks that the user is allowed to write into the given
+// parent folder. If parentID is nil the write targets root, which is always
+// allowed for the owner. For non-nil parentID the folder must exist, be
+// non-deleted, and be owned by ownerID (or the user must hold a share with
+// can_edit on it or an ancestor). Returns nil on success.
+func (s *Service) AuthorizeParentWrite(ctx context.Context, ownerID string, parentID *uuid.UUID) error {
+	if parentID == nil {
+		return nil // root — always allowed for authenticated user
+	}
+
+	var folderOwner string
+	var isFolder bool
+	err := s.db.QueryRow(ctx,
+		`SELECT owner_id::text, is_folder FROM files
+		 WHERE id = $1 AND deleted_at IS NULL`,
+		*parentID,
+	).Scan(&folderOwner, &isFolder)
+	if err != nil {
+		return fmt.Errorf("parent folder not found")
+	}
+	if !isFolder {
+		return fmt.Errorf("parent is not a folder")
+	}
+	// Owner match — allowed
+	if folderOwner == ownerID {
+		return nil
+	}
+	// Check share grants: user has an active share with can_edit on the folder
+	// or any of its ancestors.
+	var hasAccess bool
+	err = s.db.QueryRow(ctx,
+		`WITH RECURSIVE anc AS (
+		   SELECT id, parent_id FROM files WHERE id = $1::uuid AND deleted_at IS NULL
+		   UNION ALL
+		   SELECT f.id, f.parent_id FROM files f JOIN anc a ON f.id = a.parent_id WHERE f.deleted_at IS NULL
+		 )
+		 SELECT EXISTS (
+		   SELECT 1 FROM shares s
+		   JOIN anc a ON a.id = s.resource_id
+		   WHERE s.revoked_at IS NULL
+		     AND (s.expires_at IS NULL OR s.expires_at > now())
+		     AND s.can_edit = true
+		     AND (
+		       (s.grantee_type = 'user' AND s.grantee_id = $2::uuid)
+		       OR (s.grantee_type = 'group' AND s.grantee_id IN (
+		         SELECT group_id FROM group_members WHERE user_id = $2::uuid
+		       ))
+		     )
+		 )`, *parentID, ownerID,
+	).Scan(&hasAccess)
+	if err != nil {
+		return fmt.Errorf("parent folder access check failed")
+	}
+	if !hasAccess {
+		return fmt.Errorf("access denied: you do not have write access to this folder")
+	}
+	return nil
+}
+
 const fileCols = `id, parent_id, owner_id, is_folder, name, mime_type,
                   size_bytes, storage_path, deleted_at, created_at, updated_at`
 
@@ -187,6 +246,9 @@ func (s *Service) GetNameByID(ctx context.Context, id string) string {
 
 // CreateFolder inserts a new folder record.
 func (s *Service) CreateFolder(ctx context.Context, ownerID, name string, parentID *uuid.UUID) (*File, error) {
+	if err := s.AuthorizeParentWrite(ctx, ownerID, parentID); err != nil {
+		return nil, fmt.Errorf("files.CreateFolder: %w", err)
+	}
 	row := s.db.QueryRow(ctx,
 		`INSERT INTO files (owner_id, parent_id, is_folder, name)
 		 VALUES ($1, $2, true, $3)
@@ -239,6 +301,10 @@ func (s *Service) Rename(ctx context.Context, id, ownerID, newName string) error
 
 // Move changes the parent of a file/folder.
 func (s *Service) Move(ctx context.Context, id, ownerID string, newParentID *uuid.UUID) error {
+	// Authorize write into the destination folder
+	if err := s.AuthorizeParentWrite(ctx, ownerID, newParentID); err != nil {
+		return fmt.Errorf("files.Move: %w", err)
+	}
 	_, err := s.db.Exec(ctx,
 		`UPDATE files SET parent_id = $1, updated_at = now()
 		 WHERE id = $2 AND owner_id = $3 AND deleted_at IS NULL`,
@@ -250,6 +316,10 @@ func (s *Service) Move(ctx context.Context, id, ownerID string, newParentID *uui
 // Copy duplicates a single file (not a folder) into destParentID (nil = root).
 // The copy gets a unique name in the destination by appending " (N)".
 func (s *Service) Copy(ctx context.Context, srcID, ownerID string, destParentID *uuid.UUID) (*File, error) {
+	// Authorize write into the destination folder
+	if err := s.AuthorizeParentWrite(ctx, ownerID, destParentID); err != nil {
+		return nil, fmt.Errorf("files.Copy: %w", err)
+	}
 	// Fetch source file — must be non-deleted, owned by actor, not a folder
 	src, err := scanFile(s.db.QueryRow(ctx,
 		`SELECT `+fileCols+` FROM files
@@ -412,6 +482,11 @@ func (s *Service) Upload(ctx context.Context, ownerID, name, mimeType, folderIDS
 		}
 	}
 
+	// Authorize write into the target folder
+	if err := s.AuthorizeParentWrite(ctx, ownerID, parentID); err != nil {
+		return nil, fmt.Errorf("files.Upload: %w", err)
+	}
+
 	// Pre-check quota when content length is known upfront
 	if contentLength > 0 {
 		if err := s.quota.Check(ctx, ownerID, contentLength); err != nil {
@@ -524,6 +599,11 @@ func (s *Service) FinalizeTusUpload(
 		if id, err := uuid.Parse(folderIDStr); err == nil {
 			parentID = &id
 		}
+	}
+
+	// Authorize write into the target folder
+	if err := s.AuthorizeParentWrite(ctx, ownerID, parentID); err != nil {
+		return nil, fmt.Errorf("files.FinalizeTusUpload: %w", err)
 	}
 
 	if size > 0 {

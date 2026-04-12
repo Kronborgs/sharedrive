@@ -3,6 +3,7 @@ package backup
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -16,6 +17,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
+
+// buddyHTTPClient is a dedicated HTTP client for buddy push operations.
+// It enforces TLS 1.2+ and sets a reasonable timeout.
+var buddyHTTPClient = &http.Client{
+	Timeout: 10 * time.Minute, // large archives may take a while
+	Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+	},
+}
 
 // BuddyService handles the secondary backup layer — push/receive between
 // two Sharedrive instances.
@@ -91,6 +103,9 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	mw.Close()
 
 	endpoint := strings.TrimRight(peerBaseURL, "/") + "/api/v1/backup/buddy/receive"
+	if !strings.HasPrefix(endpoint, "https://") {
+		return fmt.Errorf("buddy push: peer URL must use HTTPS")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &body)
 	if err != nil {
 		return fmt.Errorf("buddy push: request: %w", err)
@@ -98,7 +113,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+peerToken)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := buddyHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("buddy push: http: %w", err)
 	}

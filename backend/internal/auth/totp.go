@@ -59,7 +59,7 @@ func (s *TOTPService) BeginEnroll(userEmail string) (secret, provisioningURI str
 func (s *TOTPService) ConfirmEnroll(ctx context.Context, userID, userEmail, secret, code string) (backupCodes []string, err error) {
 	now := timeNow()
 	valid, valErr := totp.ValidateCustom(code, secret, now, totp.ValidateOpts{
-		Skew:      20, // ±10 minutes tolerance for clock drift
+		Skew:      1, // ±30 seconds — one step before/after current
 		Digits:    otp.DigitsSix,
 		Period:    30,
 		Algorithm: otp.AlgorithmSHA1,
@@ -120,7 +120,7 @@ func (s *TOTPService) Validate(ctx context.Context, userID, code string) error {
 		return err
 	}
 
-	valid, _ := totp.ValidateCustom(code, secret, timeNow(), totp.ValidateOpts{Skew: 20, Digits: otp.DigitsSix, Period: 30, Algorithm: otp.AlgorithmSHA1})
+	valid, _ := totp.ValidateCustom(code, secret, timeNow(), totp.ValidateOpts{Skew: 1, Digits: otp.DigitsSix, Period: 30, Algorithm: otp.AlgorithmSHA1})
 	if valid {
 		return nil
 	}
@@ -227,4 +227,3 @@ func (s *TOTPService) validateBackupCode(ctx context.Context, userID, code strin
 	}
 	return fmt.Errorf("totp: invalid code")
 }
-

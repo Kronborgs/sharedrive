@@ -17,10 +17,11 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 - **Resumable uploads** via the [tus protocol](https://tus.io/) — survives network interruptions and browser restarts
 - **Direct upload URL** — bypass Cloudflare for large files at full speed (configured in admin settings)
 - Live upload progress panel with per-file speed (MB/s) and ETA
-- Create folders, rename, move (drag or context menu)
-- Right-click context menu: open, download, share, rename, trash
+- Create folders, rename, **move**, **duplicate** (right-click or context menu)
+- Right-click context menu: open, download, share, rename, move, duplicate, add to playlist, trash
 - Multi-select with shift-click or checkbox; bulk download as ZIP, bulk trash
 - **Download ZIP dialog** — optional password protection (auto-generated or custom), with a clear password display and a "Download started" confirmation step
+- **Mobile toolbar dropdown** — compact action menu on small screens; all file actions accessible
 - **Recent files** — last 50 accessed or modified items
 - **Activity feed** — personal history of the last 50 file events (upload, download, preview, delete, etc.) with timestamp and IP address; accessible via the sidebar
 
@@ -50,7 +51,26 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 - **Pending shares** — invites a non-registered email and converts the share on registration
 - Share notification emails and invitation emails via SMTP
 
-### Trash / Recycle Bin
+### M3U Playlists
+- Create M3U playlists directly from selected audio files in the file manager
+- **Persistent sidebar player** — plays in the background while navigating; collapses to a mini-bar; expands to show track list with per-track remove button and volume slider
+- **Mobile bottom bar** — floating mini-player on small screens; tap to expand full sheet with track list and controls
+- **Shuffle mode** — randomises track order; toggles with a single click; highlighted when active
+- **Cross-device state sync** — active playlist, current track index, volume and shuffle mode are saved server-side (per user) and restored on any device or browser after login; instant hydration from localStorage on same device
+- Add files or folders to the current playlist from the context menu ("Add to playlist")
+- Playlist files are editable (add/remove tracks, max 50)
+
+### Backup & Restore
+- **Per-user encrypted backup** — HMAC-SHA256 signed gzip JSON export (metadata only, no blobs)
+- **Selective export** — choose exactly which folders/files to include using a tree picker
+- **Tertiary storage** — automatically copies finished backups to a local path (e.g. a USB drive or NAS mount at `/mnt/backup`); configurable retention (number of archives to keep)
+- **Buddy backup** — push encrypted backups to a remote trusted Sharedrive instance over HTTPS; configure the peer URL and per-user token per user
+- **Auto-backup schedule** — configurable interval (hourly, daily, weekly); only backs up when the file tree has actually changed (SHA-256 change detection)
+- Backup exports include real folder structure and filenames for easy inspection
+- Archives are `.zip` files compatible with 7-Zip and standard tooling
+- Full restore available from Admin → Backup or during first-run wizard
+
+
 - Soft-delete with automatic ownership transfer (guest-uploaded files land in the folder owner's trash)
 - Restore individual files or empty the entire trash
 - Configurable per-user retention period (auto-cleanup)
@@ -77,6 +97,7 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 
 ### Admin Dashboard
 - **User management** — create, edit, lock/unlock, force password reset, re-invite, view sessions
+- **Promote / Demote** — change a user's role between `user` and `admin` directly from the user table; a last-admin guard prevents the final admin from being demoted
 - **Quota management** — per-user storage quota with presets (10 GB – 1 TB) and custom values
 - **Per-user limits** — max upload size, daily bandwidth cap, WebDAV toggle
 - **Live Bandwidth panel** — real-time per-user upload/download rate (updated every 3 s); tracks both browser (TUS resumable) and WebDAV (Windows Explorer / macOS Finder) transfers as they stream
@@ -86,8 +107,9 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 - **Admin support access** — limited-scope impersonation of a user account, fully audited; the user sees a real-time banner via SSE
 - **Backup & restore** — export HMAC-signed gzip JSON (metadata only, no file blobs); restore at any time or during first-run setup
 - **System settings** — site name, open registration, default quota, global max upload size, direct upload URL, SMTP configuration with live test
-- **Audit log viewer** — filterable by event type and actor email, paginated, colour-coded
+- **Audit log viewer** — filterable by event type and actor email, paginated, colour-coded; deduplication of repeated login events; enriched delete/backup entries
 - **Blocked IPs** — view active lockouts with tier/TTL, manually block or unblock, manage CIDR whitelist
+- **Dashboard tabs** — Overview tab (disk usage, bandwidth, activity) and Users tab (live table) for a cleaner layout
 
 ### WebDAV
 - Mounted at `/dav/` — map as a network drive in Windows Explorer, macOS Finder, or any WebDAV client
@@ -97,6 +119,7 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 ### Infrastructure
 - Single Go binary serves the embedded React SPA, REST API, TUS upload endpoint, and WebDAV
 - **Gotenberg built-in** — Office-to-PDF conversion runs inside the same container; no separate service needed
+- **PWA support** — installable as a home screen app on iOS and Android; includes app icons and `apple-touch-icon`
 - **Cloudflare Tunnel ready** — designed for reverse-proxy-free deployments on Unraid or any Docker Compose host
 - PostgreSQL for all metadata; Redis for rate limiting and ephemeral state (ephemeral — no volume needed)
 - **Multi-platform image** — supports `linux/amd64` and `linux/arm64` (Raspberry Pi 4/5, Apple Silicon VMs, ARM servers)
@@ -385,12 +408,19 @@ SMTP credentials can be set via environment variables (`SMTP_HOST`, `SMTP_PORT`,
 ## Backup & Restore
 
 ### Export
-Admin → Backup → **Export backup**. Downloads a gzip-compressed JSON file (`.json.gz`) containing all metadata: users, groups, tags, files (metadata + SHA-256 checksums), shares, TOTP credentials, app passwords, and system settings. **File blobs are not included.**
+Admin → Backup → **Export backup**. Choose full or selective export (pick specific folders). Downloads a gzip-compressed JSON file (`.zip`) containing all metadata: users, groups, tags, files (metadata + SHA-256 checksums), shares, TOTP credentials, app passwords, and system settings. **File blobs are not included.**
 
 The export is HMAC-SHA256 signed using `BACKUP_HMAC_SECRET` to detect tampering.
 
+### Tertiary & Buddy storage
+After export, backups can automatically be:
+- **Copied to a local path** (tertiary storage) — configure a directory accessible inside the container (e.g. `/mnt/backup`). Retention pruning keeps the N most recent archives.
+- **Pushed to a remote peer** (buddy backup) — configure a trusted remote Sharedrive URL and per-user token. The remote instance stores the archive on behalf of the source user.
+
+Auto-backup can run on a schedule (hourly / daily / weekly) and only creates a new archive when the file tree has changed.
+
 ### Restore
-Admin → Backup → **Restore from backup** — upload the `.json.gz` file. The HMAC is verified before applying. All metadata is overwritten; files on disk are unaffected.
+Admin → Backup → **Restore from backup** — upload the `.zip` file. The HMAC is verified before applying. All metadata is overwritten; files on disk are unaffected.
 
 Restore is also available during the **first-run wizard** (step 1) to migrate from another instance.
 
@@ -401,12 +431,12 @@ Restore is also available during the **first-run wizard** (step 1) to migrate fr
 Every significant action is recorded permanently in the `audit_logs` table. Covered events include:
 
 **Auth:** login, logout, failed login, TOTP enable/disable, password change/reset, session revoke, device trust grant/revoke  
-**Files:** upload, download, rename, move, delete, restore, permanent delete, folder create  
+**Files:** upload, download, rename, move, duplicate, delete, restore, permanent delete, folder create  
 **Shares:** create, modify, revoke  
-**Admin:** user create/delete/lock/unlock/quota change, group create/delete, settings change, backup export/import, support access start/end, IP block/unblock/whitelist  
+**Admin:** user create/delete/lock/unlock/quota change/role change, group create/delete, settings change, backup export/import, support access start/end, IP block/unblock/whitelist  
 **WebDAV:** app password create/revoke, file put, file delete  
 
-View and filter at Admin → Audit Logs.
+Repeated login events are deduplicated; backup and delete events include enriched context. View and filter at Admin → Audit Logs.
 
 ---
 

@@ -6,6 +6,8 @@
 --   2. The parent's owner has shared the folder with can_edit to the child's owner.
 -- This trigger enforces invariant #1 (same-owner) for all inserts/updates.
 -- Shared-folder writes are handled by the application AuthorizeParentWrite check.
+
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION check_parent_owner_match()
 RETURNS trigger AS $$
 BEGIN
@@ -46,6 +48,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 DROP TRIGGER IF EXISTS trg_check_parent_owner ON files;
 CREATE TRIGGER trg_check_parent_owner

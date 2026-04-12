@@ -436,6 +436,8 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Get("/api/v1/admin/backup", s.handleAdminListBackups)
 			r.Post("/api/v1/admin/backup", s.handleAdminExport)
 			r.Post("/api/v1/admin/backup/restore", s.handleAdminImport)
+			r.Get("/api/v1/admin/backup/{filename}/download", s.handleAdminDownloadBackup)
+			r.Delete("/api/v1/admin/backup/{filename}", s.handleAdminDeleteBackup)
 
 			r.Post("/api/v1/admin/storage/scrub", s.adminHandler.StorageScrub)
 			r.Get("/api/v1/admin/io-stats", s.adminHandler.IOStats)
@@ -719,6 +721,12 @@ func (s *Server) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) handleAdminImport(w http.ResponseWriter, r *http.Request) {
 	s.adminHandler.Import(w, r)
+}
+func (s *Server) handleAdminDownloadBackup(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.DownloadBackup(w, r)
+}
+func (s *Server) handleAdminDeleteBackup(w http.ResponseWriter, r *http.Request) {
+	s.adminHandler.DeleteBackup(w, r)
 }
 func (s *Server) handleAdminEndSupportAccess(w http.ResponseWriter, r *http.Request) {
 	s.supportHandler.End(w, r)

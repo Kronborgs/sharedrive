@@ -7,6 +7,7 @@ import { Download, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface BackupMeta {
+  filename: string
   size_bytes: number
   created_at: string
   version: string
@@ -45,6 +46,15 @@ function BackupPage() {
       void qc.invalidateQueries({ queryKey: ['admin', 'backups'] })
     },
     onError: () => toast.error('Backup failed'),
+  })
+
+  const deleteBackup = useMutation({
+    mutationFn: (filename: string) => api.delete(`/api/v1/admin/backup/${encodeURIComponent(filename)}`),
+    onSuccess: () => {
+      toast.success('Backup deleted')
+      void qc.invalidateQueries({ queryKey: ['admin', 'backups'] })
+    },
+    onError: () => toast.error('Delete failed'),
   })
 
   const restoreBackup = useMutation({
@@ -86,7 +96,7 @@ function BackupPage() {
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
         >
           <Download size={15} />
-          {createBackup.isPending ? 'Creating…' : 'Create &amp; Download Backup'}
+          {createBackup.isPending ? 'Creating…' : 'Create & Download Backup'}
         </button>
       </section>
 
@@ -101,21 +111,27 @@ function BackupPage() {
           <div className="p-6 text-sm text-muted text-center">No previous backups</div>
         ) : (
           <ul className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
-            {backups.map((b, i) => (
-              <li key={i} className="flex items-center gap-3 px-4 py-3 text-sm">
+            {backups.map((b) => (
+              <li key={b.filename} className="flex items-center gap-3 px-4 py-3 text-sm">
                 <div className="flex-1 min-w-0">
                   <p className="text-zinc-900 dark:text-slate-100">{formatDate(b.created_at)}</p>
                   <p className="text-xs text-muted">{formatBytes(b.size_bytes)} · version {b.version}</p>
                 </div>
                 <a
-                  href={`/api/v1/admin/backup/${i}/download`}
+                  href={`/api/v1/admin/backup/${encodeURIComponent(b.filename)}/download`}
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
                   title="Download"
                 >
                   <Download size={14} />
                 </a>
                 <button
-                  className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  onClick={() => {
+                    if (confirm(`Delete backup "${b.filename}"?`)) {
+                      deleteBackup.mutate(b.filename)
+                    }
+                  }}
+                  disabled={deleteBackup.isPending}
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40"
                   title="Delete"
                 >
                   <Trash2 size={14} />

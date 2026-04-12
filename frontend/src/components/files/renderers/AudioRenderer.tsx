@@ -8,6 +8,26 @@ interface AudioRendererProps {
   mimeType: string
 }
 
+// Map file extensions to MIME types for cases where the stored type is wrong.
+const EXT_MIME: Record<string, string> = {
+  mp3:  'audio/mpeg',
+  flac: 'audio/flac',
+  wav:  'audio/wav',
+  aac:  'audio/aac',
+  m4a:  'audio/mp4',
+  opus: 'audio/opus',
+  ogg:  'audio/ogg',
+  m4b:  'audio/mp4',
+}
+
+/** Returns a playable MIME type — falls back to extension lookup when stored type is generic. */
+function resolvedMimeType(mimeType: string, fileName: string): string {
+  const bad = !mimeType || mimeType === 'application/octet-stream' || mimeType === 'application/json'
+  if (!bad) return mimeType
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
+  return EXT_MIME[ext] ?? mimeType
+}
+
 /** Returns true when the browser declares it can play the given MIME type. */
 function browserCanPlay(mimeType: string): boolean {
   try {
@@ -27,7 +47,8 @@ function isFlacFile(mimeType: string, fileName: string): boolean {
   )
 }
 
-export function AudioRenderer({ url, fileName, fileId, mimeType }: AudioRendererProps) {
+export function AudioRenderer({ url, fileName, fileId, mimeType: rawMime }: AudioRendererProps) {
+  const mimeType = resolvedMimeType(rawMime, fileName)
   const flac = isFlacFile(mimeType, fileName)
   const supported = flac
     ? browserCanPlay('audio/flac') || browserCanPlay('audio/x-flac')

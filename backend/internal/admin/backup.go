@@ -9,8 +9,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/yourname/privatedrive/internal/httputil"
 )
 
@@ -40,13 +45,114 @@ type backupData struct {
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
-// ListBackups returns an empty list — backups are not stored server-side.
+// adminExportsDir returns the directory where admin export files are stored.
+// Returns ("", false) when BackupsRoot is not configured.
+func (h *Handler) adminExportsDir() (string, bool) {
+	if h.cfg.BackupsRoot == "" {
+		return "", false
+	}
+	return filepath.Join(h.cfg.BackupsRoot, "admin-exports"), true
+}
+
+type exportMeta struct {
+	Filename  string    `json:"filename"`
+	SizeBytes int64     `json:"size_bytes"`
+	CreatedAt time.Time `json:"created_at"`
+	Version   string    `json:"version"`
+}
+
+// ListBackups handles GET /api/v1/admin/backup.
+// Returns metadata for all saved admin exports, newest first.
 func (h *Handler) ListBackups(w http.ResponseWriter, _ *http.Request) {
-	httputil.Respond(w, http.StatusOK, []any{})
+	dir, ok := h.adminExportsDir()
+	if !ok {
+		httputil.Respond(w, http.StatusOK, []exportMeta{})
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			httputil.Respond(w, http.StatusOK, []exportMeta{})
+			return
+		}
+		httputil.RespondError(w, http.StatusInternalServerError, "could not read backup directory")
+		return
+	}
+
+	var result []exportMeta
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json.gz") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		result = append(result, exportMeta{
+			Filename:  e.Name(),
+			SizeBytes: info.Size(),
+			CreatedAt: info.ModTime().UTC(),
+			Version:   backupVersion,
+		})
+	}
+	// Sort newest first
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedAt.After(result[j].CreatedAt)
+	})
+	httputil.Respond(w, http.StatusOK, result)
+}
+
+// DownloadBackup handles GET /api/v1/admin/backup/{filename}/download.
+func (h *Handler) DownloadBackup(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	if strings.Contains(filename, "..") || strings.Contains(filename, "/") || !strings.HasSuffix(filename, ".json.gz") {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+	dir, ok := h.adminExportsDir()
+	if !ok {
+		httputil.RespondError(w, http.StatusNotFound, "not found")
+		return
+	}
+	path := filepath.Join(dir, filename)
+	f, err := os.Open(path) // #nosec G304 — filename validated above
+	if err != nil {
+		httputil.RespondError(w, http.StatusNotFound, "backup not found")
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	_, _ = io.Copy(w, f)
+}
+
+// DeleteBackup handles DELETE /api/v1/admin/backup/{filename}.
+func (h *Handler) DeleteBackup(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	if strings.Contains(filename, "..") || strings.Contains(filename, "/") || !strings.HasSuffix(filename, ".json.gz") {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+	dir, ok := h.adminExportsDir()
+	if !ok {
+		httputil.RespondError(w, http.StatusNotFound, "not found")
+		return
+	}
+	path := filepath.Join(dir, filename)
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			httputil.RespondError(w, http.StatusNotFound, "backup not found")
+			return
+		}
+		httputil.RespondError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // Export streams a gzip-compressed, HMAC-signed JSON backup of all database
 // content (metadata only — file blobs are not included).
+// The export is also saved to disk so it appears in ListBackups.
 func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -135,17 +241,33 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		Data:      data,
 	}
 
-	filename := fmt.Sprintf("sharedrive-backup-%s.json.gz", envelope.CreatedAt.Format("2006-01-02"))
+	filename := fmt.Sprintf("sharedrive-backup-%s.json.gz", envelope.CreatedAt.Format("2006-01-02T150405Z"))
+
+	// Encode the envelope into an in-memory gzip buffer so we can both save
+	// it to disk and stream it to the browser from the same bytes.
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if err := json.NewEncoder(gz).Encode(envelope); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to encode backup")
+		return
+	}
+	if err := gz.Close(); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to finalise backup")
+		return
+	}
+
+	// Persist to disk when BackupsRoot is configured.
+	if dir, ok := h.adminExportsDir(); ok {
+		if mkErr := os.MkdirAll(dir, 0o750); mkErr == nil {
+			// #nosec G306 — file contains no secrets beyond HMAC-signed data
+			_ = os.WriteFile(filepath.Join(dir, filename), buf.Bytes(), 0o640)
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.WriteHeader(http.StatusOK)
-
-	gz := gzip.NewWriter(w)
-	defer gz.Close()
-	if err := json.NewEncoder(gz).Encode(envelope); err != nil {
-		// Headers already sent — nothing we can do except log
-		return
-	}
+	_, _ = io.Copy(w, &buf)
 }
 
 // ── Import / Restore ──────────────────────────────────────────────────────────

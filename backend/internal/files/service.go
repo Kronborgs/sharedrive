@@ -659,3 +659,19 @@ func (s *Service) ListDescendantFiles(ctx context.Context, folderID string) ([]Z
 	}
 	return entries, rows.Err()
 }
+
+// ReplaceContent overwrites the stored bytes of an existing file (same ID) and
+// updates the DB record. Intended for small metadata files such as playlists.
+func (s *Service) ReplaceContent(ctx context.Context, fileID string, r io.Reader) error {
+	hash := sha256.New()
+	n, err := s.storage.Write(fileID, io.TeeReader(r, hash))
+	if err != nil {
+		return fmt.Errorf("files.ReplaceContent: storage write: %w", err)
+	}
+	shaHex := hex.EncodeToString(hash.Sum(nil))
+	_, err = s.db.Exec(ctx,
+		`UPDATE files SET size_bytes = $1, checksum_sha256 = $2, updated_at = now() WHERE id = $3::uuid`,
+		n, shaHex, fileID,
+	)
+	return err
+}

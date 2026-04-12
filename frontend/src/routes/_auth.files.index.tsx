@@ -53,7 +53,7 @@ function FilesPage() {
   const navigate = useNavigate()
   const { folder: folderId = null } = Route.useSearch()
   const qc = useQueryClient()
-  const { setPlaylist } = usePlaylist()
+  const { setPlaylist, addTracks, tracks: playlistTracks, activePlaylistId } = usePlaylist()
 
   const [view, setView] = useState<ViewMode>('list')
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -263,6 +263,22 @@ function FilesPage() {
             }
           } catch {
             toast.error('Kunne ikke læse mappeindhold')
+          }
+        })()
+        break
+      }
+      case 'addtoqueue': {
+        if (item.is_folder) break
+        void (async () => {
+          try {
+            const result = await addTracks([item.id])
+            if (result.added > 0) {
+              toast.success(`„${item.name}“ tilføjet til køen`)
+            } else if (result.skipped > 0) {
+              toast.info('Nummeret er allerede i køen eller køen er fuld (max 50)')
+            }
+          } catch {
+            toast.error('Kunne ikke tilføje til køen')
           }
         })()
         break
@@ -526,7 +542,7 @@ function FilesPage() {
         </div>
       </div>
 
-      {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
+      {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < 50} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
       {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
       {downloadIds && <DownloadDialog ids={downloadIds} onClose={() => setDownloadIds(null)} />}

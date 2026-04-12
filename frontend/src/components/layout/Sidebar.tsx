@@ -17,6 +17,11 @@ import {
   ShieldCheck,
   Music,
   X,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Volume2,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
@@ -26,7 +31,6 @@ import { formatBytes, cn } from '@/lib/utils'
 import { WebDAVDialog } from '@/components/layout/WebDAVDialog'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
 import { usePlaylist } from '@/lib/playlist-context'
-import { PlaylistPlayer } from '@/components/files/renderers/PlaylistPlayer'
 
 interface NavItem {
   to: string
@@ -78,6 +82,13 @@ function NavLink({ item }: { item: NavItem }) {
   )
 }
 
+function fmt(s: number) {
+  if (!isFinite(s) || s < 0) return '0:00'
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return `${m}:${sec.toString().padStart(2, '0')}`
+}
+
 export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose?: () => void }) {
   const { user, setUser } = useAuth()
   const qc = useQueryClient()
@@ -85,8 +96,26 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showWebDAV, setShowWebDAV] = useState(false)
   const [showTOTP, setShowTOTP] = useState(false)
-  const [playerOpen, setPlayerOpen] = useState(true)
-  const { activePlaylistId, activePlaylistName, clearPlaylist } = usePlaylist()
+  const [playerExpanded, setPlayerExpanded] = useState(true)
+
+  const {
+    activePlaylistId,
+    activePlaylistName,
+    tracks,
+    currentIndex,
+    isPlaying,
+    progress,
+    duration,
+    volume,
+    clearPlaylist,
+    jumpTo,
+    togglePlay,
+    next,
+    prev,
+    seek,
+    setVolume,
+    removeTrack,
+  } = usePlaylist()
 
   const handleLogout = async () => {
     try {
@@ -101,15 +130,18 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
   const quota = user?.quota_bytes ?? 0
   const used = user?.quota_used_bytes ?? 0
   const pct = quota > 0 ? Math.min(100, (used / quota) * 100) : 0
+  const currentTrack = tracks[currentIndex]
+
+  const handleSeekClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    seek((e.clientX - rect.left) / rect.width)
+  }
 
   return (
     <>
       {/* Mobile overlay */}
       {isOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/40 md:hidden"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={onClose} />
       )}
       <aside className={[
         'flex flex-col w-60 shrink-0 bg-white dark:bg-[#1a1d27] border-r border-zinc-200 dark:border-[#2d3148] h-screen overflow-y-auto',
@@ -117,154 +149,248 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
         isOpen ? 'translate-x-0' : '-translate-x-full',
         'md:relative md:translate-x-0 md:z-auto',
       ].join(' ')}>
-      {/* Logo */}
-      <div className="px-4 h-14 flex items-center border-b border-zinc-200 dark:border-[#2d3148] shrink-0">
-        <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
-      </div>
 
-      {/* Main nav */}
-      <nav className="px-2 py-3 space-y-0.5">
-        {(user?.role === 'guest' ? guestNav : mainNav).map(item => (
-          <NavLink key={item.to} item={item} />
-        ))}
-      </nav>
+        {/* Logo */}
+        <div className="px-4 h-14 flex items-center border-b border-zinc-200 dark:border-[#2d3148] shrink-0">
+          <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
+        </div>
 
-      {/* Admin nav */}
-      {user?.is_admin && (
-        <>
-          <div className="mx-4 border-t border-zinc-200 dark:border-[#2d3148] my-1" />
-          <div className="px-4 py-1">
-            <p className="text-[11px] uppercase tracking-widest text-zinc-400 dark:text-slate-500 font-medium">
-              Admin
-            </p>
-          </div>
-          <nav className="px-2 pb-3 space-y-0.5">
-            {adminNav.map(item => (
-              <NavLink key={item.to} item={item} />
-            ))}
-          </nav>
-        </>
-      )}
+        {/* Main nav */}
+        <nav className="px-2 py-3 space-y-0.5">
+          {(user?.role === 'guest' ? guestNav : mainNav).map(item => (
+            <NavLink key={item.to} item={item} />
+          ))}
+        </nav>
 
-      {/* WebDAV — only visible in the Files section */}
-      {user?.role !== 'guest' && state.location.pathname.startsWith('/files') && (
-        <>
-          <div className="mx-4 border-t border-zinc-200 dark:border-[#2d3148] my-1" />
-          <nav className="px-2 pb-3 space-y-0.5">
-            <button
-              onClick={() => setShowWebDAV(true)}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] hover:text-zinc-900 dark:hover:text-slate-100"
-            >
-              <HardDrive size={16} />
-              WebDAV
-            </button>
-          </nav>
-        </>
-      )}
+        {/* ── Persistent sidebar player ─────────────────────────── */}
+        {activePlaylistId && (
+          <div className="mx-2 mb-2 rounded-xl border border-zinc-200 dark:border-[#2d3148] overflow-hidden bg-white dark:bg-[#1a1d27]">
 
-      {/* Spacer */}
-      <div className="flex-1" />
+            {/* Mini controls bar — always visible */}
+            <div className="px-2 pt-2 pb-1.5">
+              {/* Row 1: icon + controls + track name + expand/close */}
+              <div className="flex items-center gap-1 mb-1.5">
+                <Music size={11} className="text-brand-500 shrink-0" />
+                <button
+                  onClick={prev}
+                  disabled={currentIndex === 0}
+                  className="p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
+                  title="Forrige"
+                >
+                  <SkipBack size={13} />
+                </button>
+                <button
+                  onClick={togglePlay}
+                  disabled={!currentTrack}
+                  className="p-1 rounded-full bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-30 transition-colors shrink-0"
+                  title={isPlaying ? 'Pause' : 'Afspil'}
+                >
+                  {isPlaying ? <Pause size={11} /> : <Play size={11} />}
+                </button>
+                <button
+                  onClick={next}
+                  disabled={currentIndex >= tracks.length - 1}
+                  className="p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
+                  title="Næste"
+                >
+                  <SkipForward size={13} />
+                </button>
+                <button
+                  onClick={() => setPlayerExpanded(v => !v)}
+                  className="flex-1 min-w-0 text-left flex items-center gap-0.5 group"
+                  title={playerExpanded ? 'Skjul liste' : 'Vis liste'}
+                >
+                  <span className="text-[11px] font-medium text-zinc-700 dark:text-slate-300 truncate group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
+                    {currentTrack?.name ?? activePlaylistName}
+                  </span>
+                  <ChevronDown
+                    size={10}
+                    className={cn('shrink-0 text-zinc-400 transition-transform', playerExpanded ? '' : '-rotate-90')}
+                  />
+                </button>
+                <button
+                  onClick={clearPlaylist}
+                  className="p-0.5 text-zinc-300 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0"
+                  title="Luk afspiller"
+                >
+                  <X size={12} />
+                </button>
+              </div>
 
-      {/* Persistent playlist player — shown when a playlist is active */}
-      {activePlaylistId && (
-        <>
-          <div className="mx-4 border-t border-zinc-200 dark:border-[#2d3148]" />
-          <div className="shrink-0 px-2 pt-2">
-            {/* Header bar */}
-            <div className="flex items-center gap-1.5 px-2 pb-1.5">
-              <Music size={12} className="text-brand-500 shrink-0" />
-              <button
-                onClick={() => setPlayerOpen(v => !v)}
-                className="flex-1 flex items-center gap-1 text-xs font-semibold text-zinc-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors truncate text-left"
-                title={playerOpen ? 'Skjul afspiller' : 'Vis afspiller'}
+              {/* Row 2: progress bar */}
+              <div
+                className="w-full h-1 bg-zinc-200 dark:bg-[#2d3148] rounded-full cursor-pointer"
+                onClick={handleSeekClick}
               >
-                <span className="truncate">{activePlaylistName ?? 'Playlist'}</span>
-                <ChevronDown
-                  size={11}
-                  className={cn('shrink-0 transition-transform', playerOpen ? '' : '-rotate-90')}
+                <div
+                  className="h-full bg-brand-500 rounded-full"
+                  style={{ width: duration ? `${(progress / duration) * 100}%` : '0%' }}
                 />
-              </button>
-              <button
-                onClick={clearPlaylist}
-                className="p-0.5 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0"
-                title="Luk afspiller"
-              >
-                <X size={13} />
-              </button>
+              </div>
+              <div className="flex justify-between mt-0.5">
+                <span className="text-[9px] text-zinc-400 tabular-nums">{fmt(progress)}</span>
+                <span className="text-[9px] text-zinc-400 tabular-nums">{fmt(duration)}</span>
+              </div>
             </div>
-            {/* Player body */}
-            {playerOpen && (
-              <div className="h-[285px] rounded-lg overflow-hidden border border-zinc-200 dark:border-[#2d3148] mb-2">
-                <PlaylistPlayer fileId={activePlaylistId} />
+
+            {/* Expanded panel: track list + volume */}
+            {playerExpanded && (
+              <div className="border-t border-zinc-100 dark:border-[#2d3148]">
+                {/* Track list */}
+                <div className="overflow-y-auto max-h-[180px] divide-y divide-zinc-50 dark:divide-[#2d3148]">
+                  {tracks.map((track, i) => (
+                    <div
+                      key={track.id}
+                      className={cn(
+                        'flex items-center gap-1.5 px-2 py-1.5 group',
+                        i === currentIndex && 'bg-brand-50 dark:bg-brand-900/20',
+                      )}
+                    >
+                      <button
+                        onClick={() => jumpTo(i)}
+                        className="flex-1 min-w-0 flex items-center gap-1.5 text-left"
+                      >
+                        <span className="text-[10px] text-zinc-400 tabular-nums w-4 shrink-0 text-right">
+                          {i + 1}
+                        </span>
+                        <span className={cn(
+                          'text-[11px] truncate',
+                          i === currentIndex
+                            ? 'font-semibold text-brand-600 dark:text-brand-400'
+                            : 'text-zinc-700 dark:text-slate-300',
+                        )}>
+                          {track.name}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => { void removeTrack(track.id) }}
+                        className="shrink-0 p-0.5 text-zinc-200 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                        title="Fjern fra playlist"
+                      >
+                        <X size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Volume */}
+                <div className="flex items-center gap-2 px-2.5 py-2 border-t border-zinc-100 dark:border-[#2d3148]">
+                  <Volume2 size={12} className="text-zinc-400 shrink-0" />
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.02"
+                    value={volume}
+                    onChange={e => setVolume(parseFloat(e.target.value))}
+                    className="flex-1 h-1 accent-brand-600 cursor-pointer"
+                    title="Lydstyrke"
+                  />
+                </div>
               </div>
             )}
           </div>
-        </>
-      )}
+        )}
 
-      {/* Quota */}
-      {quota > 0 && (
-        <div className="px-4 py-3 border-t border-zinc-100 dark:border-[#2d3148]">
-          <div className="flex justify-between text-xs text-muted mb-1">
-            <span>{formatBytes(used)} used</span>
-            <span>{formatBytes(quota)}</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${pct > 90 ? 'bg-red-500' : pct > 75 ? 'bg-amber-500' : 'bg-brand-500'}`}
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-        </div>
-      )}
+        {/* Admin nav */}
+        {user?.is_admin && (
+          <>
+            <div className="mx-4 border-t border-zinc-200 dark:border-[#2d3148] my-1" />
+            <div className="px-4 py-1">
+              <p className="text-[11px] uppercase tracking-widest text-zinc-400 dark:text-slate-500 font-medium">
+                Admin
+              </p>
+            </div>
+            <nav className="px-2 pb-3 space-y-0.5">
+              {adminNav.map(item => (
+                <NavLink key={item.to} item={item} />
+              ))}
+            </nav>
+          </>
+        )}
 
-      {/* User profile */}
-      <div className="border-t border-zinc-200 dark:border-[#2d3148] p-2 relative">
-        <button
-          onClick={() => setShowUserMenu(v => !v)}
-          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-        >
-          <div className="w-7 h-7 rounded-full bg-brand-600 dark:bg-brand-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
-            {user?.display_name?.charAt(0).toUpperCase() ?? '?'}
-          </div>
-          <div className="flex-1 min-w-0 text-left">
-            <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 truncate">
-              {user?.display_name}
-            </p>
-            <p className="text-xs text-muted truncate">{user?.email}</p>
-          </div>
-          <ChevronDown size={14} className="text-zinc-400 shrink-0" />
-        </button>
+        {/* WebDAV — only visible in the Files section */}
+        {user?.role !== 'guest' && state.location.pathname.startsWith('/files') && (
+          <>
+            <div className="mx-4 border-t border-zinc-200 dark:border-[#2d3148] my-1" />
+            <nav className="px-2 pb-3 space-y-0.5">
+              <button
+                onClick={() => setShowWebDAV(true)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] hover:text-zinc-900 dark:hover:text-slate-100"
+              >
+                <HardDrive size={16} />
+                WebDAV
+              </button>
+            </nav>
+          </>
+        )}
 
-        {showUserMenu && (
-          <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-lg py-1 z-50">
-            <button
-              onClick={() => { setShowUserMenu(false); setShowTOTP(true) }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-            >
-              <ShieldCheck size={14} className={user?.totp_enabled ? 'text-green-500' : 'text-zinc-400'} />
-              {user?.totp_enabled ? '2FA enabled' : 'Enable 2FA'}
-            </button>
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-            >
-              <LogOut size={14} />
-              Sign out
-            </button>
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Quota */}
+        {quota > 0 && (
+          <div className="px-4 py-3 border-t border-zinc-100 dark:border-[#2d3148]">
+            <div className="flex justify-between text-xs text-muted mb-1">
+              <span>{formatBytes(used)} used</span>
+              <span>{formatBytes(quota)}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${pct > 90 ? 'bg-red-500' : pct > 75 ? 'bg-amber-500' : 'bg-brand-500'}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
           </div>
         )}
-      </div>
 
-      {showWebDAV && <WebDAVDialog onClose={() => setShowWebDAV(false)} />}
-      {showTOTP && (
-        <TOTPSetupDialog
-          isEnabled={!!user?.totp_enabled}
-          onClose={() => setShowTOTP(false)}
-          onChanged={() => { void qc.invalidateQueries({ queryKey: ['me'] }) }}
-        />
-      )}
-    </aside>
+        {/* User profile */}
+        <div className="border-t border-zinc-200 dark:border-[#2d3148] p-2 relative">
+          <button
+            onClick={() => setShowUserMenu(v => !v)}
+            className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
+          >
+            <div className="w-7 h-7 rounded-full bg-brand-600 dark:bg-brand-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+              {user?.display_name?.charAt(0).toUpperCase() ?? '?'}
+            </div>
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 truncate">
+                {user?.display_name}
+              </p>
+              <p className="text-xs text-muted truncate">{user?.email}</p>
+            </div>
+            <ChevronDown size={14} className="text-zinc-400 shrink-0" />
+          </button>
+
+          {showUserMenu && (
+            <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-lg py-1 z-50">
+              <button
+                onClick={() => { setShowUserMenu(false); setShowTOTP(true) }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+              >
+                <ShieldCheck size={14} className={user?.totp_enabled ? 'text-green-500' : 'text-zinc-400'} />
+                {user?.totp_enabled ? '2FA enabled' : 'Enable 2FA'}
+              </button>
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+              >
+                <LogOut size={14} />
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
+
+        {showWebDAV && <WebDAVDialog onClose={() => setShowWebDAV(false)} />}
+        {showTOTP && (
+          <TOTPSetupDialog
+            isEnabled={!!user?.totp_enabled}
+            onClose={() => setShowTOTP(false)}
+            onChanged={() => { void qc.invalidateQueries({ queryKey: ['me'] }) }}
+          />
+        )}
+      </aside>
     </>
   )
 }

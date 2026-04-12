@@ -132,4 +132,8 @@ export function createPlaylist(name: string, parentId: string | null, fileIds: s
   return api.post<{ id: string }>('/api/v1/files/playlist', { name, parent_id: parentId, file_ids: fileIds })
 }
 
+export function updatePlaylistTracks(fileId: string, fileIds: string[]): Promise<void> {
+  return api.put(`/api/v1/files/${fileId}/playlist/tracks`, { file_ids: fileIds })
+}
+
 export { ApiClientError }

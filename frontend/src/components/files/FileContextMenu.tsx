@@ -24,6 +24,7 @@ export type ContextAction =
   | 'copy'
   | 'backup'
   | 'playlist'
+  | 'addtoqueue'
   | 'trash'
   | 'restore'
   | 'delete'
@@ -35,6 +36,7 @@ interface FileContextMenuProps {
   y: number
   isTrash?: boolean
   allowedActions?: ContextAction[]
+  canAddToQueue?: boolean
   onAction: (action: ContextAction, item: FileItem) => void
   onClose: () => void
 }
@@ -47,6 +49,8 @@ interface MenuItem {
   divider?: boolean
   /** Only render this item when the context target is a folder */
   folderOnly?: boolean
+  /** Only render this item when the context target is a non-folder audio file */
+  audioOnly?: boolean
 }
 
 const normalItems: MenuItem[] = [
@@ -56,9 +60,10 @@ const normalItems: MenuItem[] = [
   { action: 'rename',   label: 'Rename',    icon: <Pencil size={14} /> },
   { action: 'move',     label: 'Move',      icon: <Scissors size={14} /> },
   { action: 'copy',     label: 'Duplicate', icon: <Copy size={14} />, divider: true },
-  { action: 'backup',   label: 'Add to backup', icon: <Archive size={14} /> },
-  { action: 'playlist', label: 'Add to playlist', icon: <ListMusic size={14} />, folderOnly: true },
-  { action: 'info',     label: 'Details',   icon: <Info size={14} />, divider: true },
+  { action: 'backup',     label: 'Add to backup',   icon: <Archive size={14} /> },
+  { action: 'playlist',   label: 'Add to playlist',  icon: <ListMusic size={14} />, folderOnly: true },
+  { action: 'addtoqueue', label: 'Add to queue',      icon: <ListMusic size={14} />, audioOnly: true },
+  { action: 'info',       label: 'Details',           icon: <Info size={14} />, divider: true },
   { action: 'trash',    label: 'Move to Trash', icon: <Trash2 size={14} />, danger: true },
 ]
 
@@ -67,7 +72,7 @@ const trashItems: MenuItem[] = [
   { action: 'delete',  label: 'Delete permanently', icon: <Trash2 size={14} />, danger: true },
 ]
 
-export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, onAction, onClose }: FileContextMenuProps) {
+export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, canAddToQueue = false, onAction, onClose }: FileContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null)
 
   // Close on outside click / escape
@@ -90,10 +95,15 @@ export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, o
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x
   const adjustedY = y + menuHeight > window.innerHeight ? y - menuHeight : y
 
+  const AUDIO_EXTS = ['.mp3', '.flac', '.wav', '.aac', '.m4a', '.opus', '.ogg', '.m4b']
+  const isAudio = !item.is_folder && AUDIO_EXTS.some(e => item.name.toLowerCase().endsWith(e))
+
   const allItems = isTrash ? trashItems : normalItems
   let items = allowedActions ? allItems.filter(mi => allowedActions.includes(mi.action)) : allItems
   // Hide folder-only actions for non-folder items
   items = items.filter(mi => !mi.folderOnly || item.is_folder)
+  // Hide audio-only actions for non-audio items, or when no queue is active
+  items = items.filter(mi => !mi.audioOnly || (isAudio && canAddToQueue))
 
   return (
     <div

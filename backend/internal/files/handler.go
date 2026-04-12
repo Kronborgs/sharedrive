@@ -1198,3 +1198,68 @@ func (h *Handler) PlaylistTracks(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.Respond(w, http.StatusOK, tracks)
 }
+
+// UpdatePlaylist handles PUT /api/v1/files/{id}/playlist/tracks.
+// Replaces the playlist content with a new ordered list of file IDs (1–50).
+func (h *Handler) UpdatePlaylist(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+
+	// Verify ownership / write access
+	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
+	if err != nil || f == nil || f.IsFolder {
+		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		return
+	}
+	if !strings.HasSuffix(strings.ToLower(f.Name), ".m3u") {
+		httputil.RespondError(w, http.StatusBadRequest, "not a playlist file")
+		return
+	}
+	if f.OwnerID.String() != actor.ID.String() {
+		httputil.RespondError(w, http.StatusForbidden, "only the owner can modify this playlist")
+		return
+	}
+
+	var body struct {
+		FileIDs []string `json:"file_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if len(body.FileIDs) == 0 {
+		httputil.RespondError(w, http.StatusBadRequest, "no files specified")
+		return
+	}
+	if len(body.FileIDs) > 50 {
+		httputil.RespondError(w, http.StatusBadRequest, "playlist cannot exceed 50 tracks")
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString("#EXTM3U\n")
+	validCount := 0
+	for _, fid := range body.FileIDs {
+		tf, tfErr := h.svc.GetAccessible(ctx, fid, actor.ID.String())
+		if tfErr != nil || tf == nil || tf.IsFolder {
+			continue
+		}
+		if !isAudioFilename(tf.MimeType, tf.Name) {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("#SHAREDRIVE:id=%s\n", tf.ID.String()))
+		sb.WriteString(tf.Name + "\n")
+		validCount++
+	}
+	if validCount == 0 {
+		httputil.RespondError(w, http.StatusBadRequest, "no accessible audio files in selection")
+		return
+	}
+
+	if err := h.svc.ReplaceContent(ctx, id, strings.NewReader(sb.String())); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to update playlist")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}

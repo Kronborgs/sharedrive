@@ -43,24 +43,37 @@ interface PlaylistContextValue {
   addTracks: (fileIds: string[]) => Promise<{ added: number; skipped: number }>
 }
 
+const STORAGE_KEY = 'sharedrive_playlist'
+type Persisted = { id: string; name: string; index: number; vol: number }
+function loadPersisted(): Persisted | null {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Persisted } catch { return null }
+}
+function savePersisted(p: Persisted | null) {
+  try {
+    if (p) localStorage.setItem(STORAGE_KEY, JSON.stringify(p))
+    else localStorage.removeItem(STORAGE_KEY)
+  } catch { /* ignore */ }
+}
+
 const PlaylistContext = createContext<PlaylistContextValue | null>(null)
 
 export function PlaylistProvider({ children }: { children: ReactNode }) {
-  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null)
-  const [activePlaylistName, setActivePlaylistName] = useState<string | null>(null)
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(() => loadPersisted()?.id ?? null)
+  const [activePlaylistName, setActivePlaylistName] = useState<string | null>(() => loadPersisted()?.name ?? null)
   const [tracks, setTracks] = useState<PlaylistTrack[]>([])
   const [isLoadingTracks, setIsLoadingTracks] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [volume, setVolumeState] = useState(1)
+  const [volume, setVolumeState] = useState(() => loadPersisted()?.vol ?? 1)
 
   // Persistent audio element — never removed from memory
   const audioRef = useRef<HTMLAudioElement | null>(null)
   if (!audioRef.current) {
     audioRef.current = new Audio()
     audioRef.current.preload = 'auto'
+    audioRef.current.volume = loadPersisted()?.vol ?? 1
   }
 
   // Wire audio events once on mount
@@ -105,12 +118,14 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     setIsLoadingTracks(true)
     fetchPlaylistTracks(activePlaylistId)
       .then(t => {
+        const start = pendingIndexRef.current < t.length ? pendingIndexRef.current : 0
+        pendingIndexRef.current = 0  // reset so future playlist changes start from 0
         setTracks(t)
-        setCurrentIndex(0)
+        setCurrentIndex(start)
         setProgress(0)
         setDuration(0)
         if (t.length > 0) {
-          audioRef.current!.src = t[0].preview_url
+          audioRef.current!.src = t[start].preview_url
           audioRef.current!.load()
         }
       })
@@ -120,6 +135,8 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
 
   // Load new src when currentIndex changes (but only after tracks are loaded)
   const prevIndexRef = useRef(-1)
+  // Index to restore when tracks first load after a page refresh
+  const pendingIndexRef = useRef(loadPersisted()?.index ?? 0)
   useEffect(() => {
     if (tracks.length === 0) return
     if (currentIndex < 0 || currentIndex >= tracks.length) return
@@ -224,6 +241,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   }, [activePlaylistId, tracks])
 
   const setPlaylist = useCallback((id: string, name: string) => {
+    pendingIndexRef.current = 0  // new explicit playlist always starts from beginning
     setActivePlaylistId(id)
     setActivePlaylistName(name)
     prevIndexRef.current = -1
@@ -234,6 +252,15 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     setActivePlaylistId(null)
     setActivePlaylistName(null)
   }, [])
+
+  // Persist key state to localStorage so it survives hard refresh / Docker restart
+  useEffect(() => {
+    if (activePlaylistId) {
+      savePersisted({ id: activePlaylistId, name: activePlaylistName ?? '', index: currentIndex, vol: volume })
+    } else {
+      savePersisted(null)
+    }
+  }, [activePlaylistId, activePlaylistName, currentIndex, volume])
 
   return (
     <PlaylistContext.Provider

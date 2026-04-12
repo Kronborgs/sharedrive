@@ -240,6 +240,9 @@ function BackupPage() {
   const [buddyFolderIDs, setBuddyFolderIDs] = useState<string[]>([])
   const [buddyPushing, setBuddyPushing] = useState(false)
 
+  // tab state
+  const [activeTab, setActiveTab] = useState<'storage' | 'buddy' | 'token'>('storage')
+
   // buddy config state
   const [newReceiveToken, setNewReceiveToken] = useState<string | null>(null)
   const [receiveTokenCopied, setReceiveTokenCopied] = useState(false)
@@ -270,6 +273,11 @@ function BackupPage() {
     queryKey: ['backup', 'password'],
     queryFn: ({ signal }) => api.get<BackupPasswordStatus>('/api/v1/backup/password', signal),
   })
+
+  // Auto-switch to token tab when no token is set
+  useEffect(() => {
+    if (!isLoading && !status?.has_password) setActiveTab('token')
+  }, [isLoading, status?.has_password])
 
   const { data: config } = useQuery({
     queryKey: ['backup', 'config'],
@@ -503,8 +511,10 @@ function BackupPage() {
 
   // ── render ────────────────────────────────────────────────────────────────
 
+  const hasToken = status?.has_password ?? false
+
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="max-w-2xl space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100 flex items-center gap-2">
           <Archive size={20} />
@@ -516,547 +526,619 @@ function BackupPage() {
         </p>
       </div>
 
-      {/* ── Backup token ─────────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <ShieldCheck size={16} className="text-brand-500" />
-          <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Backup token</h2>
-        </div>
-        <p className="text-sm text-zinc-500 dark:text-slate-400">
-          This password is used to extract encrypted backup archives outside Sharedrive.
-        </p>
-        <p className="text-sm text-zinc-500 dark:text-slate-400">
-          Store it safely. It may be required for disaster recovery.
-        </p>
+      {/* ── Tab bar ─────────────────────────────────────────────────────── */}
+      <div className="flex border-b border-zinc-200 dark:border-[#2d3148]">
+        <button
+          type="button"
+          onClick={() => hasToken && setActiveTab('storage')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'storage'
+              ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+              : !hasToken
+                ? 'border-transparent text-zinc-300 dark:text-slate-600 cursor-not-allowed'
+                : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 cursor-pointer'
+          }`}
+        >
+          <HardDrive size={14} /> Server Storage
+        </button>
+        <button
+          type="button"
+          onClick={() => hasToken && setActiveTab('buddy')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'buddy'
+              ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+              : !hasToken
+                ? 'border-transparent text-zinc-300 dark:text-slate-600 cursor-not-allowed'
+                : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 cursor-pointer'
+          }`}
+        >
+          <Server size={14} /> Buddy Backup
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('token')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'token'
+              ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+              : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 cursor-pointer'
+          }`}
+        >
+          <ShieldCheck size={14} /> Backup Token
+        </button>
+      </div>
 
-        {isLoading ? (
-          <p className="text-sm text-zinc-400">Loading…</p>
-        ) : status?.has_password ? (
-          <div className="space-y-3">
-            <p className="text-sm text-zinc-600 dark:text-slate-400">
-              A backup token is active.
-              {status.created_at && <> Created {new Date(status.created_at).toLocaleDateString()}.</>}
-              {status.last_used_at && <> Last used {new Date(status.last_used_at).toLocaleDateString()}.</>}
+      {/* ── Tab 1: Server Storage ───────────────────────────────────────── */}
+      {activeTab === 'storage' && (
+        !hasToken ? (
+          <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10 px-6 py-8 text-center space-y-3">
+            <ShieldCheck size={32} className="mx-auto text-amber-500" />
+            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Backup token required</p>
+            <p className="text-xs text-amber-600 dark:text-amber-500">
+              Go to the <button type="button" onClick={() => setActiveTab('token')} className="underline font-medium">Backup Token</button> tab to generate your encryption token before using server storage backup.
             </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  if (confirm('Generate a new token? The current one will be permanently revoked. Existing backups encrypted with the old token will still require the old token to restore.')) {
-                    generateMutation.mutate()
-                  }
-                }}
-                disabled={generateMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-[#2d3148] text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
-              >
-                <RefreshCw size={12} /> Rotate token
-              </button>
-              <button
-                onClick={() => {
-                  if (confirm('Revoke your backup token? You will no longer be able to export or restore.')) {
-                    revokeMutation.mutate()
-                  }
-                }}
-                disabled={revokeMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
-              >
-                <Trash2 size={12} /> Revoke
-              </button>
-            </div>
           </div>
         ) : (
-          <div className="space-y-3">
-            <p className="text-sm text-zinc-500 dark:text-slate-400">No backup token yet.</p>
-            <button
-              onClick={() => generateMutation.mutate()}
-              disabled={generateMutation.isPending}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
-            >
-              Generate token
-            </button>
-          </div>
-        )}
+          <div className="space-y-8">
+            {/* ── Tertiary — server storage ──────────────────────────────── */}
+            <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <HardDrive size={16} className="text-brand-500" />
+                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Server storage backup</h2>
+              </div>
+              <p className="text-sm text-zinc-500 dark:text-slate-400">
+                Writes an encrypted archive directly to a mounted disk or storage box on the server.
+              </p>
+              <p className="text-xs text-zinc-400 dark:text-slate-500">
+                Uses the backup token from the <button type="button" onClick={() => setActiveTab('token')} className="underline hover:text-zinc-600 dark:hover:text-slate-300">Backup Token</button> tab to encrypt archives.
+              </p>
 
-        {newToken && (
-          <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
-            <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400">
-              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-              <p className="text-sm font-medium">Save this token now — it will never be shown again.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-xs font-mono bg-white dark:bg-[#0f1117] border border-amber-200 dark:border-amber-800 rounded px-3 py-2 break-all text-zinc-800 dark:text-slate-200 select-all">
-                {newToken}
-              </code>
-              <button
-                onClick={handleCopyToken}
-                className="shrink-0 p-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-                title="Copy token"
-              >
-                {tokenCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
+              {config?.tertiary_enabled && config.disk_total_bytes != null && config.disk_total_bytes > 0 && (
+                <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-slate-400">
+                  <HardDrive size={12} />
+                  <span>
+                    {formatBytes(config.disk_free_bytes ?? 0)} free of {formatBytes(config.disk_total_bytes)}
+                  </span>
+                </div>
+              )}
 
-      {/* ── Export (download) ────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <Download size={16} className="text-brand-500" />
-          <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Export backup</h2>
-        </div>
-        <p className="text-sm text-zinc-500 dark:text-slate-400">
-          Downloads an AES-256 encrypted archive (<code className="text-xs">.shdbak</code>) to your device.
-        </p>
-        <div className="flex gap-2">
-          <input
-            type="password"
-            value={exportToken}
-            onChange={e => { setExportToken(e.target.value); saveToken(e.target.value) }}
-            placeholder="Backup token"
-            className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-          />
-          <button
-            onClick={handleExport}
-            disabled={!exportToken.trim()}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
-          >
-            <Download size={14} /> Download
-          </button>
-        </div>
-        <FolderPicker selectedIDs={exportFolderIDs} onChange={setExportFolderIDs} />
-      </section>
-
-      {/* ── Restore ──────────────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <Upload size={16} className="text-brand-500" />
-          <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Restore from backup</h2>
-        </div>
-        <p className="text-sm text-zinc-500 dark:text-slate-400">
-          Upload a <code className="text-xs">.shdbak</code> file to restore files. Existing files
-          are skipped — the operation is safe to repeat.
-        </p>
-        <div className="space-y-2">
-          <input
-            type="password"
-            value={restoreToken}
-            onChange={e => setRestoreToken(e.target.value)}
-            placeholder="Backup token"
-            className="w-full text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-          />
-          <div className="flex gap-2 items-center">
-            <label className="flex-1 flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border border-dashed border-zinc-300 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors">
-              <Upload size={14} className="text-zinc-400" />
-              <span className="text-sm text-zinc-500 dark:text-slate-400 truncate">
-                {restoreFile ? restoreFile.name : 'Choose .shdbak file…'}
-              </span>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".shdbak"
-                className="hidden"
-                onChange={e => setRestoreFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            <button
-              onClick={handleRestore}
-              disabled={!restoreToken.trim() || !restoreFile}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
-            >
-              Restore
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Tertiary — server storage ─────────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <HardDrive size={16} className="text-brand-500" />
-          <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Server storage backup</h2>
-        </div>
-        <p className="text-sm text-zinc-500 dark:text-slate-400">
-          Writes an encrypted archive directly to a mounted disk or storage box on the server.
-        </p>
-
-        {config?.tertiary_enabled && config.disk_total_bytes != null && config.disk_total_bytes > 0 && (
-          <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-slate-400">
-            <HardDrive size={12} />
-            <span>
-              {formatBytes(config.disk_free_bytes ?? 0)} free of {formatBytes(config.disk_total_bytes)}
-            </span>
-          </div>
-        )}
-
-        {!config?.tertiary_enabled ? (
-          <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-4 py-3 text-xs text-zinc-500 dark:text-slate-400 space-y-1">
-            <p className="font-medium text-zinc-700 dark:text-slate-300">Not configured</p>
-            <p>Set <code className="bg-zinc-100 dark:bg-[#1a1d27] px-1 rounded">BACKUPS_ROOT=/mnt/backup</code> in your environment to enable this feature.</p>
-          </div>
-        ) : !status?.has_password ? (
-          <div className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
-            Generate a backup token above before saving archives to server storage.
-          </div>
-        ) : (
-          <>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={tertiaryToken}
-                onChange={e => { setTertiaryToken(e.target.value); saveToken(e.target.value) }}
-                placeholder="Backup token"
-                className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              <button
-                onClick={handleStoreTertiary}
-                disabled={!tertiaryToken.trim() || tertiarySaving}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
-              >
-                {tertiarySaving
-                  ? <><RefreshCw size={14} className="animate-spin" /> Saving…</>
-                  : <><HardDrive size={14} /> Save</>}
-              </button>
-            </div>
-            <FolderPicker selectedIDs={tertiaryFolderIDs} onChange={ids => {
-              setTertiaryFolderIDs(ids)
-              saveAutoConfigMutation.mutate({
-                enabled: autoConfig?.enabled ?? false,
-                interval_hours: autoConfig?.interval_hours ?? 24,
-                retention_days: autoConfig?.retention_days ?? 30,
-                folder_ids: ids,
-              })
-            }} />
-
-            {tertiaryList && tertiaryList.length > 0 && (
-              <div className="space-y-1 pt-1">
-                <p className="text-xs font-medium text-zinc-500 dark:text-slate-400">Stored archives</p>
-                {tertiaryList.map(a => (
-                  <div
-                    key={a.filename}
-                    className="flex items-center gap-2 rounded-lg border border-zinc-100 dark:border-[#2d3148] px-3 py-2 text-xs"
-                  >
-                    <span className="flex-1 font-mono text-zinc-700 dark:text-slate-300 truncate">{a.filename}</span>
-                    <span className="text-zinc-400 shrink-0">{formatBytes(a.size_bytes)}</span>
-                    <a
-                      href={`/api/v1/backup/tertiary/${encodeURIComponent(a.filename)}`}
-                      download={a.filename}
-                      className="shrink-0 p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-                      title="Download"
-                    >
-                      <Download size={12} />
-                    </a>
+              {!config?.tertiary_enabled ? (
+                <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-4 py-3 text-xs text-zinc-500 dark:text-slate-400 space-y-1">
+                  <p className="font-medium text-zinc-700 dark:text-slate-300">Not configured</p>
+                  <p>Set <code className="bg-zinc-100 dark:bg-[#1a1d27] px-1 rounded">BACKUPS_ROOT=/mnt/backup</code> in your environment to enable this feature.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={tertiaryToken}
+                      onChange={e => { setTertiaryToken(e.target.value); saveToken(e.target.value) }}
+                      placeholder="Backup token"
+                      className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
                     <button
-                      onClick={() => deleteTertiaryMutation.mutate(a.filename)}
-                      className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
-                      title="Delete"
+                      onClick={handleStoreTertiary}
+                      disabled={!tertiaryToken.trim() || tertiarySaving}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
                     >
-                      <Trash2 size={12} />
+                      {tertiarySaving
+                        ? <><RefreshCw size={14} className="animate-spin" /> Saving…</>
+                        : <><HardDrive size={14} /> Save</>}
                     </button>
                   </div>
-                ))}
+                  <FolderPicker selectedIDs={tertiaryFolderIDs} onChange={ids => {
+                    setTertiaryFolderIDs(ids)
+                    saveAutoConfigMutation.mutate({
+                      enabled: autoConfig?.enabled ?? false,
+                      interval_hours: autoConfig?.interval_hours ?? 24,
+                      retention_days: autoConfig?.retention_days ?? 30,
+                      folder_ids: ids,
+                    })
+                  }} />
+
+                  {tertiaryList && tertiaryList.length > 0 && (
+                    <div className="space-y-1 pt-1">
+                      <p className="text-xs font-medium text-zinc-500 dark:text-slate-400">Stored archives</p>
+                      {tertiaryList.map(a => (
+                        <div
+                          key={a.filename}
+                          className="flex items-center gap-2 rounded-lg border border-zinc-100 dark:border-[#2d3148] px-3 py-2 text-xs"
+                        >
+                          <span className="flex-1 font-mono text-zinc-700 dark:text-slate-300 truncate">{a.filename}</span>
+                          <span className="text-zinc-400 shrink-0">{formatBytes(a.size_bytes)}</span>
+                          <a
+                            href={`/api/v1/backup/tertiary/${encodeURIComponent(a.filename)}`}
+                            download={a.filename}
+                            className="shrink-0 p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
+                            title="Download"
+                          >
+                            <Download size={12} />
+                          </a>
+                          <button
+                            onClick={() => deleteTertiaryMutation.mutate(a.filename)}
+                            className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {tertiaryList?.length === 0 && (
+                    <p className="text-xs text-zinc-400">No archives stored yet.</p>
+                  )}
+                </>
+              )}
+            </section>
+
+            {/* ── Auto backup schedule ───────────────────────────────────── */}
+            {config?.tertiary_enabled && (
+              <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Clock size={16} className="text-brand-500" />
+                  <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Automatic backup</h2>
+                </div>
+                <p className="text-sm text-zinc-500 dark:text-slate-400">
+                  Schedule automatic backups to server storage. Uses the same folders selected above.
+                  A new archive is only created when your files have changed.
+                </p>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-700 dark:text-slate-300">Enable auto backup</span>
+                    <button
+                      type="button"
+                      onClick={() => saveAutoConfigMutation.mutate({
+                        enabled: !(autoConfig?.enabled ?? false),
+                        interval_hours: autoConfig?.interval_hours ?? 24,
+                        retention_days: autoConfig?.retention_days ?? 30,
+                        folder_ids: tertiaryFolderIDs,
+                      })}
+                      className="transition-colors"
+                      title={autoConfig?.enabled ? 'Disable' : 'Enable'}
+                    >
+                      {autoConfig?.enabled
+                        ? <ToggleRight size={28} className="text-brand-500" />
+                        : <ToggleLeft size={28} className="text-zinc-400" />}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">Interval</label>
+                    <select
+                      value={autoConfig?.interval_hours ?? 24}
+                      onChange={e => saveAutoConfigMutation.mutate({
+                        enabled: autoConfig?.enabled ?? false,
+                        interval_hours: Number(e.target.value),
+                        retention_days: autoConfig?.retention_days ?? 30,
+                        folder_ids: tertiaryFolderIDs,
+                      })}
+                      className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] px-3 py-1.5 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 [&>option]:bg-white [&>option]:dark:bg-[#1a1d27] [&>option]:text-zinc-900 [&>option]:dark:text-slate-100"
+                    >
+                      <option value={6}>Every 6 hours</option>
+                      <option value={12}>Every 12 hours</option>
+                      <option value={24}>Every 24 hours</option>
+                      <option value={48}>Every 48 hours</option>
+                      <option value={168}>Weekly</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">Keep backups</label>
+                    <select
+                      value={autoConfig?.retention_days ?? 30}
+                      onChange={e => saveAutoConfigMutation.mutate({
+                        enabled: autoConfig?.enabled ?? false,
+                        interval_hours: autoConfig?.interval_hours ?? 24,
+                        retention_days: Number(e.target.value),
+                        folder_ids: tertiaryFolderIDs,
+                      })}
+                      className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] px-3 py-1.5 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 [&>option]:bg-white [&>option]:dark:bg-[#1a1d27] [&>option]:text-zinc-900 [&>option]:dark:text-slate-100"
+                    >
+                      <option value={7}>7 days</option>
+                      <option value={14}>14 days</option>
+                      <option value={30}>30 days</option>
+                      <option value={60}>60 days</option>
+                      <option value={90}>90 days</option>
+                      <option value={180}>180 days</option>
+                      <option value={365}>1 year</option>
+                    </select>
+                  </div>
+
+                  {autoConfig?.last_run_at && (
+                    <p className="text-xs text-zinc-400">
+                      Last auto-backup: {new Date(autoConfig.last_run_at).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* ── Export (download) ─────────────────────────────────────── */}
+            <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <Download size={16} className="text-brand-500" />
+                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Export backup</h2>
               </div>
-            )}
-            {tertiaryList?.length === 0 && (
-              <p className="text-xs text-zinc-400">No archives stored yet.</p>
-            )}
-          </>
-        )}
-      </section>
-
-      {/* ── Auto backup schedule ──────────────────────────────────────────── */}
-      {config?.tertiary_enabled && status?.has_password && (
-        <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Clock size={16} className="text-brand-500" />
-            <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Automatic backup</h2>
-          </div>
-          <p className="text-sm text-zinc-500 dark:text-slate-400">
-            Schedule automatic backups to server storage. Uses the same folders selected in the server storage section above.
-            A new archive is only created when your files have changed.
-          </p>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-zinc-700 dark:text-slate-300">Enable auto backup</span>
-              <button
-                type="button"
-                onClick={() => saveAutoConfigMutation.mutate({
-                  enabled: !(autoConfig?.enabled ?? false),
-                  interval_hours: autoConfig?.interval_hours ?? 24,
-                  retention_days: autoConfig?.retention_days ?? 30,
-                  folder_ids: tertiaryFolderIDs,
-                })}
-                className="transition-colors"
-                title={autoConfig?.enabled ? 'Disable' : 'Enable'}
-              >
-                {autoConfig?.enabled
-                  ? <ToggleRight size={28} className="text-brand-500" />
-                  : <ToggleLeft size={28} className="text-zinc-400" />}
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">Interval</label>
-              <select
-                value={autoConfig?.interval_hours ?? 24}
-                onChange={e => saveAutoConfigMutation.mutate({
-                  enabled: autoConfig?.enabled ?? false,
-                  interval_hours: Number(e.target.value),
-                  retention_days: autoConfig?.retention_days ?? 30,
-                  folder_ids: tertiaryFolderIDs,
-                })}
-                className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] px-3 py-1.5 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 [&>option]:bg-white [&>option]:dark:bg-[#1a1d27] [&>option]:text-zinc-900 [&>option]:dark:text-slate-100"
-              >
-                <option value={6}>Every 6 hours</option>
-                <option value={12}>Every 12 hours</option>
-                <option value={24}>Every 24 hours</option>
-                <option value={48}>Every 48 hours</option>
-                <option value={168}>Weekly</option>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">Keep backups</label>
-              <select
-                value={autoConfig?.retention_days ?? 30}
-                onChange={e => saveAutoConfigMutation.mutate({
-                  enabled: autoConfig?.enabled ?? false,
-                  interval_hours: autoConfig?.interval_hours ?? 24,
-                  retention_days: Number(e.target.value),
-                  folder_ids: tertiaryFolderIDs,
-                })}
-                className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] px-3 py-1.5 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 [&>option]:bg-white [&>option]:dark:bg-[#1a1d27] [&>option]:text-zinc-900 [&>option]:dark:text-slate-100"
-              >
-                <option value={7}>7 days</option>
-                <option value={14}>14 days</option>
-                <option value={30}>30 days</option>
-                <option value={60}>60 days</option>
-                <option value={90}>90 days</option>
-                <option value={180}>180 days</option>
-                <option value={365}>1 year</option>
-              </select>
-            </div>
-
-            {autoConfig?.last_run_at && (
-              <p className="text-xs text-zinc-400">
-                Last auto-backup: {new Date(autoConfig.last_run_at).toLocaleString()}
+              <p className="text-sm text-zinc-500 dark:text-slate-400">
+                Downloads an AES-256 encrypted archive (<code className="text-xs">.shdbak</code>) to your device.
               </p>
-            )}
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={exportToken}
+                  onChange={e => { setExportToken(e.target.value); saveToken(e.target.value) }}
+                  placeholder="Backup token"
+                  className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <button
+                  onClick={handleExport}
+                  disabled={!exportToken.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+                >
+                  <Download size={14} /> Download
+                </button>
+              </div>
+              <FolderPicker selectedIDs={exportFolderIDs} onChange={setExportFolderIDs} />
+            </section>
+
+            {/* ── Restore ──────────────────────────────────────────────── */}
+            <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <Upload size={16} className="text-brand-500" />
+                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Restore from backup</h2>
+              </div>
+              <p className="text-sm text-zinc-500 dark:text-slate-400">
+                Upload a <code className="text-xs">.shdbak</code> file to restore files. Existing files
+                are skipped — the operation is safe to repeat.
+              </p>
+              <div className="space-y-2">
+                <input
+                  type="password"
+                  value={restoreToken}
+                  onChange={e => setRestoreToken(e.target.value)}
+                  placeholder="Backup token"
+                  className="w-full text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <div className="flex gap-2 items-center">
+                  <label className="flex-1 flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border border-dashed border-zinc-300 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors">
+                    <Upload size={14} className="text-zinc-400" />
+                    <span className="text-sm text-zinc-500 dark:text-slate-400 truncate">
+                      {restoreFile ? restoreFile.name : 'Choose .shdbak file…'}
+                    </span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".shdbak"
+                      className="hidden"
+                      onChange={e => setRestoreFile(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <button
+                    onClick={handleRestore}
+                    disabled={!restoreToken.trim() || !restoreFile}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+                  >
+                    Restore
+                  </button>
+                </div>
+              </div>
+            </section>
           </div>
-        </section>
+        )
       )}
 
-      {/* ── Buddy backup ──────────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-5">
-        <div className="flex items-center gap-2">
-          <Server size={16} className="text-brand-500" />
-          <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Buddy backup</h2>
-        </div>
-        <p className="text-sm text-zinc-500 dark:text-slate-400">
-          Push encrypted archives to a peer Sharedrive server for off-site redundancy.
-          Exchange your receive info with a trusted friend — they configure your details on their side, you configure theirs on yours.
-        </p>
-
-        {/* ── Your receive info ─────────────────────────────────────────── */}
-        <div className="space-y-3 border-t border-zinc-100 dark:border-[#2d3148] pt-4">
-          <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Your receive info — share with your buddy</p>
-          <p className="text-xs text-zinc-500 dark:text-slate-400">Give these three values to your buddy so they can push archives to you.</p>
-
-          {/* URL */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Server URL</span>
-            <code className="flex-1 text-xs font-mono bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] rounded px-2 py-1 truncate">{window.location.origin}</code>
-            <button
-              onClick={() => { void navigator.clipboard.writeText(window.location.origin); toast.success('URL copied') }}
-              className="shrink-0 p-1.5 rounded border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-              title="Copy URL"
-            >
-              <Copy size={12} />
-            </button>
+      {/* ── Tab 2: Buddy Backup ─────────────────────────────────────────── */}
+      {activeTab === 'buddy' && (
+        !hasToken ? (
+          <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10 px-6 py-8 text-center space-y-3">
+            <ShieldCheck size={32} className="mx-auto text-amber-500" />
+            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Backup token required</p>
+            <p className="text-xs text-amber-600 dark:text-amber-500">
+              Go to the <button type="button" onClick={() => setActiveTab('token')} className="underline font-medium">Backup Token</button> tab to generate your encryption token before using buddy backup.
+            </p>
           </div>
+        ) : (
+          <div className="space-y-8">
+            {/* ── Buddy backup ─────────────────────────────────────────── */}
+            <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-5">
+              <div className="flex items-center gap-2">
+                <Server size={16} className="text-brand-500" />
+                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Buddy backup</h2>
+              </div>
+              <p className="text-sm text-zinc-500 dark:text-slate-400">
+                Push encrypted archives to a peer Sharedrive server for off-site redundancy.
+                Exchange your receive info with a trusted friend — they configure your details on their side, you configure theirs on yours.
+              </p>
 
-          {/* User ID */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Your User ID</span>
-            <code className="flex-1 text-xs font-mono bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] rounded px-2 py-1 truncate">{buddyConfig?.user_id ?? '…'}</code>
-            <button
-              onClick={() => { if (buddyConfig?.user_id) { void navigator.clipboard.writeText(buddyConfig.user_id); toast.success('User ID copied') } }}
-              className="shrink-0 p-1.5 rounded border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-              title="Copy User ID"
-            >
-              <Copy size={12} />
-            </button>
+              {/* ── Your receive info ───────────────────────────────────── */}
+              <div className="space-y-3 border-t border-zinc-100 dark:border-[#2d3148] pt-4">
+                <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Your receive info — share with your buddy</p>
+                <p className="text-xs text-zinc-500 dark:text-slate-400">Give these three values to your buddy so they can push archives to you.</p>
+
+                {/* URL */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Server URL</span>
+                  <code className="flex-1 text-xs font-mono bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] rounded px-2 py-1 truncate">{window.location.origin}</code>
+                  <button
+                    onClick={() => { void navigator.clipboard.writeText(window.location.origin); toast.success('URL copied') }}
+                    className="shrink-0 p-1.5 rounded border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                    title="Copy URL"
+                  >
+                    <Copy size={12} />
+                  </button>
+                </div>
+
+                {/* User ID */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Your User ID</span>
+                  <code className="flex-1 text-xs font-mono bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] rounded px-2 py-1 truncate">{buddyConfig?.user_id ?? '…'}</code>
+                  <button
+                    onClick={() => { if (buddyConfig?.user_id) { void navigator.clipboard.writeText(buddyConfig.user_id); toast.success('User ID copied') } }}
+                    className="shrink-0 p-1.5 rounded border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                    title="Copy User ID"
+                  >
+                    <Copy size={12} />
+                  </button>
+                </div>
+
+                {/* Receive token */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Receive token</span>
+                  {buddyConfig?.has_receive_token ? (
+                    <span className="flex-1 text-xs font-mono text-zinc-500 dark:text-slate-400">
+                      {buddyConfig.receive_token_prefix}••••••••••••••••••••••••••••••••••••
+                    </span>
+                  ) : (
+                    <span className="flex-1 text-xs text-zinc-400">Not generated yet</span>
+                  )}
+                  <button
+                    onClick={() => generateReceiveTokenMutation.mutate()}
+                    disabled={generateReceiveTokenMutation.isPending}
+                    className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw size={10} /> {buddyConfig?.has_receive_token ? 'Rotate' : 'Generate'}
+                  </button>
+                  {buddyConfig?.has_receive_token && (
+                    <button
+                      onClick={() => { if (confirm('Revoke receive token? Your buddy will no longer be able to push archives to you.')) revokeReceiveTokenMutation.mutate() }}
+                      disabled={revokeReceiveTokenMutation.isPending}
+                      className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 size={10} /> Revoke
+                    </button>
+                  )}
+                </div>
+
+                {newReceiveToken && (
+                  <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
+                    <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                      <p className="text-xs font-medium">Save this token now — it will never be shown again. Give it to your buddy.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-xs font-mono bg-white dark:bg-[#0f1117] border border-amber-200 dark:border-amber-800 rounded px-3 py-2 break-all text-zinc-800 dark:text-slate-200 select-all">
+                        {newReceiveToken}
+                      </code>
+                      <button
+                        onClick={handleCopyReceiveToken}
+                        className="shrink-0 p-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                        title="Copy token"
+                      >
+                        {receiveTokenCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Push to peer ────────────────────────────────────────── */}
+              <div className="space-y-3 border-t border-zinc-100 dark:border-[#2d3148] pt-4">
+                <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Push to peer</p>
+                <p className="text-xs text-zinc-500 dark:text-slate-400">Enter the receive info your buddy gave you.</p>
+
+                {buddyConfig?.peer_configured ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] px-3 py-2">
+                      <span className="text-xs text-zinc-500 dark:text-slate-400">Peer:</span>
+                      <span className="flex-1 text-xs font-mono text-zinc-700 dark:text-slate-300 truncate">{buddyConfig.peer_url}</span>
+                      <button
+                        onClick={() => { if (confirm('Clear peer configuration? You will no longer be able to push to this peer.')) clearPeerConfigMutation.mutate() }}
+                        disabled={clearPeerConfigMutation.isPending}
+                        className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 size={10} /> Clear
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={buddyToken}
+                        onChange={e => { setBuddyToken(e.target.value); saveToken(e.target.value) }}
+                        placeholder="Your backup token"
+                        className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      />
+                      <button
+                        onClick={handleBuddyPush}
+                        disabled={!buddyToken.trim() || buddyPushing}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+                      >
+                        {buddyPushing
+                          ? <><RefreshCw size={14} className="animate-spin" /> Pushing…</>
+                          : <><Server size={14} /> Push</>}
+                      </button>
+                    </div>
+                    <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      type="url"
+                      value={peerURLInput}
+                      onChange={e => setPeerURLInput(e.target.value)}
+                      placeholder="Peer server URL (e.g. https://peer.example.com)"
+                      className="w-full text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                    <input
+                      type="text"
+                      value={peerUserIDInput}
+                      onChange={e => setPeerUserIDInput(e.target.value)}
+                      placeholder="Peer user ID (UUID from their backup page)"
+                      className="w-full text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={peerTokenInput}
+                        onChange={e => setPeerTokenInput(e.target.value)}
+                        placeholder="Peer receive token (from their backup page)"
+                        className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      />
+                      <button
+                        onClick={() => savePeerConfigMutation.mutate()}
+                        disabled={!peerURLInput.trim() || !peerUserIDInput.trim() || !peerTokenInput.trim() || savePeerConfigMutation.isPending}
+                        className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* ── Received buddy archives ──────────────────────────────── */}
+            <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <Server size={16} className="text-brand-500" />
+                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Received buddy archives</h2>
+              </div>
+              <p className="text-sm text-zinc-500 dark:text-slate-400">
+                Archives pushed here by your buddy. Download and restore to recover files.
+              </p>
+
+              {!buddyConfig?.has_receive_token ? (
+                <p className="text-xs text-zinc-400 dark:text-slate-500">Generate a receive token above to allow your buddy to push archives here.</p>
+              ) : buddyReceived && buddyReceived.length > 0 ? (
+                <div className="space-y-1">
+                  {buddyReceived.map(a => (
+                    <div
+                      key={a.filename}
+                      className="flex items-center gap-2 rounded-lg border border-zinc-100 dark:border-[#2d3148] px-3 py-2 text-xs"
+                    >
+                      <span className="flex-1 font-mono text-zinc-700 dark:text-slate-300 truncate">{a.filename}</span>
+                      <span className="text-zinc-400 shrink-0">{formatBytes(a.size_bytes)}</span>
+                      <span className="text-zinc-400 shrink-0">{new Date(a.received_at).toLocaleDateString()}</span>
+                      <a
+                        href={`/api/v1/backup/buddy/received/${encodeURIComponent(a.filename)}`}
+                        download={a.filename}
+                        className="shrink-0 p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
+                        title="Download"
+                      >
+                        <Download size={12} />
+                      </a>
+                      <button
+                        onClick={() => deleteBuddyMutation.mutate(a.filename)}
+                        className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-400">No archives received yet.</p>
+              )}
+            </section>
           </div>
+        )
+      )}
 
-          {/* Receive token */}
+      {/* ── Tab 3: Backup Token ─────────────────────────────────────────── */}
+      {activeTab === 'token' && (
+        <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Receive token</span>
-            {buddyConfig?.has_receive_token ? (
-              <span className="flex-1 text-xs font-mono text-zinc-500 dark:text-slate-400">
-                {buddyConfig.receive_token_prefix}••••••••••••••••••••••••••••••••••••
-              </span>
-            ) : (
-              <span className="flex-1 text-xs text-zinc-400">Not generated yet</span>
-            )}
-            <button
-              onClick={() => generateReceiveTokenMutation.mutate()}
-              disabled={generateReceiveTokenMutation.isPending}
-              className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
-            >
-              <RefreshCw size={10} /> {buddyConfig?.has_receive_token ? 'Rotate' : 'Generate'}
-            </button>
-            {buddyConfig?.has_receive_token && (
+            <ShieldCheck size={16} className="text-brand-500" />
+            <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Backup token</h2>
+          </div>
+          <p className="text-sm text-zinc-500 dark:text-slate-400">
+            This token is used to encrypt and decrypt all backup archives. It is required before you can use Server Storage or Buddy Backup.
+          </p>
+          <p className="text-sm text-zinc-500 dark:text-slate-400">
+            Store it safely. It may be required for disaster recovery.
+          </p>
+
+          {isLoading ? (
+            <p className="text-sm text-zinc-400">Loading…</p>
+          ) : status?.has_password ? (
+            <div className="space-y-3">
+              <p className="text-sm text-zinc-600 dark:text-slate-400">
+                A backup token is active.
+                {status.created_at && <> Created {new Date(status.created_at).toLocaleDateString()}.</>}
+                {status.last_used_at && <> Last used {new Date(status.last_used_at).toLocaleDateString()}.</>}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    if (confirm('Generate a new token? The current one will be permanently revoked. Existing backups encrypted with the old token will still require the old token to restore.')) {
+                      generateMutation.mutate()
+                    }
+                  }}
+                  disabled={generateMutation.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-[#2d3148] text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw size={12} /> Rotate token
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm('Revoke your backup token? You will no longer be able to export or restore.')) {
+                      revokeMutation.mutate()
+                    }
+                  }}
+                  disabled={revokeMutation.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                >
+                  <Trash2 size={12} /> Revoke
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-zinc-500 dark:text-slate-400">No backup token yet.</p>
               <button
-                onClick={() => { if (confirm('Revoke receive token? Your buddy will no longer be able to push archives to you.')) revokeReceiveTokenMutation.mutate() }}
-                disabled={revokeReceiveTokenMutation.isPending}
-                className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                onClick={() => generateMutation.mutate()}
+                disabled={generateMutation.isPending}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
               >
-                <Trash2 size={10} /> Revoke
+                Generate token
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
-          {newReceiveToken && (
+          {newToken && (
             <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
               <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400">
-                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                <p className="text-xs font-medium">Save this token now — it will never be shown again. Give it to your buddy.</p>
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                <p className="text-sm font-medium">Save this token now — it will never be shown again.</p>
               </div>
               <div className="flex items-center gap-2">
                 <code className="flex-1 text-xs font-mono bg-white dark:bg-[#0f1117] border border-amber-200 dark:border-amber-800 rounded px-3 py-2 break-all text-zinc-800 dark:text-slate-200 select-all">
-                  {newReceiveToken}
+                  {newToken}
                 </code>
                 <button
-                  onClick={handleCopyReceiveToken}
+                  onClick={handleCopyToken}
                   className="shrink-0 p-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                   title="Copy token"
                 >
-                  {receiveTokenCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                  {tokenCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                 </button>
               </div>
             </div>
           )}
-        </div>
-
-        {/* ── Push to peer ──────────────────────────────────────────────── */}
-        <div className="space-y-3 border-t border-zinc-100 dark:border-[#2d3148] pt-4">
-          <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Push to peer</p>
-          <p className="text-xs text-zinc-500 dark:text-slate-400">Enter the receive info your buddy gave you.</p>
-
-          {buddyConfig?.peer_configured ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] px-3 py-2">
-                <span className="text-xs text-zinc-500 dark:text-slate-400">Peer:</span>
-                <span className="flex-1 text-xs font-mono text-zinc-700 dark:text-slate-300 truncate">{buddyConfig.peer_url}</span>
-                <button
-                  onClick={() => { if (confirm('Clear peer configuration? You will no longer be able to push to this peer.')) clearPeerConfigMutation.mutate() }}
-                  disabled={clearPeerConfigMutation.isPending}
-                  className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
-                >
-                  <Trash2 size={10} /> Clear
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={buddyToken}
-                  onChange={e => { setBuddyToken(e.target.value); saveToken(e.target.value) }}
-                  placeholder="Your backup token"
-                  className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-                <button
-                  onClick={handleBuddyPush}
-                  disabled={!buddyToken.trim() || buddyPushing}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
-                >
-                  {buddyPushing
-                    ? <><RefreshCw size={14} className="animate-spin" /> Pushing…</>
-                    : <><Server size={14} /> Push</>}
-                </button>
-              </div>
-              <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <input
-                type="url"
-                value={peerURLInput}
-                onChange={e => setPeerURLInput(e.target.value)}
-                placeholder="Peer server URL (e.g. https://peer.example.com)"
-                className="w-full text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              <input
-                type="text"
-                value={peerUserIDInput}
-                onChange={e => setPeerUserIDInput(e.target.value)}
-                placeholder="Peer user ID (UUID from their backup page)"
-                className="w-full text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={peerTokenInput}
-                  onChange={e => setPeerTokenInput(e.target.value)}
-                  placeholder="Peer receive token (from their backup page)"
-                  className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-                <button
-                  onClick={() => savePeerConfigMutation.mutate()}
-                  disabled={!peerURLInput.trim() || !peerUserIDInput.trim() || !peerTokenInput.trim() || savePeerConfigMutation.isPending}
-                  className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ── Received buddy archives ─────────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <Server size={16} className="text-brand-500" />
-          <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Received buddy archives</h2>
-        </div>
-        <p className="text-sm text-zinc-500 dark:text-slate-400">
-          Archives pushed here by your buddy. Download and restore to recover files.
-        </p>
-
-        {!buddyConfig?.has_receive_token ? (
-          <p className="text-xs text-zinc-400 dark:text-slate-500">Generate a receive token above to allow your buddy to push archives here.</p>
-        ) : buddyReceived && buddyReceived.length > 0 ? (
-          <div className="space-y-1">
-            {buddyReceived.map(a => (
-              <div
-                key={a.filename}
-                className="flex items-center gap-2 rounded-lg border border-zinc-100 dark:border-[#2d3148] px-3 py-2 text-xs"
-              >
-                <span className="flex-1 font-mono text-zinc-700 dark:text-slate-300 truncate">{a.filename}</span>
-                <span className="text-zinc-400 shrink-0">{formatBytes(a.size_bytes)}</span>
-                <span className="text-zinc-400 shrink-0">{new Date(a.received_at).toLocaleDateString()}</span>
-                <a
-                  href={`/api/v1/backup/buddy/received/${encodeURIComponent(a.filename)}`}
-                  download={a.filename}
-                  className="shrink-0 p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-                  title="Download"
-                >
-                  <Download size={12} />
-                </a>
-                <button
-                  onClick={() => deleteBuddyMutation.mutate(a.filename)}
-                  className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
-                  title="Delete"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-zinc-400">No archives received yet.</p>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   )
 }

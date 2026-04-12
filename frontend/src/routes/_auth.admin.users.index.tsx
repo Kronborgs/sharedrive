@@ -338,6 +338,18 @@ function AdminUsersPage() {
     onError: () => toast.error('Failed to force password reset'),
   })
 
+  const changeRoleMutation = useMutation({
+    mutationFn: ({ id, role }: { id: string; role: 'user' | 'admin' }) =>
+      api.patch(`/api/v1/admin/users/${id}`, { role }),
+    onSuccess: (_data, { role }) => {
+      toast.success(role === 'admin' ? 'User promoted to admin' : 'User demoted to user')
+      invalidateUsers()
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const adminCount = (data?.items ?? []).filter(u => u.role === 'admin').length
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -384,9 +396,11 @@ function AdminUsersPage() {
                     key={user.id}
                     user={user}
                     isSelf={user.id === me?.id}
+                    isLastAdmin={adminCount <= 1 && user.role === 'admin'}
                     onEdit={setEditUser}
                     onLock={id => lockMutation.mutate(id)}
                     onUnlock={id => unlockMutation.mutate(id)}
+                    onChangeRole={role => changeRoleMutation.mutate({ id: user.id, role })}
                     onRevokeTOTP={async id => {
                       if (confirm('Remove 2FA from this user? They will be able to log in without a second factor.')) {
                         try {
@@ -744,7 +758,9 @@ function UserRow({
   onRevokeTOTP,
   onRequireTOTP,
   onUnrequireTOTP,
+  onChangeRole,
   isSelf,
+  isLastAdmin,
 }: {
   user: User
   onEdit: (u: User) => void
@@ -755,7 +771,9 @@ function UserRow({
   onRevokeTOTP: (id: string) => void
   onRequireTOTP: (id: string) => void
   onUnrequireTOTP: (id: string) => void
+  onChangeRole: (role: 'user' | 'admin') => void
   isSelf: boolean
+  isLastAdmin: boolean
 }) {
   const percent = user.quota_bytes > 0
     ? Math.min(100, (user.quota_used_bytes / user.quota_bytes) * 100)
@@ -854,6 +872,30 @@ function UserRow({
           >
             <Pencil size={14} />
           </button>
+          {user.role === 'admin' ? (
+            <button
+              onClick={() => {
+                if (confirm(`Demote "${user.display_name}" from admin to user?`))
+                  onChangeRole('user')
+              }}
+              disabled={isLastAdmin || isSelf}
+              className="p-1.5 rounded-lg text-purple-500 hover:text-zinc-500 dark:hover:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title={isLastAdmin ? 'Cannot demote the last admin' : isSelf ? 'Cannot demote yourself' : 'Demote to user'}
+            >
+              <ShieldCheck size={14} />
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                if (confirm(`Promote "${user.display_name}" to admin?`))
+                  onChangeRole('admin')
+              }}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
+              title="Promote to admin"
+            >
+              <ShieldOff size={14} />
+            </button>
+          )}
           {user.is_active ? (
             <button
               onClick={() => onLock(user.id)}

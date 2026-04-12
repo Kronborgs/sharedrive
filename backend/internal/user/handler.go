@@ -211,6 +211,22 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	argN := 1
 
 	if req.Role != nil {
+		// Prevent demoting the last admin — require at least one other admin.
+		if *req.Role != "admin" {
+			var otherAdmins int
+			if err := h.db.QueryRow(ctx,
+				`SELECT COUNT(*) FROM users WHERE role = 'admin' AND id != $1::uuid`,
+				id,
+			).Scan(&otherAdmins); err != nil {
+				log.Error().Err(err).Msg("admin: check admin count")
+				httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if otherAdmins == 0 {
+				httputil.RespondError(w, http.StatusUnprocessableEntity, "cannot demote the last admin — promote another user first")
+				return
+			}
+		}
 		sets = append(sets, "role = $"+strconv.Itoa(argN))
 		args = append(args, *req.Role)
 		argN++

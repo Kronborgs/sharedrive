@@ -48,13 +48,20 @@ function FileTreeNode({
   depth,
   selectedIDs,
   onToggle,
+  ancestorIDs,
 }: {
   item: FileItem
   depth: number
   selectedIDs: string[]
   onToggle: (id: string) => void
+  ancestorIDs: Set<string>
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const isAncestor = ancestorIDs.has(item.id)
+  const [expanded, setExpanded] = useState(isAncestor)
+
+  useEffect(() => {
+    if (isAncestor) setExpanded(true)
+  }, [isAncestor])
 
   const { data: children, isLoading: loadingChildren } = useQuery({
     queryKey: ['files', item.id, 'picker-children'],
@@ -83,7 +90,7 @@ function FileTreeNode({
         <label className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
           <input
             type="checkbox"
-            checked={selectedIDs.includes(item.id)}
+            checked={selectedIDs.includes(item.id) || isAncestor}
             onChange={() => onToggle(item.id)}
             className="accent-brand-600 shrink-0"
           />
@@ -97,7 +104,7 @@ function FileTreeNode({
         loadingChildren
           ? <p className="text-xs text-zinc-400 py-0.5" style={{ paddingLeft: `${(depth + 1) * 14 + 20}px` }}>Loading…</p>
           : (children ?? []).map(c => (
-              <FileTreeNode key={c.id} item={c} depth={depth + 1} selectedIDs={selectedIDs} onToggle={onToggle} />
+              <FileTreeNode key={c.id} item={c} depth={depth + 1} selectedIDs={selectedIDs} onToggle={onToggle} ancestorIDs={ancestorIDs} />
             ))
       )}
     </div>
@@ -122,8 +129,32 @@ function FolderPicker({
     enabled: open,
   })
 
+  /* compute ancestor folder IDs so we can auto-expand & visually check parents */
+  const { data: ancestorIDs } = useQuery({
+    queryKey: ['files', 'ancestors', selectedIDs.slice().sort().join(',')],
+    queryFn: async ({ signal }) => {
+      const results = await Promise.all(
+        selectedIDs.map(id =>
+          api.get<{ id: string; name: string }[]>(
+            `/api/v1/files/breadcrumbs?folder_id=${id}`,
+            signal,
+          ),
+        ),
+      )
+      const set = new Set<string>()
+      for (const crumbs of results) {
+        for (const c of crumbs) set.add(c.id)
+      }
+      for (const id of selectedIDs) set.delete(id)
+      return set
+    },
+    enabled: selectedIDs.length > 0,
+  })
+
+  const resolvedAncestors = ancestorIDs ?? new Set<string>()
   const items = rootItems ?? []
   const allChecked = selectedIDs.length === 0
+  const totalChecked = selectedIDs.length + resolvedAncestors.size
 
   const toggle = (id: string) => {
     if (selectedIDs.includes(id)) {
@@ -141,7 +172,7 @@ function FolderPicker({
         className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 transition-colors"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        {allChecked ? 'All files' : `${selectedIDs.length} item(s) selected`}
+        {allChecked ? 'All files' : `${totalChecked} item(s) selected`}
       </button>
 
       {open && (
@@ -167,6 +198,7 @@ function FolderPicker({
                   depth={0}
                   selectedIDs={selectedIDs}
                   onToggle={toggle}
+                  ancestorIDs={resolvedAncestors}
                 />
               ))}
             </div>

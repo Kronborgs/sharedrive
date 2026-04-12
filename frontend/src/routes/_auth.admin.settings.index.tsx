@@ -130,12 +130,12 @@ function SettingsPage() {
           <input
             type="url"
             {...register('direct_upload_url')}
-            placeholder="https://upload.sharedrive.kronborgs.dk"
+            placeholder="https://upload.yourdomain.com"
             className={inputClass}
           />
           <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">
-            Valgfri URL der bypasser Cloudflare for hurtigere uploads (f.eks. direkte WAN-IP eller subdomain med grå sky i Cloudflare DNS).
-            Lad feltet stå tomt for at bruge den normale upload-rute.
+            Optional URL that bypasses Cloudflare for faster uploads (e.g. a DNS-only subdomain or direct WAN IP).
+            Leave empty to use the normal upload route.
           </p>
         </Field>
       </section>

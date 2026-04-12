@@ -295,6 +295,63 @@ Auth works seamlessly: the frontend fetches a short-lived upload token from the 
 
 ---
 
+## Trusted proxies (Cloudflare)
+
+Sharedrive only trusts proxy headers (`CF-Connecting-IP`, `X-Forwarded-For`) from IP ranges you explicitly allow via `TRUSTED_PROXIES`. **Without this, the app cannot see the real client IP** — it will see your reverse proxy's IP instead.
+
+### Where to find the CIDRs
+
+Cloudflare publishes its current ranges at:
+
+- **IPv4:** <https://www.cloudflare.com/ips-v4>
+- **IPv6:** <https://www.cloudflare.com/ips-v6>
+- **JSON API:** <https://api.cloudflare.com/client/v4/ips>
+
+> **Tip:** Bookmark the IPv4 page and check it periodically — Cloudflare adds new ranges occasionally (last update was adding `172.64.0.0/13`).
+
+### Current Cloudflare IPv4 ranges (April 2026)
+
+```
+173.245.48.0/20
+103.21.244.0/22
+103.22.200.0/22
+103.31.4.0/22
+141.101.64.0/18
+108.162.192.0/18
+190.93.240.0/20
+188.114.96.0/20
+197.234.240.0/22
+198.41.128.0/17
+162.158.0.0/15
+104.16.0.0/13
+104.24.0.0/14
+172.64.0.0/13
+131.0.72.0/22
+```
+
+### Docker network subnet
+
+If your `cloudflared` container connects to Sharedrive over a Docker network (e.g. Unraid's custom network), the Docker subnet is the **direct peer** — it must also be trusted. Check the subnet with:
+
+```bash
+docker network inspect cloudflare --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
+```
+
+Then prepend it to `TRUSTED_PROXIES`, e.g.:
+
+```
+TRUSTED_PROXIES=10.10.70.0/24,173.245.48.0/20,103.21.244.0/22,...
+```
+
+### Example `.env`
+
+```bash
+# Cloudflare IPv4 + local Docker network
+TRUSTED_PROXIES=10.10.70.0/24,173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22
+```
+
+---
+
 ## Storage layout
 
 ```
@@ -360,7 +417,7 @@ Redis is **intentionally ephemeral** — it holds rate-limit counters, pending 2
 | IP lockout | Progressive tiers: 60 min → 6 h → 24 h |
 | CSP | Dynamic per-request (direct upload URL injected) |
 | HSTS | `max-age=63072000; includeSubDomains; preload` |
-| IP extraction | `CF-Connecting-IP` → `X-Forwarded-For` → `RemoteAddr` |
+| IP extraction | Trusted-proxy CIDR validation; `CF-Connecting-IP` / `X-Forwarded-For` only honoured from configured `TRUSTED_PROXIES` ranges |
 | Audit log | Immutable — never deleted by application code |
 
 ---
@@ -374,6 +431,8 @@ Redis is **intentionally ephemeral** — it holds rate-limit counters, pending 2
 | `APP_PORT` | `8080` | Listen port |
 | `GO_ENV` | `production` | Set to `development` for dev mode |
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed CORS origins |
+| `TRUSTED_PROXIES` | — | Comma-separated CIDRs whose proxy headers are trusted (see [Trusted proxies](#trusted-proxies-cloudflare)) |
+| `COOKIE_DOMAIN` | — | Explicit cookie domain scope; leave blank for host-only (most secure) |
 | `SESSION_SECRET` | **required** | 32+ byte random secret |
 | `BACKUP_HMAC_SECRET` | **required** | 32+ byte random secret |
 | `TOTP_ENCRYPT_KEY` | **required** | Exactly 64 hex chars (32 bytes) |

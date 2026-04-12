@@ -227,8 +227,8 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
           const res = await api.post<{ token: string }>('/api/v1/upload-token', { folder_id: folderId ?? '' })
           uploadToken = res.token
         } catch (err) {
-          // Cookie auth covers same-site subdomains (.kronborgs.dk domain), so
-          // uploads will still work. Log a warning so auth failures are visible.
+          // Uploads will still work via cookie auth on the main domain.
+          // Log a warning so auth failures are visible.
           console.warn('[UploadZone] Failed to fetch upload token; falling back to cookie auth:', err)
         }
       }

@@ -17,34 +17,77 @@ export const Route = createFileRoute('/_auth/admin/audit-logs/')({
   component: AuditLogsPage,
 })
 
-const EVENT_TYPES = [
-  '',
-  'user.login',
-  'user.logout',
-  'user.login_failed',
-  'user.created',
-  'user.updated',
-  'user.deleted',
-  'file.uploaded',
-  'file.downloaded',
-  'file.deleted',
-  'file.moved',
-  'file.trashed',
-  'file.restored',
-  'share.created',
-  'share.revoked',
-  'admin.support_access',
-  'admin.user_quota_changed',
+const EVENT_TYPES: { value: string; label: string }[] = [
+  { value: '', label: 'All events' },
+  // Auth
+  { value: 'LOGIN_SUCCESS',          label: 'Login success' },
+  { value: 'LOGIN_FAILED',           label: 'Login failed' },
+  { value: 'LOGIN_TOTP_REQUIRED',    label: 'Login – TOTP required' },
+  { value: 'LOGOUT',                 label: 'Logout' },
+  { value: 'WEBDAV_LOGIN_SUCCESS',   label: 'WebDAV login success' },
+  { value: 'WEBDAV_LOGIN_FAILED',    label: 'WebDAV login failed' },
+  // Users
+  { value: 'USER_CREATED',           label: 'User created' },
+  { value: 'USER_DELETED',           label: 'User deleted' },
+  { value: 'USER_ACTIVATED',         label: 'User activated' },
+  { value: 'USER_DEACTIVATED',       label: 'User deactivated' },
+  { value: 'USER_QUOTA_CHANGED',     label: 'User quota changed' },
+  { value: 'USER_FORCED_PASSWORD_RESET', label: 'Forced password reset' },
+  // Security
+  { value: 'TOTP_ENABLED',           label: 'TOTP enabled' },
+  { value: 'TOTP_DISABLED',          label: 'TOTP disabled' },
+  { value: 'PASSWORD_CHANGED',       label: 'Password changed' },
+  { value: 'PASSWORD_RESET_REQUESTED', label: 'Password reset requested' },
+  { value: 'PASSWORD_RESET_CONFIRMED', label: 'Password reset confirmed' },
+  { value: 'LOCKOUT_USER',           label: 'User locked out' },
+  { value: 'LOCKOUT_IP_30M',         label: 'IP blocked 30m' },
+  { value: 'LOCKOUT_IP_60M',         label: 'IP blocked 60m' },
+  { value: 'LOCKOUT_IP_6H',          label: 'IP blocked 6h' },
+  { value: 'LOCKOUT_IP_24H',         label: 'IP blocked 24h' },
+  { value: 'LOCKOUT_IP_MANUAL',      label: 'IP blocked (manual)' },
+  { value: 'LOCKOUT_CLEARED_BY_ADMIN', label: 'Lockout cleared' },
+  { value: 'IP_WHITELISTED',         label: 'IP whitelisted' },
+  { value: 'IP_WHITELIST_REMOVED',   label: 'IP whitelist removed' },
+  { value: 'DEVICE_TRUST_GRANTED',   label: 'Device trust granted' },
+  { value: 'DEVICE_TRUST_REVOKED',   label: 'Device trust revoked' },
+  // Files
+  { value: 'FILE_DOWNLOADED',        label: 'File downloaded' },
+  { value: 'FILE_DELETED',           label: 'File deleted' },
+  { value: 'FILE_PERMANENTLY_DELETED', label: 'File permanently deleted' },
+  { value: 'FILE_RESTORED',          label: 'File restored' },
+  { value: 'FILE_RENAMED',           label: 'File renamed' },
+  { value: 'FILE_MOVED',             label: 'File moved' },
+  { value: 'ZIP_DOWNLOADED',         label: 'ZIP downloaded' },
+  // Shares
+  { value: 'SHARE_CREATED',          label: 'Share created' },
+  { value: 'SHARE_MODIFIED',         label: 'Share modified' },
+  { value: 'SHARE_REVOKED',          label: 'Share revoked' },
+  // Backup
+  { value: 'BACKUP_RUN',             label: 'Backup (manual)' },
+  { value: 'BACKUP_RUN_AUTO',        label: 'Backup (automatic)' },
+  { value: 'BACKUP_EXPORTED',        label: 'Backup exported' },
+  { value: 'BACKUP_IMPORTED',        label: 'Backup imported' },
+  // Admin
+  { value: 'SETTINGS_CHANGED',       label: 'Settings changed' },
+  { value: 'ADMIN_SUPPORT_ACCESS_STARTED', label: 'Support access started' },
+  { value: 'ADMIN_SUPPORT_ACCESS_ENDED',   label: 'Support access ended' },
+  { value: 'GROUP_CREATED',          label: 'Group created' },
+  { value: 'GROUP_DELETED',          label: 'Group deleted' },
+  // WebDAV
+  { value: 'WEBDAV_APP_PASSWORD_CREATED', label: 'WebDAV app password created' },
+  { value: 'WEBDAV_APP_PASSWORD_REVOKED', label: 'WebDAV app password revoked' },
+  { value: 'WEBDAV_FILE_PUT',        label: 'WebDAV file upload' },
+  { value: 'WEBDAV_FILE_DELETE',     label: 'WebDAV file delete' },
 ]
 
 function eventColor(event: string): string {
-  if (event.includes('fail') || event.includes('delete') || event.includes('revoke')) {
+  if (event.includes('FAIL') || event.includes('DELETE') || event.includes('REVOKE') || event.includes('LOCKOUT') || event.includes('DEACTIVAT')) {
     return 'text-red-600 dark:text-red-400'
   }
-  if (event.includes('login') || event.includes('upload') || event.includes('create')) {
+  if (event.includes('LOGIN') || event.includes('CREATED') || event.includes('RESTORED') || event.includes('BACKUP') || event.includes('WHITELISTED')) {
     return 'text-emerald-600 dark:text-emerald-400'
   }
-  if (event.includes('admin')) {
+  if (event.includes('ADMIN') || event.includes('SETTINGS') || event.includes('QUOTA') || event.includes('FORCED')) {
     return 'text-amber-600 dark:text-amber-400'
   }
   return 'text-zinc-500 dark:text-slate-400'
@@ -90,7 +133,7 @@ export function AuditLogsPage() {
           className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] text-zinc-900 dark:text-slate-100 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500"
         >
           {EVENT_TYPES.map(t => (
-            <option key={t} value={t}>{t || 'All events'}</option>
+            <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
         <form

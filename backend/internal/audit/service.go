@@ -21,9 +21,9 @@ const (
 // Log calls never block; events are batched and flushed to PostgreSQL
 // periodically or when the buffer is full. Call Close to drain on shutdown.
 type Service struct {
-	db  *pgxpool.Pool
-	ch  chan Event
-	wg  sync.WaitGroup
+	db *pgxpool.Pool
+	ch chan Event
+	wg sync.WaitGroup
 }
 
 // NewService creates a Service and starts the background flush goroutine.
@@ -99,13 +99,37 @@ func (s *Service) run() {
 }
 
 func (s *Service) writeBatch(ctx context.Context, events []Event) error {
-	const q = `
+	const qInsert = `
 		INSERT INTO audit_logs
 		  (event_type, actor_id, actor_email, target_user_id,
 		   resource_type, resource_id, resource_name,
 		   metadata, ip_address, user_agent, is_admin_action)
 		VALUES
 		  ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
+
+	// For high-frequency repetitive events (one row per actor), upsert so only
+	// the newest occurrence is kept.
+	const qUpsert = `
+		INSERT INTO audit_logs
+		  (event_type, actor_id, actor_email, target_user_id,
+		   resource_type, resource_id, resource_name,
+		   metadata, ip_address, user_agent, is_admin_action)
+		VALUES
+		  ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		ON CONFLICT (actor_id, event_type)
+		  WHERE event_type IN ('LOGIN_SUCCESS', 'WEBDAV_LOGIN_SUCCESS', 'LOGIN_TOTP_REQUIRED')
+		DO UPDATE SET
+		  actor_email = EXCLUDED.actor_email,
+		  ip_address  = EXCLUDED.ip_address,
+		  user_agent  = EXCLUDED.user_agent,
+		  metadata    = EXCLUDED.metadata,
+		  created_at  = NOW()`
+
+	dedupTypes := map[string]bool{
+		EventLoginSuccess:          true,
+		EventUserLoginTOTPRequired: true,
+		EventWebDAVLoginSuccess:    true,
+	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -122,6 +146,11 @@ func (s *Service) writeBatch(ctx context.Context, events []Event) error {
 		var meta []byte
 		if ev.Metadata != nil {
 			meta, _ = json.Marshal(ev.Metadata)
+		}
+
+		q := qInsert
+		if dedupTypes[ev.Type] {
+			q = qUpsert
 		}
 
 		if _, err := tx.Exec(ctx, q,

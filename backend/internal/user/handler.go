@@ -251,10 +251,22 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.auditSvc.Log(ctx, audit.Event{
-		Type:      audit.EventUserActivated,
-		ActorID:   &actor.ID,
-		IPAddress: clientIP(r),
-		Metadata:  map[string]any{"target_user_id": id},
+		Type: func() string {
+			if req.QuotaBytes != nil {
+				return audit.EventUserQuotaChanged
+			}
+			return audit.EventUserActivated
+		}(),
+		ActorID:       &actor.ID,
+		IPAddress:     clientIP(r),
+		IsAdminAction: true,
+		Metadata: func() map[string]any {
+			m := map[string]any{"target_user_id": id}
+			if req.QuotaBytes != nil {
+				m["quota_bytes"] = *req.QuotaBytes
+			}
+			return m
+		}(),
 	})
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }

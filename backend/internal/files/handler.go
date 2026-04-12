@@ -132,13 +132,6 @@ func (h *Handler) CreateFolder(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	h.auditSvc.Log(ctx, audit.Event{
-		Type:         audit.EventFolderCreated,
-		ActorID:      &actor.ID,
-		ResourceID:   &f.ID,
-		ResourceName: f.Name,
-		IPAddress:    middleware.ClientIP(r),
-	})
 	httputil.Respond(w, http.StatusCreated, f)
 }
 
@@ -187,15 +180,18 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	ctx := r.Context()
 
+	fileName := h.svc.GetNameByID(ctx, id)
 	if err := h.trash.SoftDelete(ctx, id, actor.ID.String()); err != nil {
 		httputil.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	h.auditSvc.Log(ctx, audit.Event{
-		Type:      audit.EventFileDeleted,
-		ActorID:   &actor.ID,
-		IPAddress: middleware.ClientIP(r),
-		Metadata:  map[string]any{"file_id": id},
+		Type:         audit.EventFileDeleted,
+		ActorID:      &actor.ID,
+		ActorEmail:   actor.Email,
+		ResourceName: fileName,
+		IPAddress:    middleware.ClientIP(r),
+		Metadata:     map[string]any{"file_id": id},
 	})
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -312,15 +308,18 @@ func (h *Handler) PermanentDelete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	ctx := r.Context()
 
+	fileName := h.svc.GetNameByID(ctx, id)
 	if err := h.trash.PermanentDelete(ctx, id, actor.ID.String()); err != nil {
 		httputil.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	h.auditSvc.Log(ctx, audit.Event{
-		Type:      audit.EventFilePermanentDeleted,
-		ActorID:   &actor.ID,
-		IPAddress: middleware.ClientIP(r),
-		Metadata:  map[string]any{"file_id": id},
+		Type:         audit.EventFilePermanentDeleted,
+		ActorID:      &actor.ID,
+		ActorEmail:   actor.Email,
+		ResourceName: fileName,
+		IPAddress:    middleware.ClientIP(r),
+		Metadata:     map[string]any{"file_id": id},
 	})
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -417,13 +416,6 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	// Track I/O bytes in Redis for the admin bandwidth dashboard.
 	go h.ioTracker.TrackUpload(context.Background(), actor.ID.String(), f.SizeBytes)
 
-	h.auditSvc.Log(r.Context(), audit.Event{
-		Type:         audit.EventFileUploaded,
-		ActorID:      &actor.ID,
-		ResourceID:   &f.ID,
-		ResourceName: f.Name,
-		IPAddress:    middleware.ClientIP(r),
-	})
 	httputil.Respond(w, http.StatusCreated, f)
 }
 
@@ -954,16 +946,6 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 
 	// Use a background context so the audit event is not silently dropped when
 	// the request context is cancelled by a client disconnect after the transfer.
-	auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer auditCancel()
-	h.auditSvc.Log(auditCtx, audit.Event{
-		Type:          audit.EventFilePreviewed,
-		ActorID:       &actor.ID,
-		ResourceID:    &f.ID,
-		ResourceName:  f.Name,
-		IPAddress:     middleware.ClientIP(r),
-		IsAdminAction: middleware.IsSupportMode(ctx),
-	})
 }
 
 // PreviewPDF handles GET /api/v1/files/{id}/preview/pdf — converts an Office

@@ -13,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
+
+	"github.com/yourname/privatedrive/internal/audit"
 )
 
 // AutoConfig holds a user's automatic backup schedule configuration.
@@ -31,11 +33,12 @@ type AutoBackupService struct {
 	db       *pgxpool.Pool
 	wrapKey  string
 	tertiary *TertiaryService
+	auditSvc audit.Logger
 }
 
 // NewAutoBackupService creates an AutoBackupService.
-func NewAutoBackupService(db *pgxpool.Pool, wrapKey string, tertiary *TertiaryService) *AutoBackupService {
-	return &AutoBackupService{db: db, wrapKey: wrapKey, tertiary: tertiary}
+func NewAutoBackupService(db *pgxpool.Pool, wrapKey string, tertiary *TertiaryService, auditSvc audit.Logger) *AutoBackupService {
+	return &AutoBackupService{db: db, wrapKey: wrapKey, tertiary: tertiary, auditSvc: auditSvc}
 }
 
 // Get returns the auto backup config for userID, or a sensible default.
@@ -231,6 +234,13 @@ func (s *AutoBackupService) RunForUser(ctx context.Context, userID uuid.UUID) (s
 		 WHERE user_id = $1`,
 		userID, currentHash,
 	)
+
+	if s.auditSvc != nil {
+		s.auditSvc.Log(ctx, audit.Event{
+			Type:    audit.EventBackupRunAuto,
+			ActorID: &userID,
+		})
+	}
 
 	log.Info().Str("user_id", userID.String()).Msg("auto backup: completed")
 	return false, nil

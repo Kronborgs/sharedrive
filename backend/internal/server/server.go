@@ -96,7 +96,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
-		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, backupsRoot(cfg.BackupsRoot)),
+		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, backupsRoot(cfg.BackupsRoot), auditSvc),
 		auditSvc:       auditSvc,
 		ioTracker:      ioTracker,
 	}

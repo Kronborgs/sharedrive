@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { z } from 'zod'
 import { api, createPlaylist } from '@/lib/api'
@@ -11,7 +11,7 @@ import { DropZone, UploadProgress, useUploader } from '@/components/files/Upload
 import { ShareDialog } from '@/components/files/ShareDialog'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { DownloadDialog } from '@/components/files/DownloadDialog'
-import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic } from 'lucide-react'
+import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical } from 'lucide-react'
 import { toast } from 'sonner'
 
 const searchSchema = z.object({
@@ -45,6 +45,8 @@ function FilesPage() {
   const [renameName, setRenameName] = useState('')
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
   const [downloadIds, setDownloadIds] = useState<string[] | null>(null)
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
+  const mobileMenuRef = useRef<HTMLDivElement>(null)
 
   const { uploads, startUpload, dismiss, directUpload } = useUploader(folderId)
 
@@ -91,6 +93,15 @@ function FilesPage() {
   useEffect(() => {
     if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
   }, [user, navigate])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node))
+        setMobileActionsOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   if (user?.role === 'guest') return null
 
@@ -273,18 +284,19 @@ function FilesPage() {
                 ))}
               </nav>
               <div className="flex items-center gap-1 shrink-0">
+                {/* Folder actions — desktop only (hidden on mobile) */}
                 {folderId && currentFolderItem && (
                   <>
                     <button
                       onClick={() => setShareItem(currentFolderItem)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                      className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
                       <Share2 size={12} />
                       Share
                     </button>
                     <button
                       onClick={() => { setRenameId(folderId); setRenameName(currentFolderItem.name) }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                      className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
                       <Pencil size={12} />
                       Rename
@@ -304,25 +316,93 @@ function FilesPage() {
                           toast.error('Failed to delete folder')
                         }
                       }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                     >
                       <Trash2 size={12} />
                       Delete
                     </button>
                   </>
                 )}
+
+                {/* Upload — always visible, label hidden on mobile */}
                 <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium cursor-pointer transition-colors">
                   <Upload size={12} />
-                  Upload
+                  <span className="hidden sm:inline">Upload</span>
                   <input type="file" multiple className="sr-only" onChange={e => e.target.files && startUpload(Array.from(e.target.files))} />
                 </label>
+
+                {/* New folder — desktop only */}
                 <button
                   onClick={() => { const n = window.prompt('Folder name:'); if (n?.trim()) createFolder.mutate(n.trim()) }}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                  className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                 >
                   <FolderPlus size={12} />
                   New folder
                 </button>
+
+                {/* Mobile actions dropdown — hidden on sm+ */}
+                <div className="relative sm:hidden" ref={mobileMenuRef}>
+                  <button
+                    onClick={() => setMobileActionsOpen(v => !v)}
+                    className="flex items-center p-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                    title="More actions"
+                  >
+                    <MoreVertical size={16} />
+                  </button>
+                  {mobileActionsOpen && (
+                    <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] shadow-xl z-40 py-1">
+                      <button
+                        onClick={() => { setMobileActionsOpen(false); const n = window.prompt('Folder name:'); if (n?.trim()) createFolder.mutate(n.trim()) }}
+                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                      >
+                        <FolderPlus size={15} />
+                        New folder
+                      </button>
+                      {folderId && currentFolderItem && (
+                        <>
+                          <button
+                            onClick={() => { setMobileActionsOpen(false); setShareItem(currentFolderItem) }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                          >
+                            <Share2 size={15} />
+                            Share folder
+                          </button>
+                          <button
+                            onClick={() => { setMobileActionsOpen(false); setRenameId(folderId); setRenameName(currentFolderItem.name) }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                          >
+                            <Pencil size={15} />
+                            Rename folder
+                          </button>
+                          <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-2 my-1" />
+                          <button
+                            onClick={async () => {
+                              setMobileActionsOpen(false)
+                              if (!confirm(`Move "${currentFolderItem.name}" to trash?`)) return
+                              try {
+                                await api.delete(`/api/v1/files/${folderId}`)
+                                const parentId = breadcrumbs && breadcrumbs.length > 1
+                                  ? breadcrumbs[breadcrumbs.length - 2].id
+                                  : null
+                                void qc.invalidateQueries({ queryKey: ['files', parentId] })
+                                void qc.invalidateQueries({ queryKey: ['me'] })
+                                void navigate({ to: '/files', search: parentId ? { folder: parentId } : {} })
+                              } catch {
+                                toast.error('Failed to delete folder')
+                              }
+                            }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          >
+                            <Trash2 size={15} />
+                            Delete folder
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* View toggle */}
                 <div className="flex items-center rounded-lg border border-zinc-200 dark:border-[#2d3148] overflow-hidden">
                   <button onClick={() => setView('list')} className={`p-1.5 transition-colors ${view === 'list' ? 'bg-zinc-100 dark:bg-[#2d3148] text-zinc-900 dark:text-slate-100' : 'text-zinc-400 hover:text-zinc-600'}`} title="List view"><LayoutList size={14} /></button>
                   <button onClick={() => setView('grid')} className={`p-1.5 transition-colors ${view === 'grid' ? 'bg-zinc-100 dark:bg-[#2d3148] text-zinc-900 dark:text-slate-100' : 'text-zinc-400 hover:text-zinc-600'}`} title="Grid view"><LayoutGrid size={14} /></button>

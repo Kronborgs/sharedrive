@@ -176,6 +176,14 @@ func (s *Service) GetAccessible(ctx context.Context, id, userID string) (*File, 
 	return scanFile(row)
 }
 
+// GetNameByID returns the name of a file by ID, including trashed files.
+// Returns an empty string when not found — used for audit log enrichment only.
+func (s *Service) GetNameByID(ctx context.Context, id string) string {
+	var name string
+	_ = s.db.QueryRow(ctx, `SELECT name FROM files WHERE id = $1::uuid`, id).Scan(&name)
+	return name
+}
+
 // CreateFolder inserts a new folder record.
 func (s *Service) CreateFolder(ctx context.Context, ownerID, name string, parentID *uuid.UUID) (*File, error) {
 	row := s.db.QueryRow(ctx,

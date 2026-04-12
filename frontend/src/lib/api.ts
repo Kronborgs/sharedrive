@@ -136,4 +136,22 @@ export function updatePlaylistTracks(fileId: string, fileIds: string[]): Promise
   return api.put(`/api/v1/files/${fileId}/playlist/tracks`, { file_ids: fileIds })
 }
 
+// ── Per-user playlist state (cross-device persistence) ────────────────────────
+
+export interface PersistedPlaylistState {
+  id: string
+  name: string
+  index: number
+  vol: number
+  shuffle: boolean
+}
+
+export function fetchPersistedPlaylistState(): Promise<PersistedPlaylistState | null> {
+  return api.get<PersistedPlaylistState | null>('/api/v1/me/playlist-state')
+}
+
+export function savePersistedPlaylistState(state: PersistedPlaylistState | null): Promise<void> {
+  return api.put('/api/v1/me/playlist-state', state)
+}
+
 export { ApiClientError }

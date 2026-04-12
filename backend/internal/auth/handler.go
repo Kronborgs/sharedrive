@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -27,12 +28,12 @@ import (
 )
 
 const (
-	sessionCookieName  = "pd_session"
-	deviceCookieName   = "pd_device"
-	pendingTOTPKey     = "pending_totp:"
-	pendingTOTPTTL     = 10 * time.Minute
-	uploadTokenKey     = "upload_token:"
-	uploadTokenTTL     = 30 * time.Minute
+	sessionCookieName = "pd_session"
+	deviceCookieName  = "pd_device"
+	pendingTOTPKey    = "pending_totp:"
+	pendingTOTPTTL    = 10 * time.Minute
+	uploadTokenKey    = "upload_token:"
+	uploadTokenTTL    = 30 * time.Minute
 )
 
 // reUploadToken matches the 64-character lowercase hex tokens issued by IssueUploadToken.
@@ -740,7 +741,7 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 // ─── TOTP management (user-facing) ────────────────────────────────────────────
 
 type totpSetupResponse struct {
-	Secret         string `json:"secret"`
+	Secret          string `json:"secret"`
 	ProvisioningURI string `json:"provisioning_uri"`
 }
 
@@ -830,6 +831,52 @@ func (h *Handler) TOTPConfirm(w http.ResponseWriter, r *http.Request) {
 	// Clear any admin-forced TOTP requirement now that the user has enrolled.
 	_, _ = h.db.Exec(ctx, `UPDATE users SET force_totp_setup = false WHERE id = $1`, u.ID)
 	httputil.Respond(w, http.StatusOK, totpConfirmResponse{BackupCodes: codes})
+}
+
+// ─── Playlist state (per-user, cross-device) ─────────────────────────────────
+
+// GetPlaylistState handles GET /api/v1/me/playlist-state.
+func (h *Handler) GetPlaylistState(w http.ResponseWriter, r *http.Request) {
+	u := middleware.UserFromContext(r.Context())
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var raw []byte
+	err := h.db.QueryRow(r.Context(),
+		`SELECT playlist_state FROM users WHERE id = $1`, u.ID,
+	).Scan(&raw)
+	if err != nil || raw == nil {
+		httputil.Respond(w, http.StatusOK, nil)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	// Wrap in standard envelope
+	_, _ = w.Write([]byte(`{"data":`))
+	_, _ = w.Write(raw)
+	_, _ = w.Write([]byte(`}`))
+}
+
+// SavePlaylistState handles PUT /api/v1/me/playlist-state.
+func (h *Handler) SavePlaylistState(w http.ResponseWriter, r *http.Request) {
+	u := middleware.UserFromContext(r.Context())
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 512))
+	if err != nil || !json.Valid(body) {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	_, err = h.db.Exec(r.Context(),
+		`UPDATE users SET playlist_state = $1 WHERE id = $2`, body, u.ID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (h *Handler) TOTPDisable(w http.ResponseWriter, r *http.Request) {

@@ -7,7 +7,12 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { fetchPlaylistTracks, updatePlaylistTracks } from '@/lib/api'
+import {
+  fetchPlaylistTracks,
+  updatePlaylistTracks,
+  fetchPersistedPlaylistState,
+  savePersistedPlaylistState,
+} from '@/lib/api'
 import type { PlaylistTrack } from '@/lib/api'
 
 export type { PlaylistTrack }
@@ -29,6 +34,7 @@ interface PlaylistContextValue {
   progress: number
   duration: number
   volume: number
+  shuffle: boolean
 
   // Playback controls
   jumpTo: (i: number) => void
@@ -37,18 +43,21 @@ interface PlaylistContextValue {
   prev: () => void
   seek: (ratio: number) => void
   setVolume: (v: number) => void
+  toggleShuffle: () => void
 
   // Playlist track management
   removeTrack: (trackId: string) => Promise<void>
   addTracks: (fileIds: string[]) => Promise<{ added: number; skipped: number }>
 }
 
+// ── Local cache — same-device instant hydration ───────────────────────────────
 const STORAGE_KEY = 'sharedrive_playlist'
-type Persisted = { id: string; name: string; index: number; vol: number }
-function loadPersisted(): Persisted | null {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Persisted } catch { return null }
+type Cached = { id: string; name: string; index: number; vol: number; shuffle: boolean }
+
+function loadCache(): Cached | null {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Cached } catch { return null }
 }
-function savePersisted(p: Persisted | null) {
+function saveCache(p: Cached | null) {
   try {
     if (p) localStorage.setItem(STORAGE_KEY, JSON.stringify(p))
     else localStorage.removeItem(STORAGE_KEY)
@@ -58,23 +67,52 @@ function savePersisted(p: Persisted | null) {
 const PlaylistContext = createContext<PlaylistContextValue | null>(null)
 
 export function PlaylistProvider({ children }: { children: ReactNode }) {
-  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(() => loadPersisted()?.id ?? null)
-  const [activePlaylistName, setActivePlaylistName] = useState<string | null>(() => loadPersisted()?.name ?? null)
-  const [tracks, setTracks] = useState<PlaylistTrack[]>([])
-  const [isLoadingTracks, setIsLoadingTracks] = useState(false)
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [volume, setVolumeState] = useState(() => loadPersisted()?.vol ?? 1)
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(() => loadCache()?.id ?? null)
+  const [activePlaylistName, setActivePlaylistName] = useState<string | null>(() => loadCache()?.name ?? null)
+  const [tracks, setTracks]                         = useState<PlaylistTrack[]>([])
+  const [isLoadingTracks, setIsLoadingTracks]       = useState(false)
+  const [currentIndex, setCurrentIndex]             = useState(0)
+  const [isPlaying, setIsPlaying]                   = useState(false)
+  const [progress, setProgress]                     = useState(0)
+  const [duration, setDuration]                     = useState(0)
+  const [volume, setVolumeState]                    = useState(() => loadCache()?.vol ?? 1)
+  const [shuffle, setShuffleState]                  = useState(() => loadCache()?.shuffle ?? false)
 
-  // Persistent audio element — never removed from memory
+  // Refs so audio event closures always read the latest values without stale closures
+  const shuffleRef = useRef(loadCache()?.shuffle ?? false)
+  const tracksRef  = useRef<PlaylistTrack[]>([])
+  useEffect(() => { shuffleRef.current = shuffle }, [shuffle])
+  useEffect(() => { tracksRef.current = tracks }, [tracks])
+
+  // Index to restore when tracks first load (from cache or server state)
+  const pendingIndexRef = useRef(loadCache()?.index ?? 0)
+
+  // Persistent audio element
   const audioRef = useRef<HTMLAudioElement | null>(null)
   if (!audioRef.current) {
     audioRef.current = new Audio()
     audioRef.current.preload = 'auto'
-    audioRef.current.volume = loadPersisted()?.vol ?? 1
+    audioRef.current.volume = loadCache()?.vol ?? 1
   }
+
+  // ── On mount: fetch authoritative state from server (cross-device sync) ──────
+  useEffect(() => {
+    fetchPersistedPlaylistState()
+      .then(state => {
+        if (!state) return
+        // Update pending index so it's applied when tracks load
+        pendingIndexRef.current = state.index
+        // setActivePlaylistId is a no-op if the value hasn't changed (React bails out)
+        setActivePlaylistId(state.id)
+        setActivePlaylistName(state.name)
+        setVolumeState(state.vol)
+        audioRef.current!.volume = state.vol
+        setShuffleState(state.shuffle)
+        shuffleRef.current = state.shuffle
+      })
+      .catch(() => { /* server unavailable — local cache is fine */ })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Wire audio events once on mount
   useEffect(() => {
@@ -85,8 +123,19 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     const onPause = () => setIsPlaying(false)
     const onEnded = () => {
       setCurrentIndex(i => {
-        const next = i + 1
-        return next  // Effect below handles advancing
+        const len = tracksRef.current.length
+        if (len === 0) return i
+        if (shuffleRef.current) {
+          if (len === 1) return i
+          // Pick any index except the current one
+          let next = Math.floor(Math.random() * (len - 1))
+          if (next >= i) next += 1
+          prevIndexRef.current = -1
+          return next
+        }
+        if (i >= len - 1) return i // end of playlist — stay
+        prevIndexRef.current = -1
+        return i + 1
       })
     }
     audio.addEventListener('timeupdate', onTime)
@@ -119,7 +168,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     fetchPlaylistTracks(activePlaylistId)
       .then(t => {
         const start = pendingIndexRef.current < t.length ? pendingIndexRef.current : 0
-        pendingIndexRef.current = 0  // reset so future playlist changes start from 0
+        pendingIndexRef.current = 0
         setTracks(t)
         setCurrentIndex(start)
         setProgress(0)
@@ -135,8 +184,6 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
 
   // Load new src when currentIndex changes (but only after tracks are loaded)
   const prevIndexRef = useRef(-1)
-  // Index to restore when tracks first load after a page refresh
-  const pendingIndexRef = useRef(loadPersisted()?.index ?? 0)
   useEffect(() => {
     if (tracks.length === 0) return
     if (currentIndex < 0 || currentIndex >= tracks.length) return
@@ -155,8 +202,29 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, tracks])
 
+  // ── Persist state — local cache (instant) + server (debounced, cross-device) ─
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    if (activePlaylistId) {
+      const p = { id: activePlaylistId, name: activePlaylistName ?? '', index: currentIndex, vol: volume, shuffle }
+      saveCache(p)
+      saveTimerRef.current = setTimeout(() => {
+        void savePersistedPlaylistState(p).catch(() => { /* ignore */ })
+      }, 2000)
+    } else {
+      saveCache(null)
+      saveTimerRef.current = setTimeout(() => {
+        void savePersistedPlaylistState(null).catch(() => { /* ignore */ })
+      }, 500)
+    }
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
+  }, [activePlaylistId, activePlaylistName, currentIndex, volume, shuffle])
+
+  // ── Controls ──────────────────────────────────────────────────────────────────
+
   const jumpTo = useCallback((i: number) => {
-    prevIndexRef.current = -1 // force reload
+    prevIndexRef.current = -1
     setCurrentIndex(i)
     setIsPlaying(true)
   }, [])
@@ -172,16 +240,23 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
 
   const next = useCallback(() => {
     setCurrentIndex(i => {
-      if (i >= tracks.length - 1) return i
+      const len = tracksRef.current.length
+      if (shuffleRef.current) {
+        if (len <= 1) return i
+        let n = Math.floor(Math.random() * (len - 1))
+        if (n >= i) n += 1
+        prevIndexRef.current = -1
+        return n
+      }
+      if (i >= len - 1) return i
       prevIndexRef.current = -1
       return i + 1
     })
     setIsPlaying(true)
-  }, [tracks.length])
+  }, [])
 
   const prev = useCallback(() => {
     const audio = audioRef.current!
-    // If >3 s in, restart current track; otherwise go to previous
     if (audio.currentTime > 3) {
       audio.currentTime = 0
       return
@@ -204,18 +279,23 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     setVolumeState(v)
   }, [])
 
+  const toggleShuffle = useCallback(() => {
+    setShuffleState(v => {
+      shuffleRef.current = !v
+      return !v
+    })
+  }, [])
+
   const removeTrack = useCallback(async (trackId: string) => {
     if (!activePlaylistId) return
     const newTracks = tracks.filter(t => t.id !== trackId)
-    if (newTracks.length === 0) return // don't allow emptying playlist
+    if (newTracks.length === 0) return
     await updatePlaylistTracks(activePlaylistId, newTracks.map(t => t.id))
     const removedIdx = tracks.findIndex(t => t.id === trackId)
     setTracks(newTracks)
-    // Adjust current index
     setCurrentIndex(ci => {
       if (removedIdx < ci) return ci - 1
       if (removedIdx === ci) {
-        // was playing removed track — restart from same position
         prevIndexRef.current = -1
         return Math.min(ci, newTracks.length - 1)
       }
@@ -234,14 +314,13 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
 
     const newIds = [...tracks.map(t => t.id), ...adding]
     await updatePlaylistTracks(activePlaylistId, newIds)
-    // Fetch fresh track metadata
     const fresh = await fetchPlaylistTracks(activePlaylistId)
     setTracks(fresh)
     return { added: adding.length, skipped }
   }, [activePlaylistId, tracks])
 
   const setPlaylist = useCallback((id: string, name: string) => {
-    pendingIndexRef.current = 0  // new explicit playlist always starts from beginning
+    pendingIndexRef.current = 0
     setActivePlaylistId(id)
     setActivePlaylistName(name)
     prevIndexRef.current = -1
@@ -252,15 +331,6 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     setActivePlaylistId(null)
     setActivePlaylistName(null)
   }, [])
-
-  // Persist key state to localStorage so it survives hard refresh / Docker restart
-  useEffect(() => {
-    if (activePlaylistId) {
-      savePersisted({ id: activePlaylistId, name: activePlaylistName ?? '', index: currentIndex, vol: volume })
-    } else {
-      savePersisted(null)
-    }
-  }, [activePlaylistId, activePlaylistName, currentIndex, volume])
 
   return (
     <PlaylistContext.Provider
@@ -274,6 +344,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
         progress,
         duration,
         volume,
+        shuffle,
         setPlaylist,
         clearPlaylist,
         jumpTo,
@@ -282,6 +353,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
         prev,
         seek,
         setVolume,
+        toggleShuffle,
         removeTrack,
         addTracks,
       }}

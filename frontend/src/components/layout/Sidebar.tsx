@@ -22,6 +22,7 @@ import {
   SkipBack,
   SkipForward,
   Volume2,
+  Shuffle,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
@@ -115,6 +116,8 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
     prev,
     seek,
     setVolume,
+    toggleShuffle,
+    shuffle,
     removeTrack,
   } = usePlaylist()
 
@@ -193,7 +196,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                 </button>
                 <button
                   onClick={next}
-                  disabled={currentIndex >= tracks.length - 1}
+                  disabled={!shuffle && currentIndex >= tracks.length - 1}
                   className="p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
                   title="Næste"
                 >
@@ -211,6 +214,18 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                     size={10}
                     className={cn('shrink-0 text-zinc-400 transition-transform', playerExpanded ? '' : '-rotate-90')}
                   />
+                </button>
+                <button
+                  onClick={toggleShuffle}
+                  className={cn(
+                    'p-0.5 transition-colors shrink-0',
+                    shuffle
+                      ? 'text-brand-500 hover:text-brand-600'
+                      : 'text-zinc-300 hover:text-zinc-600 dark:hover:text-slate-300',
+                  )}
+                  title={shuffle ? 'Shuffle til' : 'Shuffle fra'}
+                >
+                  <Shuffle size={11} />
                 </button>
                 <button
                   onClick={clearPlaylist}
@@ -444,7 +459,19 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   <span className="text-[10px] text-zinc-400 tabular-nums">{fmt(progress)}</span>
                   <span className="text-[10px] text-zinc-400 tabular-nums">{fmt(duration)}</span>
                 </div>
-                <div className="flex items-center justify-center gap-8 mb-4">
+                <div className="flex items-center justify-center gap-6 mb-4">
+                  <button
+                    onClick={toggleShuffle}
+                    className={cn(
+                      'p-2 transition-colors',
+                      shuffle
+                        ? 'text-brand-500 hover:text-brand-600'
+                        : 'text-zinc-300 dark:text-slate-600 hover:text-zinc-600 dark:hover:text-slate-300',
+                    )}
+                    title={shuffle ? 'Shuffle til' : 'Shuffle fra'}
+                  >
+                    <Shuffle size={22} />
+                  </button>
                   <button
                     onClick={prev}
                     disabled={currentIndex === 0}
@@ -461,7 +488,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   </button>
                   <button
                     onClick={next}
-                    disabled={currentIndex >= tracks.length - 1}
+                    disabled={!shuffle && currentIndex >= tracks.length - 1}
                     className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
                   >
                     <SkipForward size={26} />
@@ -561,7 +588,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
               </button>
               <button
                 onClick={next}
-                disabled={currentIndex >= tracks.length - 1}
+                disabled={!shuffle && currentIndex >= tracks.length - 1}
                 className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors shrink-0"
               >
                 <SkipForward size={18} />

@@ -315,6 +315,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/me/totp/confirm", s.handleTOTPConfirm)
 		r.Delete("/api/v1/me/totp", s.handleTOTPDisable)
 		r.Get("/api/v1/me/activity", s.adminHandler.UserActivity)
+		r.Get("/api/v1/me/playlist-state", s.authHandler.GetPlaylistState)
+		r.Put("/api/v1/me/playlist-state", s.authHandler.SavePlaylistState)
 
 		// Upload token (cross-subdomain TUS auth)
 		r.Post("/api/v1/upload-token", s.authHandler.HandleIssueUploadToken)

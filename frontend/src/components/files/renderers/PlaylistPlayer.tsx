@@ -11,6 +11,7 @@ import {
   Loader2,
   AlertTriangle,
   Volume2,
+  Shuffle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -30,6 +31,7 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [shuffle, setShuffle] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const current: PlaylistTrack | undefined = tracks?.[currentIndex]
@@ -55,7 +57,16 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
     const onTime = () => setProgress(audio.currentTime)
     const onDur = () => setDuration(audio.duration)
     const onEnded = () => {
-      if (tracks && currentIndex < tracks.length - 1) {
+      if (!tracks) return
+      if (shuffle) {
+        if (tracks.length > 1) {
+          setCurrentIndex(i => {
+            let next = Math.floor(Math.random() * (tracks.length - 1))
+            if (next >= i) next += 1
+            return next
+          })
+        }
+      } else if (currentIndex < tracks.length - 1) {
         setCurrentIndex(i => i + 1)
       } else {
         setIsPlaying(false)
@@ -190,7 +201,20 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
         <div className="flex items-center justify-between gap-3">
           <span className="text-[10px] text-zinc-400 tabular-nums w-8">{fmt(progress)}</span>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setShuffle(v => !v)}
+              className={cn(
+                'p-1.5 rounded-lg transition-colors',
+                shuffle
+                  ? 'text-brand-500 hover:text-brand-600'
+                  : 'text-zinc-400 dark:text-slate-500 hover:bg-zinc-100 dark:hover:bg-[#2d3148]',
+              )}
+              title={shuffle ? 'Shuffle til' : 'Shuffle fra'}
+            >
+              <Shuffle size={14} />
+            </button>
+
             <button
               onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
               disabled={currentIndex === 0}
@@ -208,8 +232,18 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
             </button>
 
             <button
-              onClick={() => setCurrentIndex(i => Math.min((tracks?.length ?? 1) - 1, i + 1))}
-              disabled={currentIndex >= (tracks?.length ?? 1) - 1}
+              onClick={() => {
+                if (shuffle && tracks && tracks.length > 1) {
+                  setCurrentIndex(i => {
+                    let next = Math.floor(Math.random() * (tracks.length - 1))
+                    if (next >= i) next += 1
+                    return next
+                  })
+                } else {
+                  setCurrentIndex(i => Math.min((tracks?.length ?? 1) - 1, i + 1))
+                }
+              }}
+              disabled={!shuffle && currentIndex >= (tracks?.length ?? 1) - 1}
               className="p-1.5 rounded-lg text-zinc-500 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] disabled:opacity-30 transition-colors"
             >
               <SkipForward size={16} />

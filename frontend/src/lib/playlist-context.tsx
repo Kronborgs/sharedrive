@@ -79,10 +79,12 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   const [shuffle, setShuffleState]                  = useState(() => loadCache()?.shuffle ?? false)
 
   // Refs so audio event closures always read the latest values without stale closures
-  const shuffleRef = useRef(loadCache()?.shuffle ?? false)
-  const tracksRef  = useRef<PlaylistTrack[]>([])
+  const shuffleRef      = useRef(loadCache()?.shuffle ?? false)
+  const tracksRef       = useRef<PlaylistTrack[]>([])
+  const currentIndexRef = useRef(0)
   useEffect(() => { shuffleRef.current = shuffle }, [shuffle])
   useEffect(() => { tracksRef.current = tracks }, [tracks])
+  useEffect(() => { currentIndexRef.current = currentIndex }, [currentIndex])
 
   // Index to restore when tracks first load (from cache or server state)
   const pendingIndexRef = useRef(loadCache()?.index ?? 0)
@@ -120,23 +122,25 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     const onTime  = () => setProgress(audio.currentTime)
     const onDur   = () => setDuration(audio.duration)
     const onPlay  = () => setIsPlaying(true)
-    const onPause = () => setIsPlaying(false)
+    const onPause = () => { if (!audio.ended) setIsPlaying(false) }
     const onEnded = () => {
-      setCurrentIndex(i => {
-        const len = tracksRef.current.length
-        if (len === 0) return i
-        if (shuffleRef.current) {
-          if (len === 1) return i
-          // Pick any index except the current one
-          let next = Math.floor(Math.random() * (len - 1))
-          if (next >= i) next += 1
-          prevIndexRef.current = -1
-          return next
-        }
-        if (i >= len - 1) return i // end of playlist — stay
+      const len = tracksRef.current.length
+      if (len === 0) { setIsPlaying(false); return }
+
+      if (shuffleRef.current) {
+        if (len <= 1) { setIsPlaying(false); return }
+        const i = currentIndexRef.current
+        let next = Math.floor(Math.random() * (len - 1))
+        if (next >= i) next += 1
         prevIndexRef.current = -1
-        return i + 1
-      })
+        setCurrentIndex(next)
+        return
+      }
+
+      const i = currentIndexRef.current
+      if (i >= len - 1) { setIsPlaying(false); return }
+      prevIndexRef.current = -1
+      setCurrentIndex(i + 1)
     }
     audio.addEventListener('timeupdate', onTime)
     audio.addEventListener('durationchange', onDur)
@@ -368,3 +372,4 @@ export function usePlaylist() {
   if (!ctx) throw new Error('usePlaylist must be used within PlaylistProvider')
   return ctx
 }
+

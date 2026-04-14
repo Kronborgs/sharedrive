@@ -59,13 +59,16 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
     const onEnded = () => {
       if (!tracks) return
       if (shuffle) {
-        if (tracks.length > 1) {
-          setCurrentIndex(i => {
-            let next = Math.floor(Math.random() * (tracks.length - 1))
-            if (next >= i) next += 1
-            return next
-          })
+        if (tracks.length <= 1) {
+          setIsPlaying(false)
+          setProgress(0)
+          return
         }
+        setCurrentIndex(i => {
+          let next = Math.floor(Math.random() * (tracks.length - 1))
+          if (next >= i) next += 1
+          return next
+        })
       } else if (currentIndex < tracks.length - 1) {
         setCurrentIndex(i => i + 1)
       } else {
@@ -74,7 +77,7 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
       }
     }
     const onPlay = () => setIsPlaying(true)
-    const onPause = () => setIsPlaying(false)
+    const onPause = () => { if (!audio.ended) setIsPlaying(false) }
     audio.addEventListener('timeupdate', onTime)
     audio.addEventListener('durationchange', onDur)
     audio.addEventListener('ended', onEnded)
@@ -87,7 +90,7 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
       audio.removeEventListener('play', onPlay)
       audio.removeEventListener('pause', onPause)
     }
-  }, [currentIndex, tracks])
+  }, [currentIndex, tracks, shuffle])
 
   const togglePlay = () => {
     const audio = audioRef.current

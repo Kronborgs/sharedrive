@@ -17,8 +17,8 @@ RUN APP_VERSION=${VERSION} npm run build
 FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
 ARG VERSION=dev
 ARG BUILD_DATE=unknown
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETOS
+ARG TARGETARCH
 
 RUN apk add --no-cache git ca-certificates tzdata
 

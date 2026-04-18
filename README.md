@@ -393,6 +393,18 @@ File metadata (name, size, MIME type, owner, checksum) lives entirely in Postgre
 | `/data/files` | All uploaded file data |
 | `/data/backups` | Backup export destination |
 
+### File permissions (PUID / PGID)
+
+By default the container process runs as uid/gid **1000**. If your host-mounted `/data` directory is owned by a different user (common on Oracle Linux, Unraid, or NAS systems), set `PUID` and `PGID` to match:
+
+```yaml
+environment:
+  PUID: 1001   # uid of the host user that owns /data
+  PGID: 1001   # gid of the host group that owns /data
+```
+
+The entrypoint remaps the internal `sharedrive` user to the specified uid/gid before starting the process, so no `chmod 777` is needed. Use `id yourusername` on the host to find the right values.
+
 Redis is **intentionally ephemeral** — it holds rate-limit counters, pending 2FA tokens, and upload tokens that are safe to lose on restart.
 
 ---
@@ -451,6 +463,8 @@ Redis is **intentionally ephemeral** — it holds rate-limit counters, pending 2
 | `APP_BASE_URL` | **required** | Full public URL, e.g. `https://drive.yourdomain.com` |
 | `APP_HOST` | `0.0.0.0` | Listen address |
 | `APP_PORT` | `8080` | Listen port |
+| `PUID` | `1000` | UID the container process runs as — set to match your host volume owner |
+| `PGID` | `1000` | GID the container process runs as — set to match your host volume owner |
 | `GO_ENV` | `production` | Set to `development` for dev mode |
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed CORS origins |
 | `TRUSTED_PROXIES` | — | Comma-separated CIDRs whose proxy headers are trusted (see [Trusted proxies](#trusted-proxies-cloudflare)) |

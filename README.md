@@ -114,6 +114,7 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 ### WebDAV
 - Mounted at `/dav/` — map as a network drive in Windows Explorer, macOS Finder, or any WebDAV client
 - Per-user **app passwords** (named, scoped, revocable); plain text shown once on creation
+- **Per-file/folder app passwords** — create an app password scoped exclusively to a single file or folder directly from the Share dialog (right-click → Share → WebDAV tab); the password grants access to that resource only — nothing else in the drive is reachable
 - WebDAV can be disabled globally or per user
 
 ### Infrastructure
@@ -257,6 +258,8 @@ docker buildx build \
 WebDAV is available at `https://drive.yourdomain.com/dav/`.
 
 **Generate an app password first:** Web UI → user menu (top-right) → App Passwords → New.
+
+**Per-file/folder access:** Right-click any file or folder → **Share** → **WebDAV** tab. Create an app password scoped to that specific resource — it works only for that file or folder and nothing else in your drive.
 
 ### Windows (File Explorer)
 

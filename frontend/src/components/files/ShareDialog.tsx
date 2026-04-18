@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
-import type { FileItem, Share, SharePermissions, Group } from '@/types/api'
+import type { FileItem, Share, SharePermissions, Group, AppPassword, CreatedAppPassword } from '@/types/api'
 import { formatDate } from '@/lib/utils'
-import { X, Check, Link, Trash2, UserPlus, ChevronDown, ChevronUp, Copy, HardDrive } from 'lucide-react'
+import { X, Check, Link, Trash2, UserPlus, ChevronDown, ChevronUp, Copy, HardDrive, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface ShareDialogProps {
@@ -190,6 +190,8 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   const [expiry, setExpiry] = useState(defaultExpiry())
   const [copied, setCopied] = useState(false)
   const [davCopied, setDavCopied] = useState<string | null>(null)
+  const [davPwdName, setDavPwdName] = useState('')
+  const [davRevealed, setDavRevealed] = useState<CreatedAppPassword | null>(null)
 
   const { data: systemSettings } = useQuery({
     queryKey: ['system', 'settings'],
@@ -227,6 +229,36 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   const { data: groups } = useQuery({
     queryKey: ['groups'],
     queryFn: ({ signal }) => api.get<Group[]>('/api/v1/groups', signal),
+  })
+
+  // App passwords scoped to this specific file/folder
+  const { data: scopedPasswords } = useQuery({
+    queryKey: ['app-passwords', 'resource', item.id],
+    queryFn: ({ signal }) => api.get<AppPassword[]>('/api/v1/me/app-passwords', signal).then(
+      list => list.filter(p => p.resource_id === item.id)
+    ),
+    enabled: tab === 'webdav',
+  })
+
+  const davCreatePwd = useMutation({
+    mutationFn: (name: string) =>
+      api.post<CreatedAppPassword>('/api/v1/me/app-passwords', {
+        name,
+        scope: 'webdav',
+        resource_id: item.id,
+      }),
+    onSuccess: (data) => {
+      void qc.invalidateQueries({ queryKey: ['app-passwords', 'resource', item.id] })
+      setDavRevealed(data)
+      setDavPwdName('')
+    },
+    onError: () => toast.error('Kunne ikke oprette app password'),
+  })
+
+  const davRevokePwd = useMutation({
+    mutationFn: (id: string) => api.delete(`/api/v1/me/app-passwords/${id}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['app-passwords', 'resource', item.id] }),
+    onError: () => toast.error('Kunne ikke slette app password'),
   })
 
   const createShare = useMutation({
@@ -407,17 +439,85 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
                 <ol className="text-[11px] text-zinc-600 dark:text-slate-400 space-y-1 list-decimal list-inside">
                   <li>KeePass → <strong>File</strong> → <strong>Open</strong> → <strong>Open from URL…</strong></li>
                   <li>Indsæt URL'en ovenfor i feltet <strong>URL</strong></li>
-                  <li>Indsæt din email og et app password som credentials</li>
+                  <li>Indsæt din email og app password nedenfor som credentials</li>
                   <li>Vælg <strong>Do not remember</strong> (sikrere)</li>
                 </ol>
               </div>
 
-              <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3">
-                <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 mb-1">App password kræves</p>
-                <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                  Opret et dedikeret app password under bruger-menu → <strong>WebDAV Access</strong>. Det kan tilbagekaldes uden at påvirke din konto.
+              {/* Revealed password — show once */}
+              {davRevealed && (
+                <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                    Kopiér app password nu — det vises ikke igen
+                  </p>
+                  <div className="flex items-center gap-2 rounded border border-amber-200 dark:border-amber-700 bg-white dark:bg-[#0f1117] px-3 py-1.5">
+                    <span className="flex-1 text-sm font-mono text-zinc-900 dark:text-slate-100 break-all select-all">{davRevealed.password}</span>
+                    <button
+                      onClick={() => copyDav(davRevealed.password, 'newpwd')}
+                      className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                    >
+                      {davCopied === 'newpwd' ? <Check size={13} /> : <Copy size={13} />}
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setDavRevealed(null)}
+                    className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
+                  >
+                    Jeg har gemt det, luk
+                  </button>
+                </div>
+              )}
+
+              {/* Create scoped app password */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">
+                  Opret app password til denne {item.is_folder ? 'mappe' : 'fil'}
                 </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={davPwdName}
+                    onChange={e => setDavPwdName(e.target.value)}
+                    placeholder="f.eks. KeePass, Windows-PC…"
+                    className="flex-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    onKeyDown={e => { if (e.key === 'Enter' && davPwdName.trim()) davCreatePwd.mutate(davPwdName.trim()) }}
+                  />
+                  <button
+                    onClick={() => { if (davPwdName.trim()) davCreatePwd.mutate(davPwdName.trim()) }}
+                    disabled={!davPwdName.trim() || davCreatePwd.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+                  >
+                    <Plus size={14} />
+                    Opret
+                  </button>
+                </div>
               </div>
+
+              {/* Existing scoped passwords */}
+              {scopedPasswords && scopedPasswords.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">Aktive app passwords til denne {item.is_folder ? 'mappe' : 'fil'}</p>
+                  <ul className="space-y-1">
+                    {scopedPasswords.map(p => (
+                      <li key={p.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117]">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 truncate">{p.name}</p>
+                          <p className="text-[11px] text-muted">
+                            {p.last_used_at ? `Sidst brugt ${formatDate(p.last_used_at)}` : 'Aldrig brugt'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => davRevokePwd.mutate(p.id)}
+                          className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                          title="Slet"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 

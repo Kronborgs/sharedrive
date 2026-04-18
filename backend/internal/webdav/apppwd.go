@@ -34,7 +34,7 @@ func (h *AppPasswordHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := h.db.Query(ctx,
-		`SELECT id, name, scope, last_used_at, created_at
+		`SELECT id, name, scope, resource_id, COALESCE(resource_label,''), last_used_at, created_at
 		 FROM app_passwords
 		 WHERE user_id = $1 AND revoked_at IS NULL
 		 ORDER BY created_at DESC`,
@@ -48,7 +48,7 @@ func (h *AppPasswordHandler) List(w http.ResponseWriter, r *http.Request) {
 	var out []AppPassword
 	for rows.Next() {
 		var p AppPassword
-		if err := rows.Scan(&p.ID, &p.Name, &p.Scope, &p.LastUsedAt, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Scope, &p.ResourceID, &p.ResourceLabel, &p.LastUsedAt, &p.CreatedAt); err != nil {
 			continue
 		}
 		out = append(out, p)
@@ -64,13 +64,15 @@ func (h *AppPasswordHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 type createAppPasswordRequest struct {
-	Name  string `json:"name"`
-	Scope string `json:"scope"`
+	Name       string  `json:"name"`
+	Scope      string  `json:"scope"`
+	ResourceID *string `json:"resource_id"` // optional UUID — restricts access to one file/folder
 }
 
 type createAppPasswordResponse struct {
-	ID       string `json:"id"`
-	Password string `json:"password"` // shown once — plaintext raw token
+	ID            string  `json:"id"`
+	Password      string  `json:"password"` // shown once — plaintext raw token
+	ResourceLabel string  `json:"resource_label,omitempty"`
 }
 
 // Create handles POST /api/v1/me/app-passwords.
@@ -90,6 +92,21 @@ func (h *AppPasswordHandler) Create(w http.ResponseWriter, r *http.Request) {
 		req.Scope = "webdav"
 	}
 
+	// If resource_id provided, verify it belongs to the requesting user.
+	var resourceLabel string
+	if req.ResourceID != nil && *req.ResourceID != "" {
+		err := h.db.QueryRow(ctx,
+			`SELECT name FROM files WHERE id = $1::uuid AND owner_id = $2::uuid AND deleted_at IS NULL`,
+			*req.ResourceID, u.ID,
+		).Scan(&resourceLabel)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, "resource not found")
+			return
+		}
+	} else {
+		req.ResourceID = nil
+	}
+
 	rawToken, err := generateRawToken()
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
@@ -103,18 +120,19 @@ func (h *AppPasswordHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var id string
 	if err := h.db.QueryRow(ctx,
-		`INSERT INTO app_passwords (user_id, name, password_hash, scope)
-		 VALUES ($1, $2, $3, $4)
+		`INSERT INTO app_passwords (user_id, name, password_hash, scope, resource_id, resource_label)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id`,
-		u.ID, req.Name, hash, req.Scope,
+		u.ID, req.Name, hash, req.Scope, req.ResourceID, resourceLabel,
 	).Scan(&id); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	httputil.Respond(w, http.StatusCreated, createAppPasswordResponse{
-		ID:       id,
-		Password: rawToken,
+		ID:            id,
+		Password:      rawToken,
+		ResourceLabel: resourceLabel,
 	})
 }
 
@@ -140,23 +158,24 @@ func (h *AppPasswordHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 }
 
 // ValidateAppPassword is used by the WebDAV handler to authenticate via basic auth.
-// Returns the userID if the password matches an active app password for the given email+password.
-func ValidateAppPassword(ctx context.Context, db *pgxpool.Pool, email, rawPassword string) (userID string, err error) {
+// Returns the userID and optional resourceID if the password matches an active app password.
+func ValidateAppPassword(ctx context.Context, db *pgxpool.Pool, email, rawPassword string) (userID string, resourceID *string, err error) {
 	rows, err := db.Query(ctx,
-		`SELECT ap.password_hash, ap.id, u.id::TEXT
+		`SELECT ap.password_hash, ap.id, u.id::TEXT, ap.resource_id::TEXT
 		 FROM app_passwords ap
 		 JOIN users u ON u.id = ap.user_id
 		 WHERE u.email = $1 AND ap.revoked_at IS NULL AND u.is_active = true`,
 		email,
 	)
 	if err != nil {
-		return "", fmt.Errorf("app password: query error")
+		return "", nil, fmt.Errorf("app password: query error")
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var hash, apID, uID string
-		if err := rows.Scan(&hash, &apID, &uID); err != nil {
+		var resID *string
+		if err := rows.Scan(&hash, &apID, &uID, &resID); err != nil {
 			continue
 		}
 		match, err := argon2id.ComparePasswordAndHash(rawPassword, hash)
@@ -168,9 +187,9 @@ func ValidateAppPassword(ctx context.Context, db *pgxpool.Pool, email, rawPasswo
 			_, _ = db.Exec(context.Background(),
 				`UPDATE app_passwords SET last_used_at = now() WHERE id = $1`, id)
 		}(apID)
-		return uID, nil
+		return uID, resID, nil
 	}
-	return "", fmt.Errorf("app password: invalid credentials")
+	return "", nil, fmt.Errorf("app password: invalid credentials")
 }
 
 func generateRawToken() (string, error) {

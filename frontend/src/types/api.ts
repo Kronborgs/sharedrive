@@ -171,6 +171,8 @@ export interface AppPassword {
   id: string
   name: string
   scope: string
+  resource_id?: string | null
+  resource_label?: string | null
   last_used_at: string | null
   created_at: string
 }

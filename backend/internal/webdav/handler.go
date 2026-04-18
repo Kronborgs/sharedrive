@@ -93,7 +93,7 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	userID, err := ValidateAppPassword(r.Context(), s.db, email, password)
+	userID, resourceID, err := ValidateAppPassword(r.Context(), s.db, email, password)
 	if err != nil || userID != urlUserID {
 		s.auditSvc.Log(r.Context(), audit.Event{
 			Type:       audit.EventWebDAVLoginFailed,
@@ -104,6 +104,23 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("WWW-Authenticate", `Basic realm="Sharedrive"`)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
+	}
+
+	// If this app password is scoped to a specific resource, resolve its full
+	// path and enforce that the request targets only that file/folder subtree.
+	if resourceID != nil && *resourceID != "" {
+		allowedPath, err := s.resolveIDToPath(r.Context(), *resourceID, userID)
+		if err != nil {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		// Strip the DAV prefix to get the relative path being requested.
+		davPrefix := "/dav/" + userID
+		reqPath := strings.TrimPrefix(r.URL.Path, davPrefix)
+		if !strings.HasPrefix(reqPath, allowedPath) && reqPath != strings.TrimSuffix(allowedPath, "/") {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
 	}
 
 	// Log successful WebDAV login only when Windows/macOS mounts the root of the
@@ -134,6 +151,42 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	h.ServeHTTP(w, r)
+}
+
+// resolveIDToPath walks the parent chain for a file/folder ID and returns its
+// WebDAV-relative path (e.g. "/Kenneth/keepass/privatKeepASS.kdbx").
+// Folders have a trailing slash appended so prefix matching in the caller works
+// uniformly for both files and folder subtrees.
+func (s *AuthDAVServer) resolveIDToPath(ctx context.Context, fileID, userID string) (string, error) {
+	var parts []string
+	id := fileID
+	isFolder := false
+	for {
+		var name string
+		var parentID *string // nullable
+		var isFolderRow bool
+		err := s.db.QueryRow(ctx,
+			`SELECT name, parent_id::TEXT, is_folder FROM files
+			 WHERE id = $1::uuid AND owner_id = $2::uuid AND deleted_at IS NULL`,
+			id, userID,
+		).Scan(&name, &parentID, &isFolderRow)
+		if err != nil {
+			return "", fmt.Errorf("resolveIDToPath: %w", err)
+		}
+		if id == fileID {
+			isFolder = isFolderRow
+		}
+		parts = append([]string{name}, parts...)
+		if parentID == nil || *parentID == "" {
+			break
+		}
+		id = *parentID
+	}
+	p := "/" + strings.Join(parts, "/")
+	if isFolder {
+		p += "/"
+	}
+	return p, nil
 }
 
 // ── FileSystem ────────────────────────────────────────────────────────────────

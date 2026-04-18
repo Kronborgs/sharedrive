@@ -231,6 +231,25 @@ Dev stack ports:
 make bump     # increments patch version in VERSION file
 ```
 
+### Building a multi-platform image (AMD64 + ARM64)
+
+Sharedrive supports `linux/amd64` and `linux/arm64` (Raspberry Pi 4/5, ARM servers, etc.).
+
+**Prerequisites:** Docker Buildx with a builder that supports multi-platform builds.
+
+```bash
+# Create a multi-platform builder (once)
+docker buildx create --use --name multibuilder
+
+# Build and push both architectures in one step
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t your-name/sharedrive:latest \
+  --push .
+```
+
+> **Note:** If you get an error like `golang:1.25-alpine not found`, change the Go base image in the `Dockerfile` to `golang:1.24-alpine`. Go 1.25 had not yet been released when this note was written.
+
 ---
 
 ## WebDAV

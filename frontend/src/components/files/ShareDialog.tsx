@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
 import type { FileItem, Share, SharePermissions, Group } from '@/types/api'
 import { formatDate } from '@/lib/utils'
-import { X, Check, Link, Trash2, UserPlus, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Check, Link, Trash2, UserPlus, ChevronDown, ChevronUp, Copy, HardDrive } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface ShareDialogProps {
@@ -11,7 +12,7 @@ interface ShareDialogProps {
   onClose: () => void
 }
 
-type ShareTargetType = 'user' | 'group' | 'link'
+type ShareTargetType = 'user' | 'group' | 'link' | 'webdav'
 
 const DEFAULT_PERMS: SharePermissions = {
   can_view: true,
@@ -180,6 +181,7 @@ function ActiveShareRow({
 
 export function ShareDialog({ item, onClose }: ShareDialogProps) {
   const qc = useQueryClient()
+  const { user } = useAuth()
   const [tab, setTab] = useState<ShareTargetType>('user')
   const [email, setEmail] = useState('')
   const [groupId, setGroupId] = useState('')
@@ -187,6 +189,35 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   const [hasExpiry, setHasExpiry] = useState(false)
   const [expiry, setExpiry] = useState(defaultExpiry())
   const [copied, setCopied] = useState(false)
+  const [davCopied, setDavCopied] = useState<string | null>(null)
+
+  const { data: systemSettings } = useQuery({
+    queryKey: ['system', 'settings'],
+    queryFn: ({ signal }) => api.get<{ direct_upload_url?: string }>('/api/v1/system/settings', signal),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const davBase = systemSettings?.direct_upload_url?.trim().replace(/\/+$/, '') || window.location.origin
+
+  // Fetch breadcrumbs for the file's parent folder to build the full WebDAV path
+  const { data: breadcrumbs } = useQuery({
+    queryKey: ['breadcrumbs', item.parent_id],
+    queryFn: ({ signal }) =>
+      api.get<Array<{ id: string; name: string }>>(`/api/v1/files/breadcrumbs?folder_id=${item.parent_id}`, signal),
+    enabled: tab === 'webdav' && item.parent_id != null,
+  })
+
+  const davOwnerID = item.owner_id
+  const folderPath = breadcrumbs && breadcrumbs.length > 0
+    ? breadcrumbs.map(b => encodeURIComponent(b.name)).join('/') + '/'
+    : ''
+  const davFileUrl = `${davBase}/dav/${davOwnerID}/${folderPath}${encodeURIComponent(item.name)}`
+
+  const copyDav = (text: string, key: string) => {
+    void navigator.clipboard.writeText(text)
+    setDavCopied(key)
+    setTimeout(() => setDavCopied(null), 2000)
+  }
 
   const { data: shares } = useQuery({
     queryKey: ['shares', item.id],
@@ -279,17 +310,17 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
 
         {/* Tab bar */}
         <div className="flex border-b border-zinc-100 dark:border-[#2d3148] px-5">
-          {(['user', 'group', 'link'] as ShareTargetType[]).map(t => (
+          {(['user', 'group', 'link', 'webdav'] as ShareTargetType[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`py-2.5 px-3 text-sm font-medium border-b-2 transition-colors capitalize ${
+              className={`py-2.5 px-3 text-sm font-medium border-b-2 transition-colors ${
                 tab === t
                   ? 'border-brand-500 text-brand-600 dark:text-brand-400'
                   : 'border-transparent text-muted hover:text-zinc-700 dark:hover:text-slate-300'
               }`}
             >
-              {t === 'link' ? 'Link' : t === 'group' ? 'Group' : 'User'}
+              {t === 'link' ? 'Link' : t === 'group' ? 'Group' : t === 'webdav' ? 'WebDAV' : 'User'}
             </button>
           ))}
         </div>
@@ -329,7 +360,69 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
             </p>
           )}
 
+          {tab === 'webdav' && (
+            <div className="space-y-3">
+              <p className="text-xs text-zinc-600 dark:text-slate-400">
+                Direkte WebDAV-adgang til denne {item.is_folder ? 'mappe' : 'fil'} med din email og et app password. Bruges f.eks. med KeePass, Windows Stifinder eller macOS Finder.
+              </p>
+
+              {/* File/folder URL */}
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">
+                  {item.is_folder ? 'Mappe-URL' : 'Fil-URL'}
+                </p>
+                <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
+                  <span className="flex-1 text-xs font-mono text-zinc-900 dark:text-slate-100 break-all select-all">{davFileUrl}</span>
+                  <button
+                    onClick={() => copyDav(davFileUrl, 'file')}
+                    className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                    title="Kopiér URL"
+                  >
+                    {davCopied === 'file' ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Username */}
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">Brugernavn</p>
+                <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
+                  <span className="flex-1 text-xs font-mono text-zinc-900 dark:text-slate-100 select-all">{user?.email ?? ''}</span>
+                  <button
+                    onClick={() => copyDav(user?.email ?? '', 'email')}
+                    className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                    title="Kopiér email"
+                  >
+                    {davCopied === 'email' ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3 space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <HardDrive size={12} className="text-zinc-500" />
+                  <p className="text-[11px] font-semibold text-zinc-700 dark:text-slate-300">KeePass — Open from URL</p>
+                </div>
+                <ol className="text-[11px] text-zinc-600 dark:text-slate-400 space-y-1 list-decimal list-inside">
+                  <li>KeePass → <strong>File</strong> → <strong>Open</strong> → <strong>Open from URL…</strong></li>
+                  <li>Indsæt URL'en ovenfor i feltet <strong>URL</strong></li>
+                  <li>Indsæt din email og et app password som credentials</li>
+                  <li>Vælg <strong>Do not remember</strong> (sikrere)</li>
+                </ol>
+              </div>
+
+              <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3">
+                <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 mb-1">App password kræves</p>
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  Opret et dedikeret app password under bruger-menu → <strong>WebDAV Access</strong>. Det kan tilbagekaldes uden at påvirke din konto.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Permissions */}
+          {tab !== 'webdav' && <>
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Permissions</p>
             <PermCheckboxes perms={perms} onChange={setPerms} isFolder={item.is_folder} />
@@ -365,8 +458,9 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
             className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
           >
             <UserPlus size={14} />
-            {createShare.isPending ? 'SharingÔÇª' : 'Share'}
+            {createShare.isPending ? 'Sharing…' : 'Share'}
           </button>
+          </>}
 
           {/* Existing shares */}
           {shares && shares.length > 0 && (

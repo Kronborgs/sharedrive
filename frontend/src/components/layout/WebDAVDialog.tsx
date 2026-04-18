@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import type { AppPassword, CreatedAppPassword } from '@/types/api'
-import { X, Copy, Check, Trash2, Plus, HardDrive, Monitor, Apple, Terminal, KeyRound } from 'lucide-react'
+import { X, Copy, Check, Trash2, Plus, HardDrive, Monitor, Apple, Terminal } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDate } from '@/lib/utils'
 
@@ -12,7 +12,7 @@ interface Props {
   onClose: () => void
 }
 
-type Tab = 'windows' | 'macos' | 'linux' | 'keepass'
+type Tab = 'windows' | 'macos' | 'linux'
 
 function CopyButton({ text, copyKey, copied, onCopy }: { text: string; copyKey: string; copied: string | null; onCopy: (t: string, k: string) => void }) {
   return (
@@ -46,7 +46,6 @@ export function WebDAVDialog({ onClose }: Props) {
   const [copied, setCopied] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('windows')
   const [showPSFallback, setShowPSFallback] = useState(false)
-  const [kdbxPath, setKdbxPath] = useState('')
 
   const { data: settings } = useQuery({
     queryKey: ['system', 'settings'],
@@ -94,15 +93,10 @@ export function WebDAVDialog({ onClose }: Props) {
     setTimeout(() => setCopied(null), 2000)
   }
 
-  const kdbxUrl = kdbxPath.trim()
-    ? `${davUrl}/${kdbxPath.trim().replace(/^\//, '')}`
-    : `${davUrl}/privatKeepASS.kdbx`
-
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'windows',  label: 'Windows', icon: <Monitor size={13} /> },
     { id: 'macos',    label: 'macOS',   icon: <Apple size={13} /> },
     { id: 'linux',    label: 'Linux',   icon: <Terminal size={13} /> },
-    { id: 'keepass',  label: 'KeePass', icon: <KeyRound size={13} /> },
   ]
 
   return createPortal(
@@ -206,52 +200,6 @@ export function WebDAVDialog({ onClose }: Props) {
                 <li>Indsæt URL'en ovenfor og klik <strong>Opret forbindelse</strong></li>
                 <li>Log ind med din <strong>email</strong> og en <strong>app password</strong> nedenfor</li>
               </ol>
-            </div>
-          )}
-
-          {/* ── KeePass ── */}
-          {tab === 'keepass' && (
-            <div className="space-y-3">
-              <p className="text-[11px] text-zinc-600 dark:text-slate-400">
-                KeePass kan åbne og gemme din <code className="font-mono">.kdbx</code> fil direkte fra Sharedrive via WebDAV.
-                Filen synkroniseres automatisk, så dine adgangskoder er opdaterede på alle enheder.
-              </p>
-
-              {/* File path input */}
-              <div className="space-y-1">
-                <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">Sti til din .kdbx-fil (relativt til din WebDAV-rod)</p>
-                <input
-                  type="text"
-                  value={kdbxPath}
-                  onChange={e => setKdbxPath(e.target.value)}
-                  placeholder="privatKeepASS.kdbx  (eller f.eks. KeePass/mine.kdbx)"
-                  className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm font-mono text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-
-              <CodeRow label="URL (indsæt i KeePass)" value={kdbxUrl} copyKey="kpurl" copied={copied} onCopy={copy} />
-              <CodeRow label="Brugernavn" value={user?.email ?? ''} copyKey="kpemail" copied={copied} onCopy={copy} />
-
-              <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3 space-y-2">
-                <p className="text-[11px] font-semibold text-zinc-700 dark:text-slate-300">Sådan åbner du filen i KeePass</p>
-                <ol className="text-[11px] text-zinc-600 dark:text-slate-400 space-y-1.5 list-decimal list-inside">
-                  <li>KeePass → <strong>File</strong> → <strong>Open</strong> → <strong>Open from URL…</strong></li>
-                  <li>Indsæt URL'en ovenfor i feltet <strong>URL</strong></li>
-                  <li>Indsæt din email i feltet <strong>User name</strong></li>
-                  <li>Indsæt app password i feltet <strong>Password</strong> (opret ét nedenfor)</li>
-                  <li>Vælg <strong>Do not remember user name and password</strong> (sikrere)</li>
-                  <li>Klik <strong>OK</strong> og indtast din KeePass master password</li>
-                </ol>
-              </div>
-
-              <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3">
-                <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 mb-1">Vigtig sikkerhedsanbefaling</p>
-                <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                  Brug et dedikeret app password til KeePass — ikke dit login-password.
-                  App passwords kan tilbagekaldes enkeltvis uden at påvirke din konto.
-                  Lad KeePass <strong>ikke</strong> gemme passwordet i Windows Credential Manager.
-                </p>
-              </div>
             </div>
           )}
 

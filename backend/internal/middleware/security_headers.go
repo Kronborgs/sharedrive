@@ -49,7 +49,7 @@ func InlineScriptHashes(distFS fs.FS) []string {
 // a dynamic OnlyOffice Document Server URL.
 func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extraScriptAndFrameSrc func() string) func(http.Handler) http.Handler {
 	// Build the static part of script-src once at startup
-	staticScriptSrc := "'self' https://static.cloudflareinsights.com"
+	staticScriptSrc := "'self' https://static.cloudflareinsights.com https://cdn.jsdelivr.net"
 	if len(scriptHashes) > 0 {
 		staticScriptSrc += " " + strings.Join(scriptHashes, " ")
 	}

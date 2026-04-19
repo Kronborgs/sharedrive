@@ -47,11 +47,36 @@ func NewAuthDAVServer(db *pgxpool.Pool, filesRoot string, auditSvc audit.Logger,
 		db:        db,
 		filesRoot: filesRoot,
 		storage:   storage,
-		locks:     gowebdav.NewMemLS(),
+		locks:     &cappedMemLS{LockSystem: gowebdav.NewMemLS(), max: 10 * time.Minute},
 		auditSvc:  auditSvc,
 		ioTracker: ioTracker,
 		limiter:   limiter,
 	}
+}
+
+// cappedMemLS wraps the standard in-memory lock system to enforce a maximum
+// lock duration. Windows WebDAV WebClient requests infinite or very long locks;
+// without a cap, a stale lock from a failed/aborted upload blocks every retry
+// until the server restarts, producing the infamous 0x80070021 error on the
+// client. Capping at 10 minutes lets the lock expire naturally so Windows can
+// re-lock and resume.
+type cappedMemLS struct {
+	gowebdav.LockSystem
+	max time.Duration
+}
+
+func (c *cappedMemLS) Create(now time.Time, details gowebdav.LockDetails) (string, error) {
+	if details.Duration <= 0 || details.Duration > c.max {
+		details.Duration = c.max
+	}
+	return c.LockSystem.Create(now, details)
+}
+
+func (c *cappedMemLS) Refresh(now time.Time, token string, duration time.Duration) (gowebdav.LockDetails, error) {
+	if duration <= 0 || duration > c.max {
+		duration = c.max
+	}
+	return c.LockSystem.Refresh(now, token, duration)
 }
 
 func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -216,11 +241,31 @@ func (fs *userFS) Mkdir(ctx context.Context, name string, _ os.FileMode) error {
 		return os.ErrNotExist
 	}
 
+	// If the folder already exists, return ErrExist so the go webdav library
+	// responds with 405 Method Not Allowed (correct WebDAV behaviour for MKCOL
+	// on an existing collection). Without this check, the INSERT below would
+	// fail with an opaque DB error → 500 → Windows aborts the whole folder copy.
+	var exists bool
+	if parentID == "" {
+		_ = fs.db.QueryRow(ctx,
+			`SELECT true FROM files WHERE parent_id IS NULL AND owner_id = $1::uuid AND name = $2 AND is_folder = true AND deleted_at IS NULL`,
+			fs.userID, base,
+		).Scan(&exists)
+	} else {
+		_ = fs.db.QueryRow(ctx,
+			`SELECT true FROM files WHERE parent_id = $1::uuid AND name = $2 AND is_folder = true AND deleted_at IS NULL`,
+			parentID, base,
+		).Scan(&exists)
+	}
+	if exists {
+		return os.ErrExist
+	}
+
 	id := uuid.New().String()
 	_, err = fs.db.Exec(ctx, `
 		INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, true, $4, 'inode/directory', 0, '')
-	`, id, fs.userID, parentID, base)
+		VALUES ($1::uuid, $2::uuid, $3, true, $4, 'inode/directory', 0, '')
+	`, id, fs.userID, nullableUUID(parentID), base)
 	if err != nil {
 		return fmt.Errorf("webdav mkdir: %w", err)
 	}
@@ -360,13 +405,14 @@ func (fs *userFS) openForWrite(ctx context.Context, name string) (gowebdav.File,
 	}
 
 	// Check if the file already exists (overwrite vs create).
+	// Use IS NOT DISTINCT FROM to handle the root (parentID = "") → NULL case.
 	var existingID string
 	var existingSize int64
 	_ = fs.db.QueryRow(ctx, `
 		SELECT id::text, COALESCE(size_bytes, 0)
 		FROM files
-		WHERE parent_id = $1::uuid AND name = $2 AND is_folder = false AND deleted_at IS NULL
-	`, parentID, base).Scan(&existingID, &existingSize)
+		WHERE parent_id IS NOT DISTINCT FROM $1 AND name = $2 AND is_folder = false AND deleted_at IS NULL
+	`, nullableUUID(parentID), base).Scan(&existingID, &existingSize)
 
 	return &davWriteFile{
 		tmp:          tmp,
@@ -517,6 +563,16 @@ func storagePathFor(root, fileID string) string {
 
 func cleanPath(name string) string {
 	return path.Clean("/" + strings.TrimLeft(name, "/"))
+}
+
+// nullableUUID converts the sentinel empty-string parentID (used for root) to
+// a nil interface so pgx sends NULL to PostgreSQL instead of trying to cast ""
+// to uuid (which would fail with "invalid input syntax for type uuid").
+func nullableUUID(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // ── os.FileInfo ───────────────────────────────────────────────────────────────
@@ -760,8 +816,8 @@ func (f *davWriteFile) Close() error {
 	} else {
 		_, dbErr = f.db.Exec(ctx, `
 			INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path, checksum_sha256)
-			VALUES ($1::uuid, $2::uuid, $3::uuid, false, $4, 'application/octet-stream', $5, $6, $7)
-		`, fileID, f.userID, f.parentID, f.base, f.size, storagePath, shaHex)
+			VALUES ($1::uuid, $2::uuid, $3, false, $4, 'application/octet-stream', $5, $6, $7)
+		`, fileID, f.userID, nullableUUID(f.parentID), f.base, f.size, storagePath, shaHex)
 	}
 	if dbErr != nil {
 		_ = os.Remove(storagePath)

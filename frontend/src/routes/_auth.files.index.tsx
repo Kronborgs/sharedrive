@@ -178,6 +178,21 @@ function FilesPage() {
     onError: () => toast.error(t('toast.createDocFailed')),
   })
 
+  const createTextFile = useMutation({
+    mutationFn: (opts: { name: string }) =>
+      api.post<{ id: string; name: string }>('/api/v1/files/create-text', {
+        name: opts.name,
+        parent_id: folderId ?? null,
+      }),
+    onSuccess: (result) => {
+      void qc.invalidateQueries({ queryKey: ['files', folderId] })
+      void qc.invalidateQueries({ queryKey: ['me'] })
+      setNewDocOpen(false)
+      void navigate({ to: '/files', search: { folder: folderId ?? undefined, te: result.id } })
+    },
+    onError: () => toast.error(t('toast.createDocFailed')),
+  })
+
   // Derive OO item from URL param — avoids separate state that breaks back/forward
   const ooItem = ooFileId ? (files?.find(f => f.id === ooFileId) ?? null) : null
   const teItem = teFileId ? (files?.find(f => f.id === teFileId) ?? null) : null
@@ -612,9 +627,8 @@ function FilesPage() {
                   {t('action.newFolder')}
                 </button>
 
-                {/* New document dropdown — desktop only, only when OO configured */}
-                {systemSettings?.onlyoffice_url && (
-                  <div className="relative hidden sm:block">
+                {/* New document dropdown — desktop only */}
+                <div className="relative hidden sm:block">
                     <button
                       onClick={() => setNewDocOpen(v => !v)}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
@@ -623,8 +637,8 @@ function FilesPage() {
                       {t('action.newDoc')}
                     </button>
                     {newDocOpen && (
-                      <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] shadow-xl z-40 py-1">
-                        {([
+                      <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] shadow-xl z-40 py-1">
+                        {systemSettings?.onlyoffice_url && ([
                           { type: 'word' as const,  icon: '📄', labelKey: 'doc.word' as const,       nameKey: 'doc.wordName' as const,       ext: '.docx' },
                           { type: 'cell' as const,  icon: '📊', labelKey: 'doc.excel' as const,      nameKey: 'doc.excelName' as const,      ext: '.xlsx' },
                           { type: 'slide' as const, icon: '📑', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx' },
@@ -639,10 +653,25 @@ function FilesPage() {
                             {t(o.labelKey)}
                           </button>
                         ))}
+                        {systemSettings?.onlyoffice_url && <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-2 my-1" />}
+                        {([
+                          { icon: '📝', labelKey: 'doc.textFile' as const,  nameKey: 'doc.textFileName' as const,  ext: '.txt' },
+                          { icon: '📋', labelKey: 'doc.markdown' as const,  nameKey: 'doc.markdownName' as const,  ext: '.md' },
+                          { icon: '{ }', labelKey: 'doc.jsonFile' as const,  nameKey: 'doc.jsonFileName' as const,  ext: '.json' },
+                        ] as const).map(o => (
+                          <button
+                            key={o.ext}
+                            onClick={() => { createTextFile.mutate({ name: `${t(o.nameKey)}${o.ext}` }) }}
+                            disabled={createTextFile.isPending}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
+                          >
+                            <span className="w-4 text-center">{o.icon}</span>
+                            {t(o.labelKey)}
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>
-                )}
 
                 {/* Mobile actions dropdown — hidden on sm+ */}
                 <div className="relative sm:hidden" ref={mobileMenuRef}>

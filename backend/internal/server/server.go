@@ -316,6 +316,7 @@ func (s *Server) buildRouter() *chi.Mux {
 	// ── Public OnlyOffice endpoints for link-share (guest) access ─────────
 	r.Get("/api/v1/public/onlyoffice/config/{fileId}", s.ooHandler.PublicGetEditorConfig)
 	r.Post("/api/v1/public/onlyoffice/create", s.ooHandler.PublicCreateDocument)
+	r.Post("/api/v1/public/files/create-text", s.filesHandler.PublicCreateTextFile)
 
 	// ── Buddy backup receive (per-user token auth, no user session) ──────────
 	r.Post("/api/v1/backup/buddy/receive", s.backupHandler.BuddyReceive)
@@ -369,6 +370,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/files/{id}/copy", s.filesHandler.Copy)
 		r.Get("/api/v1/files/{id}/download", s.filesHandler.Download)
 		r.Put("/api/v1/files/{id}/content", s.filesHandler.SaveContent)
+		r.Post("/api/v1/files/create-text", s.filesHandler.CreateTextFile)
 		r.Get("/api/v1/files/{id}/size", s.filesHandler.FolderSize)
 		r.Post("/api/v1/files/trash/{id}/restore", s.filesHandler.RestoreTrash)
 		r.Delete("/api/v1/files/trash/{id}", s.filesHandler.PermanentDelete)

@@ -4,10 +4,11 @@ import { z } from 'zod'
 import { api } from '@/lib/api'
 import type { FileItem, Share } from '@/types/api'
 import { formatBytes, formatDate } from '@/lib/utils'
-import { Download, Lock, FilePlus, FileText, Table2, Presentation } from 'lucide-react'
+import { Download, Lock, FilePlus, FileText, FileCode, Table2, Presentation } from 'lucide-react'
 import { useState } from 'react'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
-import { shouldOpenInOnlyOffice } from '@/lib/file-types'
+import { TextEditor } from '@/components/files/TextEditor'
+import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import { useI18n } from '@/lib/i18n'
 
 const searchSchema = z.object({
@@ -33,6 +34,7 @@ function SharedPage() {
   const [submittedPassword, setSubmittedPassword] = useState<string | undefined>(undefined)
   const [passwordError, setPasswordError] = useState(false)
   const [ooItem, setOoItem] = useState<FileItem | null>(null)
+  const [teItem, setTeItem] = useState<FileItem | null>(null)
   const [newDocOpen, setNewDocOpen] = useState(false)
 
   const { data, isLoading, isError, error } = useQuery({
@@ -79,6 +81,36 @@ function SharedPage() {
           permissions: undefined,
         }
         setOoItem(pseudo)
+      }
+    },
+  })
+
+  const createTextFile = useMutation({
+    mutationFn: (payload: { name: string; parent_id: string }) =>
+      api.post<{ id: string; name: string }>(
+        `/api/v1/public/files/create-text?share_token=${encodeURIComponent(token)}`,
+        payload,
+      ),
+    onSuccess: (newFile) => {
+      void qc.invalidateQueries({ queryKey: ['shared', token] })
+      setNewDocOpen(false)
+      if (data) {
+        const pseudo: FileItem = {
+          id: newFile.id,
+          name: newFile.name,
+          is_folder: false,
+          parent_id: data.item.id,
+          owner_id: data.share.owner_id,
+          mime_type: null,
+          size_bytes: 0,
+          checksum_sha256: null,
+          deleted_at: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          shared: true,
+          permissions: undefined,
+        }
+        setTeItem(pseudo)
       }
     },
   })
@@ -174,6 +206,14 @@ function SharedPage() {
                     {t('action.open')}
                   </button>
                 )}
+                {shouldOpenInTextEditor(item.name) && (
+                  <button
+                    onClick={() => setTeItem(item)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
+                  >
+                    {t('action.open')}
+                  </button>
+                )}
                 {share.can_view && (
                   <a
                     href={downloadUrl}
@@ -187,7 +227,7 @@ function SharedPage() {
               </div>
             )}
             {/* New document button for editable folder shares */}
-            {item.is_folder && ooEnabled && share.can_edit && (
+            {item.is_folder && share.can_edit && (
               <div className="relative">
                 <button
                   onClick={() => setNewDocOpen(v => !v)}
@@ -197,8 +237,8 @@ function SharedPage() {
                   {t('action.newDoc')}
                 </button>
                 {newDocOpen && (
-                  <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-lg z-20 overflow-hidden">
-                    {[
+                  <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-lg z-20 overflow-hidden">
+                    {ooEnabled && [
                       { type: 'word', labelKey: 'doc.word' as const, nameKey: 'doc.wordName' as const, ext: '.docx', icon: FileText },
                       { type: 'cell', labelKey: 'doc.excel' as const, nameKey: 'doc.excelName' as const, ext: '.xlsx', icon: Table2 },
                       { type: 'slide', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx', icon: Presentation },
@@ -206,6 +246,21 @@ function SharedPage() {
                       <button
                         key={type}
                         onClick={() => createDocument.mutate({ type, name: `${t(nameKey)}${ext}`, parent_id: item.id })}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-zinc-700 dark:text-slate-200 hover:bg-zinc-50 dark:hover:bg-[#2d3148]/50 transition-colors"
+                      >
+                        <Icon size={14} />
+                        {t(labelKey)}
+                      </button>
+                    ))}
+                    {ooEnabled && <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-2 my-1" />}
+                    {[
+                      { labelKey: 'doc.textFile' as const, nameKey: 'doc.textFileName' as const, ext: '.txt', icon: FileCode },
+                      { labelKey: 'doc.markdown' as const, nameKey: 'doc.markdownName' as const, ext: '.md', icon: FileCode },
+                      { labelKey: 'doc.jsonFile' as const, nameKey: 'doc.jsonFileName' as const, ext: '.json', icon: FileCode },
+                    ].map(({ labelKey, nameKey, ext, icon: Icon }) => (
+                      <button
+                        key={ext}
+                        onClick={() => createTextFile.mutate({ name: `${t(nameKey)}${ext}`, parent_id: item.id })}
                         className="flex items-center gap-2 w-full px-3 py-2 text-sm text-zinc-700 dark:text-slate-200 hover:bg-zinc-50 dark:hover:bg-[#2d3148]/50 transition-colors"
                       >
                         <Icon size={14} />
@@ -229,6 +284,8 @@ function SharedPage() {
                     onClick={() => {
                       if (!f.is_folder && ooEnabled && shouldOpenInOnlyOffice(f.name)) {
                         openInOO(f)
+                      } else if (!f.is_folder && shouldOpenInTextEditor(f.name)) {
+                        setTeItem(f)
                       }
                     }}
                   >
@@ -273,6 +330,11 @@ function SharedPage() {
           backLabel={t('shared.sharedWithYou')}
           onClose={() => setOoItem(null)}
         />
+      )}
+
+      {/* Text editor overlay */}
+      {teItem && (
+        <TextEditor item={teItem} onClose={() => setTeItem(null)} />
       )}
     </div>
   )

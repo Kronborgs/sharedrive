@@ -190,6 +190,35 @@ function SharedBrowsePage() {
     onError: () => toast.error(t('toast.createDocFailed')),
   })
 
+  const createTextFile = useMutation({
+    mutationFn: (opts: { name: string }) =>
+      api.post<{ id: string; name: string }>('/api/v1/files/create-text', {
+        name: opts.name,
+        parent_id: folderId,
+      }),
+    onSuccess: (result) => {
+      void qc.invalidateQueries({ queryKey: ['shared-browse', folderId] })
+      setNewDocOpen(false)
+      const pseudo: FileItem = {
+        id: result.id,
+        name: result.name,
+        is_folder: false,
+        parent_id: folderId,
+        owner_id: data?.owner_id ?? '',
+        mime_type: null,
+        size_bytes: 0,
+        checksum_sha256: null,
+        deleted_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        shared: true,
+        permissions: undefined,
+      }
+      setTeItem(pseudo)
+    },
+    onError: () => toast.error(t('toast.createDocFailed')),
+  })
+
   return (
     <DropZone folderId={folderId} onUploadStart={startUpload}>
       <div className="flex flex-col flex-1 min-h-0">
@@ -226,7 +255,7 @@ function SharedBrowsePage() {
               <input type="file" multiple className="sr-only" onChange={e => e.target.files && startUpload(Array.from(e.target.files))} />
             </label>
           )}
-          {data?.can_edit && systemSettings?.onlyoffice_url && (
+          {data?.can_edit && (
             <div className="relative">
               <button
                 onClick={() => setNewDocOpen(v => !v)}
@@ -236,8 +265,8 @@ function SharedBrowsePage() {
                 {t('action.newDoc')}
               </button>
               {newDocOpen && (
-                <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] shadow-xl z-40 py-1">
-                  {([
+                <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] shadow-xl z-40 py-1">
+                  {systemSettings?.onlyoffice_url && ([
                     { type: 'word' as const,  icon: '📄', labelKey: 'doc.word' as const,       nameKey: 'doc.wordName' as const,       ext: '.docx' },
                     { type: 'cell' as const,  icon: '📊', labelKey: 'doc.excel' as const,      nameKey: 'doc.excelName' as const,      ext: '.xlsx' },
                     { type: 'slide' as const, icon: '📑', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx' },
@@ -249,6 +278,22 @@ function SharedBrowsePage() {
                       className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
                     >
                       <span>{o.icon}</span>
+                      {t(o.labelKey)}
+                    </button>
+                  ))}
+                  {systemSettings?.onlyoffice_url && <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-2 my-1" />}
+                  {([
+                    { icon: '📝', labelKey: 'doc.textFile' as const,  nameKey: 'doc.textFileName' as const,  ext: '.txt' },
+                    { icon: '📋', labelKey: 'doc.markdown' as const,  nameKey: 'doc.markdownName' as const,  ext: '.md' },
+                    { icon: '{ }', labelKey: 'doc.jsonFile' as const,  nameKey: 'doc.jsonFileName' as const,  ext: '.json' },
+                  ] as const).map(o => (
+                    <button
+                      key={o.ext}
+                      onClick={() => { createTextFile.mutate({ name: `${t(o.nameKey)}${o.ext}` }) }}
+                      disabled={createTextFile.isPending}
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
+                    >
+                      <span className="w-4 text-center">{o.icon}</span>
                       {t(o.labelKey)}
                     </button>
                   ))}

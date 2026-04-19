@@ -1273,6 +1273,238 @@ func (h *Handler) UpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// ── Text-file creation ───────────────────────────────────────────────────────
+
+// CreateTextFile handles POST /api/v1/files/create-text — creates a new empty
+// text file in the user's folder. The extension must be in the text-editor
+// whitelist. Mirrors the OnlyOffice CreateDocument flow.
+func (h *Handler) CreateTextFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	actor := middleware.UserFromContext(ctx)
+
+	var req struct {
+		Name     string  `json:"name"`
+		ParentID *string `json:"parent_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		httputil.RespondError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	ext := textFileExt(req.Name)
+	if !textEditorExtensions[ext] {
+		httputil.RespondError(w, http.StatusBadRequest, "file type not supported")
+		return
+	}
+
+	// Mime type lookup for common text types.
+	mime := "text/plain"
+	switch ext {
+	case "json", "jsonc":
+		mime = "application/json"
+	case "html", "htm":
+		mime = "text/html"
+	case "xml":
+		mime = "application/xml"
+	case "css":
+		mime = "text/css"
+	case "js", "jsx":
+		mime = "application/javascript"
+	case "ts", "tsx":
+		mime = "application/typescript"
+	case "md", "markdown":
+		mime = "text/markdown"
+	case "yaml", "yml":
+		mime = "text/yaml"
+	case "sh", "bash", "zsh":
+		mime = "application/x-sh"
+	case "py":
+		mime = "text/x-python"
+	case "sql":
+		mime = "application/sql"
+	}
+
+	// Validate parent folder — owner or shared with can_edit.
+	var folderOwnerID string
+	if req.ParentID != nil && *req.ParentID != "" {
+		err := h.svc.db.QueryRow(ctx, `
+			WITH RECURSIVE anc AS (
+			  SELECT id, parent_id FROM files WHERE id = $1::uuid AND deleted_at IS NULL
+			  UNION ALL
+			  SELECT p.id, p.parent_id FROM files p
+			  JOIN anc ON p.id = anc.parent_id
+			  WHERE p.deleted_at IS NULL
+			)
+			SELECT f.owner_id::text
+			  FROM files f
+			 WHERE f.id = $1::uuid AND f.is_folder = true AND f.deleted_at IS NULL
+			   AND (
+			     f.owner_id = $2::uuid
+			     OR EXISTS(
+			       SELECT 1 FROM shares sh
+			       JOIN anc ON sh.resource_id = anc.id
+			       WHERE sh.can_edit = true
+			         AND sh.revoked_at IS NULL
+			         AND (sh.expires_at IS NULL OR sh.expires_at > now())
+			         AND (
+			           (sh.grantee_type = 'user'  AND sh.grantee_id = $2::uuid)
+			           OR (sh.grantee_type = 'group' AND sh.grantee_id IN (
+			                 SELECT group_id FROM group_members WHERE user_id = $2::uuid
+			           ))
+			         )
+			     )
+			   )`,
+			*req.ParentID, actor.ID.String(),
+		).Scan(&folderOwnerID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusForbidden, "invalid parent folder")
+			return
+		}
+	}
+
+	newID := uuid.New()
+	storagePath := h.svc.storage.Path(newID.String())
+
+	// Write empty content.
+	if _, err := h.svc.storage.Write(newID.String(), strings.NewReader("")); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "storage write failed")
+		return
+	}
+
+	var parentParam *string
+	if req.ParentID != nil && *req.ParentID != "" {
+		parentParam = req.ParentID
+	}
+
+	fileOwner := actor.ID.String()
+	if folderOwnerID != "" {
+		fileOwner = folderOwnerID
+	}
+
+	type createResult struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	var result createResult
+	err := h.svc.db.QueryRow(ctx,
+		`INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path)
+		 VALUES ($1, $2::uuid, $3::uuid, false, $4, $5, 0, $6)
+		 RETURNING id::text, name`,
+		newID, fileOwner, parentParam, req.Name, mime, storagePath,
+	).Scan(&result.ID, &result.Name)
+	if err != nil {
+		_ = h.svc.storage.Delete(newID.String())
+		httputil.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("db insert: %v", err))
+		return
+	}
+
+	httputil.Respond(w, http.StatusCreated, result)
+}
+
+// PublicCreateTextFile handles POST /api/v1/public/files/create-text?share_token=…
+// Creates a new empty text file inside a shared folder via public share link.
+func (h *Handler) PublicCreateTextFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	shareToken := r.URL.Query().Get("share_token")
+	if shareToken == "" {
+		httputil.RespondError(w, http.StatusUnauthorized, "missing share_token")
+		return
+	}
+
+	var req struct {
+		Name     string `json:"name"`
+		ParentID string `json:"parent_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		httputil.RespondError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	ext := textFileExt(req.Name)
+	if !textEditorExtensions[ext] {
+		httputil.RespondError(w, http.StatusBadRequest, "file type not supported")
+		return
+	}
+
+	mime := "text/plain"
+	switch ext {
+	case "json", "jsonc":
+		mime = "application/json"
+	case "html", "htm":
+		mime = "text/html"
+	case "xml":
+		mime = "application/xml"
+	case "md", "markdown":
+		mime = "text/markdown"
+	}
+
+	var ownerID string
+	var canEdit bool
+	err := h.svc.db.QueryRow(ctx, `
+		SELECT s.owner_id::text, s.can_edit
+		  FROM shares s
+		  JOIN files f ON f.id = s.resource_id
+		 WHERE s.token = $1
+		   AND s.revoked_at IS NULL
+		   AND (s.expires_at IS NULL OR s.expires_at > now())
+		   AND f.deleted_at IS NULL
+		   AND f.is_folder = true
+		   AND EXISTS (
+		     WITH RECURSIVE anc AS (
+		       SELECT id, parent_id FROM files
+		        WHERE id = $2::uuid AND deleted_at IS NULL
+		       UNION ALL
+		       SELECT fi.id, fi.parent_id FROM files fi
+		       JOIN anc ON fi.id = anc.parent_id
+		        WHERE fi.deleted_at IS NULL
+		     )
+		     SELECT 1 FROM anc WHERE id = s.resource_id
+		   )`,
+		shareToken, req.ParentID,
+	).Scan(&ownerID, &canEdit)
+	if err != nil || !canEdit {
+		httputil.RespondError(w, http.StatusForbidden, "no edit access via this share")
+		return
+	}
+
+	newID := uuid.New()
+	storagePath := h.svc.storage.Path(newID.String())
+
+	if _, err := h.svc.storage.Write(newID.String(), strings.NewReader("")); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "storage write failed")
+		return
+	}
+
+	type createResult struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	var result createResult
+	err = h.svc.db.QueryRow(ctx,
+		`INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path)
+		 VALUES ($1, $2::uuid, $3::uuid, false, $4, $5, 0, $6)
+		 RETURNING id::text, name`,
+		newID, ownerID, req.ParentID, req.Name, mime, storagePath,
+	).Scan(&result.ID, &result.Name)
+	if err != nil {
+		_ = h.svc.storage.Delete(newID.String())
+		httputil.RespondError(w, http.StatusInternalServerError, "db insert failed")
+		return
+	}
+
+	httputil.Respond(w, http.StatusCreated, result)
+}
+
 // ── Text-file content save ────────────────────────────────────────────────────
 
 // textEditorExtensions is the set of file extensions allowed for the text editor.

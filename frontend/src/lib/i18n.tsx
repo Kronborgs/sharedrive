@@ -49,6 +49,12 @@ const translations = {
   'doc.wordName':      { da: 'Nyt dokument',     en: 'New document' },
   'doc.excelName':     { da: 'Nyt regneark',     en: 'New spreadsheet' },
   'doc.powerpointName':{ da: 'Ny præsentation',  en: 'New presentation' },
+  'doc.textFile':      { da: 'Tekstfil (.txt)',   en: 'Text file (.txt)' },
+  'doc.textFileName':  { da: 'Ny tekstfil',       en: 'New text file' },
+  'doc.markdown':      { da: 'Markdown (.md)',     en: 'Markdown (.md)' },
+  'doc.markdownName':  { da: 'Ny markdown',        en: 'New markdown' },
+  'doc.jsonFile':      { da: 'JSON (.json)',       en: 'JSON (.json)' },
+  'doc.jsonFileName':  { da: 'Ny JSON-fil',        en: 'New JSON file' },
 
   // ── Pages ─────────────────────────────────────────────────────────────────
   'page.myFiles':      { da: 'Mine filer',       en: 'My Files' },

@@ -23,7 +23,7 @@ export function TextEditor({ item, onClose }: Props) {
   const ext = fileExtension(item.name)
   const language = monacoLanguage(ext)
 
-  const canWrite = item.permissions?.can_edit ?? item.permissions?.is_owner ?? false
+  const canWrite = item.permissions ? (item.permissions.can_edit || item.permissions.is_owner) : true
   const tooLargeToEdit = item.size_bytes > TEXT_EDITOR_MAX_EDIT_BYTES
   const tooLargeToLoad = item.size_bytes > TEXT_EDITOR_MAX_LOAD_BYTES
   const readOnly = !canWrite || tooLargeToEdit

@@ -99,7 +99,7 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extra
 				"script-src " + scriptSrc + "; " +
 				"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
 				"img-src 'self' data: blob:; " +
-				"font-src 'self'; " +
+				"font-src 'self' data:; " +
 				"connect-src " + connectSrc + "; " +
 				"worker-src 'self' blob:; " +
 				"frame-src " + frameSrc + "; " +

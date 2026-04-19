@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { AdminBanner } from '@/components/layout/AdminBanner'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
+import { OfflineBanner } from '@/components/layout/OfflineBanner'
 import { PlaylistProvider, usePlaylist } from '@/lib/playlist-context'
 import { cn } from '@/lib/utils'
 
@@ -49,6 +50,8 @@ function AuthLayoutContent() {
     <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-[#0f1117]">
       {/* Admin assistance banner — fixed at top */}
       <AdminBanner />
+      {/* Offline indicator */}
+      <OfflineBanner />
 
       {/* Sidebar */}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />

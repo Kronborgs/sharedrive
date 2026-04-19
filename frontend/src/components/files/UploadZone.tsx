@@ -48,7 +48,7 @@ export interface UploadEntry {
   id: string
   file: File
   progress: number
-  status: 'queued' | 'uploading' | 'done' | 'error'
+  status: 'queued' | 'uploading' | 'done' | 'error' | 'paused'
   error?: string
   speed?: number   // bytes/s
   eta?: number     // seconds remaining
@@ -113,6 +113,18 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgr
             </div>
             {u.status === 'error' ? (
               <p className="text-xs text-red-500">{u.error ?? 'Upload failed'}</p>
+            ) : u.status === 'paused' ? (
+              <>
+                <div className="h-1 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden mb-1">
+                  <div
+                    className="h-full bg-amber-500 transition-all duration-200"
+                    style={{ width: `${u.progress}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-amber-500 dark:text-amber-400">
+                  Offline — genoptages automatisk når forbindelsen vender tilbage
+                </p>
+              </>
             ) : (
               <>
                 <div className="h-1 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden mb-1">
@@ -162,7 +174,7 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgr
 
 // --- Upload hook ---
 
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as tus from 'tus-js-client'
 import { api } from '@/lib/api'
@@ -181,6 +193,38 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   const uploadsRef = useRef<UploadEntry[]>([])
   // Per-upload rolling samples for speed calculation
   const speedSamples = useRef<Map<string, SpeedSample[]>>(new Map())
+  // Track active tus Upload instances for pause/resume
+  const tusUploads = useRef<Map<string, tus.Upload>>(new Map())
+
+  // Pause/resume uploads when connectivity changes
+  useEffect(() => {
+    const handleOffline = () => {
+      // Pause all active uploads
+      for (const [id, upload] of tusUploads.current) {
+        const entry = uploadsRef.current.find(u => u.id === id)
+        if (entry && entry.status === 'uploading') {
+          upload.abort()
+          update(id, { status: 'paused', speed: undefined, eta: undefined })
+        }
+      }
+    }
+    const handleOnline = () => {
+      // Resume all paused uploads
+      for (const [id, upload] of tusUploads.current) {
+        const entry = uploadsRef.current.find(u => u.id === id)
+        if (entry && entry.status === 'paused') {
+          update(id, { status: 'uploading' })
+          upload.start()
+        }
+      }
+    }
+    window.addEventListener('offline', handleOffline)
+    window.addEventListener('online', handleOnline)
+    return () => {
+      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [])
 
   // Fetch direct_upload_url from public system settings (no auth required)
   const { data: settings } = useQuery({
@@ -242,7 +286,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
         const upload = new tus.Upload(entry.file, {
           endpoint: tusEndpoint,
           chunkSize: chunkSize,
-          retryDelays: [0, 1000, 3000, 5000, 10000],
+          retryDelays: [0, 1000, 3000, 5000, 10000, 20000, 30000],
           headers: extraHeaders,
           metadata: {
             filename: entry.file.name,
@@ -261,6 +305,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
                 }
               } catch { /* ignore */ }
             }
+            tusUploads.current.delete(entry.id)
             update(entry.id, { status: 'error', error: msg })
           },
           onProgress: (bytesUploaded, bytesTotal) => {
@@ -292,6 +337,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
           },
           onSuccess: () => {
             speedSamples.current.delete(entry.id)
+            tusUploads.current.delete(entry.id)
             update(entry.id, { status: 'done', progress: 100 })
             void qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] })
             void qc.invalidateQueries({ queryKey: ['me'] })
@@ -304,7 +350,14 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
             }, 2000)
           },
         })
-        upload.start()
+        tusUploads.current.set(entry.id, upload)
+
+        // If offline at start time, queue as paused instead of starting
+        if (!navigator.onLine) {
+          update(entry.id, { status: 'paused' })
+        } else {
+          upload.start()
+        }
       }
     }
 
@@ -312,6 +365,12 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   }, [folderId, qc, settings])
 
   const dismiss = useCallback((id: string) => {
+    const tusUpload = tusUploads.current.get(id)
+    if (tusUpload) {
+      tusUpload.abort()
+      tusUploads.current.delete(id)
+    }
+    speedSamples.current.delete(id)
     setUploads(prev => {
       const next = prev.filter(u => u.id !== id)
       uploadsRef.current = next

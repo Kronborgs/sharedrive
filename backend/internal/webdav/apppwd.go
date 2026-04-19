@@ -70,9 +70,9 @@ type createAppPasswordRequest struct {
 }
 
 type createAppPasswordResponse struct {
-	ID            string  `json:"id"`
-	Password      string  `json:"password"` // shown once — plaintext raw token
-	ResourceLabel string  `json:"resource_label,omitempty"`
+	ID            string `json:"id"`
+	Password      string `json:"password"` // shown once — plaintext raw token
+	ResourceLabel string `json:"resource_label,omitempty"`
 }
 
 // Create handles POST /api/v1/me/app-passwords.

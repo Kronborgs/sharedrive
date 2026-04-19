@@ -12,6 +12,15 @@ import '@/index.css'
 // Apply theme before first paint to prevent FOUC
 initTheme()
 
+// Register service worker for PWA support (app-shell caching, share target)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('SW registration failed:', err)
+    })
+  })
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

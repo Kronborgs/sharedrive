@@ -54,10 +54,10 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string) func(
 	// Cache extraConnectSrc result — the direct_upload_url changes rarely so
 	// calling the DB query on every request is unnecessary overhead.
 	var (
-		cachedExtra     string
-		cachedAt        time.Time
-		cacheMu         sync.Mutex
-		cacheTTL        = 60 * time.Second
+		cachedExtra string
+		cachedAt    time.Time
+		cacheMu     sync.Mutex
+		cacheTTL    = 60 * time.Second
 	)
 	resolveExtra := func() string {
 		if extraConnectSrc == nil {
@@ -85,7 +85,7 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string) func(
 				"img-src 'self' data: blob:; " +
 				"font-src 'self'; " +
 				"connect-src " + connectSrc + "; " +
-				"worker-src blob:; " +
+				"worker-src 'self' blob:; " +
 				"frame-ancestors 'none';"
 
 			h := w.Header()
@@ -102,4 +102,3 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string) func(
 		})
 	}
 }
-

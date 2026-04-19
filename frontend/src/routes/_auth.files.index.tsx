@@ -13,6 +13,7 @@ import { ShareDialog } from '@/components/files/ShareDialog'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { DownloadDialog } from '@/components/files/DownloadDialog'
 import { FolderPickerDialog } from '@/components/files/FolderPickerDialog'
+import { useShareTarget } from '@/hooks/useShareTarget'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -74,6 +75,9 @@ function FilesPage() {
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
   const { uploads, startUpload, dismiss, directUpload } = useUploader(folderId)
+
+  // Handle files received via Android Web Share Target
+  useShareTarget(startUpload, !!user)
 
   const { data: breadcrumbs } = useQuery({
     queryKey: ['breadcrumbs', folderId],

@@ -140,8 +140,9 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
       await addTracks(fileIds)
     } else {
       try {
-        const result = await createPlaylist('Min musik', null, fileIds)
-        setPlaylist(result.id, 'Min musik')
+        const result = await createPlaylist(null, null, fileIds)
+        const displayName = (result as any).name?.replace(/\.m3u$/i, '') ?? 'Playliste'
+        setPlaylist((result as any).id, displayName)
       } catch { /* ignore */ }
     }
   }

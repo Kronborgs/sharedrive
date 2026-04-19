@@ -1062,26 +1062,22 @@ func isAudioFilename(mimeType, name string) bool {
 }
 
 // CreatePlaylist handles POST /api/v1/files/playlist.
-// Accepts a JSON body with {name, parent_id, file_ids[]}, verifies access for
-// each ID, and saves a .m3u file (max 50 tracks) to the chosen folder.
+// Ignores any name/parent_id in the request body — always saves the file into
+// the user's "Playlister" root folder (creating it if necessary) with a
+// timestamped filename like "2026-04-19 14:30.m3u".
 func (h *Handler) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())
 	ctx := r.Context()
 
 	var body struct {
-		Name     string   `json:"name"`
-		ParentID *string  `json:"parent_id"`
-		FileIDs  []string `json:"file_ids"`
+		FileIDs []string `json:"file_ids"`
+		// name and parent_id are accepted but ignored — we generate them automatically.
+		Name     string  `json:"name"`
+		ParentID *string `json:"parent_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
 		return
-	}
-	if body.Name == "" {
-		body.Name = "playlist"
-	}
-	if !strings.HasSuffix(strings.ToLower(body.Name), ".m3u") {
-		body.Name += ".m3u"
 	}
 	if len(body.FileIDs) == 0 {
 		httputil.RespondError(w, http.StatusBadRequest, "no files specified")
@@ -1113,13 +1109,20 @@ func (h *Handler) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	content := sb.String()
-	parentIDStr := ""
-	if body.ParentID != nil {
-		parentIDStr = *body.ParentID
+	// Ensure the "Playlister" folder exists in the user's root.
+	playlistFolderID, err := h.svc.EnsurePlaylistFolder(ctx, actor.ID.String())
+	if err != nil {
+		log.Error().Err(err).Msg("files.CreatePlaylist: ensure folder")
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to ensure playlist folder")
+		return
 	}
 
-	f, err := h.svc.Upload(ctx, actor.ID.String(), body.Name, "audio/mpegurl", parentIDStr, strings.NewReader(content), int64(len(content)))
+	// Generate timestamped name: "2026-04-19 14:30.m3u"
+	now := time.Now()
+	fileName := now.Format("2006-01-02 15:04") + ".m3u"
+
+	content := sb.String()
+	f, err := h.svc.Upload(ctx, actor.ID.String(), fileName, "audio/mpegurl", playlistFolderID, strings.NewReader(content), int64(len(content)))
 	if err != nil {
 		log.Error().Err(err).Msg("files.CreatePlaylist")
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to save playlist")

@@ -128,7 +128,7 @@ export function fetchPlaylistTracks(fileId: string): Promise<PlaylistTrack[]> {
   return api.get<PlaylistTrack[]>(`/api/v1/files/${fileId}/playlist/tracks`)
 }
 
-export function createPlaylist(name: string, parentId: string | null, fileIds: string[]): Promise<{ id: string }> {
+export function createPlaylist(name: string | null, parentId: string | null, fileIds: string[]): Promise<{ id: string }> {
   return api.post<{ id: string }>('/api/v1/files/playlist', { name, parent_id: parentId, file_ids: fileIds })
 }
 

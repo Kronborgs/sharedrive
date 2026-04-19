@@ -769,3 +769,29 @@ func (s *Service) PlaylistMaxTracks(ctx context.Context) int {
 	}
 	return 200
 }
+
+// EnsurePlaylistFolder returns the ID of the user's "Playlister" root folder,
+// creating it if it does not yet exist. Returns the folder UUID as a string.
+func (s *Service) EnsurePlaylistFolder(ctx context.Context, ownerID string) (string, error) {
+	const folderName = "Playlister"
+
+	// Check whether the folder already exists at root for this user.
+	var folderID string
+	err := s.db.QueryRow(ctx,
+		`SELECT id::text FROM files
+		 WHERE owner_id = $1::uuid AND parent_id IS NULL AND is_folder = true
+		   AND name = $2 AND deleted_at IS NULL
+		 LIMIT 1`,
+		ownerID, folderName,
+	).Scan(&folderID)
+	if err == nil {
+		return folderID, nil // already exists
+	}
+
+	// Create the folder at root.
+	f, err := s.CreateFolder(ctx, ownerID, folderName, nil)
+	if err != nil {
+		return "", fmt.Errorf("EnsurePlaylistFolder: %w", err)
+	}
+	return f.ID.String(), nil
+}

@@ -240,11 +240,12 @@ function FilesPage() {
     }
 
     try {
-      const result = await createPlaylist(folder.name, folder.id, ids)
-      void qc.invalidateQueries({ queryKey: ['files', folder.id] })
-      toast.success(`Playlist opdateret — ${ids.length} ${ids.length === 1 ? 'nummer' : 'numre'}`)
+      const result = await createPlaylist(null, null, ids) as any
+      void qc.invalidateQueries({ queryKey: ['files', null] })
+      const displayName = result.name?.replace(/\.m3u$/i, '') ?? 'Playliste'
+      toast.success(`Playlist oprettet — ${ids.length} ${ids.length === 1 ? 'nummer' : 'numre'}`)
       setFolderPlaylistJob(null)
-      setPlaylist(result.id, folder.name)
+      setPlaylist(result.id, displayName)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Kunne ikke oprette playlist')
     }
@@ -448,18 +449,17 @@ function FilesPage() {
   }, [selected, sorted, navigate, qc])
 
   const handleCreatePlaylist = useCallback(async () => {
-    const name = window.prompt('Playlist name:', 'My Playlist')
-    if (!name?.trim()) return
     try {
-      const f = await createPlaylist(name.trim(), folderId, [...selected])
+      const f = await createPlaylist(null, folderId, [...selected]) as any
+      const displayName = f.name?.replace(/\.m3u$/i, '') ?? 'Playliste'
       toast.success(t('misc.playlistCreated'))
       void qc.invalidateQueries({ queryKey: ['files', folderId] })
       setSelected(new Set())
-      setPlaylist(f.id, name.trim())
+      setPlaylist(f.id, displayName)
     } catch {
       toast.error(t('toast.createDocFailed'))
     }
-  }, [selected, folderId, qc, setPlaylist])
+  }, [selected, folderId, qc, setPlaylist, t])
 
   return (
     <DropZone folderId={folderId} onUploadStart={startUpload}>

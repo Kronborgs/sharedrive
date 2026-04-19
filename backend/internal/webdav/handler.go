@@ -699,23 +699,14 @@ func (f *davWriteFile) Readdir(int) ([]os.FileInfo, error) { return nil, os.ErrI
 func (f *davWriteFile) Stat() (os.FileInfo, error)         { return f.fi, nil }
 
 func (f *davWriteFile) Close() error {
-	// Close the temp file handle before renaming.
-	if err := f.tmp.Close(); err != nil {
-		_ = os.Remove(f.tmp.Name())
-		return err
-	}
+	tmpName := f.tmp.Name()
 
 	// If nothing was written, remove the temp file and bail — avoid creating
 	// or overwriting a file with a 0-byte body (Windows sends a probe PUT
 	// on first access; the subsequent PUT carries the actual content).
 	if f.size == 0 {
-		_ = os.Remove(f.tmp.Name())
-		if f.existingID == "" {
-			// New file, nothing committed — not an error from the client's
-			// perspective (returns 201/204 normally).
-			return nil
-		}
-		// Overwrite with 0 bytes — refuse to corrupt the existing file.
+		_ = f.tmp.Close()
+		_ = os.Remove(tmpName)
 		return nil
 	}
 
@@ -730,9 +721,12 @@ func (f *davWriteFile) Close() error {
 		fileID = uuid.New().String()
 	}
 
-	// Seek temp file back to start for reading.
+	// Seek temp file back to start so storage.Write reads from the beginning.
+	// We intentionally do NOT close f.tmp before seeking — closing and then
+	// seeking a Go *os.File always returns os.ErrClosed.
 	if _, err := f.tmp.Seek(0, io.SeekStart); err != nil {
-		_ = os.Remove(f.tmp.Name())
+		_ = f.tmp.Close()
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("webdav commit seek: %w", err)
 	}
 
@@ -740,14 +734,18 @@ func (f *davWriteFile) Close() error {
 	// Storage.Write creates/overwrites the sharded destination atomically.
 	storagePath := storagePathFor(f.filesRoot, fileID)
 	if err := os.MkdirAll(filepath.Dir(storagePath), 0750); err != nil {
-		_ = os.Remove(f.tmp.Name())
+		_ = f.tmp.Close()
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("webdav commit mkdir: %w", err)
 	}
 	if _, err := f.storage.Write(fileID, f.tmp); err != nil {
-		_ = os.Remove(f.tmp.Name())
+		_ = f.tmp.Close()
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("webdav commit write: %w", err)
 	}
-	_ = os.Remove(f.tmp.Name())
+	// Close and remove the temp file now that storage has consumed it.
+	_ = f.tmp.Close()
+	_ = os.Remove(tmpName)
 
 	shaHex := hex.EncodeToString(f.hash.Sum(nil))
 	ctx := context.Background()

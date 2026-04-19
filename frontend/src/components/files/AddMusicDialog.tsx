@@ -39,6 +39,7 @@ export function AddMusicDialog({ onClose, onAdd }: Props) {
     queryKey: ['add-music-browse', folderId],
     queryFn: ({ signal }) =>
       api.get<FileItem[]>(`/api/v1/files?${folderId ? `parent_id=${folderId}` : ''}`, signal),
+    select: (data) => data ?? [],
     staleTime: 30_000,
   })
 

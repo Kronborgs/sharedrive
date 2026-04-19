@@ -80,7 +80,7 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extra
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			connectSrc := "'self' wss: ws: https://cloudflareinsights.com"
+			connectSrc := "'self' wss: ws: https://cloudflareinsights.com https://cdn.jsdelivr.net"
 			if extra := resolve(extraConnectSrc, &cacheConnect); extra != "" {
 				connectSrc += " " + extra
 			}
@@ -97,7 +97,7 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extra
 
 			csp := "default-src 'self'; " +
 				"script-src " + scriptSrc + "; " +
-				"style-src 'self' 'unsafe-inline'; " +
+				"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
 				"img-src 'self' data: blob:; " +
 				"font-src 'self'; " +
 				"connect-src " + connectSrc + "; " +

@@ -29,15 +29,21 @@ interface Props {
   onClose: () => void
   /** Optional label for the back-navigation button, e.g. "My Files" or "Delt med mig". */
   backLabel?: string
+  /** Link-share token. When provided the public config endpoint is used (no auth required). */
+  shareToken?: string
 }
 
-export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose, backLabel }: Props) {
+export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose, backLabel, shareToken }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<unknown>(null)
 
+  const configUrl = shareToken
+    ? `/api/v1/public/onlyoffice/config/${item.id}?share_token=${encodeURIComponent(shareToken)}`
+    : `/api/v1/onlyoffice/config/${item.id}`
+
   const { data: config, isLoading, isError } = useQuery({
-    queryKey: ['onlyoffice', 'config', item.id],
-    queryFn: ({ signal }) => api.get<EditorConfig>(`/api/v1/onlyoffice/config/${item.id}`, signal),
+    queryKey: ['onlyoffice', 'config', item.id, shareToken ?? ''],
+    queryFn: ({ signal }) => api.get<EditorConfig>(configUrl, signal),
     staleTime: 0,
   })
 

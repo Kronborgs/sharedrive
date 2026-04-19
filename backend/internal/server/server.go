@@ -313,6 +313,10 @@ func (s *Server) buildRouter() *chi.Mux {
 	// ── Public shared-link endpoint (no auth) ─────────────────────────────
 	r.Get("/api/v1/public/shared/{token}", s.handleSharedByLink)
 
+	// ── Public OnlyOffice endpoints for link-share (guest) access ─────────
+	r.Get("/api/v1/public/onlyoffice/config/{fileId}", s.ooHandler.PublicGetEditorConfig)
+	r.Post("/api/v1/public/onlyoffice/create", s.ooHandler.PublicCreateDocument)
+
 	// ── Buddy backup receive (per-user token auth, no user session) ──────────
 	r.Post("/api/v1/backup/buddy/receive", s.backupHandler.BuddyReceive)
 

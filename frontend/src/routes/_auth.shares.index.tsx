@@ -6,7 +6,12 @@ import { FileList } from '@/components/files/FileViews'
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { PreviewModal } from '@/components/files/PreviewModal'
+import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import type { FileItem } from '@/types/api'
+
+const ooFormats = new Set(['doc','docx','docm','dot','dotx','rtf','odt','ott','txt','xml',
+  'xls','xlsx','xlsm','xlsb','xltx','csv','ods','ots','fods',
+  'ppt','pptx','pptm','potx','odp','otp','fodp'])
 
 export const Route = createFileRoute('/_auth/shares/')({
   component: SharedWithMePage,
@@ -30,11 +35,18 @@ function SharedWithMePage() {
   const navigate = useNavigate()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
+  const [ooItem, setOoItem] = useState<FileItem | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['files', 'shared-with-me'],
     queryFn: ({ signal }) => api.get<SharedItem[]>('/api/v1/files/shared-with-me', signal),
     staleTime: 0,
+  })
+
+  const { data: systemSettings } = useQuery({
+    queryKey: ['system', 'settings'],
+    queryFn: ({ signal }) => api.get<{ onlyoffice_url?: string }>('/api/v1/system/settings', signal),
+    staleTime: 5 * 60 * 1000,
   })
 
   // Convert to FileItem shape that FileList understands
@@ -63,7 +75,13 @@ function SharedWithMePage() {
 
   const handleOpen = (item: FileItem) => {
     if (item.is_folder) void navigate({ to: '/shared-browse', search: { folder: item.id } })
-    else setPreviewItem(item)
+    else if (systemSettings?.onlyoffice_url) {
+      const ext = item.name.split('.').pop()?.toLowerCase() ?? ''
+      if (ooFormats.has(ext)) { setOoItem(item); return }
+      setPreviewItem(item)
+    } else {
+      setPreviewItem(item)
+    }
   }
 
   return (
@@ -85,6 +103,14 @@ function SharedWithMePage() {
         </div>
       )}
       {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
+      {ooItem && systemSettings?.onlyoffice_url && (
+        <OnlyOfficeEditor
+          item={ooItem}
+          onlyofficeUrl={systemSettings.onlyoffice_url}
+          backLabel="Delt med mig"
+          onClose={() => setOoItem(null)}
+        />
+      )}
     </div>
   )
 }

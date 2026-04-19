@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	goredis "github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 
 	"github.com/yourname/privatedrive/internal/files"
@@ -31,12 +32,13 @@ import (
 type Handler struct {
 	db      *pgxpool.Pool
 	storage *files.Storage
-	appBase string // e.g. https://files.example.com
+	rdb     *goredis.Client // nil = no Redis; used for collaborative docKey caching
+	appBase string          // e.g. https://files.example.com
 }
 
 // NewHandler creates a Handler.
-func NewHandler(db *pgxpool.Pool, storage *files.Storage, appBase string) *Handler {
-	return &Handler{db: db, storage: storage, appBase: strings.TrimRight(appBase, "/")}
+func NewHandler(db *pgxpool.Pool, storage *files.Storage, appBase string, rdb *goredis.Client) *Handler {
+	return &Handler{db: db, storage: storage, rdb: rdb, appBase: strings.TrimRight(appBase, "/")}
 }
 
 // ─── Settings helpers ────────────────────────────────────────────────────────
@@ -109,27 +111,98 @@ func verifyJWT(token, secret string) (map[string]any, error) {
 
 // ─── File lookup ─────────────────────────────────────────────────────────────
 
+// shareAccessClause is embedded in queries to check user/group share access.
+// Params: $1 = resource UUID, $2 = user UUID.
+const shareAccessClause = `(
+  f.owner_id = $2::uuid
+  OR EXISTS(
+    SELECT 1 FROM shares sh
+     WHERE sh.resource_id = f.id
+       AND sh.revoked_at IS NULL
+       AND (sh.expires_at IS NULL OR sh.expires_at > now())
+       AND (
+         (sh.grantee_type = 'user'  AND sh.grantee_id = $2::uuid)
+         OR (sh.grantee_type = 'group' AND sh.grantee_id IN (
+               SELECT group_id FROM group_members WHERE user_id = $2::uuid
+         ))
+       )
+  )
+)`
+
+const editAccessClause = `(
+  f.owner_id = $2::uuid
+  OR EXISTS(
+    SELECT 1 FROM shares sh
+     WHERE sh.resource_id = f.id
+       AND sh.can_edit = true
+       AND sh.revoked_at IS NULL
+       AND (sh.expires_at IS NULL OR sh.expires_at > now())
+       AND (
+         (sh.grantee_type = 'user'  AND sh.grantee_id = $2::uuid)
+         OR (sh.grantee_type = 'group' AND sh.grantee_id IN (
+               SELECT group_id FROM group_members WHERE user_id = $2::uuid
+         ))
+       )
+  )
+)`
+
 type fileRow struct {
 	id       string
 	name     string
 	ownerID  string
 	mimeType string
 	path     string // absolute path on disk
+	canEdit  bool   // true when user owns file or has an active can_edit share
 }
 
+// lookupFile returns the file if the user owns it or has any active share grant
+// for it. The canEdit field reflects whether the user may write changes.
 func (h *Handler) lookupFile(ctx context.Context, fileID, userID string) (*fileRow, error) {
 	var f fileRow
 	err := h.db.QueryRow(ctx,
-		`SELECT id::text, name, owner_id::text, COALESCE(mime_type,''), storage_path
-		   FROM files
-		  WHERE id = $1::uuid AND owner_id = $2::uuid AND deleted_at IS NULL`,
+		`SELECT f.id::text, f.name, f.owner_id::text, COALESCE(f.mime_type,''), f.storage_path,
+		        `+editAccessClause+` AS can_edit
+		   FROM files f
+		  WHERE f.id = $1::uuid AND f.deleted_at IS NULL
+		    AND `+shareAccessClause,
 		fileID, userID,
-	).Scan(&f.id, &f.name, &f.ownerID, &f.mimeType, &f.path)
+	).Scan(&f.id, &f.name, &f.ownerID, &f.mimeType, &f.path, &f.canEdit)
 	if err != nil {
 		return nil, err
 	}
-	// storage_path is the absolute on-disk path; keep as-is.
 	return &f, nil
+}
+
+// ─── docKey Redis helpers ─────────────────────────────────────────────────────
+
+const (
+	ooDocKeyPrefix = "oo_dockey:"
+	ooDocKeyTTL    = 24 * time.Hour
+)
+
+// getOrCreateDocKey returns a stable docKey for fileID from Redis, generating
+// and storing a fresh one when none exists. Falls back to a timestamp key when
+// Redis is unavailable so editing still functions.
+func (h *Handler) getOrCreateDocKey(ctx context.Context, fileID string) string {
+	redisKey := ooDocKeyPrefix + fileID
+	if h.rdb != nil {
+		if v, err := h.rdb.Get(ctx, redisKey).Result(); err == nil && v != "" {
+			return v
+		}
+	}
+	key := fmt.Sprintf("%s_%d", fileID, time.Now().UnixMilli())
+	if h.rdb != nil {
+		_ = h.rdb.Set(ctx, redisKey, key, ooDocKeyTTL).Err()
+	}
+	return key
+}
+
+// invalidateDocKey removes the cached docKey for a file after a successful save,
+// so the next edit session gets a fresh key pointing at the updated content.
+func (h *Handler) invalidateDocKey(ctx context.Context, fileID string) {
+	if h.rdb != nil {
+		_ = h.rdb.Del(ctx, ooDocKeyPrefix+fileID).Err()
+	}
 }
 
 // ─── GET /api/v1/onlyoffice/config/{fileId} ──────────────────────────────────
@@ -211,10 +284,9 @@ func (h *Handler) GetEditorConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(f.name), "."))
-	// Unique document key — changes every time so OO always fetches fresh content.
-	// In a production multi-user collab setup you'd store and reuse this until the
-	// document is force-saved, but for single-user operation this is fine.
-	docKey := fmt.Sprintf("%s_%d", fileID, time.Now().Unix())
+	// docKey is stored in Redis so all concurrent editors share the same key,
+	// enabling OO's collaborative real-time sync. Invalidated on save.
+	docKey := h.getOrCreateDocKey(ctx, fileID)
 
 	// Build the download URL. When a JWT secret is configured the Download endpoint
 	// requires a signed token, so we generate one now and embed it as a query param.
@@ -232,19 +304,23 @@ func (h *Handler) GetEditorConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	mode := "edit"
+	if !f.canEdit {
+		mode = "view"
+	}
 	cfg := editorConfig{
 		Document: docSection{
 			FileType:    ext,
 			Key:         docKey,
 			Title:       f.name,
 			URL:         downloadURL,
-			Permissions: docPerms{Edit: true, Download: true},
+			Permissions: docPerms{Edit: f.canEdit, Download: true},
 		},
 		DocumentType: documentType(f.name),
 		EditorConfig: editorSection{
 			CallbackURL: fmt.Sprintf("%s/api/v1/onlyoffice/callback/%s", h.appBase, fileID),
 			Lang:        "da",
-			Mode:        "edit",
+			Mode:        mode,
 			User:        edUser{ID: actor.ID.String(), Name: actor.Email},
 			// Empty slice disables all server-side plugins (stops AI plugin 404s).
 			Plugins: edPlugins{PluginsData: []string{}},
@@ -361,6 +437,10 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 			written, fileID,
 		)
 
+		// Invalidate the cached docKey so the next editor session gets a fresh
+		// key pointing at the newly saved content.
+		h.invalidateDocKey(ctx, fileID)
+
 		log.Info().Str("file_id", fileID).Int64("bytes", written).Msg("onlyoffice: document saved")
 	}
 
@@ -446,10 +526,12 @@ func (h *Handler) MakeDownloadToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify user owns file
+	// Verify user owns or has share access to the file
 	var exists bool
 	_ = h.db.QueryRow(ctx,
-		`SELECT true FROM files WHERE id = $1::uuid AND owner_id = $2::uuid AND deleted_at IS NULL`,
+		`SELECT true FROM files f
+		  WHERE f.id = $1::uuid AND f.deleted_at IS NULL
+		    AND `+shareAccessClause,
 		fileID, actor.ID.String(),
 	).Scan(&exists)
 	if !exists {

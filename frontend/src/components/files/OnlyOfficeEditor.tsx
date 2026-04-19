@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { X, Loader } from 'lucide-react'
+import { X, Loader, ArrowLeft } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { FileItem } from '@/types/api'
@@ -25,10 +25,13 @@ interface EditorConfig {
 interface Props {
   item: FileItem
   onlyofficeUrl: string
+  /** Called when the user clicks Close or the back button. */
   onClose: () => void
+  /** Optional label for the back-navigation button, e.g. "My Files" or "Delt med mig". */
+  backLabel?: string
 }
 
-export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose }: Props) {
+export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose, backLabel }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<unknown>(null)
 
@@ -88,7 +91,15 @@ export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 shrink-0">
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 shrink-0">
+        <button
+          onClick={onClose}
+          className="flex items-center gap-1.5 p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-zinc-800 transition-colors shrink-0"
+          title="Tilbage til mappen"
+        >
+          <ArrowLeft size={16} />
+          {backLabel && <span className="text-xs hidden sm:inline">{backLabel}</span>}
+        </button>
         <span className="text-sm font-medium text-slate-100 flex-1 truncate">{item.name}</span>
         <button
           onClick={onClose}

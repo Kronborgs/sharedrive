@@ -17,11 +17,12 @@ import { ShareTargetDialog } from '@/components/files/ShareTargetDialog'
 import { ShareTargetHint } from '@/components/files/ShareTargetHint'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { useShareTarget } from '@/hooks/useShareTarget'
-import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive } from 'lucide-react'
+import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive, FilePlus } from 'lucide-react'
 import { toast } from 'sonner'
 
 const searchSchema = z.object({
   folder: z.string().optional(),
+  oo: z.string().optional(), // file ID currently open in OnlyOffice editor
 })
 
 export const Route = createFileRoute('/_auth/files/')({
@@ -55,7 +56,7 @@ function shuffleArray<T>(arr: T[]): T[] {
 function FilesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { folder: folderId = null } = Route.useSearch()
+  const { folder: folderId = null, oo: ooFileId = null } = Route.useSearch()
   const qc = useQueryClient()
   const { setPlaylist, addTracks, tracks: playlistTracks, activePlaylistId } = usePlaylist()
 
@@ -66,12 +67,12 @@ function FilesPage() {
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
-  const [ooItem, setOoItem] = useState<FileItem | null>(null)
   const [downloadIds, setDownloadIds] = useState<string[] | null>(null)
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false)
   const [moveItem, setMoveItem] = useState<FileItem | null>(null)
   const [duplicateItem, setDuplicateItem] = useState<FileItem | null>(null)
+  const [newDocOpen, setNewDocOpen] = useState(false)
   const [folderPlaylistJob, setFolderPlaylistJob] = useState<{
     folder: FileItem
     audioFiles: FileItem[]
@@ -155,6 +156,26 @@ function FilesPage() {
     onError: () => toast.error('Duplicate failed'),
   })
 
+  const createDocument = useMutation({
+    mutationFn: (opts: { type: 'word' | 'cell' | 'slide'; name: string }) =>
+      api.post<{ id: string; name: string }>('/api/v1/onlyoffice/create', {
+        type: opts.type,
+        name: opts.name,
+        parent_id: folderId ?? null,
+      }),
+    onSuccess: (result) => {
+      void qc.invalidateQueries({ queryKey: ['files', folderId] })
+      void qc.invalidateQueries({ queryKey: ['me'] })
+      setNewDocOpen(false)
+      // Open the new document immediately in OO
+      void navigate({ to: '/files', search: { folder: folderId ?? undefined, oo: result.id } })
+    },
+    onError: () => toast.error('Kunne ikke oprette dokument'),
+  })
+
+  // Derive OO item from URL param — avoids separate state that breaks back/forward
+  const ooItem = ooFileId ? (files?.find(f => f.id === ooFileId) ?? null) : null
+
   useEffect(() => {
     if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
   }, [user, navigate])
@@ -193,12 +214,12 @@ function FilesPage() {
         'ppt','pptx','pptm','potx','odp','otp','fodp',
       ])
       if (ooFormats.has(ext)) {
-        setOoItem(item)
+        void navigate({ to: '/files', search: { folder: folderId ?? undefined, oo: item.id } })
         return
       }
     }
     setPreviewItem(item)
-  }, [navigate, systemSettings])
+  }, [navigate, systemSettings, folderId])
 
   const doCreateFolderPlaylist = useCallback(async (
     folder: FileItem,
@@ -588,6 +609,38 @@ function FilesPage() {
                   New folder
                 </button>
 
+                {/* New document dropdown — desktop only, only when OO configured */}
+                {systemSettings?.onlyoffice_url && (
+                  <div className="relative hidden sm:block">
+                    <button
+                      onClick={() => setNewDocOpen(v => !v)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                    >
+                      <FilePlus size={12} />
+                      Nyt dokument
+                    </button>
+                    {newDocOpen && (
+                      <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] shadow-xl z-40 py-1">
+                        {([
+                          { type: 'word' as const,  icon: '📄', label: 'Word (.docx)',        name: 'Nyt dokument.docx' },
+                          { type: 'cell' as const,  icon: '📊', label: 'Excel (.xlsx)',       name: 'Ny regneark.xlsx' },
+                          { type: 'slide' as const, icon: '📑', label: 'PowerPoint (.pptx)', name: 'Ny præsentation.pptx' },
+                        ] as const).map(o => (
+                          <button
+                            key={o.type}
+                            onClick={() => { createDocument.mutate({ type: o.type, name: o.name }) }}
+                            disabled={createDocument.isPending}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
+                          >
+                            <span>{o.icon}</span>
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Mobile actions dropdown — hidden on sm+ */}
                 <div className="relative sm:hidden" ref={mobileMenuRef}>
                   <button
@@ -676,7 +729,12 @@ function FilesPage() {
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
       {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
       {ooItem && systemSettings?.onlyoffice_url && (
-        <OnlyOfficeEditor item={ooItem} onlyofficeUrl={systemSettings.onlyoffice_url} onClose={() => setOoItem(null)} />
+        <OnlyOfficeEditor
+          item={ooItem}
+          onlyofficeUrl={systemSettings.onlyoffice_url}
+          backLabel="Mine filer"
+          onClose={() => void navigate({ to: '/files', search: { folder: folderId ?? undefined } })}
+        />
       )}
       {downloadIds && <DownloadDialog ids={downloadIds} onClose={() => setDownloadIds(null)} />}
       {moveItem && (

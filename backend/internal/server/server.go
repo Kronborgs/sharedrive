@@ -99,7 +99,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
 		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, backupsRoot(cfg.BackupsRoot), auditSvc, ratelimit.New(rdb)),
-		ooHandler:      onlyoffice.NewHandler(db, storage, cfg.AppBaseURL),
+		ooHandler:      onlyoffice.NewHandler(db, storage, cfg.AppBaseURL, rdb),
 		auditSvc:       auditSvc,
 		ioTracker:      ioTracker,
 	}
@@ -407,6 +407,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/onlyoffice/config/{fileId}", s.ooHandler.GetEditorConfig)
 		r.Get("/api/v1/onlyoffice/token/{fileId}", s.ooHandler.MakeDownloadToken)
 		r.Get("/api/v1/onlyoffice/test", s.ooHandler.Test)
+		r.Post("/api/v1/onlyoffice/create", s.ooHandler.CreateDocument)
 
 		// Admin routes
 		r.Group(func(r chi.Router) {

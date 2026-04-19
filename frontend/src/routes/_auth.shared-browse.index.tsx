@@ -9,6 +9,7 @@ import { FileContextMenu, type ContextAction } from '@/components/files/FileCont
 import { ShareDialog } from '@/components/files/ShareDialog'
 import { DropZone, UploadProgress, useUploader } from '@/components/files/UploadZone'
 import { PreviewModal } from '@/components/files/PreviewModal'
+import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { ChevronRight, Users, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -57,10 +58,17 @@ function SharedBrowsePage() {
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
+  const [ooItem, setOoItem] = useState<FileItem | null>(null)
 
   const rootId = root ?? folderId
 
   const { uploads, startUpload, dismiss, directUpload } = useUploader(folderId, ['shared-browse', folderId])
+
+  const { data: systemSettings } = useQuery({
+    queryKey: ['system', 'settings'],
+    queryFn: ({ signal }) => api.get<{ direct_upload_url: string; onlyoffice_url: string }>('/api/v1/system/settings', signal),
+    staleTime: 5 * 60 * 1000,
+  })
 
   const { data, isLoading } = useQuery<ChildrenResponse>({
     queryKey: ['shared-browse', folderId],
@@ -108,10 +116,20 @@ function SharedBrowsePage() {
   const handleOpen = useCallback((item: FileItem) => {
     if (item.is_folder) {
       void navigate({ to: '/shared-browse', search: { folder: item.id, root: rootId } })
-    } else {
-      setPreviewItem(item)
+      return
     }
-  }, [navigate, rootId])
+    if (systemSettings?.onlyoffice_url) {
+      const ext = item.name.split('.').pop()?.toLowerCase() ?? ''
+      const ooFormats = new Set(['doc','docx','docm','dot','dotx','rtf','odt','ott','txt','xml',
+        'xls','xlsx','xlsm','xlsb','xltx','csv','ods','ots','fods',
+        'ppt','pptx','pptm','potx','odp','otp','fodp'])
+      if (ooFormats.has(ext)) {
+        setOoItem(item)
+        return
+      }
+    }
+    setPreviewItem(item)
+  }, [navigate, rootId, systemSettings])
 
   const handleSelect = useCallback((id: string, additive: boolean) => {
     setSelected(prev => {
@@ -204,6 +222,14 @@ function SharedBrowsePage() {
       )}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
       {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
+      {ooItem && systemSettings?.onlyoffice_url && (
+        <OnlyOfficeEditor
+          item={ooItem}
+          onlyofficeUrl={systemSettings.onlyoffice_url}
+          backLabel="Delt med mig"
+          onClose={() => setOoItem(null)}
+        />
+      )}
       <UploadProgress uploads={uploads} onDismiss={dismiss} directUpload={directUpload} />
 
       {renameId && (

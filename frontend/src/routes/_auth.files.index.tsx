@@ -125,12 +125,13 @@ function FilesPage() {
   const moveFile = useMutation({
     mutationFn: ({ id, destFolderId }: { id: string; destFolderId: string | null }) =>
       api.patch(`/api/v1/files/${id}`, { parent_id: destFolderId ?? '' }),
-    onSuccess: () => {
+    onSuccess: (_, { destFolderId }) => {
       void qc.invalidateQueries({ queryKey: ['files', folderId] })
+      if (destFolderId) void qc.invalidateQueries({ queryKey: ['files', destFolderId] })
       setMoveItem(null)
-      toast.success('Moved')
+      toast.success('Flyttet')
     },
-    onError: () => toast.error('Move failed'),
+    onError: () => toast.error('Flytning fejlede'),
   })
 
   const copyFile = useMutation({
@@ -417,7 +418,7 @@ function FilesPage() {
     <DropZone folderId={folderId} onUploadStart={startUpload}>
       <div className="flex flex-col flex-1 min-h-0">
         {/* Toolbar */}
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-100 dark:border-[#2d3148] shrink-0">
+        <div className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2.5 border-b border-zinc-100 dark:border-[#2d3148] shrink-0 bg-zinc-50 dark:bg-[#0f1117]">
           {selected.size > 0 ? (
             /* ── Bulk action bar ─────────────────────────────── */
             <>

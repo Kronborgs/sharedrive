@@ -138,8 +138,12 @@ type editorConfig struct {
 	Document     docSection    `json:"document"`
 	DocumentType string        `json:"documentType"`
 	EditorConfig editorSection `json:"editorConfig"`
+	Events       edEvents      `json:"events,omitempty"`
 	Token        string        `json:"token,omitempty"`
 }
+
+// edEvents is left empty but present so we can extend it later.
+type edEvents struct{}
 
 type docSection struct {
 	FileType    string   `json:"fileType"`
@@ -155,10 +159,17 @@ type docPerms struct {
 }
 
 type editorSection struct {
-	CallbackURL string `json:"callbackUrl"`
-	Lang        string `json:"lang"`
-	Mode        string `json:"mode"`
-	User        edUser `json:"user"`
+	CallbackURL string    `json:"callbackUrl"`
+	Lang        string    `json:"lang"`
+	Mode        string    `json:"mode"`
+	User        edUser    `json:"user"`
+	Plugins     edPlugins `json:"plugins"`
+}
+
+// edPlugins disables all server-side OO plugins to prevent 404s for
+// missing plugin translation files (e.g. the built-in AI assistant).
+type edPlugins struct {
+	PluginsData []string `json:"pluginsData"`
 }
 
 type edUser struct {
@@ -235,6 +246,8 @@ func (h *Handler) GetEditorConfig(w http.ResponseWriter, r *http.Request) {
 			Lang:        "da",
 			Mode:        "edit",
 			User:        edUser{ID: actor.ID.String(), Name: actor.Email},
+			// Empty slice disables all server-side plugins (stops AI plugin 404s).
+			Plugins: edPlugins{PluginsData: []string{}},
 		},
 	}
 

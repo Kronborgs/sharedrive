@@ -755,3 +755,17 @@ func (s *Service) ReplaceContent(ctx context.Context, fileID string, r io.Reader
 	)
 	return err
 }
+
+// PlaylistMaxTracks returns the configured playlist track limit from
+// system_settings, falling back to 200 when unset.
+func (s *Service) PlaylistMaxTracks(ctx context.Context) int {
+	var val string
+	if err := s.db.QueryRow(ctx,
+		`SELECT value FROM system_settings WHERE key = 'playlist_max_tracks'`,
+	).Scan(&val); err == nil && val != "" {
+		if n, err2 := strconv.Atoi(val); err2 == nil && n > 0 {
+			return n
+		}
+	}
+	return 200
+}

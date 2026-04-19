@@ -1087,8 +1087,9 @@ func (h *Handler) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "no files specified")
 		return
 	}
-	if len(body.FileIDs) > 50 {
-		httputil.RespondError(w, http.StatusBadRequest, "playlist cannot exceed 50 tracks")
+	maxTracks := h.svc.PlaylistMaxTracks(ctx)
+	if len(body.FileIDs) > maxTracks {
+		httputil.RespondError(w, http.StatusBadRequest, fmt.Sprintf("playlist cannot exceed %d tracks", maxTracks))
 		return
 	}
 
@@ -1236,8 +1237,9 @@ func (h *Handler) UpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "no files specified")
 		return
 	}
-	if len(body.FileIDs) > 50 {
-		httputil.RespondError(w, http.StatusBadRequest, "playlist cannot exceed 50 tracks")
+	maxTracks := h.svc.PlaylistMaxTracks(ctx)
+	if len(body.FileIDs) > maxTracks {
+		httputil.RespondError(w, http.StatusBadRequest, fmt.Sprintf("playlist cannot exceed %d tracks", maxTracks))
 		return
 	}
 

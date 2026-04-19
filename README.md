@@ -1,6 +1,6 @@
 # Sharedrive
 
-A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, granular sharing, TOTP 2FA, full admin dashboard — packaged as a single Docker container.
+Privacy-first self-hosted file sharing and personal cloud platform for secure storage, syncing, and sharing, WebDAV, collaborative document editing, built-in text/code editor, granular sharing, TOTP 2FA, full admin dashboard — packaged as a single Docker container.
 
 ![Admin Dashboard](pics/dashboard.png)
 
@@ -38,6 +38,23 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 - **3D models** (STL, 3MF) — interactive WebGL viewer (Three.js)
 - **Text & code** — syntax-highlighted viewer; previews truncated at 1 MB with a notice
 - **Print button** — prints PDF, office, image, and text files directly from the preview modal using the browser's print dialog (no server-side printer required)
+
+### OnlyOffice Integration (optional)
+- **Collaborative document editing** — connect an external [OnlyOffice Document Server](https://helpcenter.onlyoffice.com/installation/docs-community-install-docker.aspx) for full in-browser editing of Word, Excel, and PowerPoint files
+- **Supported formats** — DOCX, XLSX, PPTX, ODT, ODS, ODP, CSV, and more — opened directly in the OnlyOffice editor
+- **New document creation** — create blank Word, Excel, or PowerPoint documents from the "New document" dropdown in any folder
+- **Shared files & public links** — OnlyOffice editing works on files shared with other users and on public share links (respects per-share permissions)
+- **Easy setup** — enter the OnlyOffice Document Server URL in Admin → System Settings; Sharedrive validates the connection with a live connectivity test
+- **Security** — document download URLs carry short-lived signed tokens; CSP headers are updated dynamically to allow the OnlyOffice origin
+
+### Text Editor
+- **Built-in code & text editor** — powered by [Monaco Editor](https://microsoft.github.io/monaco-editor/) (the engine behind VS Code), opens directly in the browser
+- **Syntax highlighting** — automatic language detection for 40+ file types including Markdown, JSON, YAML, XML, HTML, CSS, JavaScript, TypeScript, Python, Go, SQL, Shell scripts, Dockerfiles, config files, and many more
+- **Full editing** — edit and save text files in place; unsaved changes are tracked with a visual indicator
+- **Create new files** — create blank `.txt`, `.md`, or `.json` files from the "New document" dropdown
+- **Read-only mode** — files larger than 5 MB open read-only; files over 10 MB show a size warning instead
+- **Works everywhere** — available on your own files, shared files, and public share links (respects permissions)
+- **Dark mode** — follows the system/site theme automatically
 
 ### Download Rate Limiting
 - **Per-user limits** — 200 single-file downloads / hour; 30 ZIP downloads / hour
@@ -106,7 +123,7 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 - **Tag management** — admin-defined tags with custom colours; applicable to any file
 - **Admin support access** — limited-scope impersonation of a user account, fully audited; the user sees a real-time banner via SSE
 - **Backup & restore** — export HMAC-signed gzip JSON (metadata only, no file blobs); restore at any time or during first-run setup
-- **System settings** — site name, open registration, default quota, global max upload size, direct upload URL, SMTP configuration with live test
+- **System settings** — site name, open registration, default quota, global max upload size, direct upload URL, OnlyOffice Document Server URL, SMTP configuration with live test
 - **Audit log viewer** — filterable by event type and actor email, paginated, colour-coded; deduplication of repeated login events; enriched delete/backup entries
 - **Blocked IPs** — view active lockouts with tier/TTL, manually block or unblock, manage CIDR whitelist
 - **Dashboard tabs** — Overview tab (disk usage, bandwidth, activity) and Users tab (live table) for a cleaner layout
@@ -128,6 +145,7 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
   - **Install prompt** — a dismissible hint on touch devices explains the share feature and offers a one-tap install shortcut
 - **Cloudflare Tunnel ready** — designed for reverse-proxy-free deployments on Unraid or any Docker Compose host
 - PostgreSQL for all metadata; Redis for rate limiting and ephemeral state (ephemeral — no volume needed)
+- **Internationalization (i18n)** — full English and Danish translations; language toggle in the sidebar
 - **Multi-platform image** — supports `linux/amd64` and `linux/arm64` (Raspberry Pi 4/5, Apple Silicon VMs, ARM servers)
 - Dark mode — system-detected with manual toggle
 

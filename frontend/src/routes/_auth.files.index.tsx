@@ -727,7 +727,7 @@ function FilesPage() {
         </div>
       </div>
 
-      {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < 50} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
+      {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < 200} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
       {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
       {ooItem && systemSettings?.onlyoffice_url && (

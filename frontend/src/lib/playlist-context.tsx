@@ -311,7 +311,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     if (!activePlaylistId) return { added: 0, skipped: 0 }
     const existing = new Set(tracks.map(t => t.id))
     const toAdd = fileIds.filter(id => !existing.has(id))
-    const available = 50 - tracks.length
+    const available = 200 - tracks.length
     const adding = toAdd.slice(0, available)
     const skipped = fileIds.length - adding.length
     if (adding.length === 0) return { added: 0, skipped }

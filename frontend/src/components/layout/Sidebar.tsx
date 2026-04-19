@@ -345,7 +345,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                 </div>
 
                 {/* Add music button (when tracks exist, show as small footer link) */}
-                {tracks.length > 0 && tracks.length < 50 && (
+                {tracks.length > 0 && tracks.length < 200 && (
                   <div className="border-t border-zinc-50 dark:border-[#2d3148]">
                     <button
                       onClick={() => setShowAddMusic(true)}

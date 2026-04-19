@@ -63,7 +63,7 @@ func (t *TrashService) SoftDelete(ctx context.Context, id, actorID string) error
 		`UPDATE files SET deleted_at = now(), updated_at = now(), owner_id = $3::uuid
 		 WHERE id = $1::uuid AND deleted_at IS NULL
 		 AND (
-		   owner_id = $2
+		   owner_id = $2::uuid
 		   OR EXISTS (
 		     SELECT 1 FROM files p WHERE p.id = files.parent_id AND p.owner_id = $2::uuid
 		   )

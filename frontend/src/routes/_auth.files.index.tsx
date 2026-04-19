@@ -16,7 +16,7 @@ import { FolderPickerDialog } from '@/components/files/FolderPickerDialog'
 import { ShareTargetDialog } from '@/components/files/ShareTargetDialog'
 import { ShareTargetHint } from '@/components/files/ShareTargetHint'
 import { useShareTarget } from '@/hooks/useShareTarget'
-import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical } from 'lucide-react'
+import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive } from 'lucide-react'
 import { toast } from 'sonner'
 
 const searchSchema = z.object({
@@ -67,6 +67,7 @@ function FilesPage() {
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
   const [downloadIds, setDownloadIds] = useState<string[] | null>(null)
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false)
   const [moveItem, setMoveItem] = useState<FileItem | null>(null)
   const [duplicateItem, setDuplicateItem] = useState<FileItem | null>(null)
   const [folderPlaylistJob, setFolderPlaylistJob] = useState<{
@@ -212,7 +213,13 @@ function FilesPage() {
       case 'rename': setRenameId(item.id); setRenameName(item.name); break
       case 'move': setMoveItem(item); break
       case 'copy': setDuplicateItem(item); break
-      case 'trash': if (confirm(`Move "${item.name}" to trash?`)) trash.mutate(item.id); break
+      case 'trash': {
+        const msg = item.is_folder
+          ? `Flytte mappen "${item.name}" og alt dens indhold til papirkurven?`
+          : `Flytte "${item.name}" til papirkurven?`
+        if (confirm(msg)) trash.mutate(item.id)
+        break
+      }
       case 'backup': {
         const addToBackup = async () => {
           try {
@@ -330,14 +337,67 @@ function FilesPage() {
   }, [selected])
 
   const handleBulkTrash = useCallback(async () => {
-    if (!confirm(`Move ${selected.size} item(s) to trash?`)) return
-    const results = await Promise.allSettled([...selected].map(id => api.delete(`/api/v1/files/${id}`)))
-    const failed = results.filter(r => r.status === 'rejected').length
-    if (failed > 0) toast.error(`${failed} item(s) could not be moved to trash`)
+    if (!confirm(`Flytte ${selected.size} element(er) til papirkurven? Mapper flyttes inklusiv indhold.`)) return
+    // Delete sequentially to avoid race where folder delete cascades children that are also selected
+    const ids = [...selected]
+    let failed = 0
+    for (const id of ids) {
+      try { await api.delete(`/api/v1/files/${id}`) } catch { failed++ }
+    }
+    if (failed > 0) toast.error(`${failed} element(er) kunne ikke flyttes til papirkurven`)
     void qc.invalidateQueries({ queryKey: ['files', folderId] })
     void qc.invalidateQueries({ queryKey: ['me'] })
     setSelected(new Set())
   }, [selected, qc, folderId])
+
+  const handleBulkMove = useCallback(async (destFolderId: string | null) => {
+    setBulkMoveOpen(false)
+    const ids = [...selected]
+    const results = await Promise.allSettled(
+      ids.map(id => api.patch(`/api/v1/files/${id}`, { parent_id: destFolderId ?? '' }))
+    )
+    const failed = results.filter(r => r.status === 'rejected').length
+    void qc.invalidateQueries({ queryKey: ['files', folderId] })
+    if (destFolderId) void qc.invalidateQueries({ queryKey: ['files', destFolderId] })
+    setSelected(new Set())
+    if (failed > 0) toast.error(`${failed} element(er) kunne ikke flyttes`)
+    else toast.success(`${ids.length} element(er) flyttet`)
+  }, [selected, folderId, qc])
+
+  const handleBulkBackup = useCallback(async () => {
+    try {
+      const [pwStatus, bkConfig, autoCfg] = await Promise.all([
+        api.get<BackupPasswordStatus>('/api/v1/backup/password'),
+        api.get<BackupConfig>('/api/v1/backup/config'),
+        api.get<AutoBackupConfig>('/api/v1/backup/auto'),
+      ])
+      if (!pwStatus.has_password || !bkConfig.tertiary_enabled) {
+        toast.info('Set up backup first')
+        void navigate({ to: '/backup' })
+        return
+      }
+      const existing: string[] = autoCfg.folder_ids ?? []
+      const candidates = sorted
+        .filter(f => selected.has(f.id))
+        .map(f => f.is_folder ? f.id : (f.parent_id ?? null))
+        .filter((id): id is string => id !== null && !existing.includes(id))
+      const uniqueNew = [...new Set(candidates)]
+      if (uniqueNew.length === 0) {
+        toast.info('De valgte mapper er allerede i auto backup')
+        return
+      }
+      await api.put('/api/v1/backup/auto', {
+        enabled: true,
+        interval_hours: autoCfg.interval_hours || 24,
+        retention_days: autoCfg.retention_days || 30,
+        folder_ids: [...existing, ...uniqueNew],
+      })
+      void qc.invalidateQueries({ queryKey: ['backup', 'auto'] })
+      toast.success(`${uniqueNew.length} mappe(r) tilføjet til auto backup`)
+    } catch {
+      toast.error('Kunne ikke opdatere auto backup')
+    }
+  }, [selected, sorted, navigate, qc])
 
   const handleCreatePlaylist = useCallback(async () => {
     const name = window.prompt('Playlist name:', 'My Playlist')
@@ -365,30 +425,59 @@ function FilesPage() {
                 <X size={16} />
               </button>
               <span className="text-sm font-medium text-zinc-900 dark:text-slate-100 flex-1">
-                {selected.size} selected
+                {selected.size} valgt
               </span>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-1 flex-wrap shrink-0">
+                {selected.size === 1 && (() => {
+                  const item = sorted.find(f => selected.has(f.id))
+                  return item ? (
+                    <button
+                      onClick={() => setShareItem(item)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                      title="Del"
+                    >
+                      <Share2 size={12} />
+                      <span className="hidden sm:inline">Del</span>
+                    </button>
+                  ) : null
+                })()}
+                <button
+                  onClick={() => setBulkMoveOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                  title="Flyt valgte"
+                >
+                  <MoveRight size={12} />
+                  <span className="hidden sm:inline">Flyt</span>
+                </button>
+                <button
+                  onClick={() => { void handleBulkBackup() }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                  title="Tilføj til auto backup"
+                >
+                  <HardDrive size={12} />
+                  <span className="hidden sm:inline">Backup</span>
+                </button>
                 <button
                   onClick={handleBulkDownload}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                 >
                   <Download size={12} />
-                  Download
+                  <span className="hidden sm:inline">Download</span>
                 </button>
                 <button
                   onClick={() => { void handleCreatePlaylist() }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-                  title="Create M3U playlist from selected audio files"
+                  title="Opret M3U afspilningsliste fra valgte lydfiler"
                 >
                   <ListMusic size={12} />
-                  Playlist
+                  <span className="hidden sm:inline">Afspilningsliste</span>
                 </button>
                 <button
                   onClick={() => { void handleBulkTrash() }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-900/40 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 >
                   <Trash2 size={12} />
-                  Delete
+                  <span className="hidden sm:inline">Slet</span>
                 </button>
               </div>
             </>
@@ -564,11 +653,19 @@ function FilesPage() {
       {downloadIds && <DownloadDialog ids={downloadIds} onClose={() => setDownloadIds(null)} />}
       {moveItem && (
         <FolderPickerDialog
-          title={`Move "${moveItem.name}"`}
-          confirmLabel="Move here"
+          title={`Flyt "${moveItem.name}"`}
+          confirmLabel="Flyt hertil"
           excludeId={moveItem.id}
           onConfirm={destFolderId => moveFile.mutate({ id: moveItem.id, destFolderId })}
           onClose={() => setMoveItem(null)}
+        />
+      )}
+      {bulkMoveOpen && (
+        <FolderPickerDialog
+          title={`Flyt ${selected.size} element(er)`}
+          confirmLabel="Flyt hertil"
+          onConfirm={destFolderId => { void handleBulkMove(destFolderId) }}
+          onClose={() => setBulkMoveOpen(false)}
         />
       )}
       {duplicateItem && (

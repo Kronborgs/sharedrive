@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"strings"
 
@@ -86,6 +87,31 @@ func validatePeerURL(raw string) (string, error) {
 	lower := strings.ToLower(host)
 	if lower == "localhost" || lower == "127.0.0.1" || lower == "::1" || lower == "[::1]" {
 		return "", fmt.Errorf("peer URL must not point to localhost")
+	}
+	// Resolve the hostname and reject private/link-local ranges to prevent SSRF
+	// against internal services (RFC 1918, link-local, loopback).
+	addrs, err := net.LookupHost(host)
+	if err != nil {
+		// If we cannot resolve, block — prevents DNS-rebinding via unresolvable names.
+		return "", fmt.Errorf("could not resolve peer hostname: %w", err)
+	}
+	privateRanges := []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"127.0.0.0/8",
+		"169.254.0.0/16", // link-local / AWS metadata
+		"::1/128",
+		"fc00::/7",  // ULA
+		"fe80::/10", // link-local IPv6
+	}
+	for _, cidr := range privateRanges {
+		_, ipNet, _ := net.ParseCIDR(cidr)
+		for _, addr := range addrs {
+			if ipNet.Contains(net.ParseIP(addr)) {
+				return "", fmt.Errorf("peer URL resolves to a private/reserved address")
+			}
+		}
 	}
 	return u.String(), nil
 }

@@ -33,8 +33,9 @@ export default function LoginPage() {
     setError(null)
     try {
       const res = await api.post<LoginResponse>('/api/v1/auth/login', values)
-      if (res.require_password_change && res.reset_token) {
-        await navigate({ to: '/reset-password', search: { token: res.reset_token } })
+      if (res.require_password_change) {
+        // Token is delivered as an HttpOnly cookie; navigate without putting it in the URL.
+        await navigate({ to: '/reset-password', search: { token: '', forced: '1' } })
       } else if (res.require_totp && res.pending_token) {
         await navigate({
           to: '/login/totp',

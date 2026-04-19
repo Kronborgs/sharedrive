@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 
 const searchSchema = z.object({
   token: z.string().catch(''),
+  forced: z.string().catch(''), // set when redirected from forced-reset login flow
 })
 
 const schema = z
@@ -26,7 +27,7 @@ export const Route = createFileRoute('/reset-password/')({
 
 function ResetPasswordPage() {
   const navigate = useNavigate()
-  const { token } = Route.useSearch()
+  const { token, forced } = Route.useSearch()
   const [requestEmail, setRequestEmail] = useState('')
   const [requestSent, setRequestSent] = useState(false)
   const [requestLoading, setRequestLoading] = useState(false)
@@ -35,8 +36,8 @@ function ResetPasswordPage() {
     resolver: zodResolver(schema),
   })
 
-  // No token = show request form
-  if (!token) {
+  // No token = show request form, UNLESS this is a forced-reset flow (cookie carries the token)
+  if (!token && !forced) {
     const handleRequest = async (e: React.FormEvent) => {
       e.preventDefault()
       if (!requestEmail) return

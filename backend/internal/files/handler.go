@@ -739,6 +739,23 @@ func (h *Handler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())
 	ctx := r.Context()
 
+	// Rate-limit both code paths uniformly before branching.
+	if h.limiter != nil {
+		userOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyUserZipDL, actor.ID.String(), 30, time.Hour)
+		if !userOK {
+			w.Header().Set("Retry-After", "3600")
+			httputil.RespondError(w, http.StatusTooManyRequests, "ZIP download rate limit exceeded — try again later")
+			return
+		}
+		ip := middleware.ClientIP(r)
+		ipOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyIPZipDL, ip, 60, time.Hour)
+		if !ipOK {
+			w.Header().Set("Retry-After", "3600")
+			httputil.RespondError(w, http.StatusTooManyRequests, "ZIP download rate limit exceeded — try again later")
+			return
+		}
+	}
+
 	// ── Token path (optionally encrypted) ─────────────────────────────────
 	if token := strings.TrimSpace(r.URL.Query().Get("token")); token != "" {
 		if !reDownloadToken.MatchString(token) {
@@ -791,22 +808,9 @@ func (h *Handler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) downloadZipByToken(w http.ResponseWriter, r *http.Request, ctx context.Context, actorID uuid.UUID, token string) {
 	userID := actorID.String()
 
-	// ZIP downloads are more expensive than single-file downloads: 30/hour per user, 60/hour per IP.
-	if h.limiter != nil {
-		userOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyUserZipDL, userID, 30, time.Hour)
-		if !userOK {
-			w.Header().Set("Retry-After", "3600")
-			httputil.RespondError(w, http.StatusTooManyRequests, "ZIP download rate limit exceeded — try again later")
-			return
-		}
-		ip := middleware.ClientIP(r)
-		ipOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyIPZipDL, ip, 60, time.Hour)
-		if !ipOK {
-			w.Header().Set("Retry-After", "3600")
-			httputil.RespondError(w, http.StatusTooManyRequests, "ZIP download rate limit exceeded — try again later")
-			return
-		}
-	}
+	// Rate limiting is applied in the DownloadZip caller before this function
+	// is invoked, so no duplicate check is needed here.
+
 	data, err := h.redis.GetDel(ctx, downloadTokenPrefix+token).Result()
 	if err != nil {
 		httputil.RespondError(w, http.StatusNotFound, "download token not found or expired")

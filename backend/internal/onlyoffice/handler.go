@@ -259,6 +259,14 @@ type callbackBody struct {
 	Token  string `json:"token"`
 }
 
+// ooReply writes the OnlyOffice-required response format: {"error":0} for success
+// or {"error":1} for failure. OO only recognises this exact top-level shape —
+// our generic httputil.Respond wrapper must NOT be used for callback responses.
+func ooReply(w http.ResponseWriter, errCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"error":%d}`, errCode)
+}
+
 // Callback receives save events from the OnlyOffice document server.
 // POST /api/v1/onlyoffice/callback/{fileId}
 func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
@@ -267,15 +275,19 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	_, jwtSecret, err := h.getSettings(ctx)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "settings error")
+		log.Error().Err(err).Str("file_id", fileID).Msg("onlyoffice: failed to load settings")
+		ooReply(w, 1)
 		return
 	}
 
 	var body callbackBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid body")
+		log.Warn().Err(err).Str("file_id", fileID).Msg("onlyoffice: invalid callback body")
+		ooReply(w, 1)
 		return
 	}
+
+	log.Debug().Str("file_id", fileID).Int("status", body.Status).Msg("onlyoffice: callback received")
 
 	// Verify JWT from OnlyOffice when secret is set
 	if jwtSecret != "" {
@@ -285,9 +297,14 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 			auth := r.Header.Get("Authorization")
 			tok = strings.TrimPrefix(auth, "Bearer ")
 		}
+		if tok == "" {
+			log.Warn().Str("file_id", fileID).Msg("onlyoffice: JWT secret configured but callback sent no token — check OO JWT settings")
+			ooReply(w, 1)
+			return
+		}
 		if _, err := verifyJWT(tok, jwtSecret); err != nil {
-			log.Warn().Err(err).Str("file_id", fileID).Msg("onlyoffice callback JWT verification failed")
-			httputil.RespondError(w, http.StatusUnauthorized, "invalid token")
+			log.Warn().Err(err).Str("file_id", fileID).Msg("onlyoffice: callback JWT verification failed — secret mismatch?")
+			ooReply(w, 1)
 			return
 		}
 	}
@@ -295,26 +312,33 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	// Status 2 = ready to save, Status 6 = force-save
 	if body.Status == 2 || body.Status == 6 {
 		if body.URL == "" {
-			httputil.Respond(w, http.StatusOK, map[string]int{"error": 0})
+			ooReply(w, 0)
 			return
 		}
 
 		// Fetch the updated document from the OnlyOffice storage URL.
-		resp, err := http.Get(body.URL) //nolint:gosec // URL comes from authenticated OO server
+		fetchCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, body.URL, nil) //nolint:gosec
 		if err != nil {
-			log.Error().Err(err).Msg("onlyoffice: failed to fetch saved document")
-			httputil.Respond(w, http.StatusOK, map[string]int{"error": 1})
+			log.Error().Err(err).Str("file_id", fileID).Msg("onlyoffice: failed to build fetch request")
+			ooReply(w, 1)
+			return
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			log.Error().Err(err).Str("url", body.URL).Str("file_id", fileID).Msg("onlyoffice: failed to fetch saved document")
+			ooReply(w, 1)
 			return
 		}
 		defer resp.Body.Close()
 
 		// Write via storage — this transparently (re-)encrypts the file if
-		// FILE_ENCRYPT_KEY is configured. The file is written to a temp path
-		// and then atomically moved by Storage.Write().
+		// FILE_ENCRYPT_KEY is configured.
 		written, err := h.storage.Write(fileID, resp.Body)
 		if err != nil {
-			log.Error().Err(err).Msg("onlyoffice: storage write error")
-			httputil.Respond(w, http.StatusOK, map[string]int{"error": 1})
+			log.Error().Err(err).Str("file_id", fileID).Msg("onlyoffice: storage write error")
+			ooReply(w, 1)
 			return
 		}
 
@@ -328,7 +352,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Always return {"error":0} so OO knows we handled it
-	httputil.Respond(w, http.StatusOK, map[string]int{"error": 0})
+	ooReply(w, 0)
 }
 
 // ─── GET /api/v1/onlyoffice/download/{fileId} ────────────────────────────────

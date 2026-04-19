@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -38,19 +39,20 @@ func NewHandler(db *pgxpool.Pool, cfg *config.Config, ioTracker *files.IOTracker
 // ─── System Settings ─────────────────────────────────────────────────────────
 
 type settingsResponse struct {
-	SiteName            string `json:"site_name"`
-	AllowRegistrations  bool   `json:"allow_registrations"`
-	RequireInvite       bool   `json:"require_invite"`
-	DefaultQuotaBytes   int64  `json:"default_quota_bytes"`
-	MaxUploadBytes      int64  `json:"max_upload_bytes"`
-	DirectUploadURL     string `json:"direct_upload_url"`
-	SMTPHost            string `json:"smtp_host"`
-	SMTPPort            int    `json:"smtp_port"`
-	SMTPUsername        string `json:"smtp_username"`
-	SMTPFromAddress     string `json:"smtp_from_address"`
-	SMTPTls             bool   `json:"smtp_tls"`
-	OnlyOfficeURL       string `json:"onlyoffice_url"`
-	OnlyOfficeJWTSecret string `json:"onlyoffice_jwt_secret"`
+	SiteName               string `json:"site_name"`
+	AllowRegistrations     bool   `json:"allow_registrations"`
+	RequireInvite          bool   `json:"require_invite"`
+	DefaultQuotaBytes      int64  `json:"default_quota_bytes"`
+	MaxUploadBytes         int64  `json:"max_upload_bytes"`
+	DirectUploadURL        string `json:"direct_upload_url"`
+	SMTPHost               string `json:"smtp_host"`
+	SMTPPort               int    `json:"smtp_port"`
+	SMTPUsername           string `json:"smtp_username"`
+	SMTPFromAddress        string `json:"smtp_from_address"`
+	SMTPTls                bool   `json:"smtp_tls"`
+	OnlyOfficeURL          string `json:"onlyoffice_url"`
+	OnlyOfficeJWTSecret    string `json:"onlyoffice_jwt_secret"`     // always empty in response — write-only
+	OnlyOfficeJWTSecretSet bool   `json:"onlyoffice_jwt_secret_set"` // true when a secret is stored
 }
 
 func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
@@ -85,19 +87,20 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.Respond(w, http.StatusOK, settingsResponse{
-		SiteName:            kv["app_name"],
-		AllowRegistrations:  kv["allow_registrations"] == "true",
-		RequireInvite:       kv["require_invite"] == "true",
-		DefaultQuotaBytes:   defaultQuota,
-		MaxUploadBytes:      maxUpload,
-		DirectUploadURL:     kv["direct_upload_url"],
-		SMTPHost:            kv["smtp_host"],
-		SMTPPort:            smtpPort,
-		SMTPUsername:        kv["smtp_user"],
-		SMTPFromAddress:     kv["smtp_from"],
-		SMTPTls:             kv["smtp_tls"] == "starttls",
-		OnlyOfficeURL:       kv["onlyoffice_url"],
-		OnlyOfficeJWTSecret: kv["onlyoffice_jwt_secret"],
+		SiteName:               kv["app_name"],
+		AllowRegistrations:     kv["allow_registrations"] == "true",
+		RequireInvite:          kv["require_invite"] == "true",
+		DefaultQuotaBytes:      defaultQuota,
+		MaxUploadBytes:         maxUpload,
+		DirectUploadURL:        kv["direct_upload_url"],
+		SMTPHost:               kv["smtp_host"],
+		SMTPPort:               smtpPort,
+		SMTPUsername:           kv["smtp_user"],
+		SMTPFromAddress:        kv["smtp_from"],
+		SMTPTls:                kv["smtp_tls"] == "starttls",
+		OnlyOfficeURL:          kv["onlyoffice_url"],
+		OnlyOfficeJWTSecret:    "", // never expose via API
+		OnlyOfficeJWTSecretSet: kv["onlyoffice_jwt_secret"] != "",
 	})
 }
 
@@ -372,6 +375,18 @@ func (h *Handler) AddWhitelist(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "ip_cidr is required")
 		return
 	}
+	// Validate IP or CIDR notation before storing.
+	if strings.Contains(req.IPCIDR, "/") {
+		if _, _, err := net.ParseCIDR(req.IPCIDR); err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid CIDR notation")
+			return
+		}
+	} else {
+		if net.ParseIP(req.IPCIDR) == nil {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid IP address")
+			return
+		}
+	}
 	var id string
 	err := h.db.QueryRow(ctx,
 		`INSERT INTO ip_whitelist (ip_cidr, description, created_by) VALUES ($1, $2, $3) RETURNING id`,
@@ -439,8 +454,12 @@ func (h *Handler) AuditLogs(w http.ResponseWriter, r *http.Request) {
 		whereParts = append(whereParts, fmt.Sprintf("event_type = $%d", len(filterArgs)))
 	}
 	if actorEmail != "" {
-		filterArgs = append(filterArgs, "%"+actorEmail+"%")
-		whereParts = append(whereParts, fmt.Sprintf("actor_email ILIKE $%d", len(filterArgs)))
+		// Escape ILIKE metacharacters to prevent ReDoS-style pattern abuse.
+		safeEmail := strings.ReplaceAll(actorEmail, `\`, `\\`)
+		safeEmail = strings.ReplaceAll(safeEmail, `%`, `\%`)
+		safeEmail = strings.ReplaceAll(safeEmail, `_`, `\_`)
+		filterArgs = append(filterArgs, "%"+safeEmail+"%")
+		whereParts = append(whereParts, fmt.Sprintf("actor_email ILIKE $%d ESCAPE '\\'", len(filterArgs)))
 	}
 	whereClause := ""
 	if len(whereParts) > 0 {

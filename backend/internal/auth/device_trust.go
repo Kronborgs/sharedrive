@@ -113,9 +113,15 @@ func (s *DeviceTrustService) Validate(ctx context.Context, raw, currentIP, curre
 // It extracts the browser engine token (e.g. "Chrome", "Firefox", "Safari")
 // and considers them matching if they share the same engine.
 func uaFamilyMatch(stored, current string) bool {
-	// Defensive — if either is empty, skip the check (allow).
-	if stored == "" || current == "" {
+	// If the stored UA family is known but the current request sends no UA header,
+	// treat it as a mismatch — a real browser always sends a User-Agent.
+	// Only allow the check to pass when *both* are empty (non-browser client that
+	// never sends UA, in which case we have nothing useful to compare).
+	if stored == "" && current == "" {
 		return true
+	}
+	if stored == "" || current == "" {
+		return false
 	}
 	return extractUAFamily(stored) == extractUAFamily(current)
 }

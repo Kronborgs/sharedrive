@@ -165,7 +165,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	h.lockout.ClearFailures(ctx, ip)
 	h.limiter.Reset(ctx, KeyIPLogin, ip)
 
-	// If admin forced a password change, return a short-lived reset token instead of a session.
+	// If admin forced a password change, issue a short-lived reset cookie (HttpOnly)
+	// rather than returning the raw token in the response body.
+	// The PasswordResetConfirm endpoint reads the token from the cookie when the
+	// body token is absent, keeping the secret out of the URL / browser history.
 	if u.MustChangePassword {
 		resetToken, tokenErr := h.passwordReset.GenerateResetToken(ctx, u.ID.String())
 		if tokenErr != nil {
@@ -173,9 +176,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     "_forced_reset",
+			Value:    resetToken,
+			Path:     "/api/v1/auth/password-reset/confirm",
+			HttpOnly: true,
+			Secure:   !h.cfg.IsDev(),
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   3600,
+		})
 		httputil.Respond(w, http.StatusOK, loginResponse{
 			RequirePasswordChange: true,
-			ResetToken:            resetToken,
+			// ResetToken intentionally omitted — delivered as HttpOnly cookie above.
 		})
 		return
 	}
@@ -253,12 +265,23 @@ func (h *Handler) TOTPVerify(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.totpSvc.Validate(ctx, userID, req.Code); err != nil {
 		log.Debug().Str("user_id", userID).Str("ip", ip).Msg("totp: verify failed — invalid code")
+		// Increment per-token failure counter. After 5 wrong codes the pending
+		// token is invalidated so an offline brute force on a captured token is
+		// bounded to 5 × (TOTP window) attempts regardless of IP diversity.
+		failKey := "pending_totp_fails:" + req.PendingToken
+		fails, _ := h.rdb.Incr(ctx, failKey).Result()
+		h.rdb.Expire(ctx, failKey, pendingTOTPTTL)
+		if fails >= 5 {
+			h.rdb.Del(ctx, pendingTOTPKey+req.PendingToken)
+			h.rdb.Del(ctx, failKey)
+		}
 		httputil.RespondError(w, http.StatusUnauthorized, "invalid TOTP code")
 		return
 	}
 
-	// Code valid — consume the pending token so it cannot be reused.
+	// Code valid — consume the pending token and its failure counter.
 	h.rdb.Del(ctx, pendingTOTPKey+req.PendingToken)
+	h.rdb.Del(ctx, "pending_totp_fails:"+req.PendingToken)
 
 	// Issue session
 	h.createSessionAndCookie(ctx, w, r, userID, ip)
@@ -391,6 +414,24 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.passwordReset.Confirm(r.Context(), req.Token, hash); err != nil {
+		// Body token was empty or invalid — try the HttpOnly forced-reset cookie
+		// (set by Login when must_change_password is true).
+		if c, cerr := r.Cookie("_forced_reset"); cerr == nil && c.Value != "" {
+			if err2 := h.passwordReset.Confirm(r.Context(), c.Value, hash); err2 == nil {
+				// Clear the one-time cookie so it cannot be replayed.
+				http.SetCookie(w, &http.Cookie{
+					Name:     "_forced_reset",
+					Value:    "",
+					Path:     "/api/v1/auth/password-reset/confirm",
+					HttpOnly: true,
+					Secure:   !h.cfg.IsDev(),
+					SameSite: http.SameSiteLaxMode,
+					MaxAge:   -1,
+				})
+				httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+				return
+			}
+		}
 		httputil.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}

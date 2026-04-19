@@ -206,12 +206,28 @@ func (h *Handler) GetEditorConfig(w http.ResponseWriter, r *http.Request) {
 	// document is force-saved, but for single-user operation this is fine.
 	docKey := fmt.Sprintf("%s_%d", fileID, time.Now().Unix())
 
+	// Build the download URL. When a JWT secret is configured the Download endpoint
+	// requires a signed token, so we generate one now and embed it as a query param.
+	// The OO document server fetches this URL server-side, so it must be fully
+	// authenticated without browser session cookies.
+	downloadURL := fmt.Sprintf("%s/api/v1/onlyoffice/download/%s", h.appBase, fileID)
+	if jwtSecret != "" {
+		dlTokenPayload := map[string]any{
+			"file_id": fileID,
+			"sub":     actor.ID.String(),
+			"exp":     time.Now().Add(6 * time.Hour).Unix(),
+		}
+		if dlTok, err := signJWT(dlTokenPayload, jwtSecret); err == nil {
+			downloadURL += "?token=" + dlTok
+		}
+	}
+
 	cfg := editorConfig{
 		Document: docSection{
 			FileType:    ext,
 			Key:         docKey,
 			Title:       f.name,
-			URL:         fmt.Sprintf("%s/api/v1/onlyoffice/download/%s", h.appBase, fileID),
+			URL:         downloadURL,
 			Permissions: docPerms{Edit: true, Download: true},
 		},
 		DocumentType: documentType(f.name),

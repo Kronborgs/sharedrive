@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const SHARE_CACHE = 'sharedrive-share-target'
 
@@ -11,13 +11,15 @@ interface ShareTargetFile {
 /**
  * Detects files received via the Web Share Target API.
  * The service worker stashes incoming files in a cache; this hook reads
- * them out and converts them back to File objects for the uploader.
+ * them out and returns them as pending File objects so the UI can let the
+ * user choose a destination folder before uploading.
  */
-export function useShareTarget(
-  onFiles: (files: File[]) => void,
-  enabled: boolean,
-) {
+export function useShareTarget(enabled: boolean): {
+  pendingFiles: File[]
+  clearPending: () => void
+} {
   const called = useRef(false)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
 
   useEffect(() => {
     if (!enabled || called.current) return
@@ -57,11 +59,15 @@ export function useShareTarget(
         }
 
         if (files.length > 0) {
-          onFiles(files)
+          setPendingFiles(files)
         }
       } catch (err) {
         console.warn('[ShareTarget] Failed to read shared files:', err)
       }
     })()
-  }, [enabled, onFiles])
+  }, [enabled])
+
+  const clearPending = () => setPendingFiles([])
+
+  return { pendingFiles, clearPending }
 }

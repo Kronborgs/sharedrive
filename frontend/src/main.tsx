@@ -21,6 +21,12 @@ if ('serviceWorker' in navigator) {
   })
 }
 
+// Capture the install prompt so the ShareTargetHint can trigger it
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  ;(window as Window & { __pwaInstallPrompt?: typeof e }).__pwaInstallPrompt = e
+})
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

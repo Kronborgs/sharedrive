@@ -13,6 +13,8 @@ import { ShareDialog } from '@/components/files/ShareDialog'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { DownloadDialog } from '@/components/files/DownloadDialog'
 import { FolderPickerDialog } from '@/components/files/FolderPickerDialog'
+import { ShareTargetDialog } from '@/components/files/ShareTargetDialog'
+import { ShareTargetHint } from '@/components/files/ShareTargetHint'
 import { useShareTarget } from '@/hooks/useShareTarget'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical } from 'lucide-react'
 import { toast } from 'sonner'
@@ -77,7 +79,7 @@ function FilesPage() {
   const { uploads, startUpload, dismiss, directUpload } = useUploader(folderId)
 
   // Handle files received via Android Web Share Target
-  useShareTarget(startUpload, !!user)
+  const { pendingFiles: shareTargetFiles, clearPending: clearShareTarget } = useShareTarget(!!user)
 
   const { data: breadcrumbs } = useQuery({
     queryKey: ['breadcrumbs', folderId],
@@ -413,6 +415,8 @@ function FilesPage() {
                   </span>
                 ))}
               </nav>
+              {/* PWA share hint — shown on touch devices only, dismissible */}
+              <ShareTargetHint />
               <div className="flex items-center gap-1 shrink-0">
                 {/* Folder actions — desktop only (hidden on mobile) */}
                 {folderId && currentFolderItem && (
@@ -624,6 +628,15 @@ function FilesPage() {
         </div>
       )}
       <UploadProgress uploads={uploads} onDismiss={dismiss} directUpload={directUpload} />
+
+      {shareTargetFiles.length > 0 && (
+        <ShareTargetDialog
+          files={shareTargetFiles}
+          currentFolderId={folderId}
+          onUpload={(files, targetFolderId) => startUpload(files, targetFolderId)}
+          onClose={clearShareTarget}
+        />
+      )}
 
       {renameId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

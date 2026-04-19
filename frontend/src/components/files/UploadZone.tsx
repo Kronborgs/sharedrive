@@ -241,13 +241,15 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     })
   }
 
-  const startUpload = useCallback((files: File[]) => {
+  const startUpload = useCallback((files: File[], targetFolderId?: string | null) => {
     // Determine TUS endpoint: prefer direct_upload_url (bypasses Cloudflare) if set
     const directBase = settings?.direct_upload_url?.trim().replace(/\/+$/, '')
     const tusEndpoint = directBase ? `${directBase}/upload/` : '/upload/'
     // No chunking when uploading directly (no Cloudflare 100 MB limit).
     // When going through Cloudflare, keep 50 MB chunks to stay under their limit.
     const chunkSize = directBase ? Infinity : TUS_CHUNK_SIZE
+    // Allow caller to override the target folder (e.g. when coming from share target)
+    const effectiveFolderId = targetFolderId !== undefined ? targetFolderId : folderId
 
     const entries: UploadEntry[] = files.map(file => ({
       id: crypto.randomUUID(),
@@ -268,7 +270,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       let uploadToken: string | undefined
       if (directBase) {
         try {
-          const res = await api.post<{ token: string }>('/api/v1/upload-token', { folder_id: folderId ?? '' })
+          const res = await api.post<{ token: string }>('/api/v1/upload-token', { folder_id: effectiveFolderId ?? '' })
           uploadToken = res.token
         } catch (err) {
           // Uploads will still work via cookie auth on the main domain.
@@ -291,7 +293,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
           metadata: {
             filename: entry.file.name,
             filetype: entry.file.type || 'application/octet-stream',
-            folder_id: folderId ?? '',
+            folder_id: effectiveFolderId ?? '',
           },
           onError: (error) => {
             let msg = 'Upload failed'
@@ -339,7 +341,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
             speedSamples.current.delete(entry.id)
             tusUploads.current.delete(entry.id)
             update(entry.id, { status: 'done', progress: 100 })
-            void qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] })
+            void qc.invalidateQueries({ queryKey: queryKey ?? ['files', effectiveFolderId] })
             void qc.invalidateQueries({ queryKey: ['me'] })
             setTimeout(() => {
               setUploads(prev => {

@@ -120,7 +120,12 @@ A self-hosted private file storage platform. OneDrive-inspired web UI, WebDAV, g
 ### Infrastructure
 - Single Go binary serves the embedded React SPA, REST API, TUS upload endpoint, and WebDAV
 - **Gotenberg built-in** — Office-to-PDF conversion runs inside the same container; no separate service needed
-- **PWA support** — installable as a home screen app on iOS and Android; includes app icons and `apple-touch-icon`
+- **Full PWA support** — installable as a home screen app on Android and iOS:
+  - Standalone display (no browser chrome), correct splash and icons
+  - **Web Share Target** — share photos, files, or documents from any Android app (Gallery, Files, Camera, WhatsApp…) directly into Sharedrive; a folder picker lets you choose the destination before uploading
+  - **Offline upload resilience** — uploads pause automatically when connectivity is lost and resume the moment the connection returns
+  - **Offline indicator** — amber banner shown across all pages when the device is offline
+  - **Install prompt** — a dismissible hint on touch devices explains the share feature and offers a one-tap install shortcut
 - **Cloudflare Tunnel ready** — designed for reverse-proxy-free deployments on Unraid or any Docker Compose host
 - PostgreSQL for all metadata; Redis for rate limiting and ephemeral state (ephemeral — no volume needed)
 - **Multi-platform image** — supports `linux/amd64` and `linux/arm64` (Raspberry Pi 4/5, Apple Silicon VMs, ARM servers)
@@ -250,6 +255,43 @@ docker buildx build \
 ```
 
 > **Note:** If you get an error like `golang:1.25-alpine not found`, change the Go base image in the `Dockerfile` to `golang:1.24-alpine`. Go 1.25 had not yet been released when this note was written.
+
+---
+
+## Android PWA — Install & Share
+
+Sharedrive is a full Progressive Web App (PWA) that can be installed on Android (and iOS) as a standalone home screen app.
+
+### Install on Android
+
+1. Open Sharedrive in **Chrome** on your Android device
+2. Tap the browser menu (⋮) → **"Install app"** or **"Add to Home Screen"**
+3. The app opens without browser chrome — it behaves like a native app
+
+> **Required:** The site must be served over HTTPS.
+
+### Share files from Android directly to Sharedrive
+
+Once installed, Sharedrive appears in Android's system **Share** sheet — the same menu you use to share to WhatsApp, email, etc.
+
+**Example flow — uploading a photo from the Gallery:**
+
+1. Open the Gallery app on Android
+2. Long-press a photo (or select multiple) → tap **Share**
+3. Select **Sharedrive** from the share sheet
+4. The app opens and shows a **folder picker** — choose where to upload
+5. Tap **Upload** — the files upload using the existing resumable upload system
+
+Works from any app that supports Android's share intent: Gallery, Camera, Files, WhatsApp, Signal, Chrome, etc.
+
+> **Note:** Share Target only works when the app is **installed** as a PWA. It does not work from the browser tab.
+
+### Offline resilience
+
+- If you lose connectivity during an upload, the upload **pauses automatically**
+- An amber offline banner is shown across all pages
+- When the connection returns, uploads **resume from where they stopped** — no re-upload needed
+- Based on the [tus resumable upload protocol](https://tus.io/)
 
 ---
 

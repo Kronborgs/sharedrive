@@ -44,41 +44,54 @@ func InlineScriptHashes(distFS fs.FS) []string {
 // extraConnectSrc is called at most once per minute and its return value (if
 // non-empty) is appended to the connect-src directive — use it to allow a
 // dynamic direct-upload URL stored in the database.
-func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string) func(http.Handler) http.Handler {
-	// Build the script-src directive once at startup
-	scriptSrc := "'self' https://static.cloudflareinsights.com"
+// extraScriptAndFrameSrc is called at most once per minute and its return value
+// (if non-empty) is appended to both script-src and frame-src — use it to allow
+// a dynamic OnlyOffice Document Server URL.
+func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extraScriptAndFrameSrc func() string) func(http.Handler) http.Handler {
+	// Build the static part of script-src once at startup
+	staticScriptSrc := "'self' https://static.cloudflareinsights.com"
 	if len(scriptHashes) > 0 {
-		scriptSrc += " " + strings.Join(scriptHashes, " ")
+		staticScriptSrc += " " + strings.Join(scriptHashes, " ")
 	}
 
-	// Cache extraConnectSrc result — the direct_upload_url changes rarely so
-	// calling the DB query on every request is unnecessary overhead.
+	type cached struct {
+		value  string
+		loaded time.Time
+	}
 	var (
-		cachedExtra string
-		cachedAt    time.Time
-		cacheMu     sync.Mutex
-		cacheTTL    = 60 * time.Second
+		cacheConnect  cached
+		cacheScriptFr cached
+		cacheMu       sync.Mutex
+		cacheTTL      = 60 * time.Second
 	)
-	resolveExtra := func() string {
-		if extraConnectSrc == nil {
+	resolve := func(fn func() string, c *cached) string {
+		if fn == nil {
 			return ""
 		}
 		cacheMu.Lock()
 		defer cacheMu.Unlock()
-		if time.Since(cachedAt) < cacheTTL {
-			return cachedExtra
+		if time.Since(c.loaded) < cacheTTL {
+			return c.value
 		}
-		cachedExtra = extraConnectSrc()
-		cachedAt = time.Now()
-		return cachedExtra
+		c.value = fn()
+		c.loaded = time.Now()
+		return c.value
 	}
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			connectSrc := "'self' wss: ws: https://cloudflareinsights.com"
-			if extra := resolveExtra(); extra != "" {
+			if extra := resolve(extraConnectSrc, &cacheConnect); extra != "" {
 				connectSrc += " " + extra
 			}
+
+			scriptSrc := staticScriptSrc
+			frameSrc := "'none'"
+			if extra := resolve(extraScriptAndFrameSrc, &cacheScriptFr); extra != "" {
+				scriptSrc += " " + extra
+				frameSrc = extra
+			}
+
 			csp := "default-src 'self'; " +
 				"script-src " + scriptSrc + "; " +
 				"style-src 'self' 'unsafe-inline'; " +
@@ -86,6 +99,7 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string) func(
 				"font-src 'self'; " +
 				"connect-src " + connectSrc + "; " +
 				"worker-src 'self' blob:; " +
+				"frame-src " + frameSrc + "; " +
 				"frame-ancestors 'none';"
 
 			h := w.Header()

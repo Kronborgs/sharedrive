@@ -74,6 +74,13 @@ function SettingsPage() {
   const [ooSecret, setOoSecret] = useState('')
   const [ooSaving, setOoSaving] = useState(false)
   const [ooURLLoaded, setOoURLLoaded] = useState(false)
+  const [ooTestResult, setOoTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  const testOO = useMutation({
+    mutationFn: () => api.get<{ ok: boolean; error?: string; status?: number }>('/api/v1/onlyoffice/test'),
+    onSuccess: (d) => setOoTestResult({ ok: d.ok, msg: d.ok ? 'Forbindelse OK' : (d.error ?? `HTTP ${d.status}`) }),
+    onError: () => setOoTestResult({ ok: false, msg: 'Test fejlede' }),
+  })
 
   if (data && !ooURLLoaded) {
     setOoURL(data.onlyoffice_url ?? '')
@@ -245,16 +252,24 @@ function SettingsPage() {
               <input type="password" value={ooSecret} onChange={e => setOoSecret(e.target.value)} placeholder="Lad feltet staa tomt for at beholde eksisterende secret" autoComplete="new-password" className={inputClass} />
               <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">Skal matche jwt.secret i din OnlyOffice-konfiguration. Anbefales staerkt.</p>
             </Field>
-            {data?.onlyoffice_url ? (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40">
-                <span className="text-green-600 dark:text-green-400 text-xs font-medium">OnlyOffice er konfigureret</span>
-                <span className="text-xs text-muted">{data.onlyoffice_url}</span>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setOoTestResult(null); testOO.mutate() }}
+                  disabled={testOO.isPending || !ooURL}
+                  className="text-sm text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-50 whitespace-nowrap"
+                >
+                  {testOO.isPending ? 'Tester...' : 'Test forbindelse'}
+                </button>
+                {!ooURL && <span className="text-xs text-muted">Gem en URL forst</span>}
               </div>
-            ) : (
-              <div className="p-3 rounded-lg bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148]">
-                <span className="text-xs text-muted">OnlyOffice er ikke konfigureret. Dokumenter abnes med standard preview.</span>
-              </div>
-            )}
+              {ooTestResult && (
+                <p className={`text-xs px-1 ${ooTestResult.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {ooTestResult.ok ? '✓' : '✗'} {ooTestResult.msg}
+                </p>
+              )}
+            </div>
           </section>
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-3">
             <h3 className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Understoettede formater</h3>

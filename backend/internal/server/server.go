@@ -253,13 +253,22 @@ func (s *Server) buildRouter() *chi.Mux {
 	}))
 	r.Use(mw.RequestID)
 	r.Use(mw.RealIP)
-	r.Use(mw.SecurityHeaders(mw.InlineScriptHashes(embed.DistFS), func() string {
-		var v string
-		_ = s.db.QueryRow(context.Background(),
-			`SELECT value FROM system_settings WHERE key = 'direct_upload_url'`,
-		).Scan(&v)
-		return v
-	}))
+	r.Use(mw.SecurityHeaders(mw.InlineScriptHashes(embed.DistFS),
+		func() string {
+			var v string
+			_ = s.db.QueryRow(context.Background(),
+				`SELECT value FROM system_settings WHERE key = 'direct_upload_url'`,
+			).Scan(&v)
+			return v
+		},
+		func() string {
+			var v string
+			_ = s.db.QueryRow(context.Background(),
+				`SELECT value FROM system_settings WHERE key = 'onlyoffice_url'`,
+			).Scan(&v)
+			return v
+		},
+	))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: s.cfg.CORSOrigins,
 		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},
@@ -397,6 +406,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		// OnlyOffice editor integration (available to all authenticated users)
 		r.Get("/api/v1/onlyoffice/config/{fileId}", s.ooHandler.GetEditorConfig)
 		r.Get("/api/v1/onlyoffice/token/{fileId}", s.ooHandler.MakeDownloadToken)
+		r.Get("/api/v1/onlyoffice/test", s.ooHandler.Test)
 
 		// Admin routes
 		r.Group(func(r chi.Router) {

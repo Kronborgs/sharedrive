@@ -444,3 +444,31 @@ func (h *Handler) MakeDownloadToken(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.Respond(w, http.StatusOK, map[string]string{"token": tok})
 }
+
+// Test checks whether the configured OnlyOffice Document Server is reachable.
+//
+//	GET /api/v1/onlyoffice/test
+func (h *Handler) Test(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ooURL, _, err := h.getSettings(ctx)
+	if err != nil || ooURL == "" {
+		httputil.Respond(w, http.StatusOK, map[string]any{"ok": false, "error": "ikke konfigureret"})
+		return
+	}
+
+	testURL := strings.TrimRight(ooURL, "/") + "/healthcheck"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, testURL, nil)
+	if err != nil {
+		httputil.Respond(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		httputil.Respond(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	ok := resp.StatusCode >= 200 && resp.StatusCode < 400
+	httputil.Respond(w, http.StatusOK, map[string]any{"ok": ok, "status": resp.StatusCode})
+}

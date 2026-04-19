@@ -8,6 +8,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import type { FileItem } from '@/types/api'
+import { useI18n } from '@/lib/i18n'
 
 const ooFormats = new Set(['doc','docx','docm','dot','dotx','rtf','odt','ott','txt','xml',
   'xls','xlsx','xlsm','xlsb','xltx','csv','ods','ots','fods',
@@ -33,6 +34,7 @@ interface SharedItem {
 
 function SharedWithMePage() {
   const navigate = useNavigate()
+  const { t } = useI18n()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
   const [ooItem, setOoItem] = useState<FileItem | null>(null)
@@ -86,11 +88,11 @@ function SharedWithMePage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">Shared with me</h1>
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('shared.sharedWithMe')}</h1>
       {isLoading ? (
-        <div className="flex items-center justify-center h-40 text-sm text-muted">Loading…</div>
+        <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.loading')}</div>
       ) : items.length === 0 ? (
-        <div className="flex items-center justify-center h-40 text-sm text-muted">Nothing has been shared with you yet.</div>
+        <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.nothingShared')}</div>
       ) : (
         <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
           <FileList
@@ -107,7 +109,7 @@ function SharedWithMePage() {
         <OnlyOfficeEditor
           item={ooItem}
           onlyofficeUrl={systemSettings.onlyoffice_url}
-          backLabel="Delt med mig"
+          backLabel={t('shared.sharedWithMe')}
           onClose={() => setOoItem(null)}
         />
       )}

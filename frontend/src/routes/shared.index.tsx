@@ -7,6 +7,7 @@ import { formatBytes, formatDate } from '@/lib/utils'
 import { Download, Lock, FilePlus, FileText, Table2, Presentation } from 'lucide-react'
 import { useState } from 'react'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
+import { useI18n } from '@/lib/i18n'
 
 const searchSchema = z.object({
   token: z.string().catch(''),
@@ -34,6 +35,7 @@ export const Route = createFileRoute('/shared/')({
 function SharedPage() {
   const { token } = Route.useSearch()
   const qc = useQueryClient()
+  const { t } = useI18n()
   const [password, setPassword] = useState('')
   const [submittedPassword, setSubmittedPassword] = useState<string | undefined>(undefined)
   const [passwordError, setPasswordError] = useState(false)
@@ -89,11 +91,11 @@ function SharedPage() {
   })
 
   if (!token) {
-    return <Shell><p className="text-sm text-red-500 text-center">Invalid link.</p></Shell>
+    return <Shell><p className="text-sm text-red-500 text-center">{t('shared.invalidLink')}</p></Shell>
   }
 
   if (isLoading) {
-    return <Shell><p className="text-sm text-muted text-center">Loading…</p></Shell>
+    return <Shell><p className="text-sm text-muted text-center">{t('files.loading')}</p></Shell>
   }
 
   // Password required (403)
@@ -103,8 +105,8 @@ function SharedPage() {
       <Shell>
         <div className="flex flex-col items-center gap-3">
           <Lock size={28} className="text-zinc-400" />
-          <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">Password protected</h2>
-          <p className="text-sm text-muted">Enter the password to access this shared item.</p>
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('shared.passwordProtected')}</h2>
+          <p className="text-sm text-muted">{t('shared.enterPassword')}</p>
           <form
             className="w-full space-y-3"
             onSubmit={e => {
@@ -121,8 +123,8 @@ function SharedPage() {
               className={inputClass}
               autoFocus
             />
-            {passwordError && <p className="text-xs text-red-500">Incorrect password</p>}
-            <button type="submit" className={btnClass}>Access file</button>
+            {passwordError && <p className="text-xs text-red-500">{t('shared.incorrectPassword')}</p>}
+            <button type="submit" className={btnClass}>{t('shared.accessFile')}</button>
           </form>
         </div>
       </Shell>
@@ -133,7 +135,7 @@ function SharedPage() {
     return (
       <Shell>
         <p className="text-sm text-red-500 text-center">
-          This shared link is invalid or has expired.
+          {t('shared.expired')}
         </p>
       </Shell>
     )
@@ -153,7 +155,7 @@ function SharedPage() {
     <div className="min-h-screen bg-zinc-50 dark:bg-[#0f1117] flex flex-col">
       <header className="bg-white dark:bg-[#1a1d27] border-b border-zinc-200 dark:border-[#2d3148] px-6 h-14 flex items-center">
         <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
-        <span className="ml-3 text-sm text-muted">Shared with you</span>
+        <span className="ml-3 text-sm text-muted">{t('shared.sharedWithYou')}</span>
       </header>
 
       <main className="flex-1 flex items-start justify-center p-6">
@@ -164,8 +166,8 @@ function SharedPage() {
             <div className="flex-1 min-w-0">
               <h1 className="text-base font-semibold text-zinc-900 dark:text-slate-100 truncate">{item.name}</h1>
               <p className="text-xs text-muted">
-                {item.is_folder ? 'Folder' : formatBytes(item.size_bytes)}
-                {share.expires_at && ` · Expires ${formatDate(share.expires_at)}`}
+                {item.is_folder ? t('shared.folder') : formatBytes(item.size_bytes)}
+                {share.expires_at && ` · ${t('shared.expires')} ${formatDate(share.expires_at)}`}
               </p>
             </div>
             {/* Actions for direct file share */}
@@ -176,7 +178,7 @@ function SharedPage() {
                     onClick={() => openInOO(item)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
                   >
-                    Åbn
+                    {t('action.open')}
                   </button>
                 )}
                 {share.can_view && (
@@ -199,22 +201,22 @@ function SharedPage() {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
                 >
                   <FilePlus size={14} />
-                  Nyt dokument
+                  {t('action.newDoc')}
                 </button>
                 {newDocOpen && (
                   <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-lg z-20 overflow-hidden">
                     {[
-                      { type: 'word', label: 'Word-dokument', icon: FileText },
-                      { type: 'cell', label: 'Regneark', icon: Table2 },
-                      { type: 'slide', label: 'Præsentation', icon: Presentation },
-                    ].map(({ type, label, icon: Icon }) => (
+                      { type: 'word', labelKey: 'doc.word' as const, nameKey: 'doc.wordName' as const, ext: '.docx', icon: FileText },
+                      { type: 'cell', labelKey: 'doc.excel' as const, nameKey: 'doc.excelName' as const, ext: '.xlsx', icon: Table2 },
+                      { type: 'slide', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx', icon: Presentation },
+                    ].map(({ type, labelKey, nameKey, ext, icon: Icon }) => (
                       <button
                         key={type}
-                        onClick={() => createDocument.mutate({ type, name: label, parent_id: item.id })}
+                        onClick={() => createDocument.mutate({ type, name: `${t(nameKey)}${ext}`, parent_id: item.id })}
                         className="flex items-center gap-2 w-full px-3 py-2 text-sm text-zinc-700 dark:text-slate-200 hover:bg-zinc-50 dark:hover:bg-[#2d3148]/50 transition-colors"
                       >
                         <Icon size={14} />
-                        {label}
+                        {t(labelKey)}
                       </button>
                     ))}
                   </div>
@@ -264,7 +266,7 @@ function SharedPage() {
           )}
 
           {item.is_folder && (!items || items.length === 0) && (
-            <div className="p-8 text-center text-sm text-muted">This folder is empty</div>
+            <div className="p-8 text-center text-sm text-muted">{t('shared.emptyFolder')}</div>
           )}
         </div>
       </main>
@@ -275,7 +277,7 @@ function SharedPage() {
           item={ooItem}
           onlyofficeUrl={systemSettings.onlyoffice_url}
           shareToken={token}
-          backLabel="Delt med dig"
+          backLabel={t('shared.sharedWithYou')}
           onClose={() => setOoItem(null)}
         />
       )}

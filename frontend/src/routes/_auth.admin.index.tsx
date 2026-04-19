@@ -6,6 +6,7 @@ import { APP_VERSION } from '@/version'
 import type { AuditLog, PaginatedResponse } from '@/types/api'
 import { formatDate, formatBytes, formatRelative } from '@/lib/utils'
 import { ArrowUpCircle, ArrowDownCircle, LayoutDashboard, Activity } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
 
 export const Route = createFileRoute('/_auth/admin/')({
   component: AdminDashboard,
@@ -52,6 +53,7 @@ function eventBadgeClass(eventType: string): string {
 }
 
 function AdminDashboard() {
+  const { t } = useI18n()
   const [activeTab, setActiveTab] = useState<'overview' | 'activity'>('overview')
 
   const { data: stats } = useQuery({
@@ -92,7 +94,7 @@ function AdminDashboard() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">
-        Admin Dashboard
+        {t('page.admin')}
       </h1>
 
       {/* ── Tab bar ──────────────────────────────────────────────────────── */}
@@ -106,7 +108,7 @@ function AdminDashboard() {
               : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200'
           }`}
         >
-          <LayoutDashboard size={14} /> Overview
+          <LayoutDashboard size={14} /> {t('admin.overview')}
         </button>
         <button
           type="button"
@@ -117,7 +119,7 @@ function AdminDashboard() {
               : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200'
           }`}
         >
-          <Activity size={14} /> Recent Activity
+          <Activity size={14} /> {t('admin.recentActivity')}
         </button>
       </div>
 
@@ -126,17 +128,17 @@ function AdminDashboard() {
         <div className="space-y-6">
           {/* Top stat cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="Total Users" value={stats?.total_users ?? '…'} />
-            <StatCard label="Active Users" value={stats?.active_users ?? '…'} />
-            <StatCard label="Disk Used" value={diskTotal > 0 ? formatBytes(diskUsed) : '…'} />
-            <StatCard label="Disk Capacity" value={diskTotal > 0 ? formatBytes(diskTotal) : '…'} />
+            <StatCard label={t('admin.totalUsers')} value={stats?.total_users ?? '…'} />
+            <StatCard label={t('admin.activeUsers')} value={stats?.active_users ?? '…'} />
+            <StatCard label={t('admin.diskUsed')} value={diskTotal > 0 ? formatBytes(diskUsed) : '…'} />
+            <StatCard label={t('admin.diskCapacity')} value={diskTotal > 0 ? formatBytes(diskTotal) : '…'} />
           </div>
 
           {/* Storage bar */}
           {diskTotal > 0 && (
             <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4">
               <div className="flex justify-between text-xs text-muted mb-2">
-                <span>Disk usage (entire volume)</span>
+                <span>{t('admin.diskUsage')}</span>
                 <span>{formatBytes(diskUsed)} / {formatBytes(diskTotal)} ({usedPct}%) — {formatBytes(diskFree)} free</span>
               </div>
               <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
@@ -150,21 +152,21 @@ function AdminDashboard() {
 
           {/* Activity counts — last 30 days */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <StatCard label="Logins (30d)" value={stats?.last_30_days.logins ?? '…'} small />
-            <StatCard label="Failed logins (30d)" value={stats?.last_30_days.failed_logins ?? '…'} small accent="red" />
-            <StatCard label="Uploads (30d)" value={stats?.last_30_days.uploads ?? '…'} small accent="green" />
-            <StatCard label="Downloads (30d)" value={stats?.last_30_days.downloads ?? '…'} small accent="green" />
-            <StatCard label="Lockouts (30d)" value={stats?.last_30_days.lockouts ?? '…'} small accent="red" />
+            <StatCard label={t('admin.logins30d')} value={stats?.last_30_days.logins ?? '…'} small />
+            <StatCard label={t('admin.failedLogins30d')} value={stats?.last_30_days.failed_logins ?? '…'} small accent="red" />
+            <StatCard label={t('admin.uploads30d')} value={stats?.last_30_days.uploads ?? '…'} small accent="green" />
+            <StatCard label={t('admin.downloads30d')} value={stats?.last_30_days.downloads ?? '…'} small accent="green" />
+            <StatCard label={t('admin.lockouts30d')} value={stats?.last_30_days.lockouts ?? '…'} small accent="red" />
           </div>
 
           {/* Live I/O bandwidth panel */}
           <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148] flex items-center justify-between">
-              <h2 className="text-sm font-medium text-zinc-900 dark:text-slate-100">Live Bandwidth</h2>
+              <h2 className="text-sm font-medium text-zinc-900 dark:text-slate-100">{t('admin.liveBandwidth')}</h2>
               <span className="text-[10px] text-muted">updates every 3 s • 2-min window</span>
             </div>
             {activeUsers.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-muted text-center">No active transfers</p>
+              <p className="px-4 py-6 text-sm text-muted text-center">{t('admin.noTransfers')}</p>
             ) : (
               <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
                 {activeUsers.map(u => (
@@ -200,7 +202,7 @@ function AdminDashboard() {
 
           {/* System version */}
           <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl px-4 py-3 flex flex-wrap gap-x-8 gap-y-1 items-center">
-            <span className="text-xs text-muted font-medium uppercase tracking-wide">System</span>
+            <span className="text-xs text-muted font-medium uppercase tracking-wide">{t('admin.system')}</span>
             <span className="text-xs text-zinc-700 dark:text-slate-300 font-mono">
               frontend&nbsp;<span className="text-zinc-500 dark:text-slate-500">{APP_VERSION}</span>
             </span>
@@ -221,7 +223,7 @@ function AdminDashboard() {
         <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
           <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
             {(logs?.items ?? []).length === 0 ? (
-              <p className="px-4 py-6 text-sm text-muted text-center">No activity yet</p>
+              <p className="px-4 py-6 text-sm text-muted text-center">{t('files.noActivity')}</p>
             ) : (
               (logs?.items ?? []).map(log => (
                 <div key={log.id} className="px-4 py-3 flex items-start gap-3">

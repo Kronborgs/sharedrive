@@ -10,8 +10,9 @@ import { ShareDialog } from '@/components/files/ShareDialog'
 import { DropZone, UploadProgress, useUploader } from '@/components/files/UploadZone'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
-import { ChevronRight, Users, Upload } from 'lucide-react'
+import { ChevronRight, Users, Upload, FilePlus } from 'lucide-react'
 import { toast } from 'sonner'
+import { useI18n } from '@/lib/i18n'
 
 const searchSchema = z.object({
   folder: z.string(),
@@ -59,6 +60,8 @@ function SharedBrowsePage() {
   const [renameName, setRenameName] = useState('')
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
   const [ooItem, setOoItem] = useState<FileItem | null>(null)
+  const [newDocOpen, setNewDocOpen] = useState(false)
+  const { t } = useI18n()
 
   const rootId = root ?? folderId
 
@@ -81,13 +84,13 @@ function SharedBrowsePage() {
     mutationFn: (body: { id: string; name: string }) =>
       api.patch(`/api/v1/files/${body.id}`, { name: body.name }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['shared-browse', folderId] }); setRenameId(null) },
-    onError: () => toast.error('Rename failed'),
+    onError: () => toast.error(t('misc.renameFailed')),
   })
 
   const trash = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/files/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['shared-browse', folderId] }),
-    onError: () => toast.error('Move to trash failed'),
+    onError: () => toast.error(t('misc.trashFailed')),
   })
 
   const items: FileItem[] = (data?.items ?? []).map(c => ({
@@ -156,6 +159,36 @@ function SharedBrowsePage() {
   if (data?.can_delete) allowedActions.push('trash')
   if (data?.can_reshare) allowedActions.push('share')
 
+  const createDocument = useMutation({
+    mutationFn: (opts: { type: 'word' | 'cell' | 'slide'; name: string }) =>
+      api.post<{ id: string; name: string }>('/api/v1/onlyoffice/create', {
+        type: opts.type,
+        name: opts.name,
+        parent_id: folderId,
+      }),
+    onSuccess: (result) => {
+      void qc.invalidateQueries({ queryKey: ['shared-browse', folderId] })
+      setNewDocOpen(false)
+      const pseudo: FileItem = {
+        id: result.id,
+        name: result.name,
+        is_folder: false,
+        parent_id: folderId,
+        owner_id: data?.owner_id ?? '',
+        mime_type: null,
+        size_bytes: 0,
+        checksum_sha256: null,
+        deleted_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        shared: true,
+        permissions: undefined,
+      }
+      setOoItem(pseudo)
+    },
+    onError: () => toast.error(t('toast.createDocFailed')),
+  })
+
   return (
     <DropZone folderId={folderId} onUploadStart={startUpload}>
       <div className="flex flex-col flex-1 min-h-0">
@@ -167,7 +200,7 @@ function SharedBrowsePage() {
               className="flex items-center gap-1 text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors shrink-0"
             >
               <Users size={14} />
-              Shared with me
+              {t('shared.sharedWithMe')}
             </button>
             {rootId !== folderId && (
               <>
@@ -188,16 +221,46 @@ function SharedBrowsePage() {
           {data?.can_upload && (
             <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium cursor-pointer transition-colors shrink-0">
               <Upload size={12} />
-              Upload
+              {t('action.upload')}
               <input type="file" multiple className="sr-only" onChange={e => e.target.files && startUpload(Array.from(e.target.files))} />
             </label>
+          )}
+          {data?.can_edit && systemSettings?.onlyoffice_url && (
+            <div className="relative">
+              <button
+                onClick={() => setNewDocOpen(v => !v)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors shrink-0"
+              >
+                <FilePlus size={12} />
+                {t('action.newDoc')}
+              </button>
+              {newDocOpen && (
+                <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] shadow-xl z-40 py-1">
+                  {([
+                    { type: 'word' as const,  icon: '📄', labelKey: 'doc.word' as const,       nameKey: 'doc.wordName' as const,       ext: '.docx' },
+                    { type: 'cell' as const,  icon: '📊', labelKey: 'doc.excel' as const,      nameKey: 'doc.excelName' as const,      ext: '.xlsx' },
+                    { type: 'slide' as const, icon: '📑', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx' },
+                  ] as const).map(o => (
+                    <button
+                      key={o.type}
+                      onClick={() => { createDocument.mutate({ type: o.type, name: `${t(o.nameKey)}${o.ext}` }) }}
+                      disabled={createDocument.isPending}
+                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
+                    >
+                      <span>{o.icon}</span>
+                      {t(o.labelKey)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-1" onClick={() => { setSelected(new Set()); setContextMenu(null) }}>
           {isLoading ? (
-            <div className="flex items-center justify-center h-40 text-sm text-muted">Loading…</div>
+            <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.loading')}</div>
           ) : (
             <FileList
               items={items}
@@ -226,7 +289,7 @@ function SharedBrowsePage() {
         <OnlyOfficeEditor
           item={ooItem}
           onlyofficeUrl={systemSettings.onlyoffice_url}
-          backLabel="Delt med mig"
+          backLabel={t('shared.sharedWithMe')}
           onClose={() => setOoItem(null)}
         />
       )}
@@ -238,7 +301,7 @@ function SharedBrowsePage() {
             className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-80 space-y-3"
             onSubmit={e => { e.preventDefault(); rename.mutate({ id: renameId!, name: renameName }) }}
           >
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">Rename</h3>
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('action.rename')}</h3>
             <input
               autoFocus
               value={renameName}
@@ -246,8 +309,8 @@ function SharedBrowsePage() {
               className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setRenameId(null)} className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted">Cancel</button>
-              <button type="submit" disabled={!renameName.trim() || rename.isPending} className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50">Rename</button>
+              <button type="button" onClick={() => setRenameId(null)} className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted">{t('action.cancel')}</button>
+              <button type="submit" disabled={!renameName.trim() || rename.isPending} className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50">{t('action.rename')}</button>
             </div>
           </form>
         </div>

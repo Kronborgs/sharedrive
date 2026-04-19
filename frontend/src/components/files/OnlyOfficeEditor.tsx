@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { X, Loader, ArrowLeft } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useI18n } from '@/lib/i18n'
 import type { FileItem } from '@/types/api'
 
 interface EditorConfig {
@@ -36,6 +37,7 @@ interface Props {
 export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose, backLabel, shareToken }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<unknown>(null)
+  const { t } = useI18n()
 
   const configUrl = shareToken
     ? `/api/v1/public/onlyoffice/config/${item.id}?share_token=${encodeURIComponent(shareToken)}`
@@ -101,7 +103,7 @@ export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose, backLabel, shar
         <button
           onClick={onClose}
           className="flex items-center gap-1.5 p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-zinc-800 transition-colors shrink-0"
-          title="Tilbage til mappen"
+          title={t('oo.backToFolder')}
         >
           <ArrowLeft size={16} />
           {backLabel && <span className="text-xs hidden sm:inline">{backLabel}</span>}
@@ -110,7 +112,7 @@ export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose, backLabel, shar
         <button
           onClick={onClose}
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-zinc-800 transition-colors"
-          title="Luk editor"
+          title={t('oo.closeEditor')}
         >
           <X size={16} />
         </button>
@@ -125,7 +127,7 @@ export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose, backLabel, shar
         )}
         {isError && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-sm text-red-400">Kunne ikke indlæse editor-konfiguration.</p>
+            <p className="text-sm text-red-400">{t('oo.loadFailed')}</p>
           </div>
         )}
         {/* OnlyOffice mounts its iframe inside this div */}

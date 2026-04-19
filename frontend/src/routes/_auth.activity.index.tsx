@@ -15,21 +15,22 @@ import {
   FolderPlus,
   FileQuestion,
 } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
 
 export const Route = createFileRoute('/_auth/activity/')({
   component: ActivityPage,
 })
 
-const EVENT_LABELS: Record<string, string> = {
-  FILE_UPLOADED:   'Uploaded',
-  FILE_DOWNLOADED: 'Downloaded',
-  FILE_PREVIEWED:  'Previewed',
-  ZIP_DOWNLOADED:  'Downloaded ZIP',
-  FILE_DELETED:    'Deleted',
-  FILE_RESTORED:   'Restored',
-  FILE_MOVED:      'Moved',
-  FILE_RENAMED:    'Renamed',
-  FOLDER_CREATED:  'Created folder',
+const EVENT_LABEL_KEYS: Record<string, string> = {
+  FILE_UPLOADED:   'activity.uploaded',
+  FILE_DOWNLOADED: 'activity.downloaded',
+  FILE_PREVIEWED:  'activity.previewed',
+  ZIP_DOWNLOADED:  'activity.downloadedZip',
+  FILE_DELETED:    'activity.deleted',
+  FILE_RESTORED:   'activity.restored',
+  FILE_MOVED:      'activity.moved',
+  FILE_RENAMED:    'activity.renamed',
+  FOLDER_CREATED:  'activity.createdFolder',
 }
 
 function EventIcon({ type }: { type: string }) {
@@ -49,6 +50,7 @@ function EventIcon({ type }: { type: string }) {
 }
 
 function ActivityPage() {
+  const { t } = useI18n()
   const { data, isLoading } = useQuery<ActivityEvent[]>({
     queryKey: ['me', 'activity'],
     queryFn: fetchActivity,
@@ -56,22 +58,22 @@ function ActivityPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">Activity</h1>
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('page.activity')}</h1>
 
       <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
         {isLoading ? (
-          <div className="flex items-center justify-center h-40 text-sm text-muted">Loading…</div>
+          <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.loading')}</div>
         ) : !data?.length ? (
-          <div className="flex items-center justify-center h-40 text-sm text-muted">No activity yet</div>
+          <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.noActivity')}</div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-100 dark:border-[#2d3148]">
                 <th className="text-left px-4 py-2.5 text-xs font-medium text-muted uppercase w-8" />
-                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted uppercase">Action</th>
-                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted uppercase">File</th>
-                <th className="text-right px-4 py-2.5 text-xs font-medium text-muted uppercase hidden md:table-cell">IP</th>
-                <th className="text-right px-4 py-2.5 text-xs font-medium text-muted uppercase">When</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted uppercase">{t('activity.action')}</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted uppercase">{t('activity.file')}</th>
+                <th className="text-right px-4 py-2.5 text-xs font-medium text-muted uppercase hidden md:table-cell">{t('activity.ip')}</th>
+                <th className="text-right px-4 py-2.5 text-xs font-medium text-muted uppercase">{t('activity.when')}</th>
               </tr>
             </thead>
             <tbody>
@@ -84,7 +86,7 @@ function ActivityPage() {
                     <EventIcon type={ev.event_type} />
                   </td>
                   <td className="px-4 py-2.5 text-zinc-800 dark:text-slate-200">
-                    {EVENT_LABELS[ev.event_type] ?? ev.event_type}
+                    {t((EVENT_LABEL_KEYS[ev.event_type] ?? ev.event_type) as any)}
                   </td>
                   <td className="px-4 py-2.5 text-zinc-600 dark:text-slate-400 max-w-xs truncate">
                     {ev.resource_name ?? '—'}

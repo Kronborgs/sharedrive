@@ -5,6 +5,7 @@ import type { FileItem } from '@/types/api'
 import { FileList } from '@/components/files/FileViews'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
+import { useI18n } from '@/lib/i18n'
 
 export const Route = createFileRoute('/_auth/recent/')({
   component: RecentPage,
@@ -14,6 +15,7 @@ function RecentPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const { t } = useI18n()
 
   const { data, isLoading } = useQuery({
     queryKey: ['files', 'recent'],
@@ -33,9 +35,9 @@ function RecentPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">Recent</h1>
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('page.recent')}</h1>
       {isLoading ? (
-        <div className="flex items-center justify-center h-40 text-sm text-muted">Loading…</div>
+        <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.loading')}</div>
       ) : (
         <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
           <FileList

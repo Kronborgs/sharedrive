@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth-context'
@@ -17,6 +17,7 @@ import { ShareTargetDialog } from '@/components/files/ShareTargetDialog'
 import { ShareTargetHint } from '@/components/files/ShareTargetHint'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { useShareTarget } from '@/hooks/useShareTarget'
+import { useI18n } from '@/lib/i18n'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive, FilePlus } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -59,6 +60,7 @@ function FilesPage() {
   const { folder: folderId = null, oo: ooFileId = null } = Route.useSearch()
   const qc = useQueryClient()
   const { setPlaylist, addTracks, tracks: playlistTracks, activePlaylistId } = usePlaylist()
+  const { t } = useI18n()
 
   const [view, setView] = useState<ViewMode>('list')
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -109,7 +111,7 @@ function FilesPage() {
     mutationFn: (body: { id: string; name: string }) =>
       api.patch(`/api/v1/files/${body.id}`, { name: body.name }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['files', folderId] }); setRenameId(null) },
-    onError: () => toast.error('Rename failed'),
+    onError: () => toast.error(t('misc.renameFailed')),
   })
 
   const trash = useMutation({
@@ -118,7 +120,7 @@ function FilesPage() {
       void qc.invalidateQueries({ queryKey: ['files', folderId] })
       void qc.invalidateQueries({ queryKey: ['me'] })
     },
-    onError: () => toast.error('Move to trash failed'),
+    onError: () => toast.error(t('misc.trashFailed')),
   })
 
   const createFolder = useMutation({
@@ -128,7 +130,7 @@ function FilesPage() {
         prev ? [...prev, newFolder] : [newFolder]
       )
     },
-    onError: () => toast.error('Failed to create folder'),
+    onError: () => toast.error(t('toast.createFolderFailed')),
   })
 
   const moveFile = useMutation({
@@ -138,9 +140,9 @@ function FilesPage() {
       void qc.invalidateQueries({ queryKey: ['files', folderId] })
       if (destFolderId) void qc.invalidateQueries({ queryKey: ['files', destFolderId] })
       setMoveItem(null)
-      toast.success('Flyttet')
+      toast.success(t('toast.moved'))
     },
-    onError: () => toast.error('Flytning fejlede'),
+    onError: () => toast.error(t('toast.moveFailed')),
   })
 
   const copyFile = useMutation({
@@ -151,9 +153,9 @@ function FilesPage() {
       void qc.invalidateQueries({ queryKey: ['files', destFolderId ?? folderId] })
       void qc.invalidateQueries({ queryKey: ['me'] })
       setDuplicateItem(null)
-      toast.success('Duplicated')
+      toast.success(t('toast.duplicated'))
     },
-    onError: () => toast.error('Duplicate failed'),
+    onError: () => toast.error(t('toast.deleteFailed')),
   })
 
   const createDocument = useMutation({
@@ -170,7 +172,7 @@ function FilesPage() {
       // Open the new document immediately in OO
       void navigate({ to: '/files', search: { folder: folderId ?? undefined, oo: result.id } })
     },
-    onError: () => toast.error('Kunne ikke oprette dokument'),
+    onError: () => toast.error(t('toast.createDocFailed')),
   })
 
   // Derive OO item from URL param — avoids separate state that breaks back/forward
@@ -296,7 +298,7 @@ function FilesPage() {
             toast.success(`"${item.name}" added to auto backup`)
           } catch (err) {
             console.error('Add to backup failed:', err)
-            toast.error('Could not add to backup')
+            toast.error(t('toast.moveFailed'))
           }
         }
         void addToBackup()
@@ -312,7 +314,7 @@ function FilesPage() {
               f => !f.is_folder && f.name.toLowerCase().endsWith('.m3u')
             ) ?? null
             if (audio.length === 0) {
-              toast.info('Ingen lydfiler fundet i denne mappe')
+              toast.info(t('toast.noAudioFiles'))
               return
             }
             if (activePlaylistId) {
@@ -329,7 +331,7 @@ function FilesPage() {
               setFolderPlaylistJob({ folder: item, audioFiles: audio, existingM3u })
             }
           } catch {
-            toast.error('Kunne ikke læse mappeindhold')
+            toast.error(t('toast.couldNotReadFolder'))
           }
         })()
         break
@@ -345,7 +347,7 @@ function FilesPage() {
               toast.info('Nummeret er allerede i køen eller køen er fuld (max 50)')
             }
           } catch {
-            toast.error('Kunne ikke tilføje til køen')
+            toast.error(t('toast.moveFailed'))
           }
         })()
         break
@@ -441,7 +443,7 @@ function FilesPage() {
       void qc.invalidateQueries({ queryKey: ['backup', 'auto'] })
       toast.success(`${uniqueNew.length} mappe(r) tilføjet til auto backup`)
     } catch {
-      toast.error('Kunne ikke opdatere auto backup')
+      toast.error(t('toast.moveFailed'))
     }
   }, [selected, sorted, navigate, qc])
 
@@ -450,12 +452,12 @@ function FilesPage() {
     if (!name?.trim()) return
     try {
       const f = await createPlaylist(name.trim(), folderId, [...selected])
-      toast.success(`Playlist created`)
+      toast.success(t('misc.playlistCreated'))
       void qc.invalidateQueries({ queryKey: ['files', folderId] })
       setSelected(new Set())
       setPlaylist(f.id, name.trim())
     } catch {
-      toast.error('Failed to create playlist')
+      toast.error(t('toast.createDocFailed'))
     }
   }, [selected, folderId, qc, setPlaylist])
 
@@ -471,7 +473,7 @@ function FilesPage() {
                 <X size={16} />
               </button>
               <span className="text-sm font-medium text-zinc-900 dark:text-slate-100 flex-1">
-                {selected.size} valgt
+                {selected.size} {t('files.selected')}
               </span>
               <div className="flex items-center gap-1 flex-wrap shrink-0">
                 {selected.size === 1 && (() => {
@@ -483,22 +485,22 @@ function FilesPage() {
                       title="Del"
                     >
                       <Share2 size={12} />
-                      <span className="hidden sm:inline">Del</span>
+                      <span className="hidden sm:inline">{t('action.share')}</span>
                     </button>
                   ) : null
                 })()}
                 <button
                   onClick={() => setBulkMoveOpen(true)}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-                  title="Flyt valgte"
+                  title={t('action.move')}
                 >
                   <MoveRight size={12} />
-                  <span className="hidden sm:inline">Flyt</span>
+                  <span className="hidden sm:inline">{t('action.move')}</span>
                 </button>
                 <button
                   onClick={() => { void handleBulkBackup() }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-                  title="Tilføj til auto backup"
+                  title={t('nav.backup')}
                 >
                   <HardDrive size={12} />
                   <span className="hidden sm:inline">Backup</span>
@@ -516,14 +518,14 @@ function FilesPage() {
                   title="Opret M3U afspilningsliste fra valgte lydfiler"
                 >
                   <ListMusic size={12} />
-                  <span className="hidden sm:inline">Afspilningsliste</span>
+                  <span className="hidden sm:inline">{t('files.playlist')}</span>
                 </button>
                 <button
                   onClick={() => { void handleBulkTrash() }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-900/40 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 >
                   <Trash2 size={12} />
-                  <span className="hidden sm:inline">Slet</span>
+                  <span className="hidden sm:inline">{t('action.delete')}</span>
                 </button>
               </div>
             </>
@@ -536,7 +538,7 @@ function FilesPage() {
                   className="flex items-center gap-1 text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors shrink-0"
                 >
                   <Home size={14} />
-                  My Files
+                  {t('page.myFiles')}
                 </button>
                 {breadcrumbs?.map(bc => (
                   <span key={bc.id} className="flex items-center gap-1">
@@ -561,14 +563,14 @@ function FilesPage() {
                       className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
                       <Share2 size={12} />
-                      Share
+                      {t('action.share')}
                     </button>
                     <button
                       onClick={() => { setRenameId(folderId); setRenameName(currentFolderItem.name) }}
                       className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
                       <Pencil size={12} />
-                      Rename
+                      {t('action.rename')}
                     </button>
                     <button
                       onClick={async () => {
@@ -582,13 +584,13 @@ function FilesPage() {
                           void qc.invalidateQueries({ queryKey: ['me'] })
                           void navigate({ to: '/files', search: parentId ? { folder: parentId } : {} })
                         } catch {
-                          toast.error('Failed to delete folder')
+                          toast.error(t('toast.deleteFailed'))
                         }
                       }}
                       className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                     >
                       <Trash2 size={12} />
-                      Delete
+                      {t('action.delete')}
                     </button>
                   </>
                 )}
@@ -596,7 +598,7 @@ function FilesPage() {
                 {/* Upload — always visible, label hidden on mobile */}
                 <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium cursor-pointer transition-colors">
                   <Upload size={12} />
-                  <span className="hidden sm:inline">Upload</span>
+                  <span className="hidden sm:inline">{t('action.upload')}</span>
                   <input type="file" multiple className="sr-only" onChange={e => e.target.files && startUpload(Array.from(e.target.files))} />
                 </label>
 
@@ -606,7 +608,7 @@ function FilesPage() {
                   className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                 >
                   <FolderPlus size={12} />
-                  New folder
+                  {t('action.newFolder')}
                 </button>
 
                 {/* New document dropdown — desktop only, only when OO configured */}
@@ -617,23 +619,23 @@ function FilesPage() {
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
                       <FilePlus size={12} />
-                      Nyt dokument
+                      {t('action.newDoc')}
                     </button>
                     {newDocOpen && (
                       <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] shadow-xl z-40 py-1">
                         {([
-                          { type: 'word' as const,  icon: '📄', label: 'Word (.docx)',        name: 'Nyt dokument.docx' },
-                          { type: 'cell' as const,  icon: '📊', label: 'Excel (.xlsx)',       name: 'Ny regneark.xlsx' },
-                          { type: 'slide' as const, icon: '📑', label: 'PowerPoint (.pptx)', name: 'Ny præsentation.pptx' },
+                          { type: 'word' as const,  icon: '📄', labelKey: 'doc.word' as const,       nameKey: 'doc.wordName' as const,       ext: '.docx' },
+                          { type: 'cell' as const,  icon: '📊', labelKey: 'doc.excel' as const,      nameKey: 'doc.excelName' as const,      ext: '.xlsx' },
+                          { type: 'slide' as const, icon: '📑', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx' },
                         ] as const).map(o => (
                           <button
                             key={o.type}
-                            onClick={() => { createDocument.mutate({ type: o.type, name: o.name }) }}
+                            onClick={() => { createDocument.mutate({ type: o.type, name: `${t(o.nameKey)}${o.ext}` }) }}
                             disabled={createDocument.isPending}
                             className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
                           >
                             <span>{o.icon}</span>
-                            {o.label}
+                            {t(o.labelKey)}
                           </button>
                         ))}
                       </div>
@@ -657,7 +659,7 @@ function FilesPage() {
                         className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                       >
                         <FolderPlus size={15} />
-                        New folder
+                        {t('action.newFolder')}
                       </button>
                       {folderId && currentFolderItem && (
                         <>
@@ -666,14 +668,14 @@ function FilesPage() {
                             className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                           >
                             <Share2 size={15} />
-                            Share folder
+                            {t('files.shareFolder')}
                           </button>
                           <button
                             onClick={() => { setMobileActionsOpen(false); setRenameId(folderId); setRenameName(currentFolderItem.name) }}
                             className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                           >
                             <Pencil size={15} />
-                            Rename folder
+                            {t('files.renameFolder')}
                           </button>
                           <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-2 my-1" />
                           <button
@@ -689,13 +691,13 @@ function FilesPage() {
                                 void qc.invalidateQueries({ queryKey: ['me'] })
                                 void navigate({ to: '/files', search: parentId ? { folder: parentId } : {} })
                               } catch {
-                                toast.error('Failed to delete folder')
+                                toast.error(t('toast.deleteFailed'))
                               }
                             }}
                             className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                           >
                             <Trash2 size={15} />
-                            Delete folder
+                            {t('files.deleteFolder')}
                           </button>
                         </>
                       )}
@@ -716,7 +718,7 @@ function FilesPage() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-1" onClick={() => { setSelected(new Set()); setContextMenu(null) }}>
           {isLoading ? (
-            <div className="flex items-center justify-center h-40 text-sm text-muted">Loading…</div>
+            <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.loading')}</div>
           ) : view === 'list' ? (
             <FileList items={sorted} selectedIds={selected} onSelect={handleSelect} onOpen={handleOpen} onContextMenu={(item, x, y) => setContextMenu({ item, x, y })} onSelectAll={handleSelectAll} onQuickShare={item => setShareItem(item)} />
           ) : (
@@ -732,15 +734,15 @@ function FilesPage() {
         <OnlyOfficeEditor
           item={ooItem}
           onlyofficeUrl={systemSettings.onlyoffice_url}
-          backLabel="Mine filer"
+          backLabel={t('page.myFiles')}
           onClose={() => void navigate({ to: '/files', search: { folder: folderId ?? undefined } })}
         />
       )}
       {downloadIds && <DownloadDialog ids={downloadIds} onClose={() => setDownloadIds(null)} />}
       {moveItem && (
         <FolderPickerDialog
-          title={`Flyt "${moveItem.name}"`}
-          confirmLabel="Flyt hertil"
+          title={`${t('action.move')} "${moveItem.name}"`}
+          confirmLabel={t('misc.moveHere')}
           excludeId={moveItem.id}
           onConfirm={destFolderId => moveFile.mutate({ id: moveItem.id, destFolderId })}
           onClose={() => setMoveItem(null)}
@@ -748,16 +750,16 @@ function FilesPage() {
       )}
       {bulkMoveOpen && (
         <FolderPickerDialog
-          title={`Flyt ${selected.size} element(er)`}
-          confirmLabel="Flyt hertil"
+          title={`${t('action.move')} ${selected.size} ${t('files.selected')}`}
+          confirmLabel={t('misc.moveHere')}
           onConfirm={destFolderId => { void handleBulkMove(destFolderId) }}
           onClose={() => setBulkMoveOpen(false)}
         />
       )}
       {duplicateItem && (
         <FolderPickerDialog
-          title={`Duplicate "${duplicateItem.name}"`}
-          confirmLabel="Duplicate here"
+          title={`${t('action.copy')} "${duplicateItem.name}"`}
+          confirmLabel={t('misc.duplicateHere')}
           excludeId={duplicateItem.id}
           onConfirm={destFolderId => copyFile.mutate({ id: duplicateItem.id, destFolderId })}
           onClose={() => setDuplicateItem(null)}
@@ -770,7 +772,7 @@ function FilesPage() {
             onClick={e => e.stopPropagation()}
           >
             <div>
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100 mb-1">Tilføj til playlist</h3>
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100 mb-1">{t('playlist.addToPlaylist')}</h3>
               <p className="text-sm text-muted">
                 Mappen “{folderPlaylistJob.folder.name}” indeholder{' '}
                 <span className="font-medium text-zinc-700 dark:text-slate-200">{folderPlaylistJob.audioFiles.length}</span>{' '}
@@ -787,7 +789,7 @@ function FilesPage() {
                 )}
                 className="w-full px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
               >
-                Første 50 numre
+                {t('playlist.first50')}
               </button>
               <button
                 onClick={() => void doCreateFolderPlaylist(
@@ -798,13 +800,13 @@ function FilesPage() {
                 )}
                 className="w-full px-4 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
               >
-                Vælg 50 tilfældigt
+                {t('playlist.random50')}
               </button>
               <button
                 onClick={() => setFolderPlaylistJob(null)}
                 className="w-full px-4 py-2 rounded-lg text-sm text-muted hover:text-zinc-700 dark:hover:text-slate-200 transition-colors"
               >
-                Annullér
+                {t('action.cancel')}
               </button>
             </div>
           </div>
@@ -824,11 +826,11 @@ function FilesPage() {
       {renameId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <form className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-80 space-y-3" onSubmit={e => { e.preventDefault(); rename.mutate({ id: renameId!, name: renameName }) }}>
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">Rename</h3>
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('action.rename')}</h3>
             <input autoFocus value={renameName} onChange={e => setRenameName(e.target.value)} className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setRenameId(null)} className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted">Cancel</button>
-              <button type="submit" disabled={!renameName.trim() || rename.isPending} className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50">Rename</button>
+              <button type="button" onClick={() => setRenameId(null)} className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted">{t('action.cancel')}</button>
+              <button type="submit" disabled={!renameName.trim() || rename.isPending} className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50">{t('action.rename')}</button>
             </div>
           </form>
         </div>

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
+import { useI18n } from '@/lib/i18n'
 import { api } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatBytes, cn } from '@/lib/utils'
@@ -35,35 +36,36 @@ import { usePlaylist } from '@/lib/playlist-context'
 
 interface NavItem {
   to: string
-  label: string
+  labelKey: string
   icon: React.ReactNode
   exact?: boolean
 }
 
 const mainNav: NavItem[] = [
-  { to: '/files',    label: 'My Files',  icon: <Files size={16} />,   exact: true },
-  { to: '/shares',   label: 'Shared',    icon: <Share2 size={16} /> },
-  { to: '/recent',   label: 'Recent',    icon: <Clock size={16} /> },
-  { to: '/activity', label: 'Activity',  icon: <History size={16} /> },
-  { to: '/trash',    label: 'Trash',     icon: <Trash2 size={16} /> },
-  { to: '/backup',   label: 'Backup',    icon: <Archive size={16} /> },
+  { to: '/files',    labelKey: 'nav.myFiles',   icon: <Files size={16} />,   exact: true },
+  { to: '/shares',   labelKey: 'nav.shared',    icon: <Share2 size={16} /> },
+  { to: '/recent',   labelKey: 'nav.recent',    icon: <Clock size={16} /> },
+  { to: '/activity', labelKey: 'nav.activity',  icon: <History size={16} /> },
+  { to: '/trash',    labelKey: 'nav.trash',     icon: <Trash2 size={16} /> },
+  { to: '/backup',   labelKey: 'nav.backup',    icon: <Archive size={16} /> },
 ]
 
 const guestNav: NavItem[] = [
-  { to: '/shares',  label: 'Shared',        icon: <Share2 size={16} /> },
+  { to: '/shares',  labelKey: 'nav.shared',     icon: <Share2 size={16} /> },
 ]
 
 const adminNav: NavItem[] = [
-  { to: '/admin',              label: 'Dashboard',   icon: <HardDrive size={16} />, exact: true },
-  { to: '/admin/users',        label: 'Users',        icon: <Users size={16} /> },
-  { to: '/admin/audit-logs',   label: 'Audit Log',    icon: <ScrollText size={16} /> },
-  { to: '/admin/blocked-ips',  label: 'Blocked IPs',  icon: <ShieldBan size={16} /> },
-  { to: '/admin/backup',       label: 'Backup',       icon: <Database size={16} /> },
-  { to: '/admin/settings',     label: 'Settings',     icon: <Settings size={16} /> },
+  { to: '/admin',              labelKey: 'nav.dashboard',  icon: <HardDrive size={16} />, exact: true },
+  { to: '/admin/users',        labelKey: 'nav.users',       icon: <Users size={16} /> },
+  { to: '/admin/audit-logs',   labelKey: 'nav.auditLog',    icon: <ScrollText size={16} /> },
+  { to: '/admin/blocked-ips',  labelKey: 'nav.blockedIps',  icon: <ShieldBan size={16} /> },
+  { to: '/admin/backup',       labelKey: 'nav.backup',      icon: <Database size={16} /> },
+  { to: '/admin/settings',     labelKey: 'nav.settings',    icon: <Settings size={16} /> },
 ]
 
 function NavLink({ item }: { item: NavItem }) {
   const state = useRouterState()
+  const { t } = useI18n()
   const active = item.exact
     ? state.location.pathname === item.to
     : state.location.pathname.startsWith(item.to)
@@ -78,7 +80,7 @@ function NavLink({ item }: { item: NavItem }) {
       }`}
     >
       <span className={active ? 'text-brand-600 dark:text-brand-400' : ''}>{item.icon}</span>
-      {item.label}
+      {t(item.labelKey as any)}
     </Link>
   )
 }
@@ -94,6 +96,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
   const { user, setUser } = useAuth()
   const qc = useQueryClient()
   const state = useRouterState()
+  const { t, locale, setLocale } = useI18n()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showWebDAV, setShowWebDAV] = useState(false)
   const [showTOTP, setShowTOTP] = useState(false)
@@ -182,7 +185,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   onClick={prev}
                   disabled={currentIndex === 0}
                   className="p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
-                  title="Forrige"
+                  title={t('player.previous')}
                 >
                   <SkipBack size={13} />
                 </button>
@@ -190,7 +193,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   onClick={togglePlay}
                   disabled={!currentTrack}
                   className="p-1 rounded-full bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-30 transition-colors shrink-0"
-                  title={isPlaying ? 'Pause' : 'Afspil'}
+                  title={isPlaying ? t('player.pause') : t('player.play')}
                 >
                   {isPlaying ? <Pause size={11} /> : <Play size={11} />}
                 </button>
@@ -198,14 +201,14 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   onClick={next}
                   disabled={!shuffle && currentIndex >= tracks.length - 1}
                   className="p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
-                  title="Næste"
+                  title={t('player.next')}
                 >
                   <SkipForward size={13} />
                 </button>
                 <button
                   onClick={() => setPlayerExpanded(v => !v)}
                   className="flex-1 min-w-0 text-left flex items-center gap-0.5 group"
-                  title={playerExpanded ? 'Skjul liste' : 'Vis liste'}
+                  title={playerExpanded ? t('player.hideList') : t('player.showList')}
                 >
                   <span className="text-[11px] font-medium text-zinc-700 dark:text-slate-300 truncate group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
                     {currentTrack?.name ?? activePlaylistName}
@@ -223,14 +226,14 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                       ? 'text-brand-500 hover:text-brand-600'
                       : 'text-zinc-300 hover:text-zinc-600 dark:hover:text-slate-300',
                   )}
-                  title={shuffle ? 'Shuffle til' : 'Shuffle fra'}
+                  title={shuffle ? t('player.shuffleOn') : t('player.shuffleOff')}
                 >
                   <Shuffle size={11} />
                 </button>
                 <button
                   onClick={clearPlaylist}
                   className="p-0.5 text-zinc-300 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0"
-                  title="Luk afspiller"
+                  title={t('player.closePlayer')}
                 >
                   <X size={12} />
                 </button>
@@ -284,7 +287,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                       <button
                         onClick={() => { void removeTrack(track.id) }}
                         className="shrink-0 p-0.5 text-zinc-200 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
-                        title="Fjern fra playlist"
+                        title={t('player.removeTrack')}
                       >
                         <X size={11} />
                       </button>
@@ -303,7 +306,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                     value={volume}
                     onChange={e => setVolume(parseFloat(e.target.value))}
                     className="flex-1 h-1 accent-brand-600 cursor-pointer"
-                    title="Lydstyrke"
+                    title={t('player.volume')}
                   />
                 </div>
               </div>
@@ -387,14 +390,21 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
               >
                 <ShieldCheck size={14} className={user?.totp_enabled ? 'text-green-500' : 'text-zinc-400'} />
-                {user?.totp_enabled ? '2FA enabled' : 'Enable 2FA'}
+                {user?.totp_enabled ? t('auth.2faEnabled') : t('auth.enable2fa')}
+              </button>
+              <button
+                onClick={() => { setLocale(locale === 'da' ? 'en' : 'da'); setShowUserMenu(false) }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+              >
+                <span className="text-sm">{locale === 'da' ? '🇬🇧' : '🇩🇰'}</span>
+                {locale === 'da' ? 'English' : 'Dansk'}
               </button>
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
               >
                 <LogOut size={14} />
-                Sign out
+                {t('action.signOut')}
               </button>
             </div>
           )}
@@ -468,7 +478,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                         ? 'text-brand-500 hover:text-brand-600'
                         : 'text-zinc-300 dark:text-slate-600 hover:text-zinc-600 dark:hover:text-slate-300',
                     )}
-                    title={shuffle ? 'Shuffle til' : 'Shuffle fra'}
+                    title={shuffle ? t('player.shuffleOn') : t('player.shuffleOff')}
                   >
                     <Shuffle size={22} />
                   </button>

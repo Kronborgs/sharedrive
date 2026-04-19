@@ -35,16 +35,18 @@ import (
 type AuthDAVServer struct {
 	db        *pgxpool.Pool
 	filesRoot string
+	storage   *files.Storage
 	locks     gowebdav.LockSystem // shared across requests so LOCK tokens survive to PUT
 	auditSvc  audit.Logger
 	ioTracker *files.IOTracker
 	limiter   *ratelimit.Limiter
 }
 
-func NewAuthDAVServer(db *pgxpool.Pool, filesRoot string, auditSvc audit.Logger, ioTracker *files.IOTracker, limiter *ratelimit.Limiter) *AuthDAVServer {
+func NewAuthDAVServer(db *pgxpool.Pool, filesRoot string, auditSvc audit.Logger, ioTracker *files.IOTracker, limiter *ratelimit.Limiter, storage *files.Storage) *AuthDAVServer {
 	return &AuthDAVServer{
 		db:        db,
 		filesRoot: filesRoot,
+		storage:   storage,
 		locks:     gowebdav.NewMemLS(),
 		auditSvc:  auditSvc,
 		ioTracker: ioTracker,
@@ -139,7 +141,7 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h := &gowebdav.Handler{
 		Prefix:     "/dav/" + userID,
-		FileSystem: &userFS{db: s.db, filesRoot: s.filesRoot, userID: userID, ioTracker: s.ioTracker},
+		FileSystem: &userFS{db: s.db, filesRoot: s.filesRoot, storage: s.storage, userID: userID, ioTracker: s.ioTracker},
 		LockSystem: s.locks,
 		Logger: func(r *http.Request, err error) {
 			if err != nil {
@@ -196,6 +198,7 @@ func (s *AuthDAVServer) resolveIDToPath(ctx context.Context, fileID, userID stri
 type userFS struct {
 	db        *pgxpool.Pool
 	filesRoot string
+	storage   *files.Storage
 	userID    string
 	ioTracker *files.IOTracker
 }
@@ -327,11 +330,11 @@ func (fs *userFS) OpenFile(ctx context.Context, name string, flag int, _ os.File
 		return dir, nil
 	}
 
-	f, err := os.Open(rec.storagePath)
+	rc, err := fs.storage.Open(rec.id)
 	if err != nil {
 		return nil, os.ErrNotExist
 	}
-	return &davFile{fi: rec.info(), f: f}, nil
+	return &davFile{fi: rec.info(), f: rc}, nil
 }
 
 // openForWrite handles PUT: stream body into a temp file on the same volume as
@@ -371,6 +374,7 @@ func (fs *userFS) openForWrite(ctx context.Context, name string) (gowebdav.File,
 		fi:           &davFileInfo{name: base, modTime: time.Now()},
 		db:           fs.db,
 		filesRoot:    fs.filesRoot,
+		storage:      fs.storage,
 		userID:       fs.userID,
 		parentID:     parentID,
 		base:         base,
@@ -627,7 +631,7 @@ func (d *davDir) Readdir(count int) ([]os.FileInfo, error) {
 
 type davFile struct {
 	fi os.FileInfo
-	f  *os.File
+	f  io.ReadSeekCloser
 }
 
 func (f *davFile) Close() error                                 { return f.f.Close() }
@@ -652,6 +656,7 @@ type davWriteFile struct {
 	// set by openForWrite
 	db           *pgxpool.Pool
 	filesRoot    string
+	storage      *files.Storage
 	userID       string
 	parentID     string
 	base         string
@@ -725,17 +730,24 @@ func (f *davWriteFile) Close() error {
 		fileID = uuid.New().String()
 	}
 
+	// Seek temp file back to start for reading.
+	if _, err := f.tmp.Seek(0, io.SeekStart); err != nil {
+		_ = os.Remove(f.tmp.Name())
+		return fmt.Errorf("webdav commit seek: %w", err)
+	}
+
+	// Write via storage — transparently encrypts if FILE_ENCRYPT_KEY is set.
+	// Storage.Write creates/overwrites the sharded destination atomically.
 	storagePath := storagePathFor(f.filesRoot, fileID)
 	if err := os.MkdirAll(filepath.Dir(storagePath), 0750); err != nil {
 		_ = os.Remove(f.tmp.Name())
 		return fmt.Errorf("webdav commit mkdir: %w", err)
 	}
-
-	// Atomic rename — same volume, no double copy, near-zero latency.
-	if err := os.Rename(f.tmp.Name(), storagePath); err != nil {
+	if _, err := f.storage.Write(fileID, f.tmp); err != nil {
 		_ = os.Remove(f.tmp.Name())
-		return fmt.Errorf("webdav commit rename: %w", err)
+		return fmt.Errorf("webdav commit write: %w", err)
 	}
+	_ = os.Remove(f.tmp.Name())
 
 	shaHex := hex.EncodeToString(f.hash.Sum(nil))
 	ctx := context.Background()

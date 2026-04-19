@@ -67,7 +67,7 @@ type Server struct {
 
 // New constructs a Server with all routes and middleware registered.
 func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler *auth.Handler, auditSvc audit.Logger, version, buildDate string) *Server {
-	storage := files.NewStorage(cfg.FilesRoot)
+	storage := files.NewStorage(cfg.FilesRoot, cfg.FileEncryptKey)
 	fileSvc := files.NewService(db, storage)
 	trashSvc := files.NewTrashService(db, storage)
 
@@ -99,7 +99,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
 		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, backupsRoot(cfg.BackupsRoot), auditSvc, ratelimit.New(rdb)),
-		ooHandler:      onlyoffice.NewHandler(db, cfg.FilesRoot, cfg.AppBaseURL),
+		ooHandler:      onlyoffice.NewHandler(db, storage, cfg.AppBaseURL),
 		auditSvc:       auditSvc,
 		ioTracker:      ioTracker,
 	}
@@ -205,7 +205,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 	// WebDAV is mounted OUTSIDE Chi so that non-standard HTTP methods such as
 	// PROPFIND, MKCOL, PROPPATCH, COPY, MOVE, LOCK and UNLOCK are accepted.
 	// Chi only recognises the standard nine methods and returns 405 for the rest.
-	davSrv := webdav.NewAuthDAVServer(s.db, s.cfg.FilesRoot, s.auditSvc, s.ioTracker, ratelimit.New(rdb))
+	davSrv := webdav.NewAuthDAVServer(s.db, s.cfg.FilesRoot, s.auditSvc, s.ioTracker, ratelimit.New(rdb), storage)
 	s.http = &http.Server{
 		Addr: cfg.ListenAddr(),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

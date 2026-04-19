@@ -13,9 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -24,20 +22,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 
+	"github.com/yourname/privatedrive/internal/files"
 	"github.com/yourname/privatedrive/internal/httputil"
 	"github.com/yourname/privatedrive/internal/middleware"
 )
 
 // Handler handles OnlyOffice editor integration.
 type Handler struct {
-	db        *pgxpool.Pool
-	filesRoot string
-	appBase   string // e.g. https://files.example.com
+	db      *pgxpool.Pool
+	storage *files.Storage
+	appBase string // e.g. https://files.example.com
 }
 
 // NewHandler creates a Handler.
-func NewHandler(db *pgxpool.Pool, filesRoot, appBase string) *Handler {
-	return &Handler{db: db, filesRoot: filesRoot, appBase: strings.TrimRight(appBase, "/")}
+func NewHandler(db *pgxpool.Pool, storage *files.Storage, appBase string) *Handler {
+	return &Handler{db: db, storage: storage, appBase: strings.TrimRight(appBase, "/")}
 }
 
 // ─── Settings helpers ────────────────────────────────────────────────────────
@@ -129,7 +128,7 @@ func (h *Handler) lookupFile(ctx context.Context, fileID, userID string) (*fileR
 	if err != nil {
 		return nil, err
 	}
-	f.path = filepath.Join(h.filesRoot, f.path)
+	// storage_path is the absolute on-disk path; keep as-is.
 	return &f, nil
 }
 
@@ -300,7 +299,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Fetch the updated document from the OnlyOffice storage URL
+		// Fetch the updated document from the OnlyOffice storage URL.
 		resp, err := http.Get(body.URL) //nolint:gosec // URL comes from authenticated OO server
 		if err != nil {
 			log.Error().Err(err).Msg("onlyoffice: failed to fetch saved document")
@@ -309,39 +308,12 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		}
 		defer resp.Body.Close()
 
-		// Look up storage path
-		var storagePath string
-		err = h.db.QueryRow(ctx,
-			`SELECT storage_path FROM files WHERE id = $1::uuid AND deleted_at IS NULL`,
-			fileID,
-		).Scan(&storagePath)
+		// Write via storage — this transparently (re-)encrypts the file if
+		// FILE_ENCRYPT_KEY is configured. The file is written to a temp path
+		// and then atomically moved by Storage.Write().
+		written, err := h.storage.Write(fileID, resp.Body)
 		if err != nil {
-			log.Error().Err(err).Str("file_id", fileID).Msg("onlyoffice: file not found for save")
-			httputil.Respond(w, http.StatusOK, map[string]int{"error": 1})
-			return
-		}
-
-		absPath := filepath.Join(h.filesRoot, storagePath)
-
-		// Write atomically: write to temp, then rename
-		tmpPath := absPath + ".oo_tmp"
-		f, err := os.Create(tmpPath) //nolint:gosec
-		if err != nil {
-			log.Error().Err(err).Msg("onlyoffice: cannot create temp file")
-			httputil.Respond(w, http.StatusOK, map[string]int{"error": 1})
-			return
-		}
-		written, err := io.Copy(f, resp.Body)
-		f.Close()
-		if err != nil {
-			os.Remove(tmpPath)
-			log.Error().Err(err).Msg("onlyoffice: write error")
-			httputil.Respond(w, http.StatusOK, map[string]int{"error": 1})
-			return
-		}
-		if err := os.Rename(tmpPath, absPath); err != nil {
-			os.Remove(tmpPath)
-			log.Error().Err(err).Msg("onlyoffice: rename error")
+			log.Error().Err(err).Msg("onlyoffice: storage write error")
 			httputil.Respond(w, http.StatusOK, map[string]int{"error": 1})
 			return
 		}
@@ -401,26 +373,25 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var storagePath, name string
+	var name string
 	err = h.db.QueryRow(ctx,
-		`SELECT storage_path, name FROM files WHERE id = $1::uuid AND deleted_at IS NULL`,
+		`SELECT name FROM files WHERE id = $1::uuid AND deleted_at IS NULL`,
 		fileID,
-	).Scan(&storagePath, &name)
+	).Scan(&name)
 	if err != nil {
 		httputil.RespondError(w, http.StatusNotFound, "file not found")
 		return
 	}
 
-	absPath := filepath.Join(h.filesRoot, storagePath)
-	f, err := os.Open(absPath) //nolint:gosec
+	rc, err := h.storage.Open(fileID)
 	if err != nil {
 		httputil.RespondError(w, http.StatusNotFound, "file not readable")
 		return
 	}
-	defer f.Close()
+	defer rc.Close()
 
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
-	http.ServeContent(w, r, name, time.Time{}, f)
+	http.ServeContent(w, r, name, time.Time{}, rc)
 }
 
 // MakeDownloadToken creates a short-lived signed token for a specific file,

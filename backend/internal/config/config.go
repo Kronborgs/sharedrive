@@ -48,6 +48,13 @@ type Config struct {
 	TOTPEncryptKey    string `mapstructure:"TOTP_ENCRYPT_KEY"`
 	DeviceTrustSecret string `mapstructure:"DEVICE_TRUST_SECRET"`
 
+	// FileEncryptKey is an optional 64-char hex string (32 bytes) used to
+	// encrypt file content at rest with AES-256-GCM. If empty, files are
+	// stored in plaintext (backward-compatible). Set FILE_ENCRYPT_KEY to
+	// enable. Existing unencrypted files are still readable; newly written
+	// files (uploads, WebDAV PUT, OO saves) will be encrypted.
+	FileEncryptKey string `mapstructure:"FILE_ENCRYPT_KEY"`
+
 	// SMTP
 	SMTPHost     string `mapstructure:"SMTP_HOST"`
 	SMTPPort     int    `mapstructure:"SMTP_PORT"`
@@ -184,6 +191,7 @@ func Load() (*Config, error) {
 		&cfg.SMTPPassword:      "SMTP_PASSWORD",
 		&cfg.SMTPFrom:          "SMTP_FROM",
 		&cfg.BackupsRoot:       "BACKUPS_ROOT",
+		&cfg.FileEncryptKey:    "FILE_ENCRYPT_KEY",
 	}
 	for ptr, key := range envStrings {
 		if val := os.Getenv(key); val != "" {

@@ -7,12 +7,14 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   fetchPlaylistTracks,
   updatePlaylistTracks,
   fetchPersistedPlaylistState,
   savePersistedPlaylistState,
 } from '@/lib/api'
+import { api } from '@/lib/api'
 import type { PlaylistTrack } from '@/lib/api'
 
 export type { PlaylistTrack }
@@ -48,6 +50,9 @@ interface PlaylistContextValue {
   // Playlist track management
   removeTrack: (trackId: string) => Promise<void>
   addTracks: (fileIds: string[]) => Promise<{ added: number; skipped: number }>
+
+  // Config
+  playlistMaxTracks: number
 }
 
 // ── Local cache — same-device instant hydration ───────────────────────────────
@@ -77,6 +82,13 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   const [duration, setDuration]                     = useState(0)
   const [volume, setVolumeState]                    = useState(() => loadCache()?.vol ?? 1)
   const [shuffle, setShuffleState]                  = useState(() => loadCache()?.shuffle ?? false)
+
+  const { data: publicSettings } = useQuery({
+    queryKey: ['system', 'settings'],
+    queryFn: ({ signal }) => api.get<{ playlist_max_tracks?: number }>('/api/v1/system/settings', signal),
+    staleTime: 5 * 60_000,
+  })
+  const playlistMaxTracks = publicSettings?.playlist_max_tracks ?? 200
 
   // Refs so audio event closures always read the latest values without stale closures
   const shuffleRef      = useRef(loadCache()?.shuffle ?? false)
@@ -311,7 +323,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     if (!activePlaylistId) return { added: 0, skipped: 0 }
     const existing = new Set(tracks.map(t => t.id))
     const toAdd = fileIds.filter(id => !existing.has(id))
-    const available = 200 - tracks.length
+    const available = playlistMaxTracks - tracks.length
     const adding = toAdd.slice(0, available)
     const skipped = fileIds.length - adding.length
     if (adding.length === 0) return { added: 0, skipped }
@@ -321,7 +333,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     const fresh = await fetchPlaylistTracks(activePlaylistId)
     setTracks(fresh)
     return { added: adding.length, skipped }
-  }, [activePlaylistId, tracks])
+  }, [activePlaylistId, tracks, playlistMaxTracks])
 
   const setPlaylist = useCallback((id: string, name: string) => {
     pendingIndexRef.current = 0
@@ -360,6 +372,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
         toggleShuffle,
         removeTrack,
         addTracks,
+        playlistMaxTracks,
       }}
     >
       {children}

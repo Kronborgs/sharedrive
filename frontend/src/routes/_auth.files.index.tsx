@@ -59,7 +59,7 @@ function FilesPage() {
   const navigate = useNavigate()
   const { folder: folderId = null, oo: ooFileId = null } = Route.useSearch()
   const qc = useQueryClient()
-  const { setPlaylist, addTracks, tracks: playlistTracks, activePlaylistId } = usePlaylist()
+  const { setPlaylist, addTracks, tracks: playlistTracks, activePlaylistId, playlistMaxTracks } = usePlaylist()
   const { t } = useI18n()
 
   const [view, setView] = useState<ViewMode>('list')
@@ -727,7 +727,7 @@ function FilesPage() {
         </div>
       </div>
 
-      {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < 200} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
+      {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < playlistMaxTracks} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
       {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
       {ooItem && systemSettings?.onlyoffice_url && (

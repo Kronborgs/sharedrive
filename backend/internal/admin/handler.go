@@ -53,6 +53,7 @@ type settingsResponse struct {
 	OnlyOfficeURL          string `json:"onlyoffice_url"`
 	OnlyOfficeJWTSecret    string `json:"onlyoffice_jwt_secret"`     // always empty in response — write-only
 	OnlyOfficeJWTSecretSet bool   `json:"onlyoffice_jwt_secret_set"` // true when a secret is stored
+	PlaylistMaxTracks      int    `json:"playlist_max_tracks"`
 }
 
 func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +86,12 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	if s, ok := kv["smtp_port"]; ok {
 		smtpPort, _ = strconv.Atoi(s)
 	}
+	playlistMaxTracks := 200
+	if s, ok := kv["playlist_max_tracks"]; ok {
+		if n, err2 := strconv.Atoi(s); err2 == nil && n > 0 {
+			playlistMaxTracks = n
+		}
+	}
 
 	httputil.Respond(w, http.StatusOK, settingsResponse{
 		SiteName:               kv["app_name"],
@@ -101,6 +108,7 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		OnlyOfficeURL:          kv["onlyoffice_url"],
 		OnlyOfficeJWTSecret:    "", // never expose via API
 		OnlyOfficeJWTSecretSet: kv["onlyoffice_jwt_secret"] != "",
+		PlaylistMaxTracks:      playlistMaxTracks,
 	})
 }
 
@@ -110,7 +118,7 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	rows, err := h.db.Query(ctx,
-		`SELECT key, value FROM system_settings WHERE key IN ('direct_upload_url','onlyoffice_url')`)
+		`SELECT key, value FROM system_settings WHERE key IN ('direct_upload_url','onlyoffice_url','playlist_max_tracks')`)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -124,9 +132,16 @@ func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		kv[k] = v
 	}
-	httputil.Respond(w, http.StatusOK, map[string]string{
-		"direct_upload_url": kv["direct_upload_url"],
-		"onlyoffice_url":    kv["onlyoffice_url"],
+	playlistMax := 200
+	if s := kv["playlist_max_tracks"]; s != "" {
+		if n, err2 := strconv.Atoi(s); err2 == nil && n > 0 {
+			playlistMax = n
+		}
+	}
+	httputil.Respond(w, http.StatusOK, map[string]any{
+		"direct_upload_url":   kv["direct_upload_url"],
+		"onlyoffice_url":      kv["onlyoffice_url"],
+		"playlist_max_tracks": playlistMax,
 	})
 }
 
@@ -145,6 +160,7 @@ type updateSettingsRequest struct {
 	SMTPTls             *bool   `json:"smtp_tls"`
 	OnlyOfficeURL       *string `json:"onlyoffice_url"`
 	OnlyOfficeJWTSecret *string `json:"onlyoffice_jwt_secret"`
+	PlaylistMaxTracks   *int    `json:"playlist_max_tracks"`
 }
 
 func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -219,6 +235,9 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.OnlyOfficeJWTSecret != nil && *req.OnlyOfficeJWTSecret != "" {
 		upsert("onlyoffice_jwt_secret", *req.OnlyOfficeJWTSecret)
+	}
+	if req.PlaylistMaxTracks != nil && *req.PlaylistMaxTracks > 0 {
+		upsert("playlist_max_tracks", strconv.Itoa(*req.PlaylistMaxTracks))
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }

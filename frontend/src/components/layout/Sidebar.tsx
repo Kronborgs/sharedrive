@@ -128,6 +128,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
     removeTrack,
     addTracks,
     setPlaylist,
+    playlistMaxTracks,
   } = usePlaylist()
 
   // Handle adding music: when there's an active playlist just add tracks,
@@ -345,7 +346,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                 </div>
 
                 {/* Add music button (when tracks exist, show as small footer link) */}
-                {tracks.length > 0 && tracks.length < 200 && (
+                {tracks.length > 0 && tracks.length < playlistMaxTracks && (
                   <div className="border-t border-zinc-50 dark:border-[#2d3148]">
                     <button
                       onClick={() => setShowAddMusic(true)}

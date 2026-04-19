@@ -25,6 +25,7 @@ interface SystemSettings {
   smtp_tls: boolean
   onlyoffice_url: string
   onlyoffice_jwt_secret: string
+  playlist_max_tracks: number
 }
 
 const settingsSchema = z.object({
@@ -43,7 +44,7 @@ const settingsSchema = z.object({
 
 type FormValues = z.infer<typeof settingsSchema>
 
-type Tab = 'general' | 'smtp' | 'onlyoffice'
+type Tab = 'general' | 'smtp' | 'onlyoffice' | 'player'
 
 function GB(n: number) { return n / (1024 * 1024 * 1024) }
 function toGB(g: number) { return Math.round(g * 1024 * 1024 * 1024) }
@@ -62,7 +63,7 @@ function SettingsPage() {
   const { register, handleSubmit, formState: { errors, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(settingsSchema),
     values: data
-      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '' }
+      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '', playlist_max_tracks: data.playlist_max_tracks ?? 200 }
       : undefined,
   })
 
@@ -142,6 +143,7 @@ function SettingsPage() {
     { id: 'general', label: 'Generelt' },
     { id: 'smtp', label: 'SMTP' },
     { id: 'onlyoffice', label: 'OnlyOffice' },
+    { id: 'player', label: 'Afspilning' },
   ]
 
   return (
@@ -294,6 +296,26 @@ function SettingsPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {tab === 'player' && (
+        <form onSubmit={handleSubmit(values => save.mutate(values))} className="space-y-5">
+          <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">Musikafspiller</h2>
+              <p className="text-xs text-muted">Juster grænser for musikafspilleren. Ændringer gælder for alle brugere.</p>
+            </div>
+            <Field label="Maks antal numre i en playliste" error={errors.playlist_max_tracks?.message}>
+              <input type="number" step="1" min="1" max="10000" {...register('playlist_max_tracks')} className={inputClass} />
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">Standard: 200. Høje værdier (over 1000) kan medføre langsommere indlæsning af playlister.</p>
+            </Field>
+          </section>
+          <div className="flex justify-end">
+            <button type="submit" disabled={!isDirty || save.isPending} className="px-5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+              {save.isPending ? 'Gemmer...' : 'Gem ændringer'}
+            </button>
+          </div>
+        </form>
       )}
     </div>
   )

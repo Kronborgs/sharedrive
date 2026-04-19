@@ -368,6 +368,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/v1/files/{id}", s.filesHandler.Delete)
 		r.Post("/api/v1/files/{id}/copy", s.filesHandler.Copy)
 		r.Get("/api/v1/files/{id}/download", s.filesHandler.Download)
+		r.Put("/api/v1/files/{id}/content", s.filesHandler.SaveContent)
 		r.Get("/api/v1/files/{id}/size", s.filesHandler.FolderSize)
 		r.Post("/api/v1/files/trash/{id}/restore", s.filesHandler.RestoreTrash)
 		r.Delete("/api/v1/files/trash/{id}", s.filesHandler.PermanentDelete)

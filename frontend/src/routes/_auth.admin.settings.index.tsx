@@ -6,6 +6,7 @@ import { useForm, type UseFormRegister } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useState } from 'react'
+import { ONLYOFFICE_GROUPS, TEXT_EDITOR_GROUPS } from '@/lib/file-types'
 
 export const Route = createFileRoute('/_auth/admin/settings/')({
   component: SettingsPage,
@@ -40,11 +41,12 @@ const settingsSchema = z.object({
   smtp_username: z.string(),
   smtp_from_address: z.string().email().or(z.literal('')),
   smtp_tls: z.boolean(),
+  playlist_max_tracks: z.coerce.number().min(1).max(10000),
 })
 
 type FormValues = z.infer<typeof settingsSchema>
 
-type Tab = 'general' | 'smtp' | 'onlyoffice' | 'player'
+type Tab = 'general' | 'smtp' | 'onlyoffice' | 'texteditor' | 'player'
 
 function GB(n: number) { return n / (1024 * 1024 * 1024) }
 function toGB(g: number) { return Math.round(g * 1024 * 1024 * 1024) }
@@ -143,6 +145,7 @@ function SettingsPage() {
     { id: 'general', label: 'Generelt' },
     { id: 'smtp', label: 'SMTP' },
     { id: 'onlyoffice', label: 'OnlyOffice' },
+    { id: 'texteditor', label: 'Text Editor' },
     { id: 'player', label: 'Afspilning' },
   ]
 
@@ -276,18 +279,14 @@ function SettingsPage() {
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-3">
             <h3 className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Understoettede formater</h3>
             <div className="grid grid-cols-3 gap-3 text-xs text-muted">
-              <div>
-                <p className="font-medium text-zinc-600 dark:text-slate-400 mb-1">Tekstdokumenter</p>
-                <p>DOC, DOCX, DOCM</p><p>DOT, DOTX, RTF</p><p>ODT, OTT, TXT</p>
-              </div>
-              <div>
-                <p className="font-medium text-zinc-600 dark:text-slate-400 mb-1">Regneark</p>
-                <p>XLS, XLSX, XLSM</p><p>XLSB, XLTX, CSV</p><p>ODS, OTS</p>
-              </div>
-              <div>
-                <p className="font-medium text-zinc-600 dark:text-slate-400 mb-1">Praesentationer</p>
-                <p>PPT, PPTX, PPTM</p><p>POTX, ODP, OTP</p>
-              </div>
+              {ONLYOFFICE_GROUPS.map(group => (
+                <div key={group.label}>
+                  <p className="font-medium text-zinc-600 dark:text-slate-400 mb-1">{group.label}</p>
+                  {chunkArray([...group.exts], 3).map((row, i) => (
+                    <p key={i}>{row.map(e => e.toUpperCase()).join(', ')}</p>
+                  ))}
+                </div>
+              ))}
             </div>
           </section>
           <div className="flex justify-end">
@@ -295,6 +294,43 @@ function SettingsPage() {
               {ooSaving ? 'Gemmer...' : 'Gem OnlyOffice-indstillinger'}
             </button>
           </div>
+        </div>
+      )}
+
+      {tab === 'texteditor' && (
+        <div className="space-y-5">
+          <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">Text Editor</h2>
+              <p className="text-xs text-muted">Denne editor bruges til tekstbaserede filer, kildekode, konfigurationsfiler, markup og logfiler der ikke haandteres af OnlyOffice.</p>
+            </div>
+          </section>
+          <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-3">
+            <h3 className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Understoettede formater</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs text-muted">
+              {TEXT_EDITOR_GROUPS.map(group => (
+                <div key={group.label}>
+                  <p className="font-medium text-zinc-600 dark:text-slate-400 mb-1">{group.label}</p>
+                  {[...group.exts].map(ext => (
+                    <p key={ext}>*.{ext}</p>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-2">
+            <h3 className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Funktioner</h3>
+            <ul className="text-xs text-muted space-y-1 list-disc list-inside">
+              <li>Syntaksfremhaevning baseret paa filtype</li>
+              <li>Linjenumre, soeg/erstat, tabulering</li>
+              <li>Lys/moerk tema — foelger Sharedrive-tema</li>
+              <li>Redigering op til 5 MB — stoerre filer aabnes skrivebeskyttet</li>
+              <li>Filer over 20 MB kan ikke aabnes i editoren</li>
+              <li>Skrivebeskyttet tilstand naar brugeren ikke har skriveadgang</li>
+              <li>Gem med Ctrl+S, advarsel ved browser-luk med ugemte aendringer</li>
+              <li>Konfliktbeskyttelse: advarer hvis filen er aendret paa serveren</li>
+            </ul>
+          </section>
         </div>
       )}
 
@@ -323,6 +359,12 @@ function SettingsPage() {
 
 const inputClass =
   'w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500'
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const result: T[][] = []
+  for (let i = 0; i < arr.length; i += size) result.push(arr.slice(i, i + size))
+  return result
+}
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (

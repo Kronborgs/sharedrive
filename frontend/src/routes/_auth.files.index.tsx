@@ -16,6 +16,8 @@ import { FolderPickerDialog } from '@/components/files/FolderPickerDialog'
 import { ShareTargetDialog } from '@/components/files/ShareTargetDialog'
 import { ShareTargetHint } from '@/components/files/ShareTargetHint'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
+import { TextEditor } from '@/components/files/TextEditor'
+import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import { useShareTarget } from '@/hooks/useShareTarget'
 import { useI18n } from '@/lib/i18n'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive, FilePlus } from 'lucide-react'
@@ -24,6 +26,7 @@ import { toast } from 'sonner'
 const searchSchema = z.object({
   folder: z.string().optional(),
   oo: z.string().optional(), // file ID currently open in OnlyOffice editor
+  te: z.string().optional(), // file ID currently open in text editor
 })
 
 export const Route = createFileRoute('/_auth/files/')({
@@ -57,7 +60,7 @@ function shuffleArray<T>(arr: T[]): T[] {
 function FilesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { folder: folderId = null, oo: ooFileId = null } = Route.useSearch()
+  const { folder: folderId = null, oo: ooFileId = null, te: teFileId = null } = Route.useSearch()
   const qc = useQueryClient()
   const { setPlaylist, addTracks, tracks: playlistTracks, activePlaylistId, playlistMaxTracks } = usePlaylist()
   const { t } = useI18n()
@@ -177,6 +180,7 @@ function FilesPage() {
 
   // Derive OO item from URL param — avoids separate state that breaks back/forward
   const ooItem = ooFileId ? (files?.find(f => f.id === ooFileId) ?? null) : null
+  const teItem = teFileId ? (files?.find(f => f.id === teFileId) ?? null) : null
 
   useEffect(() => {
     if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
@@ -208,23 +212,20 @@ function FilesPage() {
       return
     }
     // Open in OnlyOffice if configured and file format is supported
-    if (systemSettings?.onlyoffice_url) {
-      const ext = item.name.split('.').pop()?.toLowerCase() ?? ''
-      const ooFormats = new Set([
-        'doc','docx','docm','dot','dotx','rtf','odt','ott','txt','xml',
-        'xls','xlsx','xlsm','xlsb','xltx','csv','ods','ots','fods',
-        'ppt','pptx','pptm','potx','odp','otp','fodp',
-      ])
-      if (ooFormats.has(ext)) {
-        void navigate({ to: '/files', search: { folder: folderId ?? undefined, oo: item.id } })
-        return
-      }
+    if (systemSettings?.onlyoffice_url && shouldOpenInOnlyOffice(item.name)) {
+      void navigate({ to: '/files', search: { folder: folderId ?? undefined, oo: item.id } })
+      return
+    }
+    // Open in text editor if file format is supported
+    if (shouldOpenInTextEditor(item.name)) {
+      void navigate({ to: '/files', search: { folder: folderId ?? undefined, te: item.id } })
+      return
     }
     setPreviewItem(item)
   }, [navigate, systemSettings, folderId])
 
   const doCreateFolderPlaylist = useCallback(async (
-    folder: FileItem,
+    _folder: FileItem,
     audioFiles: FileItem[],
     existingM3u: FileItem | null,
     mode: 'all' | 'first50' | 'random50',
@@ -735,6 +736,12 @@ function FilesPage() {
           item={ooItem}
           onlyofficeUrl={systemSettings.onlyoffice_url}
           backLabel={t('page.myFiles')}
+          onClose={() => void navigate({ to: '/files', search: { folder: folderId ?? undefined } })}
+        />
+      )}
+      {teItem && (
+        <TextEditor
+          item={teItem}
           onClose={() => void navigate({ to: '/files', search: { folder: folderId ?? undefined } })}
         />
       )}

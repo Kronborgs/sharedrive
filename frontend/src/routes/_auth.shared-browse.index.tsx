@@ -10,6 +10,8 @@ import { ShareDialog } from '@/components/files/ShareDialog'
 import { DropZone, UploadProgress, useUploader } from '@/components/files/UploadZone'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
+import { TextEditor } from '@/components/files/TextEditor'
+import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import { ChevronRight, Users, Upload, FilePlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
@@ -60,6 +62,7 @@ function SharedBrowsePage() {
   const [renameName, setRenameName] = useState('')
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
   const [ooItem, setOoItem] = useState<FileItem | null>(null)
+  const [teItem, setTeItem] = useState<FileItem | null>(null)
   const [newDocOpen, setNewDocOpen] = useState(false)
   const { t } = useI18n()
 
@@ -121,15 +124,13 @@ function SharedBrowsePage() {
       void navigate({ to: '/shared-browse', search: { folder: item.id, root: rootId } })
       return
     }
-    if (systemSettings?.onlyoffice_url) {
-      const ext = item.name.split('.').pop()?.toLowerCase() ?? ''
-      const ooFormats = new Set(['doc','docx','docm','dot','dotx','rtf','odt','ott','txt','xml',
-        'xls','xlsx','xlsm','xlsb','xltx','csv','ods','ots','fods',
-        'ppt','pptx','pptm','potx','odp','otp','fodp'])
-      if (ooFormats.has(ext)) {
-        setOoItem(item)
-        return
-      }
+    if (systemSettings?.onlyoffice_url && shouldOpenInOnlyOffice(item.name)) {
+      setOoItem(item)
+      return
+    }
+    if (shouldOpenInTextEditor(item.name)) {
+      setTeItem(item)
+      return
     }
     setPreviewItem(item)
   }, [navigate, rootId, systemSettings])
@@ -291,6 +292,12 @@ function SharedBrowsePage() {
           onlyofficeUrl={systemSettings.onlyoffice_url}
           backLabel={t('shared.sharedWithMe')}
           onClose={() => setOoItem(null)}
+        />
+      )}
+      {teItem && (
+        <TextEditor
+          item={teItem}
+          onClose={() => setTeItem(null)}
         />
       )}
       <UploadProgress uploads={uploads} onDismiss={dismiss} directUpload={directUpload} />

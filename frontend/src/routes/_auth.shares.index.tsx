@@ -7,12 +7,10 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
+import { TextEditor } from '@/components/files/TextEditor'
+import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import type { FileItem } from '@/types/api'
 import { useI18n } from '@/lib/i18n'
-
-const ooFormats = new Set(['doc','docx','docm','dot','dotx','rtf','odt','ott','txt','xml',
-  'xls','xlsx','xlsm','xlsb','xltx','csv','ods','ots','fods',
-  'ppt','pptx','pptm','potx','odp','otp','fodp'])
 
 export const Route = createFileRoute('/_auth/shares/')({
   component: SharedWithMePage,
@@ -38,6 +36,7 @@ function SharedWithMePage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
   const [ooItem, setOoItem] = useState<FileItem | null>(null)
+  const [teItem, setTeItem] = useState<FileItem | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['files', 'shared-with-me'],
@@ -77,10 +76,10 @@ function SharedWithMePage() {
 
   const handleOpen = (item: FileItem) => {
     if (item.is_folder) void navigate({ to: '/shared-browse', search: { folder: item.id } })
-    else if (systemSettings?.onlyoffice_url) {
-      const ext = item.name.split('.').pop()?.toLowerCase() ?? ''
-      if (ooFormats.has(ext)) { setOoItem(item); return }
-      setPreviewItem(item)
+    else if (systemSettings?.onlyoffice_url && shouldOpenInOnlyOffice(item.name)) {
+      setOoItem(item)
+    } else if (shouldOpenInTextEditor(item.name)) {
+      setTeItem(item)
     } else {
       setPreviewItem(item)
     }
@@ -111,6 +110,12 @@ function SharedWithMePage() {
           onlyofficeUrl={systemSettings.onlyoffice_url}
           backLabel={t('shared.sharedWithMe')}
           onClose={() => setOoItem(null)}
+        />
+      )}
+      {teItem && (
+        <TextEditor
+          item={teItem}
+          onClose={() => setTeItem(null)}
         />
       )}
     </div>

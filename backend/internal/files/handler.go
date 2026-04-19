@@ -1272,3 +1272,105 @@ func (h *Handler) UpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
+
+// ── Text-file content save ────────────────────────────────────────────────────
+
+// textEditorExtensions is the set of file extensions allowed for the text editor.
+var textEditorExtensions = map[string]bool{
+	"txt": true, "md": true, "markdown": true, "json": true, "jsonc": true,
+	"js": true, "jsx": true, "ts": true, "tsx": true, "css": true, "scss": true, "less": true,
+	"html": true, "htm": true, "xml": true, "yml": true, "yaml": true,
+	"ini": true, "toml": true, "conf": true, "config": true, "env": true,
+	"properties": true, "log": true, "sql": true,
+	"sh": true, "bash": true, "zsh": true,
+	"py": true, "php": true, "java": true, "c": true, "cpp": true,
+	"h": true, "hpp": true, "cs": true, "go": true, "rs": true,
+	"rb": true, "pl": true, "lua": true,
+	"dockerfile": true, "gitignore": true,
+}
+
+// textFileExt extracts the lowercase extension for text-editor checks.
+// Handles special names like "Dockerfile" and ".gitignore".
+func textFileExt(name string) string {
+	lower := strings.ToLower(name)
+	if lower == "dockerfile" {
+		return "dockerfile"
+	}
+	if lower == ".gitignore" || lower == "gitignore" {
+		return "gitignore"
+	}
+	dot := strings.LastIndex(lower, ".")
+	if dot < 0 || dot == len(lower)-1 {
+		return ""
+	}
+	return lower[dot+1:]
+}
+
+const textEditorMaxSaveBytes = 20 * 1024 * 1024 // 20 MB
+
+// SaveContent handles PUT /api/v1/files/{id}/content — replaces file content
+// from the request body. Only allowed for text-editor-compatible file types.
+// Requires either file ownership or an active share with can_edit=true.
+func (h *Handler) SaveContent(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+
+	// Limit request body to prevent abuse.
+	r.Body = http.MaxBytesReader(w, r.Body, textEditorMaxSaveBytes)
+
+	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
+	if err != nil || f == nil || f.IsFolder {
+		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	// Verify the file is a text-editor-compatible type.
+	ext := textFileExt(f.Name)
+	if !textEditorExtensions[ext] {
+		httputil.RespondError(w, http.StatusBadRequest, "file type not supported for text editing")
+		return
+	}
+
+	// Permission check: owner OR has share with can_edit.
+	if f.OwnerID.String() != actor.ID.String() {
+		var canEdit bool
+		err = h.svc.db.QueryRow(ctx,
+			`WITH RECURSIVE anc AS (
+			   SELECT id, parent_id FROM files WHERE id = $1::uuid AND deleted_at IS NULL
+			   UNION ALL
+			   SELECT p.id, p.parent_id FROM files p JOIN anc a ON p.id = a.parent_id WHERE p.deleted_at IS NULL
+			 )
+			 SELECT EXISTS (
+			   SELECT 1 FROM shares s JOIN anc a ON a.id = s.resource_id
+			   WHERE s.revoked_at IS NULL
+			     AND (s.expires_at IS NULL OR s.expires_at > now())
+			     AND s.can_edit = true
+			     AND (
+			       (s.grantee_type = 'user' AND s.grantee_id = $2::uuid)
+			       OR (s.grantee_type = 'group' AND s.grantee_id IN (
+			         SELECT group_id FROM group_members WHERE user_id = $2::uuid
+			       ))
+			     )
+			 )`, id, actor.ID.String(),
+		).Scan(&canEdit)
+		if err != nil || !canEdit {
+			httputil.RespondError(w, http.StatusForbidden, "write access denied")
+			return
+		}
+	}
+
+	if err := h.svc.ReplaceContent(ctx, id, r.Body); err != nil {
+		log.Error().Err(err).Str("file_id", id).Msg("files.SaveContent")
+		httputil.RespondError(w, http.StatusInternalServerError, "save failed")
+		return
+	}
+
+	// Re-fetch updated file to return updated_at for conflict detection.
+	updated, _ := h.svc.GetAccessible(ctx, id, actor.ID.String())
+	if updated != nil {
+		httputil.Respond(w, http.StatusOK, updated)
+	} else {
+		httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}

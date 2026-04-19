@@ -7,6 +7,7 @@ import { formatBytes, formatDate } from '@/lib/utils'
 import { Download, Lock, FilePlus, FileText, Table2, Presentation } from 'lucide-react'
 import { useState } from 'react'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
+import { shouldOpenInOnlyOffice } from '@/lib/file-types'
 import { useI18n } from '@/lib/i18n'
 
 const searchSchema = z.object({
@@ -17,14 +18,6 @@ interface SharedPayload {
   share: Share
   item: FileItem
   items?: FileItem[] // if item is a folder
-}
-
-const ooFormats = new Set(['doc','docx','docm','dot','dotx','rtf','odt','ott','txt','xml',
-  'xls','xlsx','xlsm','xlsb','xltx','csv','ods','ots','fods',
-  'ppt','pptx','pptm','potx','odp','otp','fodp'])
-
-function isOoFormat(name: string) {
-  return ooFormats.has(name.split('.').pop()?.toLowerCase() ?? '')
 }
 
 export const Route = createFileRoute('/shared/')({
@@ -173,7 +166,7 @@ function SharedPage() {
             {/* Actions for direct file share */}
             {!item.is_folder && (
               <div className="flex items-center gap-2">
-                {ooEnabled && isOoFormat(item.name) && (
+                {ooEnabled && shouldOpenInOnlyOffice(item.name) && (
                   <button
                     onClick={() => openInOO(item)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
@@ -234,7 +227,7 @@ function SharedPage() {
                     key={f.id}
                     className="hover:bg-zinc-50 dark:hover:bg-[#2d3148]/50 cursor-pointer"
                     onClick={() => {
-                      if (!f.is_folder && ooEnabled && isOoFormat(f.name)) {
+                      if (!f.is_folder && ooEnabled && shouldOpenInOnlyOffice(f.name)) {
                         openInOO(f)
                       }
                     }}

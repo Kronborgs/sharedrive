@@ -15,6 +15,7 @@ import { DownloadDialog } from '@/components/files/DownloadDialog'
 import { FolderPickerDialog } from '@/components/files/FolderPickerDialog'
 import { ShareTargetDialog } from '@/components/files/ShareTargetDialog'
 import { ShareTargetHint } from '@/components/files/ShareTargetHint'
+import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { useShareTarget } from '@/hooks/useShareTarget'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive } from 'lucide-react'
 import { toast } from 'sonner'
@@ -65,6 +66,7 @@ function FilesPage() {
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
+  const [ooItem, setOoItem] = useState<FileItem | null>(null)
   const [downloadIds, setDownloadIds] = useState<string[] | null>(null)
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false)
@@ -88,6 +90,12 @@ function FilesPage() {
       folderId
         ? api.get<FileItem[]>(`/api/v1/files/breadcrumbs?folder_id=${folderId}`, signal)
         : Promise.resolve<FileItem[]>([]),
+  })
+
+  const { data: systemSettings } = useQuery({
+    queryKey: ['system', 'settings'],
+    queryFn: ({ signal }) => api.get<{ direct_upload_url: string; onlyoffice_url: string }>('/api/v1/system/settings', signal),
+    staleTime: 5 * 60 * 1000,
   })
 
   const { data: files, isLoading } = useQuery({
@@ -172,9 +180,25 @@ function FilesPage() {
   }, [])
 
   const handleOpen = useCallback((item: FileItem) => {
-    if (item.is_folder) void navigate({ to: '/files', search: { folder: item.id } })
-    else setPreviewItem(item)
-  }, [navigate])
+    if (item.is_folder) {
+      void navigate({ to: '/files', search: { folder: item.id } })
+      return
+    }
+    // Open in OnlyOffice if configured and file format is supported
+    if (systemSettings?.onlyoffice_url) {
+      const ext = item.name.split('.').pop()?.toLowerCase() ?? ''
+      const ooFormats = new Set([
+        'doc','docx','docm','dot','dotx','rtf','odt','ott','txt','xml',
+        'xls','xlsx','xlsm','xlsb','xltx','csv','ods','ots','fods',
+        'ppt','pptx','pptm','potx','odp','otp','fodp',
+      ])
+      if (ooFormats.has(ext)) {
+        setOoItem(item)
+        return
+      }
+    }
+    setPreviewItem(item)
+  }, [navigate, systemSettings])
 
   const doCreateFolderPlaylist = useCallback(async (
     folder: FileItem,
@@ -651,6 +675,9 @@ function FilesPage() {
       {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < 50} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
       {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
+      {ooItem && systemSettings?.onlyoffice_url && (
+        <OnlyOfficeEditor item={ooItem} onlyofficeUrl={systemSettings.onlyoffice_url} onClose={() => setOoItem(null)} />
+      )}
       {downloadIds && <DownloadDialog ids={downloadIds} onClose={() => setDownloadIds(null)} />}
       {moveItem && (
         <FolderPickerDialog

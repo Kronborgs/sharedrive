@@ -31,6 +31,7 @@ import (
 	"github.com/yourname/privatedrive/internal/files"
 	mw "github.com/yourname/privatedrive/internal/middleware"
 	"github.com/yourname/privatedrive/internal/onboarding"
+	"github.com/yourname/privatedrive/internal/onlyoffice"
 	"github.com/yourname/privatedrive/internal/preview"
 	"github.com/yourname/privatedrive/internal/ratelimit"
 	"github.com/yourname/privatedrive/internal/shares"
@@ -59,6 +60,7 @@ type Server struct {
 	supportHandler *admin.SupportAccessHandler
 	appPwdHandler  *webdav.AppPasswordHandler
 	backupHandler  *backup.Handler
+	ooHandler      *onlyoffice.Handler
 	auditSvc       audit.Logger
 	ioTracker      *files.IOTracker
 }
@@ -97,6 +99,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
 		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, backupsRoot(cfg.BackupsRoot), auditSvc, ratelimit.New(rdb)),
+		ooHandler:      onlyoffice.NewHandler(db, cfg.FilesRoot, cfg.AppBaseURL),
 		auditSvc:       auditSvc,
 		ioTracker:      ioTracker,
 	}
@@ -284,6 +287,10 @@ func (s *Server) buildRouter() *chi.Mux {
 	// Legacy alias used by frontend
 	r.Post("/api/v1/setup", s.onboarding.Setup)
 
+	// OnlyOffice document server callbacks (authenticated by JWT, not session)
+	r.Post("/api/v1/onlyoffice/callback/{fileId}", s.ooHandler.Callback)
+	r.Get("/api/v1/onlyoffice/download/{fileId}", s.ooHandler.Download)
+
 	// ── Auth endpoints (no session required) ──────────────────────────────
 	r.Post("/api/v1/auth/login", s.authHandler.Login)
 	r.Post("/api/v1/auth/logout", s.authHandler.Logout)
@@ -386,6 +393,10 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		// SSE (admin-in-account banner)
 		r.Get("/api/v1/me/events", s.handleSSE)
+
+		// OnlyOffice editor integration (available to all authenticated users)
+		r.Get("/api/v1/onlyoffice/config/{fileId}", s.ooHandler.GetEditorConfig)
+		r.Get("/api/v1/onlyoffice/token/{fileId}", s.ooHandler.MakeDownloadToken)
 
 		// Admin routes
 		r.Group(func(r chi.Router) {

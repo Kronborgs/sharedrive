@@ -38,17 +38,19 @@ func NewHandler(db *pgxpool.Pool, cfg *config.Config, ioTracker *files.IOTracker
 // ─── System Settings ─────────────────────────────────────────────────────────
 
 type settingsResponse struct {
-	SiteName           string `json:"site_name"`
-	AllowRegistrations bool   `json:"allow_registrations"`
-	RequireInvite      bool   `json:"require_invite"`
-	DefaultQuotaBytes  int64  `json:"default_quota_bytes"`
-	MaxUploadBytes     int64  `json:"max_upload_bytes"`
-	DirectUploadURL    string `json:"direct_upload_url"`
-	SMTPHost           string `json:"smtp_host"`
-	SMTPPort           int    `json:"smtp_port"`
-	SMTPUsername       string `json:"smtp_username"`
-	SMTPFromAddress    string `json:"smtp_from_address"`
-	SMTPTls            bool   `json:"smtp_tls"`
+	SiteName            string `json:"site_name"`
+	AllowRegistrations  bool   `json:"allow_registrations"`
+	RequireInvite       bool   `json:"require_invite"`
+	DefaultQuotaBytes   int64  `json:"default_quota_bytes"`
+	MaxUploadBytes      int64  `json:"max_upload_bytes"`
+	DirectUploadURL     string `json:"direct_upload_url"`
+	SMTPHost            string `json:"smtp_host"`
+	SMTPPort            int    `json:"smtp_port"`
+	SMTPUsername        string `json:"smtp_username"`
+	SMTPFromAddress     string `json:"smtp_from_address"`
+	SMTPTls             bool   `json:"smtp_tls"`
+	OnlyOfficeURL       string `json:"onlyoffice_url"`
+	OnlyOfficeJWTSecret string `json:"onlyoffice_jwt_secret"`
 }
 
 func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
@@ -83,17 +85,19 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.Respond(w, http.StatusOK, settingsResponse{
-		SiteName:           kv["app_name"],
-		AllowRegistrations: kv["allow_registrations"] == "true",
-		RequireInvite:      kv["require_invite"] == "true",
-		DefaultQuotaBytes:  defaultQuota,
-		MaxUploadBytes:     maxUpload,
-		DirectUploadURL:    kv["direct_upload_url"],
-		SMTPHost:           kv["smtp_host"],
-		SMTPPort:           smtpPort,
-		SMTPUsername:       kv["smtp_user"],
-		SMTPFromAddress:    kv["smtp_from"],
-		SMTPTls:            kv["smtp_tls"] == "starttls",
+		SiteName:            kv["app_name"],
+		AllowRegistrations:  kv["allow_registrations"] == "true",
+		RequireInvite:       kv["require_invite"] == "true",
+		DefaultQuotaBytes:   defaultQuota,
+		MaxUploadBytes:      maxUpload,
+		DirectUploadURL:     kv["direct_upload_url"],
+		SMTPHost:            kv["smtp_host"],
+		SMTPPort:            smtpPort,
+		SMTPUsername:        kv["smtp_user"],
+		SMTPFromAddress:     kv["smtp_from"],
+		SMTPTls:             kv["smtp_tls"] == "starttls",
+		OnlyOfficeURL:       kv["onlyoffice_url"],
+		OnlyOfficeJWTSecret: kv["onlyoffice_jwt_secret"],
 	})
 }
 
@@ -102,28 +106,42 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/system/settings
 func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	var directUploadURL string
-	_ = h.db.QueryRow(ctx,
-		`SELECT value FROM system_settings WHERE key = 'direct_upload_url'`,
-	).Scan(&directUploadURL)
+	rows, err := h.db.Query(ctx,
+		`SELECT key, value FROM system_settings WHERE key IN ('direct_upload_url','onlyoffice_url')`)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rows.Close()
+	kv := map[string]string{}
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			continue
+		}
+		kv[k] = v
+	}
 	httputil.Respond(w, http.StatusOK, map[string]string{
-		"direct_upload_url": directUploadURL,
+		"direct_upload_url": kv["direct_upload_url"],
+		"onlyoffice_url":    kv["onlyoffice_url"],
 	})
 }
 
 type updateSettingsRequest struct {
-	SiteName           *string `json:"site_name"`
-	AllowRegistrations *bool   `json:"allow_registrations"`
-	RequireInvite      *bool   `json:"require_invite"`
-	DefaultQuotaBytes  *int64  `json:"default_quota_bytes"`
-	MaxUploadBytes     *int64  `json:"max_upload_bytes"`
-	DirectUploadURL    *string `json:"direct_upload_url"`
-	SMTPHost           *string `json:"smtp_host"`
-	SMTPPort           *int    `json:"smtp_port"`
-	SMTPUsername       *string `json:"smtp_username"`
-	SMTPPassword       *string `json:"smtp_password"`
-	SMTPFromAddress    *string `json:"smtp_from_address"`
-	SMTPTls            *bool   `json:"smtp_tls"`
+	SiteName            *string `json:"site_name"`
+	AllowRegistrations  *bool   `json:"allow_registrations"`
+	RequireInvite       *bool   `json:"require_invite"`
+	DefaultQuotaBytes   *int64  `json:"default_quota_bytes"`
+	MaxUploadBytes      *int64  `json:"max_upload_bytes"`
+	DirectUploadURL     *string `json:"direct_upload_url"`
+	SMTPHost            *string `json:"smtp_host"`
+	SMTPPort            *int    `json:"smtp_port"`
+	SMTPUsername        *string `json:"smtp_username"`
+	SMTPPassword        *string `json:"smtp_password"`
+	SMTPFromAddress     *string `json:"smtp_from_address"`
+	SMTPTls             *bool   `json:"smtp_tls"`
+	OnlyOfficeURL       *string `json:"onlyoffice_url"`
+	OnlyOfficeJWTSecret *string `json:"onlyoffice_jwt_secret"`
 }
 
 func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -192,6 +210,12 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		} else {
 			upsert("smtp_tls", "none")
 		}
+	}
+	if req.OnlyOfficeURL != nil {
+		upsert("onlyoffice_url", *req.OnlyOfficeURL)
+	}
+	if req.OnlyOfficeJWTSecret != nil && *req.OnlyOfficeJWTSecret != "" {
+		upsert("onlyoffice_jwt_secret", *req.OnlyOfficeJWTSecret)
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }

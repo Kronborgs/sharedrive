@@ -1,0 +1,123 @@
+import { useEffect, useRef } from 'react'
+import { X, Loader } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import type { FileItem } from '@/types/api'
+
+interface EditorConfig {
+  document: {
+    fileType: string
+    key: string
+    title: string
+    url: string
+    permissions: { edit: boolean; download: boolean }
+  }
+  documentType: string
+  editorConfig: {
+    callbackUrl: string
+    lang: string
+    mode: string
+    user: { id: string; name: string }
+  }
+  token?: string
+}
+
+interface Props {
+  item: FileItem
+  onlyofficeUrl: string
+  onClose: () => void
+}
+
+export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const editorRef = useRef<unknown>(null)
+
+  const { data: config, isLoading, isError } = useQuery({
+    queryKey: ['onlyoffice', 'config', item.id],
+    queryFn: ({ signal }) => api.get<EditorConfig>(`/api/v1/onlyoffice/config/${item.id}`, signal),
+    staleTime: 0,
+  })
+
+  useEffect(() => {
+    if (!config || !containerRef.current) return
+
+    // Load OnlyOffice API script dynamically from document server
+    const scriptId = 'onlyoffice-api-script'
+    const existing = document.getElementById(scriptId)
+
+    const initEditor = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const OTApi = (window as any).DocsAPI
+      if (!OTApi) return
+
+      editorRef.current = new OTApi.DocEditor('onlyoffice-editor-placeholder', {
+        ...config,
+        width: '100%',
+        height: '100%',
+        events: {
+          onDocumentReady: () => { /* ready */ },
+          onError: (e: unknown) => console.error('OnlyOffice error', e),
+        },
+      })
+    }
+
+    if (existing) {
+      initEditor()
+      return
+    }
+
+    const script = document.createElement('script')
+    script.id = scriptId
+    script.src = `${onlyofficeUrl.replace(/\/$/, '')}/web-apps/apps/api/documents/api.js`
+    script.onload = initEditor
+    script.onerror = () => console.error('Failed to load OnlyOffice API script')
+    document.head.appendChild(script)
+
+    return () => {
+      // Destroy editor instance on unmount
+      if (editorRef.current) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(editorRef.current as any).destroyEditor?.()
+        } catch { /* ignore */ }
+        editorRef.current = null
+      }
+    }
+  }, [config, onlyofficeUrl])
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 shrink-0">
+        <span className="text-sm font-medium text-slate-100 flex-1 truncate">{item.name}</span>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-zinc-800 transition-colors"
+          title="Luk editor"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      {/* Editor area */}
+      <div className="flex-1 min-h-0 relative">
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Loader size={24} className="animate-spin text-slate-400" />
+          </div>
+        )}
+        {isError && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="text-sm text-red-400">Kunne ikke indlæse editor-konfiguration.</p>
+          </div>
+        )}
+        {/* OnlyOffice mounts its iframe inside this div */}
+        <div
+          ref={containerRef}
+          id="onlyoffice-editor-placeholder"
+          className="w-full h-full"
+        />
+      </div>
+    </div>
+  )
+}

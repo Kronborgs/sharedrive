@@ -88,7 +88,10 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extra
 			scriptSrc := staticScriptSrc
 			frameSrc := "'none'"
 			if extra := resolve(extraScriptAndFrameSrc, &cacheScriptFr); extra != "" {
-				scriptSrc += " " + extra
+				// OnlyOffice's api.js injects inline scripts on the host page when
+				// initialising the editor, so 'unsafe-inline' is required alongside
+				// the OO server origin. It is only added when OO is configured.
+				scriptSrc += " " + extra + " 'unsafe-inline'"
 				frameSrc = extra
 			}
 

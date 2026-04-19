@@ -168,13 +168,14 @@ type edUser struct {
 }
 
 // documentType resolves OnlyOffice document type from file extension.
+// Valid values: word, cell, slide, pdf, diagram
 func documentType(name string) string {
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
 	switch ext {
 	case "xls", "xlsx", "xlsm", "xlsb", "xltx", "csv", "ods", "ots", "fods":
-		return "spreadsheet"
+		return "cell"
 	case "ppt", "pptx", "pptm", "potx", "odp", "otp", "fodp":
-		return "presentation"
+		return "slide"
 	default:
 		return "word"
 	}

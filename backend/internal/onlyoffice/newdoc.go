@@ -202,13 +202,40 @@ func (h *Handler) CreateDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate parent belongs to user (or is nil = root)
+	// Validate parent: user must own it or have edit access via a share
+	// (including ancestor folder shares).
+	var folderOwnerID string
 	if req.ParentID != nil && *req.ParentID != "" {
-		var ownerID string
-		if err := h.db.QueryRow(ctx,
-			`SELECT owner_id::text FROM files WHERE id = $1::uuid AND is_folder = true AND deleted_at IS NULL`,
-			*req.ParentID,
-		).Scan(&ownerID); err != nil || ownerID != actor.ID.String() {
+		err := h.db.QueryRow(ctx, `
+			WITH RECURSIVE anc AS (
+			  SELECT id, parent_id FROM files WHERE id = $1::uuid AND deleted_at IS NULL
+			  UNION ALL
+			  SELECT p.id, p.parent_id FROM files p
+			  JOIN anc ON p.id = anc.parent_id
+			  WHERE p.deleted_at IS NULL
+			)
+			SELECT f.owner_id::text
+			  FROM files f
+			 WHERE f.id = $1::uuid AND f.is_folder = true AND f.deleted_at IS NULL
+			   AND (
+			     f.owner_id = $2::uuid
+			     OR EXISTS(
+			       SELECT 1 FROM shares sh
+			       JOIN anc ON sh.resource_id = anc.id
+			       WHERE sh.can_edit = true
+			         AND sh.revoked_at IS NULL
+			         AND (sh.expires_at IS NULL OR sh.expires_at > now())
+			         AND (
+			           (sh.grantee_type = 'user'  AND sh.grantee_id = $2::uuid)
+			           OR (sh.grantee_type = 'group' AND sh.grantee_id IN (
+			                 SELECT group_id FROM group_members WHERE user_id = $2::uuid
+			           ))
+			         )
+			     )
+			   )`,
+			*req.ParentID, actor.ID.String(),
+		).Scan(&folderOwnerID)
+		if err != nil {
 			httputil.RespondError(w, http.StatusForbidden, "invalid parent folder")
 			return
 		}
@@ -233,11 +260,18 @@ func (h *Handler) CreateDocument(w http.ResponseWriter, r *http.Request) {
 		parentParam = req.ParentID
 	}
 
+	// When creating inside a shared folder, the file must be owned by the folder
+	// owner so it stays in the correct storage tree.
+	fileOwner := actor.ID.String()
+	if folderOwnerID != "" {
+		fileOwner = folderOwnerID
+	}
+
 	err = h.db.QueryRow(ctx,
 		`INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path)
-		 VALUES ($1, $2, $3::uuid, false, $4, $5, $6, $7)
+		 VALUES ($1, $2::uuid, $3::uuid, false, $4, $5, $6, $7)
 		 RETURNING id::text, name`,
-		newID, actor.ID, parentParam, req.Name, mime, int64(len(data)), storagePath,
+		newID, fileOwner, parentParam, req.Name, mime, int64(len(data)), storagePath,
 	).Scan(&result.ID, &result.Name)
 	if err != nil {
 		_ = h.storage.Delete(newID.String())

@@ -111,39 +111,14 @@ func verifyJWT(token, secret string) (map[string]any, error) {
 
 // ─── File lookup ─────────────────────────────────────────────────────────────
 
-// shareAccessClause is embedded in queries to check user/group share access.
-// Params: $1 = resource UUID, $2 = user UUID.
-const shareAccessClause = `(
-  f.owner_id = $2::uuid
-  OR EXISTS(
-    SELECT 1 FROM shares sh
-     WHERE sh.resource_id = f.id
-       AND sh.revoked_at IS NULL
-       AND (sh.expires_at IS NULL OR sh.expires_at > now())
-       AND (
-         (sh.grantee_type = 'user'  AND sh.grantee_id = $2::uuid)
-         OR (sh.grantee_type = 'group' AND sh.grantee_id IN (
-               SELECT group_id FROM group_members WHERE user_id = $2::uuid
-         ))
-       )
-  )
-)`
-
-const editAccessClause = `(
-  f.owner_id = $2::uuid
-  OR EXISTS(
-    SELECT 1 FROM shares sh
-     WHERE sh.resource_id = f.id
-       AND sh.can_edit = true
-       AND sh.revoked_at IS NULL
-       AND (sh.expires_at IS NULL OR sh.expires_at > now())
-       AND (
-         (sh.grantee_type = 'user'  AND sh.grantee_id = $2::uuid)
-         OR (sh.grantee_type = 'group' AND sh.grantee_id IN (
-               SELECT group_id FROM group_members WHERE user_id = $2::uuid
-         ))
-       )
-  )
+// shareGrantClause is the condition used to match a share row against a user,
+// including direct grants and group memberships.
+// Bind: $2 = user UUID.
+const shareGrantClause = `(
+  (sh.grantee_type = 'user'  AND sh.grantee_id = $2::uuid)
+  OR (sh.grantee_type = 'group' AND sh.grantee_id IN (
+        SELECT group_id FROM group_members WHERE user_id = $2::uuid
+  ))
 )`
 
 type fileRow struct {
@@ -156,15 +131,39 @@ type fileRow struct {
 }
 
 // lookupFile returns the file if the user owns it or has any active share grant
-// for it. The canEdit field reflects whether the user may write changes.
+// for it (including grants on ancestor folders).
+// The canEdit field reflects whether the user may write changes.
 func (h *Handler) lookupFile(ctx context.Context, fileID, userID string) (*fileRow, error) {
 	var f fileRow
-	err := h.db.QueryRow(ctx,
-		`SELECT f.id::text, f.name, f.owner_id::text, COALESCE(f.mime_type,''), f.storage_path,
-		        `+editAccessClause+` AS can_edit
-		   FROM files f
-		  WHERE f.id = $1::uuid AND f.deleted_at IS NULL
-		    AND `+shareAccessClause,
+	err := h.db.QueryRow(ctx, `
+		WITH RECURSIVE anc AS (
+		  SELECT id, parent_id FROM files WHERE id = $1::uuid AND deleted_at IS NULL
+		  UNION ALL
+		  SELECT p.id, p.parent_id FROM files p
+		  JOIN anc ON p.id = anc.parent_id
+		  WHERE p.deleted_at IS NULL
+		)
+		SELECT f.id::text, f.name, f.owner_id::text, COALESCE(f.mime_type,''), f.storage_path,
+		       (f.owner_id = $2::uuid OR EXISTS(
+		         SELECT 1 FROM shares sh
+		         JOIN anc ON sh.resource_id = anc.id
+		         WHERE sh.can_edit = true
+		           AND sh.revoked_at IS NULL
+		           AND (sh.expires_at IS NULL OR sh.expires_at > now())
+		           AND `+shareGrantClause+`
+		       )) AS can_edit
+		  FROM files f
+		 WHERE f.id = $1::uuid AND f.deleted_at IS NULL
+		   AND (
+		     f.owner_id = $2::uuid
+		     OR EXISTS(
+		       SELECT 1 FROM shares sh
+		       JOIN anc ON sh.resource_id = anc.id
+		       WHERE sh.revoked_at IS NULL
+		         AND (sh.expires_at IS NULL OR sh.expires_at > now())
+		         AND `+shareGrantClause+`
+		     )
+		   )`,
 		fileID, userID,
 	).Scan(&f.id, &f.name, &f.ownerID, &f.mimeType, &f.path, &f.canEdit)
 	if err != nil {
@@ -526,12 +525,28 @@ func (h *Handler) MakeDownloadToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify user owns or has share access to the file
+	// Verify user owns or has share access to the file (including ancestor folder shares)
 	var exists bool
-	_ = h.db.QueryRow(ctx,
-		`SELECT true FROM files f
-		  WHERE f.id = $1::uuid AND f.deleted_at IS NULL
-		    AND `+shareAccessClause,
+	_ = h.db.QueryRow(ctx, `
+		WITH RECURSIVE anc AS (
+		  SELECT id, parent_id FROM files WHERE id = $1::uuid AND deleted_at IS NULL
+		  UNION ALL
+		  SELECT p.id, p.parent_id FROM files p
+		  JOIN anc ON p.id = anc.parent_id
+		  WHERE p.deleted_at IS NULL
+		)
+		SELECT true FROM files f
+		 WHERE f.id = $1::uuid AND f.deleted_at IS NULL
+		   AND (
+		     f.owner_id = $2::uuid
+		     OR EXISTS(
+		       SELECT 1 FROM shares sh
+		       JOIN anc ON sh.resource_id = anc.id
+		       WHERE sh.revoked_at IS NULL
+		         AND (sh.expires_at IS NULL OR sh.expires_at > now())
+		         AND `+shareGrantClause+`
+		     )
+		   )`,
 		fileID, actor.ID.String(),
 	).Scan(&exists)
 	if !exists {

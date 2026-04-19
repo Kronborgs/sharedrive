@@ -23,15 +23,17 @@ import {
   SkipForward,
   Volume2,
   Shuffle,
+  Plus,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
-import { api } from '@/lib/api'
+import { api, createPlaylist } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatBytes, cn } from '@/lib/utils'
 import { WebDAVDialog } from '@/components/layout/WebDAVDialog'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
+import { AddMusicDialog } from '@/components/files/AddMusicDialog'
 import { usePlaylist } from '@/lib/playlist-context'
 
 interface NavItem {
@@ -102,11 +104,13 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
   const [showTOTP, setShowTOTP] = useState(false)
   const [playerExpanded, setPlayerExpanded] = useState(true)
   const [mobilePlayerOpen, setMobilePlayerOpen] = useState(false)
+  const [showAddMusic, setShowAddMusic] = useState(false)
 
   const {
     activePlaylistId,
     activePlaylistName,
     tracks,
+    isLoadingTracks,
     currentIndex,
     isPlaying,
     progress,
@@ -122,7 +126,24 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
     toggleShuffle,
     shuffle,
     removeTrack,
+    addTracks,
+    setPlaylist,
   } = usePlaylist()
+
+  // Handle adding music: when there's an active playlist just add tracks,
+  // otherwise create a new playlist inline and set it as active.
+  const handleAddMusic = async (fileIds: string[]) => {
+    setShowAddMusic(false)
+    if (fileIds.length === 0) return
+    if (activePlaylistId) {
+      await addTracks(fileIds)
+    } else {
+      try {
+        const result = await createPlaylist('Min musik', null, fileIds)
+        setPlaylist(result.id, 'Min musik')
+      } catch { /* ignore */ }
+    }
+  }
 
   const handleLogout = async () => {
     try {
@@ -172,6 +193,19 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
           ))}
         </nav>
 
+        {/* ── Music button when no active playlist ─────────────── */}
+        {!activePlaylistId && user?.role !== 'guest' && (
+          <div className="px-2 pb-2">
+            <button
+              onClick={() => setShowAddMusic(true)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] hover:text-zinc-900 dark:hover:text-slate-100"
+            >
+              <Music size={16} />
+              {t('player.addMusic' as any)}
+            </button>
+          </div>
+        )}
+
         {/* ── Persistent sidebar player ─────────────────────────── */}
         {activePlaylistId && (
           <div className="mx-2 mb-2 rounded-xl border border-zinc-200 dark:border-[#2d3148] overflow-hidden bg-white dark:bg-[#1a1d27]">
@@ -211,7 +245,9 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   title={playerExpanded ? t('player.hideList') : t('player.showList')}
                 >
                   <span className="text-[11px] font-medium text-zinc-700 dark:text-slate-300 truncate group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
-                    {currentTrack?.name ?? activePlaylistName}
+                    {tracks.length === 0 && !isLoadingTracks
+                      ? t('player.empty' as any)
+                      : (currentTrack?.name ?? activePlaylistName)}
                   </span>
                   <ChevronDown
                     size={10}
@@ -260,40 +296,66 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
               <div className="border-t border-zinc-100 dark:border-[#2d3148]">
                 {/* Track list */}
                 <div className="overflow-y-auto max-h-[180px] divide-y divide-zinc-50 dark:divide-[#2d3148]">
-                  {tracks.map((track, i) => (
-                    <div
-                      key={track.id}
-                      className={cn(
-                        'flex items-center gap-1.5 px-2 py-1.5 group',
-                        i === currentIndex && 'bg-brand-50 dark:bg-brand-900/20',
-                      )}
+                  {tracks.length === 0 && !isLoadingTracks ? (
+                    /* Empty state — invite user to add audio files */
+                    <button
+                      onClick={() => setShowAddMusic(true)}
+                      className="w-full flex flex-col items-center justify-center gap-1.5 py-5 text-center hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors group"
                     >
-                      <button
-                        onClick={() => jumpTo(i)}
-                        className="flex-1 min-w-0 flex items-center gap-1.5 text-left"
+                      <Plus size={18} className="text-zinc-300 dark:text-slate-600 group-hover:text-brand-500 transition-colors" />
+                      <span className="text-[11px] text-zinc-400 dark:text-slate-500 group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
+                        {t('player.addMusic' as any)}
+                      </span>
+                    </button>
+                  ) : (
+                    tracks.map((track, i) => (
+                      <div
+                        key={track.id}
+                        className={cn(
+                          'flex items-center gap-1.5 px-2 py-1.5 group',
+                          i === currentIndex && 'bg-brand-50 dark:bg-brand-900/20',
+                        )}
                       >
-                        <span className="text-[10px] text-zinc-400 tabular-nums w-4 shrink-0 text-right">
-                          {i + 1}
-                        </span>
-                        <span className={cn(
-                          'text-[11px] truncate',
-                          i === currentIndex
-                            ? 'font-semibold text-brand-600 dark:text-brand-400'
-                            : 'text-zinc-700 dark:text-slate-300',
-                        )}>
-                          {track.name}
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => { void removeTrack(track.id) }}
-                        className="shrink-0 p-0.5 text-zinc-200 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
-                        title={t('player.removeTrack')}
-                      >
-                        <X size={11} />
-                      </button>
-                    </div>
-                  ))}
+                        <button
+                          onClick={() => jumpTo(i)}
+                          className="flex-1 min-w-0 flex items-center gap-1.5 text-left"
+                        >
+                          <span className="text-[10px] text-zinc-400 tabular-nums w-4 shrink-0 text-right">
+                            {i + 1}
+                          </span>
+                          <span className={cn(
+                            'text-[11px] truncate',
+                            i === currentIndex
+                              ? 'font-semibold text-brand-600 dark:text-brand-400'
+                              : 'text-zinc-700 dark:text-slate-300',
+                          )}>
+                            {track.name}
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => { void removeTrack(track.id) }}
+                          className="shrink-0 p-0.5 text-zinc-200 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                          title={t('player.removeTrack')}
+                        >
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
+
+                {/* Add music button (when tracks exist, show as small footer link) */}
+                {tracks.length > 0 && tracks.length < 50 && (
+                  <div className="border-t border-zinc-50 dark:border-[#2d3148]">
+                    <button
+                      onClick={() => setShowAddMusic(true)}
+                      className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                    >
+                      <Plus size={10} />
+                      {t('player.addMusic' as any)}
+                    </button>
+                  </div>
+                )}
 
                 {/* Volume */}
                 <div className="flex items-center gap-2 px-2.5 py-2 border-t border-zinc-100 dark:border-[#2d3148]">
@@ -416,6 +478,12 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
             isEnabled={!!user?.totp_enabled}
             onClose={() => setShowTOTP(false)}
             onChanged={() => { void qc.invalidateQueries({ queryKey: ['me'] }) }}
+          />
+        )}
+        {showAddMusic && (
+          <AddMusicDialog
+            onClose={() => setShowAddMusic(false)}
+            onAdd={fileIds => { void handleAddMusic(fileIds) }}
           />
         )}
       </aside>
@@ -577,7 +645,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-zinc-900 dark:text-slate-100 truncate">
-                    {currentTrack?.name ?? activePlaylistName}
+                    {currentTrack?.name ?? (tracks.length === 0 && !isLoadingTracks ? t('player.empty' as any) : activePlaylistName)}
                   </p>
                   <p className="text-[10px] text-zinc-400 truncate">{activePlaylistName}</p>
                 </div>

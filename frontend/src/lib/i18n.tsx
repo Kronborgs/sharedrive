@@ -115,6 +115,12 @@ const translations = {
   'player.closePlayer':{ da: 'Luk afspiller',    en: 'Close player' },
   'player.removeTrack':{ da: 'Fjern fra playlist', en: 'Remove from playlist' },
   'player.volume':     { da: 'Lydstyrke',        en: 'Volume' },
+  'player.empty':      { da: 'Playlist tom',     en: 'Playlist empty' },
+  'player.addMusic':   { da: 'Tilføj musik',     en: 'Add music' },
+  'player.addSelected':{ da: 'Tilføj valgte',    en: 'Add selected' },
+  'player.createAndAdd':{ da: 'Opret og afspil', en: 'Create & play' },
+  'player.audioOnly':  { da: 'Kun lydfiler',     en: 'Audio files only' },
+  'player.noAudio':    { da: 'Ingen lydfiler i denne mappe', en: 'No audio files in this folder' },
 
   // ── OnlyOffice editor ────────────────────────────────────────────────────
   'oo.backToFolder':   { da: 'Tilbage til mappen', en: 'Back to folder' },

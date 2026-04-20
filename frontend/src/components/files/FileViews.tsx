@@ -148,7 +148,7 @@ function FileRow({
         {formatRelative(item.updated_at)}
       </td>
       <td className="pr-2">
-        <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        <div className="flex items-center justify-end gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity">
           {onQuickShare && (
             <button
               onClick={e => { e.stopPropagation(); onQuickShare(item) }}

@@ -484,7 +484,7 @@ function FilesPage() {
         <div className="sticky top-0 z-10 shrink-0 bg-zinc-50 dark:bg-[#0f1117]">
           {/* PWA install banner — touch devices only, dismissible */}
           <ShareTargetHint />
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-100 dark:border-[#2d3148]">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 px-4 py-2.5 border-b border-zinc-100 dark:border-[#2d3148]">
           {selected.size > 0 ? (
             /* ── Bulk action bar ─────────────────────────────── */
             <>
@@ -550,8 +550,8 @@ function FilesPage() {
             </>
           ) : (
             /* ── Normal toolbar ──────────────────────────────── */
-            <>
-              <nav className="flex items-center gap-1 flex-1 min-w-0 text-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 w-full">
+              <nav className="flex items-center gap-1 min-w-0 text-sm sm:flex-1">
                 <button
                   onClick={() => void navigate({ to: '/files', search: {} })}
                   className="flex items-center gap-1 text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors shrink-0"
@@ -560,18 +560,18 @@ function FilesPage() {
                   {t('page.myFiles')}
                 </button>
                 {breadcrumbs?.map(bc => (
-                  <span key={bc.id} className="flex items-center gap-1">
+                  <span key={bc.id} className="flex items-center gap-1 min-w-0">
                     <ChevronRight size={13} className="text-zinc-300 dark:text-slate-600 shrink-0" />
                     <button
                       onClick={() => void navigate({ to: '/files', search: { folder: bc.id } })}
-                      className="text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors truncate max-w-[120px]"
+                      className="text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors truncate max-w-[140px] sm:max-w-[160px]"
                     >
                       {bc.name}
                     </button>
                   </span>
                 ))}
               </nav>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-1 shrink-0 sm:ml-auto">
                 {/* Folder actions — desktop only (hidden on mobile) */}
                 {folderId && currentFolderItem && (
                   <>
@@ -777,7 +777,7 @@ function FilesPage() {
                   <button onClick={() => setView('grid')} className={`p-1.5 transition-colors ${view === 'grid' ? 'bg-zinc-100 dark:bg-[#2d3148] text-zinc-900 dark:text-slate-100' : 'text-zinc-400 hover:text-zinc-600'}`} title="Grid view"><LayoutGrid size={14} /></button>
                 </div>
               </div>
-            </>
+            </div>
           )}
           </div>
         </div>

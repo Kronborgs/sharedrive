@@ -172,6 +172,15 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
               Print
             </button>
           )}
+          {onDelete && (
+            <button
+              onClick={() => onDelete(currentItem)}
+              className="shrink-0 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+              title="Delete file"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
           <button
             onClick={onClose}
             className="shrink-0 p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400"

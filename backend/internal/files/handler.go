@@ -1056,10 +1056,25 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 
 	mime := f.MimeType
 	// If the stored MIME is missing or the generic fallback used at upload time,
-	// try to detect a more specific type from the file extension so that strict
-	// desktop browsers (Chrome/Firefox) render the file correctly.
+	// detect the real content type by sniffing the first 512 bytes of the file.
+	// This is more reliable than extension-based guessing because migrated files
+	// may have the wrong extension (e.g. PNG bytes stored with a .jpg name).
 	if mime == "" || mime == "application/octet-stream" {
-		mime = mimeByExtension(f.Name)
+		var sniffBuf [512]byte
+		n, _ := io.ReadFull(reader, sniffBuf[:])
+		detected := http.DetectContentType(sniffBuf[:n])
+		if detected != "application/octet-stream" {
+			mime = detected
+		} else {
+			// http.DetectContentType couldn't identify it — fall back to extension.
+			mime = mimeByExtension(f.Name)
+		}
+		// Seek back so ServeContent/CopyN reads the full file from the start.
+		if _, err := reader.Seek(0, io.SeekStart); err != nil {
+			log.Error().Err(err).Str("file_id", id).Msg("files.Preview: seek after sniff")
+			httputil.RespondError(w, http.StatusInternalServerError, "could not seek file")
+			return
+		}
 	}
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Disposition", contentDisposition("inline", f.Name))

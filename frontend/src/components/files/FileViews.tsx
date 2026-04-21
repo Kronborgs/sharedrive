@@ -1,7 +1,7 @@
 import type { FileItem } from '@/types/api'
 import { formatBytes, formatRelative, cn } from '@/lib/utils'
 import { MoreVertical, Folder, UserPlus } from 'lucide-react'
-import { useRef } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { FileThumbnail } from './FileThumbnail'
@@ -14,9 +14,10 @@ interface FileListProps {
   onContextMenu: (item: FileItem, x: number, y: number) => void
   onSelectAll?: () => void
   onQuickShare?: (item: FileItem) => void
+  highlightId?: string
 }
 
-export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, onSelectAll, onQuickShare }: FileListProps) {
+export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, onSelectAll, onQuickShare, highlightId }: FileListProps) {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
@@ -61,6 +62,7 @@ export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, 
             onOpen={onOpen}
             onContextMenu={onContextMenu}
             onQuickShare={onQuickShare}
+            highlight={item.id === highlightId}
           />
         ))}
       </tbody>
@@ -75,6 +77,7 @@ function FileRow({
   onOpen,
   onContextMenu,
   onQuickShare,
+  highlight,
 }: {
   item: FileItem
   selected: boolean
@@ -82,8 +85,20 @@ function FileRow({
   onOpen: (item: FileItem) => void
   onContextMenu: (item: FileItem, x: number, y: number) => void
   onQuickShare?: (item: FileItem) => void
+  highlight?: boolean
 }) {
   const moreRef = useRef<HTMLButtonElement>(null)
+  const rowRef = useRef<HTMLTableRowElement>(null)
+  const [fading, setFading] = useState(highlight ?? false)
+
+  // Scroll into view and start fade-out when highlight is set
+  useEffect(() => {
+    if (!highlight) return
+    rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setFading(true)
+    const t = setTimeout(() => setFading(false), 2000)
+    return () => clearTimeout(t)
+  }, [highlight])
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -92,9 +107,12 @@ function FileRow({
 
   return (
     <tr
+      ref={rowRef}
       className={cn(
-        'group border-b border-zinc-50 dark:border-[#2d3148]/50 cursor-pointer transition-colors',
-        selected
+        'group border-b border-zinc-50 dark:border-[#2d3148]/50 cursor-pointer transition-colors duration-1000',
+        fading
+          ? 'bg-brand-100 dark:bg-brand-800/40'
+          : selected
           ? 'bg-brand-50 dark:bg-brand-900/20'
           : 'hover:bg-zinc-50 dark:hover:bg-[#2d3148]/50',
       )}

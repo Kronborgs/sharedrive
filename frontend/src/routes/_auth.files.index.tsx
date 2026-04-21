@@ -25,9 +25,10 @@ import { toast } from 'sonner'
 
 const searchSchema = z.object({
   folder: z.string().optional(),
-  oo: z.string().optional(),      // file ID currently open in OnlyOffice editor
-  te: z.string().optional(),      // file ID currently open in text editor
-  preview: z.string().optional(), // file ID to open in preview modal
+  oo: z.string().optional(),        // file ID currently open in OnlyOffice editor
+  te: z.string().optional(),        // file ID currently open in text editor
+  preview: z.string().optional(),   // file ID to open in preview modal
+  highlight: z.string().optional(), // file ID to scroll into view + briefly highlight
 })
 
 export const Route = createFileRoute('/_auth/files/')({
@@ -61,7 +62,7 @@ function shuffleArray<T>(arr: T[]): T[] {
 function FilesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { folder: folderId = null, oo: ooFileId = null, te: teFileId = null, preview: previewFileId = null } = Route.useSearch()
+  const { folder: folderId = null, oo: ooFileId = null, te: teFileId = null, preview: previewFileId = null, highlight: highlightFileId = null } = Route.useSearch()
   const qc = useQueryClient()
   const { setPlaylist, addTracks, tracks: playlistTracks, activePlaylistId, playlistMaxTracks } = usePlaylist()
   const { t } = useI18n()
@@ -818,7 +819,7 @@ function FilesPage() {
           {isLoading ? (
             <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.loading')}</div>
           ) : view === 'list' ? (
-            <FileList items={sorted} selectedIds={selected} onSelect={handleSelect} onOpen={handleOpen} onContextMenu={(item, x, y) => setContextMenu({ item, x, y })} onSelectAll={handleSelectAll} onQuickShare={item => setShareItem(item)} />
+            <FileList items={sorted} selectedIds={selected} onSelect={handleSelect} onOpen={handleOpen} onContextMenu={(item, x, y) => setContextMenu({ item, x, y })} onSelectAll={handleSelectAll} onQuickShare={item => setShareItem(item)} highlightId={highlightFileId ?? undefined} />
           ) : (
             <FileGrid items={sorted} selectedIds={selected} onSelect={handleSelect} onOpen={handleOpen} onContextMenu={(item, x, y) => setContextMenu({ item, x, y })} />
           )}

@@ -72,13 +72,12 @@ export function Header({ user, onMenuToggle }: { user?: User; onMenuToggle?: () 
     if (item.is_folder) {
       void navigate({ to: '/files', search: { folder: item.id } })
     } else if (shouldOpenInOnlyOffice(item.name)) {
-      // OnlyOffice: the files page guards against OO not being configured
-      void navigate({ to: '/files', search: { folder, oo: item.id } })
+      void navigate({ to: '/files', search: { folder, oo: item.id, highlight: item.id } })
     } else if (shouldOpenInTextEditor(item.name)) {
-      void navigate({ to: '/files', search: { folder, te: item.id } })
+      void navigate({ to: '/files', search: { folder, te: item.id, highlight: item.id } })
     } else {
-      // All other files: open preview modal via URL param
-      void navigate({ to: '/files', search: { folder, preview: item.id } })
+      // Images, video, PDF etc — navigate to folder, scroll/highlight the row, open preview
+      void navigate({ to: '/files', search: { folder, preview: item.id, highlight: item.id } })
     }
   }, [navigate])
 

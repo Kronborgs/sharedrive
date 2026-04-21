@@ -131,22 +131,33 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
     >
       <div className="relative flex flex-col bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-2xl w-[90vw] max-w-5xl h-[85vh]">
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148] shrink-0">
-          {canNav && (
-            <button onClick={goPrev} className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400" title="Previous (←)">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148] shrink-0">
+          {/* Prev / Next — fixed-width group so the filename never shifts */}
+          <div className="flex items-center shrink-0">
+            <button
+              onClick={goPrev}
+              disabled={!canNav}
+              className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400 disabled:opacity-20 disabled:cursor-default"
+              title="Previous (←)"
+            >
               <ChevronLeft size={16} />
             </button>
-          )}
-          <span className="flex-1 text-sm font-medium text-zinc-900 dark:text-slate-100 truncate" title={currentItem.name}>{currentItem.name}</span>
-          {canNav && (
-            <button onClick={goNext} className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400" title="Next (→)">
+            <button
+              onClick={goNext}
+              disabled={!canNav}
+              className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400 disabled:opacity-20 disabled:cursor-default"
+              title="Next (→)"
+            >
               <ChevronRight size={16} />
             </button>
-          )}
+          </div>
+
+          <span className="flex-1 text-sm font-medium text-zinc-900 dark:text-slate-100 truncate min-w-0" title={currentItem.name}>{currentItem.name}</span>
+
           <a
             href={`/api/v1/files/${currentItem.id}/download`}
             download={currentItem.name}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
           >
             <Download size={12} />
             Download
@@ -154,7 +165,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
           {isPrintable && (
             <button
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+              className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
               title="Print"
             >
               <Printer size={12} />
@@ -163,7 +174,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
           )}
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400"
+            className="shrink-0 p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400"
           >
             <X size={16} />
           </button>

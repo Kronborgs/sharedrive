@@ -828,11 +828,30 @@ function FilesPage() {
 
       {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < playlistMaxTracks} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
-      {previewItem && <PreviewModal item={previewItem} onClose={() => {
-        setPreviewItem(null)
-        // Clear ?preview= param from URL but keep highlight so the file stays marked
-        if (previewFileId) void navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined }, replace: true })
-      }} />}
+      {previewItem && (
+        <PreviewModal
+          item={previewItem}
+          siblings={files ?? []}
+          onDelete={(itemToDelete) => {
+            // Find which sibling to show next before the item disappears from the list
+            const nonFolders = (files ?? []).filter(f => !f.is_folder)
+            const idx = nonFolders.findIndex(f => f.id === itemToDelete.id)
+            const next = idx >= 0 ? (nonFolders[idx + 1] ?? nonFolders[idx - 1] ?? null) : null
+            trash.mutate(itemToDelete.id)
+            if (next) {
+              setPreviewItem(next)
+            } else {
+              setPreviewItem(null)
+              if (previewFileId) void navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined }, replace: true })
+            }
+          }}
+          onClose={() => {
+            setPreviewItem(null)
+            // Clear ?preview= param from URL but keep highlight so the file stays marked
+            if (previewFileId) void navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined }, replace: true })
+          }}
+        />
+      )}
       {ooItem && systemSettings?.onlyoffice_url && (
         <OnlyOfficeEditor
           item={ooItem}

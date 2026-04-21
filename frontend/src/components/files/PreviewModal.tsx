@@ -266,8 +266,39 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
 }
 
 function ImageRenderer({ url, name, onDelete }: { url: string; name: string; onDelete?: () => void }) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(false)
+
+  // Fetch as raw bytes and create a blob: URL so the browser sniffs the image
+  // format from the actual file content — bypasses any wrong Content-Type header
+  // and X-Content-Type-Options: nosniff restrictions entirely.
+  useEffect(() => {
+    const controller = new AbortController()
+    setObjectUrl(null)
+    setLoaded(false)
+    setError(false)
+    fetch(url, { signal: controller.signal })
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.arrayBuffer()
+      })
+      .then(buf => {
+        // No explicit type — browser infers format from the raw bytes.
+        const blob = new Blob([buf])
+        setObjectUrl(URL.createObjectURL(blob))
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError') setError(true)
+      })
+    return () => { controller.abort() }
+  }, [url])
+
+  // Revoke the object URL when it's replaced or the component unmounts.
+  useEffect(() => {
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [objectUrl])
+
   return (
     <div className="flex items-center justify-center h-full bg-zinc-50 dark:bg-[#0f1117] p-4 overflow-auto relative">
       {!loaded && !error && (
@@ -290,15 +321,15 @@ function ImageRenderer({ url, name, onDelete }: { url: string; name: string; onD
             </button>
           )}
         </div>
-      ) : (
+      ) : objectUrl ? (
         <img
-          src={url}
+          src={objectUrl}
           alt={name}
           className={`max-w-full max-h-full object-contain transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
           onLoad={() => setLoaded(true)}
           onError={() => { setLoaded(true); setError(true) }}
         />
-      )}
+      ) : null}
     </div>
   )
 }

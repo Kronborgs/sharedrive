@@ -52,9 +52,10 @@ function detectKind(item: FileItem): PreviewKind {
 export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModalProps) {
   // Internal navigation state — currentItem changes as user goes prev/next
   const [currentItem, setCurrentItem] = useState(item)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   // Sync when the parent swaps out the item prop entirely (e.g. parent-level navigation)
-  useEffect(() => { setCurrentItem(item) }, [item.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setCurrentItem(item); setConfirmDelete(false) }, [item.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const kind = detectKind(currentItem)
   const previewUrl = `/api/v1/files/${currentItem.id}/preview`
@@ -67,11 +68,13 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
 
   const goPrev = useCallback(() => {
     if (!canNav) return
+    setConfirmDelete(false)
     setCurrentItem(navItems[(navIdx - 1 + navItems.length) % navItems.length])
   }, [canNav, navIdx, navItems])
 
   const goNext = useCallback(() => {
     if (!canNav) return
+    setConfirmDelete(false)
     setCurrentItem(navItems[(navIdx + 1) % navItems.length])
   }, [canNav, navIdx, navItems])
 
@@ -173,13 +176,31 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
             </button>
           )}
           {onDelete && (
-            <button
-              onClick={() => onDelete(currentItem)}
-              className="shrink-0 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
-              title="Delete file"
-            >
-              <Trash2 size={15} />
-            </button>
+            confirmDelete ? (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-xs text-zinc-500 dark:text-slate-400 hidden sm:inline">Delete file?</span>
+                <button
+                  onClick={() => { setConfirmDelete(false); onDelete(currentItem) }}
+                  className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors"
+                >
+                  Delete
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-600 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="shrink-0 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                title="Delete file"
+              >
+                <Trash2 size={15} />
+              </button>
+            )
           )}
           <button
             onClick={onClose}

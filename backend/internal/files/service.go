@@ -472,6 +472,57 @@ func (s *Service) Recent(ctx context.Context, ownerID string, limit int) ([]*Fil
 	return files, rows.Err()
 }
 
+// Search returns files and folders whose names match the query (case-insensitive).
+// Results include files owned by userID and files accessible via active share grants.
+func (s *Service) Search(ctx context.Context, userID, query string, limit int) ([]*File, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	// Escape LIKE wildcards in the user-supplied string, then wrap in %…%
+	escaped := strings.ReplaceAll(strings.ReplaceAll(query, `\`, `\\`), "%", `\%`)
+	escaped = strings.ReplaceAll(escaped, "_", `\_`)
+	pattern := "%" + escaped + "%"
+
+	rows, err := s.db.Query(ctx,
+		`SELECT DISTINCT `+fileCols+`
+		 FROM files
+		 WHERE deleted_at IS NULL
+		   AND name ILIKE $1 ESCAPE '\'
+		   AND (
+		     owner_id = $2::uuid
+		     OR EXISTS (
+		       SELECT 1 FROM shares sh
+		       WHERE sh.resource_id = files.id
+		         AND sh.revoked_at IS NULL
+		         AND (sh.expires_at IS NULL OR sh.expires_at > now())
+		         AND (
+		           (sh.grantee_type = 'user'  AND sh.grantee_id = $2::uuid)
+		           OR (sh.grantee_type = 'group' AND sh.grantee_id IN (
+		                SELECT group_id FROM group_members WHERE user_id = $2::uuid
+		              ))
+		         )
+		     )
+		   )
+		 ORDER BY is_folder DESC, name ASC
+		 LIMIT $3`,
+		pattern, userID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("files.Search: %w", err)
+	}
+	defer rows.Close()
+
+	var files []*File
+	for rows.Next() {
+		f, err := scanFile(rows)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	return files, rows.Err()
+}
+
 // Upload streams r to storage with SHA-256 hashing, enforces quota, and
 // inserts a file record. Pass contentLength=0 if Content-Length is unknown.
 func (s *Service) Upload(ctx context.Context, ownerID, name, mimeType, folderIDStr string, r io.Reader, contentLength int64) (*File, error) {

@@ -13,6 +13,12 @@ const translations = {
   'nav.trash':         { da: 'Papirkurv',        en: 'Trash' },
   'nav.backup':        { da: 'Backup',           en: 'Backup' },
 
+  // ── Search ────────────────────────────────────────────────────────────────
+  'search.placeholder':{ da: 'Søg filer…',       en: 'Search files…' },
+  'search.noResults':  { da: 'Ingen resultater', en: 'No results' },
+  'search.myFiles':    { da: 'Mine filer',       en: 'My files' },
+  'search.sharedWith': { da: 'Delt med mig',     en: 'Shared with me' },
+
   // ── Admin nav ─────────────────────────────────────────────────────────────
   'nav.dashboard':     { da: 'Dashboard',        en: 'Dashboard' },
   'nav.users':         { da: 'Brugere',          en: 'Users' },

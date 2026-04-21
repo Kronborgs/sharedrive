@@ -312,6 +312,23 @@ func (h *Handler) Recent(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, files)
 }
 
+// Search handles GET /api/v1/files/search?q=... — returns matching files/folders.
+func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(q) < 2 {
+		httputil.Respond(w, http.StatusOK, []*File{})
+		return
+	}
+	results, err := h.svc.Search(r.Context(), actor.ID.String(), q, 20)
+	if err != nil {
+		log.Error().Err(err).Msg("files.Search")
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, results)
+}
+
 // ListTrash handles GET /api/v1/files/trash
 func (h *Handler) ListTrash(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())

@@ -529,6 +529,71 @@ func isTextMIME(mime string) bool {
 		mime == "application/javascript"
 }
 
+// mimeByExtension returns a clean MIME type for common file extensions.
+// It uses a hardcoded table for the types most likely to be served as
+// application/octet-stream from older imports, so the result is identical
+// across OS/MIME-database configurations (e.g. minimal Alpine containers
+// where the system MIME database may add parameters like "; charset=binary").
+// Falls back to mime.TypeByExtension (parameters stripped) and finally to
+// application/octet-stream.
+func mimeByExtension(name string) string {
+	ext := strings.ToLower(filepath.Ext(name))
+	switch ext {
+	// Images
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".svg":
+		return "image/svg+xml"
+	case ".bmp":
+		return "image/bmp"
+	case ".ico":
+		return "image/x-icon"
+	case ".tif", ".tiff":
+		return "image/tiff"
+	case ".avif":
+		return "image/avif"
+	// Video
+	case ".mp4", ".m4v":
+		return "video/mp4"
+	case ".webm":
+		return "video/webm"
+	case ".mov":
+		return "video/quicktime"
+	case ".ogv":
+		return "video/ogg"
+	// Audio
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".ogg":
+		return "audio/ogg"
+	case ".flac":
+		return "audio/flac"
+	case ".aac":
+		return "audio/aac"
+	case ".m4a", ".opus":
+		return "audio/mp4"
+	// Documents
+	case ".pdf":
+		return "application/pdf"
+	}
+	// Fallback: strip any parameters the OS MIME database may have added
+	if t := mime_pkg.TypeByExtension(ext); t != "" {
+		if i := strings.Index(t, ";"); i >= 0 {
+			t = strings.TrimSpace(t[:i])
+		}
+		return t
+	}
+	return "application/octet-stream"
+}
+
 // ── Thumbnail ─────────────────────────────────────────────────────────────────
 
 const (
@@ -994,12 +1059,7 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 	// try to detect a more specific type from the file extension so that strict
 	// desktop browsers (Chrome/Firefox) render the file correctly.
 	if mime == "" || mime == "application/octet-stream" {
-		if detected := mime_pkg.TypeByExtension(filepath.Ext(f.Name)); detected != "" {
-			mime = detected
-		}
-	}
-	if mime == "" {
-		mime = "application/octet-stream"
+		mime = mimeByExtension(f.Name)
 	}
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Disposition", contentDisposition("inline", f.Name))

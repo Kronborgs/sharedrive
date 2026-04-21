@@ -18,6 +18,37 @@ interface FileListProps {
 }
 
 export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, onSelectAll, onQuickShare, highlightId }: FileListProps) {
+  const [localHighlight, setLocalHighlight] = useState(highlightId)
+
+  // Sync whenever a new highlight arrives (new search navigation)
+  useEffect(() => {
+    setLocalHighlight(highlightId)
+  }, [highlightId])
+
+  // Dismiss highlight on the first user-initiated scroll.
+  // We delay attaching the listener so the programmatic scrollIntoView doesn't
+  // immediately fire and clear it.
+  useEffect(() => {
+    if (!localHighlight) return
+    let timeoutId: ReturnType<typeof setTimeout>
+    timeoutId = setTimeout(() => {
+      const dismiss = () => setLocalHighlight(undefined)
+      window.addEventListener('scroll', dismiss, { once: true, passive: true, capture: true })
+      return () => window.removeEventListener('scroll', dismiss, { capture: true })
+    }, 500)
+    return () => clearTimeout(timeoutId)
+  }, [localHighlight])
+
+  // Dismiss when the user selects or opens any file
+  const handleSelect = (id: string, additive: boolean) => {
+    setLocalHighlight(undefined)
+    onSelect(id, additive)
+  }
+  const handleOpen = (item: FileItem) => {
+    setLocalHighlight(undefined)
+    onOpen(item)
+  }
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
@@ -58,11 +89,11 @@ export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, 
             key={item.id}
             item={item}
             selected={selectedIds.has(item.id)}
-            onSelect={onSelect}
-            onOpen={onOpen}
+            onSelect={handleSelect}
+            onOpen={handleOpen}
             onContextMenu={onContextMenu}
             onQuickShare={onQuickShare}
-            highlight={item.id === highlightId}
+            highlight={item.id === localHighlight}
           />
         ))}
       </tbody>
@@ -89,15 +120,11 @@ function FileRow({
 }) {
   const moreRef = useRef<HTMLButtonElement>(null)
   const rowRef = useRef<HTMLTableRowElement>(null)
-  const [fading, setFading] = useState(highlight ?? false)
 
-  // Scroll into view and start fade-out when highlight is set
+  // Scroll this row into view when it becomes the highlighted one
   useEffect(() => {
     if (!highlight) return
     rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    setFading(true)
-    const t = setTimeout(() => setFading(false), 2000)
-    return () => clearTimeout(t)
   }, [highlight])
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -109,8 +136,8 @@ function FileRow({
     <tr
       ref={rowRef}
       className={cn(
-        'group border-b border-zinc-50 dark:border-[#2d3148]/50 cursor-pointer transition-colors duration-1000',
-        fading
+        'group border-b border-zinc-50 dark:border-[#2d3148]/50 cursor-pointer transition-colors duration-500',
+        highlight
           ? 'bg-brand-100 dark:bg-brand-800/40'
           : selected
           ? 'bg-brand-50 dark:bg-brand-900/20'

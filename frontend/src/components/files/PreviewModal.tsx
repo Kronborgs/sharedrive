@@ -187,6 +187,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
           {kind === 'epub' && <EPUBRenderer url={previewUrl} />}
           {kind === 'image' && (
             <ImageRenderer
+              key={previewUrl}
               url={previewUrl}
               name={currentItem.name}
               onDelete={onDelete ? () => onDelete(currentItem) : undefined}

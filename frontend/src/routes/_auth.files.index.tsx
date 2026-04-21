@@ -674,8 +674,8 @@ function FilesPage() {
                     )}
                   </div>
 
-                {/* Mobile actions dropdown — hidden on sm+ */}
-                <div className="relative sm:hidden" ref={mobileMenuRef}>
+                {/* Mobile actions button — hidden on sm+ */}
+                <div className="sm:hidden" ref={mobileMenuRef}>
                   <button
                     onClick={() => setMobileActionsOpen(v => !v)}
                     className="flex items-center p-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
@@ -683,92 +683,6 @@ function FilesPage() {
                   >
                     <MoreVertical size={16} />
                   </button>
-                  {mobileActionsOpen && (
-                    <div className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] shadow-xl z-40 py-1 max-h-[70vh] overflow-y-auto">
-                      <button
-                        onClick={() => { setMobileActionsOpen(false); const n = window.prompt('Folder name:'); if (n?.trim()) createFolder.mutate(n.trim()) }}
-                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-                      >
-                        <FolderPlus size={15} />
-                        {t('action.newFolder')}
-                      </button>
-                      {/* New document options */}
-                      <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-2 my-1" />
-                      <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">{t('action.newDoc')}</p>
-                      {systemSettings?.onlyoffice_url && ([
-                        { type: 'word' as const,  icon: '📄', labelKey: 'doc.word' as const,       nameKey: 'doc.wordName' as const,       ext: '.docx' },
-                        { type: 'cell' as const,  icon: '📊', labelKey: 'doc.excel' as const,      nameKey: 'doc.excelName' as const,      ext: '.xlsx' },
-                        { type: 'slide' as const, icon: '📑', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx' },
-                      ] as const).map(o => (
-                        <button
-                          key={o.type}
-                          onClick={() => { setMobileActionsOpen(false); createDocument.mutate({ type: o.type, name: `${t(o.nameKey)}${o.ext}` }) }}
-                          disabled={createDocument.isPending}
-                          className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
-                        >
-                          <span className="w-4 text-center">{o.icon}</span>
-                          {t(o.labelKey)}
-                        </button>
-                      ))}
-                      {([
-                        { icon: '📝', labelKey: 'doc.textFile' as const,  nameKey: 'doc.textFileName' as const,  ext: '.txt' },
-                        { icon: '📋', labelKey: 'doc.markdown' as const,  nameKey: 'doc.markdownName' as const,  ext: '.md' },
-                        { icon: '{ }', labelKey: 'doc.jsonFile' as const,  nameKey: 'doc.jsonFileName' as const,  ext: '.json' },
-                      ] as const).map(o => (
-                        <button
-                          key={o.ext}
-                          onClick={() => { setMobileActionsOpen(false); createTextFile.mutate({ name: `${t(o.nameKey)}${o.ext}` }) }}
-                          disabled={createTextFile.isPending}
-                          className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
-                        >
-                          <span className="w-4 text-center">{o.icon}</span>
-                          {t(o.labelKey)}
-                        </button>
-                      ))}
-                      {folderId && currentFolderItem && (
-                        <>
-                          <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-2 my-1" />
-                          <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">{currentFolderItem.name}</p>
-                          <button
-                            onClick={() => { setMobileActionsOpen(false); setShareItem(currentFolderItem) }}
-                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-                          >
-                            <Share2 size={15} />
-                            {t('files.shareFolder')}
-                          </button>
-                          <button
-                            onClick={() => { setMobileActionsOpen(false); setRenameId(folderId); setRenameName(currentFolderItem.name) }}
-                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-                          >
-                            <Pencil size={15} />
-                            {t('files.renameFolder')}
-                          </button>
-                          <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-2 my-1" />
-                          <button
-                            onClick={async () => {
-                              setMobileActionsOpen(false)
-                              if (!confirm(`Move "${currentFolderItem.name}" to trash?`)) return
-                              try {
-                                await api.delete(`/api/v1/files/${folderId}`)
-                                const parentId = breadcrumbs && breadcrumbs.length > 1
-                                  ? breadcrumbs[breadcrumbs.length - 2].id
-                                  : null
-                                void qc.invalidateQueries({ queryKey: ['files', parentId] })
-                                void qc.invalidateQueries({ queryKey: ['me'] })
-                                void navigate({ to: '/files', search: parentId ? { folder: parentId } : {} })
-                              } catch {
-                                toast.error(t('toast.deleteFailed'))
-                              }
-                            }}
-                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                          >
-                            <Trash2 size={15} />
-                            {t('files.deleteFolder')}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
                 </div>
 
                 {/* View toggle */}
@@ -781,6 +695,108 @@ function FilesPage() {
           )}
           </div>
         </div>
+
+        {/* Mobile bottom sheet — action menu */}
+        {mobileActionsOpen && (
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 z-40 bg-black/40 sm:hidden"
+              onClick={() => setMobileActionsOpen(false)}
+            />
+            {/* Sheet */}
+            <div className="fixed inset-x-0 bottom-0 z-50 sm:hidden rounded-t-2xl bg-white dark:bg-[#1a1d27] border-t border-zinc-200 dark:border-[#2d3148] shadow-2xl max-h-[75vh] flex flex-col">
+              {/* Drag handle */}
+              <div className="flex justify-center pt-3 pb-1 shrink-0">
+                <div className="w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+              </div>
+              <div className="overflow-y-auto pb-6">
+                <button
+                  onClick={() => { setMobileActionsOpen(false); const n = window.prompt('Folder name:'); if (n?.trim()) createFolder.mutate(n.trim()) }}
+                  className="flex w-full items-center gap-3 px-5 py-3.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                >
+                  <FolderPlus size={17} />
+                  {t('action.newFolder')}
+                </button>
+                {/* New document options */}
+                <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-4 my-1" />
+                <p className="px-5 py-1.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">{t('action.newDoc')}</p>
+                {systemSettings?.onlyoffice_url && ([
+                  { type: 'word' as const,  icon: '📄', labelKey: 'doc.word' as const,       nameKey: 'doc.wordName' as const,       ext: '.docx' },
+                  { type: 'cell' as const,  icon: '📊', labelKey: 'doc.excel' as const,      nameKey: 'doc.excelName' as const,      ext: '.xlsx' },
+                  { type: 'slide' as const, icon: '📑', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx' },
+                ] as const).map(o => (
+                  <button
+                    key={o.type}
+                    onClick={() => { setMobileActionsOpen(false); createDocument.mutate({ type: o.type, name: `${t(o.nameKey)}${o.ext}` }) }}
+                    disabled={createDocument.isPending}
+                    className="flex w-full items-center gap-3 px-5 py-3.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
+                  >
+                    <span className="w-5 text-center text-base">{o.icon}</span>
+                    {t(o.labelKey)}
+                  </button>
+                ))}
+                {([
+                  { icon: '📝', labelKey: 'doc.textFile' as const,  nameKey: 'doc.textFileName' as const,  ext: '.txt' },
+                  { icon: '📋', labelKey: 'doc.markdown' as const,  nameKey: 'doc.markdownName' as const,  ext: '.md' },
+                  { icon: '{ }', labelKey: 'doc.jsonFile' as const,  nameKey: 'doc.jsonFileName' as const,  ext: '.json' },
+                ] as const).map(o => (
+                  <button
+                    key={o.ext}
+                    onClick={() => { setMobileActionsOpen(false); createTextFile.mutate({ name: `${t(o.nameKey)}${o.ext}` }) }}
+                    disabled={createTextFile.isPending}
+                    className="flex w-full items-center gap-3 px-5 py-3.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
+                  >
+                    <span className="w-5 text-center text-base">{o.icon}</span>
+                    {t(o.labelKey)}
+                  </button>
+                ))}
+                {folderId && currentFolderItem && (
+                  <>
+                    <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-4 my-1" />
+                    <p className="px-5 py-1.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">{currentFolderItem.name}</p>
+                    <button
+                      onClick={() => { setMobileActionsOpen(false); setShareItem(currentFolderItem) }}
+                      className="flex w-full items-center gap-3 px-5 py-3.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                    >
+                      <Share2 size={17} />
+                      {t('files.shareFolder')}
+                    </button>
+                    <button
+                      onClick={() => { setMobileActionsOpen(false); setRenameId(folderId); setRenameName(currentFolderItem.name) }}
+                      className="flex w-full items-center gap-3 px-5 py-3.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                    >
+                      <Pencil size={17} />
+                      {t('files.renameFolder')}
+                    </button>
+                    <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-4 my-1" />
+                    <button
+                      onClick={async () => {
+                        setMobileActionsOpen(false)
+                        if (!confirm(`Move "${currentFolderItem.name}" to trash?`)) return
+                        try {
+                          await api.delete(`/api/v1/files/${folderId}`)
+                          const parentId = breadcrumbs && breadcrumbs.length > 1
+                            ? breadcrumbs[breadcrumbs.length - 2].id
+                            : null
+                          void qc.invalidateQueries({ queryKey: ['files', parentId] })
+                          void qc.invalidateQueries({ queryKey: ['me'] })
+                          void navigate({ to: '/files', search: parentId ? { folder: parentId } : {} })
+                        } catch {
+                          toast.error(t('toast.deleteFailed'))
+                        }
+                      }}
+                      className="flex w-full items-center gap-3 px-5 py-3.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    >
+                      <Trash2 size={17} />
+                      {t('files.deleteFolder')}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-1" onClick={() => { setSelected(new Set()); setContextMenu(null) }}>

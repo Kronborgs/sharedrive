@@ -12,8 +12,10 @@ import (
 	_ "image/png" // register PNG decoder
 	"io"
 	"math/big"
+	mime_pkg "mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -988,6 +990,14 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 	defer reader.Close()
 
 	mime := f.MimeType
+	// If the stored MIME is missing or the generic fallback used at upload time,
+	// try to detect a more specific type from the file extension so that strict
+	// desktop browsers (Chrome/Firefox) render the file correctly.
+	if mime == "" || mime == "application/octet-stream" {
+		if detected := mime_pkg.TypeByExtension(filepath.Ext(f.Name)); detected != "" {
+			mime = detected
+		}
+	}
 	if mime == "" {
 		mime = "application/octet-stream"
 	}

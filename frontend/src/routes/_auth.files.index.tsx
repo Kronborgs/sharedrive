@@ -830,21 +830,21 @@ function FilesPage() {
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
       {previewItem && <PreviewModal item={previewItem} onClose={() => {
         setPreviewItem(null)
-        // Clear ?preview= param from URL so closing preview doesn't re-open it
-        if (previewFileId) void navigate({ to: '/files', search: { folder: folderId ?? undefined }, replace: true })
+        // Clear ?preview= param from URL but keep highlight so the file stays marked
+        if (previewFileId) void navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined }, replace: true })
       }} />}
       {ooItem && systemSettings?.onlyoffice_url && (
         <OnlyOfficeEditor
           item={ooItem}
           onlyofficeUrl={systemSettings.onlyoffice_url}
           backLabel={t('page.myFiles')}
-          onClose={() => void navigate({ to: '/files', search: { folder: folderId ?? undefined } })}
+          onClose={() => void navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined } })}
         />
       )}
       {teItem && (
         <TextEditor
           item={teItem}
-          onClose={() => void navigate({ to: '/files', search: { folder: folderId ?? undefined } })}
+          onClose={() => void navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined } })}
         />
       )}
       {downloadIds && <DownloadDialog ids={downloadIds} onClose={() => setDownloadIds(null)} />}

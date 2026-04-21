@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import type { FileItem, User } from '@/types/api'
 import { formatBytes } from '@/lib/utils'
+import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 
 export function Header({ user, onMenuToggle }: { user?: User; onMenuToggle?: () => void }) {
   const [isDark, setIsDark] = useState(false)
@@ -67,11 +68,17 @@ export function Header({ user, onMenuToggle }: { user?: User; onMenuToggle?: () 
   const openResult = useCallback((item: FileItem) => {
     setOpen(false)
     setQuery('')
+    const folder = item.parent_id ?? undefined
     if (item.is_folder) {
       void navigate({ to: '/files', search: { folder: item.id } })
+    } else if (shouldOpenInOnlyOffice(item.name)) {
+      // OnlyOffice: the files page guards against OO not being configured
+      void navigate({ to: '/files', search: { folder, oo: item.id } })
+    } else if (shouldOpenInTextEditor(item.name)) {
+      void navigate({ to: '/files', search: { folder, te: item.id } })
     } else {
-      // Navigate to the parent folder that contains this file
-      void navigate({ to: '/files', search: item.parent_id ? { folder: item.parent_id } : {} })
+      // All other files: open preview modal via URL param
+      void navigate({ to: '/files', search: { folder, preview: item.id } })
     }
   }, [navigate])
 

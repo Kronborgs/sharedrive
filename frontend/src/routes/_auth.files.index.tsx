@@ -25,8 +25,9 @@ import { toast } from 'sonner'
 
 const searchSchema = z.object({
   folder: z.string().optional(),
-  oo: z.string().optional(), // file ID currently open in OnlyOffice editor
-  te: z.string().optional(), // file ID currently open in text editor
+  oo: z.string().optional(),      // file ID currently open in OnlyOffice editor
+  te: z.string().optional(),      // file ID currently open in text editor
+  preview: z.string().optional(), // file ID to open in preview modal
 })
 
 export const Route = createFileRoute('/_auth/files/')({
@@ -60,7 +61,7 @@ function shuffleArray<T>(arr: T[]): T[] {
 function FilesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { folder: folderId = null, oo: ooFileId = null, te: teFileId = null } = Route.useSearch()
+  const { folder: folderId = null, oo: ooFileId = null, te: teFileId = null, preview: previewFileId = null } = Route.useSearch()
   const qc = useQueryClient()
   const { setPlaylist, addTracks, tracks: playlistTracks, activePlaylistId, playlistMaxTracks } = usePlaylist()
   const { t } = useI18n()
@@ -196,6 +197,20 @@ function FilesPage() {
   // Derive OO item from URL param — avoids separate state that breaks back/forward
   const ooItem = ooFileId ? (files?.find(f => f.id === ooFileId) ?? null) : null
   const teItem = teFileId ? (files?.find(f => f.id === teFileId) ?? null) : null
+
+  // Auto-open preview when ?preview=fileId is in URL (e.g. from search navigation)
+  useEffect(() => {
+    if (!previewFileId) return
+    const fromList = files?.find(f => f.id === previewFileId)
+    if (fromList) {
+      setPreviewItem(fromList)
+    } else {
+      // File may be in a different folder (shared) — fetch it directly
+      api.get<FileItem>(`/api/v1/files/${previewFileId}`).then(f => {
+        if (f) setPreviewItem(f)
+      }).catch(() => {/* ignore */})
+    }
+  }, [previewFileId, files])
 
   useEffect(() => {
     if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
@@ -812,7 +827,11 @@ function FilesPage() {
 
       {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < playlistMaxTracks} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
-      {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
+      {previewItem && <PreviewModal item={previewItem} onClose={() => {
+        setPreviewItem(null)
+        // Clear ?preview= param from URL so closing preview doesn't re-open it
+        if (previewFileId) void navigate({ to: '/files', search: { folder: folderId ?? undefined }, replace: true })
+      }} />}
       {ooItem && systemSettings?.onlyoffice_url && (
         <OnlyOfficeEditor
           item={ooItem}

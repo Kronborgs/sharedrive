@@ -8,6 +8,23 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 
 ---
 
+## Changelog
+
+### v1.1.2 — 21 April 2026
+
+#### New features
+- **File search** — instant search across all your own files and files shared with you, accessible from the header bar. Results are grouped (My files / Shared with me). Clicking a result navigates to the file's folder, opens the correct viewer (image preview, OnlyOffice editor, text editor), and scrolls the file into view with a brief visual highlight that fades when you scroll or interact.
+- **Preview navigation** — Previous / Next arrow buttons in the preview modal header let you step through all files in the current folder without closing and re-opening. Keyboard ← / → shortcuts work too. Wraps around at both ends.
+- **Delete from preview** — a trash-can icon in the preview header deletes the current file and automatically jumps to the next one. A large "Delete corrupted file" button also appears on the error screen when an image fails to load — making it easy to clean up files that were broken during migration from an old server.
+
+#### Bug fixes
+- **Mobile layout** — fixed overlapping PWA install banner, cramped toolbar on small screens, and the per-file ⋮ menu rendering off-screen. Toolbar now stacks vertically on mobile and uses a bottom-sheet menu.
+- **Image preview on desktop browsers** — files migrated from older servers were stored with `mime_type = application/octet-stream`. Chrome/Firefox on desktop strictly honour the Content-Type header and refused to show the image; mobile browsers guessed from the file extension and showed it fine. The preview endpoint now falls back to MIME detection from the file extension, so all browsers render images correctly.
+- **Preview highlight after closing a viewer** — the file row highlight (shown after navigating from search results) was being cleared immediately when OnlyOffice, the text editor, or the image preview closed, because the `navigate` call dropped the `?highlight=` URL parameter. All three `onClose` handlers now preserve the parameter.
+- **Stale error state in image preview** — navigating from a broken image to a healthy one showed "Failed to load image" for the healthy file because React reused the component instance. Fixed by keying `ImageRenderer` on the preview URL so it remounts on every navigation.
+
+---
+
 ## Features at a glance
 
 ### Files
@@ -24,6 +41,7 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 - **Mobile toolbar dropdown** — compact action menu on small screens; all file actions accessible
 - **Recent files** — last 50 accessed or modified items
 - **Activity feed** — personal history of the last 50 file events (upload, download, preview, delete, etc.) with timestamp and IP address; accessible via the sidebar
+- **File search** — instant search across all your own files and files shared with you; results grouped by ownership; clicking a result navigates directly to the file's folder, opens the correct viewer (image preview, OnlyOffice, text editor), and scrolls the file into view with a brief visual highlight
 
 ### File Preview
 - **PDF** — rendered page-by-page in the browser via PDF.js with a loading spinner
@@ -32,7 +50,9 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
   - **Excel**: XLS, XLSX, XLSM, XLSB, XLTX, CSV, ODS, OTS
   - **PowerPoint**: PPT, PPTX, PPTM, POTX, ODP, OTP
   - **Other**: EPUB, HTML, XHTML, VSD, VSDX, PUB, and many more
-- **Images** (JPEG, PNG, GIF, WebP, SVG) — full-size preview with a fade-in loading state
+- **Images** (JPEG, PNG, GIF, WebP, SVG) — full-size preview with a fade-in loading state; correct MIME type always served regardless of how the file was originally uploaded
+- **Previous / Next navigation** — arrow buttons (and keyboard ← →) step through all files in the current folder; wraps around at both ends
+- **Delete from preview** — trash-can icon in the header deletes the current file and jumps to the next one automatically; a prominent "Delete corrupted file" button also appears on the error screen when an image fails to load
 - **Video** (MP4, WebM, OGG, MOV) — native browser player
 - **Audio** (MP3, WAV, AAC, M4A, Opus) — native browser player; FLAC detected at render time — shows a download-to-play fallback if the browser does not support it
 - **3D models** (STL, 3MF) — interactive WebGL viewer (Three.js)

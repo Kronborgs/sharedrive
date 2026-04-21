@@ -473,6 +473,8 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Delete("/api/v1/admin/backup/{filename}", s.handleAdminDeleteBackup)
 
 			r.Post("/api/v1/admin/storage/scrub", s.adminHandler.StorageScrub)
+			r.Post("/api/v1/admin/storage/scan", s.adminHandler.StorageScan)
+			r.Post("/api/v1/admin/storage/purge-corrupt", s.adminHandler.StoragePurgeCorrupt)
 			r.Get("/api/v1/admin/io-stats", s.adminHandler.IOStats)
 
 			r.Post("/api/v1/admin/support-access/{id}/end", s.handleAdminEndSupportAccess)

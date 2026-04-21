@@ -10,6 +10,7 @@ import {
   ShieldBan,
   HardDrive,
   Database,
+  ScanSearch,
   History,
   Archive,
   ChevronDown,
@@ -62,6 +63,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/audit-logs',   labelKey: 'nav.auditLog',    icon: <ScrollText size={16} /> },
   { to: '/admin/blocked-ips',  labelKey: 'nav.blockedIps',  icon: <ShieldBan size={16} /> },
   { to: '/admin/backup',       labelKey: 'nav.backup',      icon: <Database size={16} /> },
+  { to: '/admin/storage',      labelKey: 'nav.storage',     icon: <ScanSearch size={16} /> },
   { to: '/admin/settings',     labelKey: 'nav.settings',    icon: <Settings size={16} /> },
 ]
 

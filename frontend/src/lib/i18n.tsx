@@ -25,6 +25,7 @@ const translations = {
   'nav.auditLog':      { da: 'Revisionslog',     en: 'Audit Log' },
   'nav.blockedIps':    { da: 'Blokerede IP\'er', en: 'Blocked IPs' },
   'nav.tags':          { da: 'Tags',             en: 'Tags' },
+  'nav.storage':       { da: 'Lager',            en: 'Storage' },
   'nav.settings':      { da: 'Indstillinger',    en: 'Settings' },
 
   // ── Common actions ────────────────────────────────────────────────────────

@@ -41,6 +41,12 @@ func NewAutoBackupService(db *pgxpool.Pool, wrapKey string, tertiary *TertiarySe
 	return &AutoBackupService{db: db, wrapKey: wrapKey, tertiary: tertiary, auditSvc: auditSvc}
 }
 
+// WrapKeyConfigured reports whether BACKUP_WRAP_KEY is set, which is required
+// for the automatic scheduled backup feature.
+func (s *AutoBackupService) WrapKeyConfigured() bool {
+	return s.wrapKey != ""
+}
+
 // Get returns the auto backup config for userID, or a sensible default.
 func (s *AutoBackupService) Get(ctx context.Context, userID uuid.UUID) (*AutoConfig, error) {
 	var cfg AutoConfig

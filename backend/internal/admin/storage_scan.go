@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -51,12 +50,6 @@ type storageScanResult struct {
 func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
-	limitStr := r.URL.Query().Get("limit")
-	limit := 5000
-	if v, err := strconv.Atoi(limitStr); err == nil && v > 0 && v <= 50000 {
-		limit = v
-	}
-
 	// Query all non-folder, non-deleted files whose content should be binary.
 	// Exclude formats that are legitimately text/HTML/XML — we cannot tell
 	// an HTML error page from real content in those formats.
@@ -89,9 +82,7 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 		   AND f.name NOT ILIKE '%.gsheet' AND f.name NOT ILIKE '%.gdoc'
 		   AND f.name NOT ILIKE '%.gslides' AND f.name NOT ILIKE '%.gdraw'
 		   AND f.name NOT ILIKE '%.gform'  AND f.name NOT ILIKE '%.gmap'
-		 ORDER BY f.size_bytes ASC
-		 LIMIT $1`,
-		limit,
+		 ORDER BY f.size_bytes ASC, f.id ASC`,
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("admin.StorageScan: query files")
@@ -134,7 +125,7 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 			corrupt = append(corrupt, corruptFile{
 				ID: c.id, Name: c.name, OwnerID: c.ownerID,
 				OwnerName: c.ownerEmail, SizeBytes: c.size,
-				MimeType:  c.mimeType, Reason: "HTML error page",
+				MimeType: c.mimeType, Reason: "HTML error page",
 				UpdatedAt: c.updatedAt,
 			})
 			continue
@@ -149,7 +140,7 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 				corrupt = append(corrupt, corruptFile{
 					ID: c.id, Name: c.name, OwnerID: c.ownerID,
 					OwnerName: c.ownerEmail, SizeBytes: c.size,
-					MimeType:  c.mimeType, Reason: "unreadable image header",
+					MimeType: c.mimeType, Reason: "unreadable image header",
 					UpdatedAt: c.updatedAt,
 				})
 			}

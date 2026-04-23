@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import { formatBytes, formatRelative } from '@/lib/utils'
-import { AlertTriangle, FileQuestion, FolderInput, Loader2, ScanSearch, Trash2 } from 'lucide-react'
+import { AlertTriangle, Eye, FileQuestion, FolderInput, Loader2, ScanSearch, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { PreviewModal } from '@/components/files/PreviewModal'
+import type { FileItem } from '@/types/api'
 
 export const Route = createFileRoute('/_auth/admin/storage/')({
   component: StoragePage,
@@ -42,8 +44,26 @@ interface OrphanScanResult {
 const SCAN_KEY = ['admin', 'storage-scan']
 const ORPHAN_KEY = ['admin', 'storage-orphans']
 
+function corruptToFileItem(f: CorruptFile): FileItem {
+  return {
+    id: f.id,
+    parent_id: null,
+    owner_id: f.owner_id,
+    is_folder: false,
+    name: f.name,
+    mime_type: f.mime_type || null,
+    size_bytes: f.size_bytes,
+    checksum_sha256: null,
+    deleted_at: null,
+    created_at: f.updated_at,
+    updated_at: f.updated_at,
+  }
+}
+
 function StoragePage() {
   const queryClient = useQueryClient()
+
+  const [previewCorrupt, setPreviewCorrupt] = useState<CorruptFile | null>(null)
 
   // ── Corrupt file scan ──────────────────────────────────────────────────────
   const [selectedCorrupt, setSelectedCorrupt] = useState<Set<string>>(new Set())
@@ -193,6 +213,7 @@ function StoragePage() {
           onToggle={id => setSelectedCorrupt(prev => toggle(prev, id))}
           onDelete={() => purgeCorrupt.mutate(Array.from(selectedCorrupt))}
           isDeleting={purgeCorrupt.isPending}
+          onPreview={id => setPreviewCorrupt(scanResult.corrupt_files.find(f => f.id === id) ?? null)}
           rows={scanResult.corrupt_files.map(f => ({
             id: f.id,
             col1: f.name,
@@ -276,6 +297,17 @@ function StoragePage() {
           <span>✓</span> No orphan files found.
         </p>
       )}
+
+      {previewCorrupt && (
+        <PreviewModal
+          item={corruptToFileItem(previewCorrupt)}
+          onClose={() => setPreviewCorrupt(null)}
+          onDelete={item => {
+            purgeCorrupt.mutate([item.id])
+            setPreviewCorrupt(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -300,7 +332,7 @@ interface TableRow {
 }
 
 function FileTable({
-  icon, title, selected, onToggleAll, onToggle, onDelete, isDeleting, rows, headers, extraActions,
+  icon, title, selected, onToggleAll, onToggle, onDelete, isDeleting, rows, headers, extraActions, onPreview,
 }: {
   icon: React.ReactNode
   title: string
@@ -312,6 +344,7 @@ function FileTable({
   rows: TableRow[]
   headers: [string, string, string, string]
   extraActions?: React.ReactNode
+  onPreview?: (id: string) => void
 }) {
   return (
     <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
@@ -353,7 +386,15 @@ function FileTable({
                 <input type="checkbox" checked={selected.has(row.id)} onChange={() => onToggle(row.id)} className="rounded" />
               </td>
               <td className="px-4 py-2 font-medium text-zinc-800 dark:text-slate-200 truncate max-w-xs" title={row.col1Title}>
-                {row.col1}
+                {onPreview ? (
+                  <button
+                    onClick={() => onPreview(row.id)}
+                    className="flex items-center gap-1.5 text-left hover:text-brand-500 transition-colors group"
+                  >
+                    <Eye size={13} className="shrink-0 text-zinc-400 group-hover:text-brand-500 transition-colors" />
+                    <span className="truncate">{row.col1}</span>
+                  </button>
+                ) : row.col1}
               </td>
               <td className="px-4 py-2 text-zinc-500 dark:text-zinc-400 truncate max-w-[160px]" title={row.col2Title}>
                 {row.col2}
@@ -367,4 +408,3 @@ function FileTable({
     </section>
   )
 }
-

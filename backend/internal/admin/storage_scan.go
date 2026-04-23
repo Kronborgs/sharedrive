@@ -2,20 +2,26 @@ package admin
 
 import (
 	"encoding/json"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
+	_ "golang.org/x/image/webp"
 
 	"github.com/yourname/privatedrive/internal/httputil"
 	"github.com/yourname/privatedrive/internal/middleware"
 )
 
 // corruptFile describes a file whose stored bytes do not match an expected
-// image format, or whose file content starts with an HTML/text error page.
+// binary format, or whose content is an HTML/HTTP error page.
 type corruptFile struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
@@ -23,6 +29,7 @@ type corruptFile struct {
 	OwnerName string    `json:"owner_name"`
 	SizeBytes int64     `json:"size_bytes"`
 	MimeType  string    `json:"mime_type"`
+	Reason    string    `json:"reason"` // human-readable reason for flagging
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
@@ -33,9 +40,14 @@ type storageScanResult struct {
 }
 
 // StorageScan handles POST /api/v1/admin/storage/scan
-// Reads the first 16 bytes of every image file on disk and checks whether
-// the magic bytes match a known image format. Files that contain HTML/text
-// error pages (from a failed WebDAV migration) are returned as corrupt.
+//
+// Two-pass check for every non-text binary file:
+//  1. Read 512 bytes → http.DetectContentType → "text/html" means an HTML
+//     error page was saved as a binary file (classic WebDAV migration failure).
+//  2. For image formats where Go has a registered decoder (JPEG, PNG, GIF,
+//     WebP): try image.DecodeConfig — this parses the image header structure
+//     and catches files that have valid magic bytes but corrupt/missing data
+//     after those bytes (e.g. FF D8 followed by garbage).
 func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
@@ -45,13 +57,9 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 		limit = v
 	}
 
-	// Only scan binary raster image formats where we can verify the magic
-	// bytes. Text-based image formats (SVG, XBM) are excluded because they
-	// legitimately start with '<' or plain ASCII, which is indistinguishable
-	// from an HTML error page without full XML parsing.
-	// ISO BMFF containers (HEIC, HEIF, AVIF) are binary and never start with
-	// '<' or 'HTTP/', so they are safe to scan even though we cannot verify
-	// their specific magic — a corrupt replacement would still be caught.
+	// Query all non-folder, non-deleted files whose content should be binary.
+	// Exclude formats that are legitimately text/HTML/XML — we cannot tell
+	// an HTML error page from real content in those formats.
 	rows, err := h.db.Query(r.Context(),
 		`SELECT f.id, f.name, f.owner_id, f.size_bytes, COALESCE(f.mime_type,'') AS mime_type,
 		        f.updated_at, COALESCE(u.email, '') AS owner_email
@@ -59,27 +67,28 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 		 LEFT JOIN users u ON u.id = f.owner_id
 		 WHERE f.is_folder = false
 		   AND f.deleted_at IS NULL
-		   -- Exclude text-based image formats that cannot be verified by magic bytes
-		   AND f.mime_type NOT ILIKE 'image/svg%'
-		   AND f.mime_type NOT ILIKE 'image/x-xbitmap%'
-		   AND f.name NOT ILIKE '%.svg'
-		   AND f.name NOT ILIKE '%.xbm'
-		   AND (
-		         -- Binary raster formats declared via MIME type
-		         f.mime_type ILIKE 'image/%'
-		      OR (
-		           -- Files with no/generic MIME type but a known binary image extension
-		           (f.mime_type = '' OR f.mime_type IS NULL OR f.mime_type = 'application/octet-stream')
-		           AND (
-		                 f.name ILIKE '%.jpg'  OR f.name ILIKE '%.jpeg'
-		              OR f.name ILIKE '%.png'  OR f.name ILIKE '%.gif'
-		              OR f.name ILIKE '%.webp' OR f.name ILIKE '%.bmp'
-		              OR f.name ILIKE '%.tiff' OR f.name ILIKE '%.tif'
-		              OR f.name ILIKE '%.heic' OR f.name ILIKE '%.heif'
-		              OR f.name ILIKE '%.avif'
-		           )
-		         )
-		   )
+		   -- Skip files that are legitimately text or markup
+		   AND COALESCE(f.mime_type, '') NOT ILIKE 'text/%'
+		   AND COALESCE(f.mime_type, '') NOT IN (
+		         'application/json', 'application/ld+json',
+		         'application/xml',  'application/javascript',
+		         'application/x-sh'
+		       )
+		   -- Skip formats whose content is inherently text/XML (false-positive prone)
+		   AND f.name NOT ILIKE '%.html' AND f.name NOT ILIKE '%.htm'
+		   AND f.name NOT ILIKE '%.svg'  AND f.name NOT ILIKE '%.xbm'
+		   AND f.name NOT ILIKE '%.txt'  AND f.name NOT ILIKE '%.md'
+		   AND f.name NOT ILIKE '%.csv'  AND f.name NOT ILIKE '%.json'
+		   AND f.name NOT ILIKE '%.xml'  AND f.name NOT ILIKE '%.yaml'
+		   AND f.name NOT ILIKE '%.yml'  AND f.name NOT ILIKE '%.css'
+		   AND f.name NOT ILIKE '%.js'   AND f.name NOT ILIKE '%.ts'
+		   AND f.name NOT ILIKE '%.jsx'  AND f.name NOT ILIKE '%.tsx'
+		   AND f.name NOT ILIKE '%.sh'   AND f.name NOT ILIKE '%.py'
+		   AND f.name NOT ILIKE '%.go'   AND f.name NOT ILIKE '%.rs'
+		   -- Skip Google Drive stubs (JSON-pointer files, not real binary data)
+		   AND f.name NOT ILIKE '%.gsheet' AND f.name NOT ILIKE '%.gdoc'
+		   AND f.name NOT ILIKE '%.gslides' AND f.name NOT ILIKE '%.gdraw'
+		   AND f.name NOT ILIKE '%.gform'  AND f.name NOT ILIKE '%.gmap'
 		 ORDER BY f.size_bytes ASC
 		 LIMIT $1`,
 		limit,
@@ -111,21 +120,39 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 
 	for _, c := range candidates {
 		path := scanStoragePath(filesRoot, c.id)
-		magic, err := readMagicBytes(path)
+		data, err := readFirst512(path)
 		if err != nil {
-			// File missing on disk — skip (handled by storage scrub)
+			// File missing on disk — skip (handled by orphan scanner)
 			continue
 		}
-		if !isValidImageMagic(magic) && looksLikeTextOrHTML(magic) {
+
+		detected := http.DetectContentType(data)
+
+		// Check 1: content is an HTML error page regardless of stored MIME/extension.
+		// http.DetectContentType sniffs up to 512 bytes and is reliable for HTML.
+		if strings.HasPrefix(detected, "text/html") {
 			corrupt = append(corrupt, corruptFile{
-				ID:        c.id,
-				Name:      c.name,
-				OwnerID:   c.ownerID,
-				OwnerName: c.ownerEmail,
-				SizeBytes: c.size,
-				MimeType:  c.mimeType,
+				ID: c.id, Name: c.name, OwnerID: c.ownerID,
+				OwnerName: c.ownerEmail, SizeBytes: c.size,
+				MimeType:  c.mimeType, Reason: "HTML error page",
 				UpdatedAt: c.updatedAt,
 			})
+			continue
+		}
+
+		// Check 2: for image formats with a registered Go decoder, try parsing
+		// the image header. This catches files that pass the magic-byte sniff
+		// (e.g. JPEG 0xFF 0xD8) but have a corrupt or missing structure after
+		// those bytes — a situation http.DetectContentType cannot catch.
+		if canDecodeImageHeader(c.mimeType, c.name) {
+			if err := tryDecodeImageHeader(path); err != nil {
+				corrupt = append(corrupt, corruptFile{
+					ID: c.id, Name: c.name, OwnerID: c.ownerID,
+					OwnerName: c.ownerEmail, SizeBytes: c.size,
+					MimeType:  c.mimeType, Reason: "unreadable image header",
+					UpdatedAt: c.updatedAt,
+				})
+			}
 		}
 	}
 
@@ -209,73 +236,54 @@ func readMagicBytes(path string) ([]byte, error) {
 	return buf[:n], nil
 }
 
-// isValidImageMagic returns true when the bytes start with a known image magic.
-func isValidImageMagic(b []byte) bool {
-	if len(b) < 2 {
-		return false
+// readFirst512 reads up to 512 bytes from a file — enough for
+// http.DetectContentType to make a reliable determination.
+func readFirst512(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
 	}
-	// JPEG: FF D8
-	if b[0] == 0xFF && b[1] == 0xD8 {
+	defer f.Close()
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	if n == 0 {
+		return nil, os.ErrInvalid
+	}
+	return buf[:n], nil
+}
+
+// canDecodeImageHeader returns true for image formats where Go has a
+// registered image.DecodeConfig decoder. Formats without a decoder (HEIC,
+// AVIF, BMP, TIFF) are excluded to avoid false positives.
+func canDecodeImageHeader(mimeType, name string) bool {
+	mime := strings.ToLower(mimeType)
+	if strings.Contains(mime, "jpeg") {
 		return true
 	}
-	// PNG: 89 50 4E 47
-	if len(b) >= 4 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47 {
+	switch mime {
+	case "image/png", "image/gif", "image/webp":
 		return true
 	}
-	// GIF: 47 49 46
-	if len(b) >= 3 && b[0] == 'G' && b[1] == 'I' && b[2] == 'F' {
-		return true
-	}
-	// WEBP: RIFF....WEBP
-	if len(b) >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' &&
-		b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P' {
-		return true
-	}
-	// BMP: 42 4D
-	if b[0] == 0x42 && b[1] == 0x4D {
-		return true
-	}
-	// TIFF: 49 49 / 4D 4D
-	if len(b) >= 4 && ((b[0] == 0x49 && b[1] == 0x49) || (b[0] == 0x4D && b[1] == 0x4D)) {
+	ext := strings.ToLower(filepath.Ext(name))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp":
 		return true
 	}
 	return false
 }
 
-// looksLikeTextOrHTML returns true only when the bytes are clearly an HTML
-// page or raw HTTP response — the two forms produced by a failed WebDAV
-// migration from Nextcloud. Plain-text formats (ASCII STL, CSV, etc.) that
-// happen to start with printable ASCII are NOT flagged.
-func looksLikeTextOrHTML(b []byte) bool {
-	if len(b) == 0 {
-		return false
+// tryDecodeImageHeader opens the file and calls image.DecodeConfig which
+// reads enough of the file to parse the image header and extract dimensions.
+// It returns an error if the file cannot be decoded as a valid image — even
+// if the first magic bytes look correct.
+func tryDecodeImageHeader(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
 	}
-	// Skip leading whitespace.
-	start := 0
-	for start < len(b) && (b[start] == ' ' || b[start] == '\t' || b[start] == '\n' || b[start] == '\r') {
-		start++
-	}
-	if start >= len(b) {
-		return false
-	}
-	// HTML document: first non-whitespace byte is '<' (covers <!DOCTYPE, <html, etc.)
-	if b[start] == '<' {
-		return true
-	}
-	// Raw HTTP response: starts with "HTTP/"
-	if len(b)-start >= 5 &&
-		b[start] == 'H' && b[start+1] == 'T' && b[start+2] == 'T' &&
-		b[start+3] == 'P' && b[start+4] == '/' {
-		return true
-	}
-	return false
-}
-
-func min16(n int) int {
-	if n < 16 {
-		return n
-	}
-	return 16
+	defer f.Close()
+	_, _, err = image.DecodeConfig(f)
+	return err
 }
 
 // ── Orphan file scan ──────────────────────────────────────────────────────────

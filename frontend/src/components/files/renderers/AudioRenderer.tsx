@@ -1,5 +1,6 @@
 import { Download, Music, AlertTriangle } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Dial } from '@/components/files/Dial'
 
 interface AudioRendererProps {
   /** Authenticated preview URL */
@@ -42,130 +43,6 @@ function isFlacFile(mimeType: string, fileName: string): boolean {
     mimeType === 'audio/flac' ||
     mimeType === 'audio/x-flac' ||
     fileName.toLowerCase().endsWith('.flac')
-  )
-}
-
-// ── Dial ──────────────────────────────────────────────────────────────────────
-// value: 0–1, label shown below, color for the active dot
-interface DialProps {
-  value: number
-  onChange: (v: number) => void
-  label: string
-  color: string
-}
-
-const DOT_COUNT = 24
-// Dial sweep: from -135° to +135° (270° total), 0 at bottom-left, 1 at bottom-right
-const MIN_ANGLE = -135
-const MAX_ANGLE = 135
-
-function valueToAngle(v: number) {
-  return MIN_ANGLE + v * (MAX_ANGLE - MIN_ANGLE)
-}
-
-function Dial({ value, onChange, label, color }: DialProps) {
-  const dialRef = useRef<HTMLDivElement>(null)
-  const startY = useRef<number | null>(null)
-  const startVal = useRef(value)
-
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault()
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-    startY.current = e.clientY
-    startVal.current = value
-  }, [value])
-
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (startY.current === null) return
-    const dy = startY.current - e.clientY          // drag up = increase
-    const delta = dy / 120                         // 120px = full sweep
-    const next = Math.max(0, Math.min(1, startVal.current + delta))
-    onChange(next)
-  }, [onChange])
-
-  const onPointerUp = useCallback(() => {
-    startY.current = null
-  }, [])
-
-  const activeAngle = valueToAngle(value)
-
-  return (
-    <div className="flex flex-col items-center gap-3 select-none">
-      {/* Outer ring with dots */}
-      <div
-        ref={dialRef}
-        className="relative cursor-ns-resize"
-        style={{ width: 88, height: 88 }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-      >
-        {/* Dots ring */}
-        <svg
-          viewBox="0 0 88 88"
-          className="absolute inset-0 w-full h-full pointer-events-none"
-          style={{ transform: 'rotate(-90deg)' }}
-        >
-          {Array.from({ length: DOT_COUNT }, (_, i) => {
-            // Distribute dots over 270° sweep (skipping bottom 90°)
-            const fraction = i / (DOT_COUNT - 1)
-            const angleDeg = MIN_ANGLE + fraction * (MAX_ANGLE - MIN_ANGLE)
-            const angleRad = (angleDeg * Math.PI) / 180
-            const r = 40
-            const cx = 44 + r * Math.cos(angleRad)
-            const cy = 44 + r * Math.sin(angleRad)
-            const active = angleDeg <= activeAngle
-            return (
-              <circle
-                key={i}
-                cx={cx}
-                cy={cy}
-                r={active ? 3 : 2}
-                fill={active ? color : '#3a3d4a'}
-                style={{ filter: active ? `drop-shadow(0 0 3px ${color})` : 'none' }}
-              />
-            )
-          })}
-        </svg>
-
-        {/* Knob body — neumorphic dark circle */}
-        <div
-          className="absolute rounded-full"
-          style={{
-            inset: 10,
-            background: '#1c1f2e',
-            boxShadow: '6px 6px 14px #0d0f18, -4px -4px 10px #2b2f45',
-          }}
-        />
-
-        {/* Inner indicator dot */}
-        <div
-          className="absolute rounded-full"
-          style={{
-            inset: 14,
-            background: 'radial-gradient(circle at 35% 35%, #2a2d3e, #16192a)',
-            boxShadow: 'inset 3px 3px 8px #0d0f18, inset -2px -2px 6px #2b2f45',
-          }}
-        >
-          {/* Pointer dot */}
-          <div
-            className="absolute rounded-full"
-            style={{
-              width: 6,
-              height: 6,
-              background: color,
-              boxShadow: `0 0 6px ${color}`,
-              top: '50%',
-              left: '50%',
-              transformOrigin: '50% 50%',
-              transform: `translate(-50%, -50%) rotate(${activeAngle}deg) translateY(-18px)`,
-            }}
-          />
-        </div>
-      </div>
-      <span className="text-[11px] font-medium tracking-wider uppercase text-zinc-400">{label}</span>
-    </div>
   )
 }
 

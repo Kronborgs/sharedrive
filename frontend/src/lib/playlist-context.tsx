@@ -36,6 +36,8 @@ interface PlaylistContextValue {
   progress: number
   duration: number
   volume: number
+  bass: number
+  treble: number
   shuffle: boolean
 
   // Playback controls
@@ -45,6 +47,8 @@ interface PlaylistContextValue {
   prev: () => void
   seek: (ratio: number) => void
   setVolume: (v: number) => void
+  setBass: (v: number) => void
+  setTreble: (v: number) => void
   toggleShuffle: () => void
 
   // Playlist track management
@@ -81,7 +85,16 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   const [progress, setProgress]                     = useState(0)
   const [duration, setDuration]                     = useState(0)
   const [volume, setVolumeState]                    = useState(() => loadCache()?.vol ?? 1)
+  const [bass,   setBassState]                      = useState(0.5)
+  const [treble, setTrebleState]                    = useState(0.5)
   const [shuffle, setShuffleState]                  = useState(() => loadCache()?.shuffle ?? false)
+
+  // Web Audio refs — lazily initialised on first play
+  const audioCtxRef    = useRef<AudioContext | null>(null)
+  const bassFilterRef  = useRef<BiquadFilterNode | null>(null)
+  const trebleFilterRef = useRef<BiquadFilterNode | null>(null)
+  const bassValRef     = useRef(0.5)
+  const trebleValRef   = useRef(0.5)
 
   const { data: publicSettings } = useQuery({
     queryKey: ['system', 'settings'],
@@ -133,7 +146,26 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current!
     const onTime  = () => setProgress(audio.currentTime)
     const onDur   = () => setDuration(audio.duration)
-    const onPlay  = () => setIsPlaying(true)
+    const initWebAudio = () => {
+      if (audioCtxRef.current) { void audioCtxRef.current.resume(); return }
+      const ctx = new AudioContext()
+      const source = ctx.createMediaElementSource(audio)
+      const bassF = ctx.createBiquadFilter()
+      bassF.type = 'lowshelf'
+      bassF.frequency.value = 200
+      bassF.gain.value = (bassValRef.current - 0.5) * 24
+      const trebleF = ctx.createBiquadFilter()
+      trebleF.type = 'highshelf'
+      trebleF.frequency.value = 4000
+      trebleF.gain.value = (trebleValRef.current - 0.5) * 24
+      source.connect(bassF)
+      bassF.connect(trebleF)
+      trebleF.connect(ctx.destination)
+      audioCtxRef.current   = ctx
+      bassFilterRef.current  = bassF
+      trebleFilterRef.current = trebleF
+    }
+    const onPlay  = () => { initWebAudio(); setIsPlaying(true) }
     const onPause = () => { if (!audio.ended) setIsPlaying(false) }
     const onEnded = () => {
       const len = tracksRef.current.length
@@ -295,6 +327,18 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     setVolumeState(v)
   }, [])
 
+  const setBass = useCallback((v: number) => {
+    bassValRef.current = v
+    if (bassFilterRef.current) bassFilterRef.current.gain.value = (v - 0.5) * 24
+    setBassState(v)
+  }, [])
+
+  const setTreble = useCallback((v: number) => {
+    trebleValRef.current = v
+    if (trebleFilterRef.current) trebleFilterRef.current.gain.value = (v - 0.5) * 24
+    setTrebleState(v)
+  }, [])
+
   const toggleShuffle = useCallback(() => {
     setShuffleState(v => {
       shuffleRef.current = !v
@@ -360,6 +404,8 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
         progress,
         duration,
         volume,
+        bass,
+        treble,
         shuffle,
         setPlaylist,
         clearPlaylist,
@@ -369,6 +415,8 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
         prev,
         seek,
         setVolume,
+        setBass,
+        setTreble,
         toggleShuffle,
         removeTrack,
         addTracks,

@@ -22,7 +22,6 @@ import {
   Pause,
   SkipBack,
   SkipForward,
-  Volume2,
   Shuffle,
   Plus,
 } from 'lucide-react'
@@ -35,6 +34,7 @@ import { formatBytes, cn } from '@/lib/utils'
 import { WebDAVDialog } from '@/components/layout/WebDAVDialog'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
 import { AddMusicDialog } from '@/components/files/AddMusicDialog'
+import { Dial } from '@/components/files/Dial'
 import { usePlaylist } from '@/lib/playlist-context'
 
 interface NavItem {
@@ -118,6 +118,8 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
     progress,
     duration,
     volume,
+    bass,
+    treble,
     clearPlaylist,
     jumpTo,
     togglePlay,
@@ -125,6 +127,8 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
     prev,
     seek,
     setVolume,
+    setBass,
+    setTreble,
     toggleShuffle,
     shuffle,
     removeTrack,
@@ -361,19 +365,11 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   </div>
                 )}
 
-                {/* Volume */}
-                <div className="flex items-center gap-2 px-2.5 py-2 border-t border-zinc-100 dark:border-[#2d3148]">
-                  <Volume2 size={12} className="text-zinc-400 shrink-0" />
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.02"
-                    value={volume}
-                    onChange={e => setVolume(parseFloat(e.target.value))}
-                    className="flex-1 h-1 accent-brand-600 cursor-pointer"
-                    title={t('player.volume')}
-                  />
+                {/* Bass / Volume / Treble dials */}
+                <div className="flex items-end justify-center gap-5 px-2.5 py-3 border-t border-zinc-100 dark:border-[#2d3148]" style={{ background: '#181b28' }}>
+                  <Dial value={bass}   onChange={setBass}   label="Bass"   color="#22d3ee" size={60} />
+                  <Dial value={volume} onChange={setVolume} label="Volume" color="#4ade80" size={60} />
+                  <Dial value={treble} onChange={setTreble} label="Treble" color="#f87171" size={60} />
                 </div>
               </div>
             )}
@@ -576,14 +572,10 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                     <SkipForward size={26} />
                   </button>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Volume2 size={16} className="text-zinc-400 shrink-0" />
-                  <input
-                    type="range" min="0" max="1" step="0.02"
-                    value={volume}
-                    onChange={e => setVolume(parseFloat(e.target.value))}
-                    className="flex-1 accent-brand-600"
-                  />
+                <div className="flex items-end justify-center gap-6 py-4" style={{ background: '#181b28' }}>
+                  <Dial value={bass}   onChange={setBass}   label="Bass"   color="#22d3ee" size={76} />
+                  <Dial value={volume} onChange={setVolume} label="Volume" color="#4ade80" size={76} />
+                  <Dial value={treble} onChange={setTreble} label="Treble" color="#f87171" size={76} />
                 </div>
               </div>
 

@@ -10,6 +10,22 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 
 ## Changelog
 
+### v1.1.3 — 23 April 2026
+
+#### New features
+- **Audio equaliser** — Bass, Volume, and Treble neumorphic dials replace the flat volume slider in both the sidebar mini-player and the audio preview modal. Each dial sweeps ±12 dB via a Web Audio API `BiquadFilterNode` chain (low-shelf 200 Hz for bass, high-shelf 4 kHz for treble) with a `GainNode` for volume. Drag up to increase, down to decrease; all three dials remember their value for the current playback session.
+- **Admin → Storage: corrupt file scanner** — scans every file blob on disk and flags entries that are structurally broken (truncated JPEG, invalid PNG/GIF/WebP header, non-PDF magic bytes, etc.). Results are cached until you re-run the scan. You can preview a corrupt file before deleting it, or bulk-purge all flagged entries in one click. The purge removes both the database record and the file on disk.
+- **Admin → Storage: orphan blob scanner** — finds files on disk that have no matching database record (left behind by failed uploads or manual interventions). Each orphan can be previewed, permanently deleted, or restored as a real file into a special "Restored from cleanup" folder. Bulk-delete is also available.
+- **Admin → Storage: scheduled scans** — configure corrupt and orphan scans to run automatically on an hourly, daily, weekly, or monthly schedule so storage hygiene is maintained without manual intervention.
+- **Trash enhancements** — files in the trash can now be previewed in the full preview modal before you decide to restore or permanently delete them. Bulk restore and bulk permanent delete buttons let you process multiple items at once.
+
+#### Bug fixes
+- **Admin backup history** — the "Previous backups" list on the Admin → Backup page was always empty when the `BACKUPS_ROOT` environment variable was not explicitly set. The handler now falls back to `/mnt/backup` (the Unraid default mount point) exactly like the user-facing backup handler does, so history and downloads work out of the box on Unraid without any extra configuration.
+- **Corrupt scan coverage** — SVG, HTML, XML, and other text-based formats are now excluded from the binary-integrity check to avoid false positives. JPEG/PNG/GIF/WebP headers are validated using `image.DecodeConfig` for accuracy; all other binary types use a 512-byte magic-byte check.
+- **Storage scan pagination** — the corrupt and orphan scanners now process every file in the database (no 5 000-row cap) with deterministic ordering, so large libraries are fully covered.
+
+---
+
 ### v1.1.2 — 21 April 2026
 
 #### New features
@@ -90,8 +106,9 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 
 ### M3U Playlists
 - Create M3U playlists directly from selected audio files in the file manager
-- **Persistent sidebar player** — plays in the background while navigating; collapses to a mini-bar; expands to show track list with per-track remove button and volume slider
+- **Persistent sidebar player** — plays in the background while navigating; collapses to a mini-bar; expands to show track list with per-track remove button and Bass / Volume / Treble neumorphic dials
 - **Mobile bottom bar** — floating mini-player on small screens; tap to expand full sheet with track list and controls
+- **Audio equaliser** — neumorphic dial controls for Bass (low-shelf 200 Hz), Volume, and Treble (high-shelf 4 kHz) via the Web Audio API; available in both the sidebar player and the audio preview modal; each dial sweeps ±12 dB
 - **Shuffle mode** — randomises track order; toggles with a single click; highlighted when active
 - **Cross-device state sync** — active playlist, current track index, volume and shuffle mode are saved server-side (per user) and restored on any device or browser after login; instant hydration from localStorage on same device
 - Add files or folders to the current playlist from the context menu ("Add to playlist")
@@ -109,6 +126,8 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 
 
 - Soft-delete with automatic ownership transfer (guest-uploaded files land in the folder owner's trash)
+- **Preview from trash** — open any trashed file in the full preview modal (image, PDF, video, audio, etc.) before deciding what to do with it
+- **Bulk restore / bulk permanent delete** — select multiple trashed items and restore or permanently delete them in one action
 - Restore individual files or empty the entire trash
 - Configurable per-user retention period (auto-cleanup)
 
@@ -142,7 +161,8 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 - **Group management** — create groups, add/remove members, use groups as share targets
 - **Tag management** — admin-defined tags with custom colours; applicable to any file
 - **Admin support access** — limited-scope impersonation of a user account, fully audited; the user sees a real-time banner via SSE
-- **Backup & restore** — export HMAC-signed gzip JSON (metadata only, no file blobs); restore at any time or during first-run setup
+- **Backup & restore** — export HMAC-signed gzip JSON (metadata only, no file blobs); restore at any time or during first-run setup; backup history shown automatically whether or not `BACKUPS_ROOT` is explicitly configured (falls back to `/mnt/backup`)
+- **Storage health** — corrupt file scanner (validates JPEG/PNG/GIF/WebP/PDF/ZIP magic bytes; text-based formats excluded from binary checks) and orphan blob scanner (disk files with no database record); results cached across navigation; preview before deleting; bulk purge; configurable automatic schedule (hourly / daily / weekly / monthly)
 - **System settings** — site name, open registration, default quota, global max upload size, direct upload URL, OnlyOffice Document Server URL, SMTP configuration with live test
 - **Audit log viewer** — filterable by event type and actor email, paginated, colour-coded; deduplication of repeated login events; enriched delete/backup entries
 - **Blocked IPs** — view active lockouts with tier/TTL, manually block or unblock, manage CIDR whitelist

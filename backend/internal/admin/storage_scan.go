@@ -45,6 +45,13 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 		limit = v
 	}
 
+	// Only scan binary raster image formats where we can verify the magic
+	// bytes. Text-based image formats (SVG, XBM) are excluded because they
+	// legitimately start with '<' or plain ASCII, which is indistinguishable
+	// from an HTML error page without full XML parsing.
+	// ISO BMFF containers (HEIC, HEIF, AVIF) are binary and never start with
+	// '<' or 'HTTP/', so they are safe to scan even though we cannot verify
+	// their specific magic — a corrupt replacement would still be caught.
 	rows, err := h.db.Query(r.Context(),
 		`SELECT f.id, f.name, f.owner_id, f.size_bytes, COALESCE(f.mime_type,'') AS mime_type,
 		        f.updated_at, COALESCE(u.email, '') AS owner_email
@@ -52,11 +59,26 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 		 LEFT JOIN users u ON u.id = f.owner_id
 		 WHERE f.is_folder = false
 		   AND f.deleted_at IS NULL
+		   -- Exclude text-based image formats that cannot be verified by magic bytes
+		   AND f.mime_type NOT ILIKE 'image/svg%'
+		   AND f.mime_type NOT ILIKE 'image/x-xbitmap%'
+		   AND f.name NOT ILIKE '%.svg'
+		   AND f.name NOT ILIKE '%.xbm'
 		   AND (
+		         -- Binary raster formats declared via MIME type
 		         f.mime_type ILIKE 'image/%'
-		      OR f.mime_type = ''
-		      OR f.mime_type IS NULL
-		      OR f.mime_type = 'application/octet-stream'
+		      OR (
+		           -- Files with no/generic MIME type but a known binary image extension
+		           (f.mime_type = '' OR f.mime_type IS NULL OR f.mime_type = 'application/octet-stream')
+		           AND (
+		                 f.name ILIKE '%.jpg'  OR f.name ILIKE '%.jpeg'
+		              OR f.name ILIKE '%.png'  OR f.name ILIKE '%.gif'
+		              OR f.name ILIKE '%.webp' OR f.name ILIKE '%.bmp'
+		              OR f.name ILIKE '%.tiff' OR f.name ILIKE '%.tif'
+		              OR f.name ILIKE '%.heic' OR f.name ILIKE '%.heif'
+		              OR f.name ILIKE '%.avif'
+		           )
+		         )
 		   )
 		 ORDER BY f.size_bytes ASC
 		 LIMIT $1`,
@@ -220,18 +242,31 @@ func isValidImageMagic(b []byte) bool {
 	return false
 }
 
-// looksLikeTextOrHTML returns true when the bytes look like a text/HTML page
-// (i.e. an HTTP error response saved during a failed WebDAV migration).
+// looksLikeTextOrHTML returns true only when the bytes are clearly an HTML
+// page or raw HTTP response — the two forms produced by a failed WebDAV
+// migration from Nextcloud. Plain-text formats (ASCII STL, CSV, etc.) that
+// happen to start with printable ASCII are NOT flagged.
 func looksLikeTextOrHTML(b []byte) bool {
 	if len(b) == 0 {
 		return false
 	}
-	// HTML: starts with < or whitespace+<
-	for _, c := range b[:min16(len(b))] {
-		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
-			continue
-		}
-		return c == '<' || (c >= 0x20 && c < 0x7F) // printable ASCII = text
+	// Skip leading whitespace.
+	start := 0
+	for start < len(b) && (b[start] == ' ' || b[start] == '\t' || b[start] == '\n' || b[start] == '\r') {
+		start++
+	}
+	if start >= len(b) {
+		return false
+	}
+	// HTML document: first non-whitespace byte is '<' (covers <!DOCTYPE, <html, etc.)
+	if b[start] == '<' {
+		return true
+	}
+	// Raw HTTP response: starts with "HTTP/"
+	if len(b)-start >= 5 &&
+		b[start] == 'H' && b[start+1] == 'T' && b[start+2] == 'T' &&
+		b[start+3] == 'P' && b[start+4] == '/' {
+		return true
 	}
 	return false
 }

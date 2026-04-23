@@ -1,9 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router'
+﻿import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { formatBytes, formatRelative } from '@/lib/utils'
-import { AlertTriangle, Eye, FileQuestion, FolderInput, Loader2, ScanSearch, Trash2 } from 'lucide-react'
+import { AlertTriangle, ChevronDown, Clock, Eye, FileQuestion, FolderInput, Loader2, ScanSearch, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import type { FileItem } from '@/types/api'
@@ -42,8 +42,40 @@ interface OrphanScanResult {
   duration_ms: number
 }
 
-const SCAN_KEY = ['admin', 'storage-scan']
-const ORPHAN_KEY = ['admin', 'storage-orphans']
+interface ScanScheduleConfig {
+  enabled: boolean
+  interval: 'hourly' | 'daily' | 'weekly' | 'monthly'
+  hour: number
+  day_of_week: number
+  day_of_month: number
+}
+
+interface ScanScheduleData {
+  corrupt: ScanScheduleConfig
+  orphan: ScanScheduleConfig
+  corrupt_last_run: string
+  orphan_last_run: string
+}
+
+const SCAN_KEY     = ['admin', 'storage-scan']
+const ORPHAN_KEY   = ['admin', 'storage-orphans']
+const SCHEDULE_KEY = ['admin', 'storage-schedule']
+
+const DEFAULT_SCHED: ScanScheduleConfig = {
+  enabled: false, interval: 'daily', hour: 2, day_of_week: 1, day_of_month: 1,
+}
+
+function scheduleLabel(cfg: ScanScheduleConfig): string {
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const h = String(cfg.hour).padStart(2, '0') + ':00 UTC'
+  switch (cfg.interval) {
+    case 'hourly':  return 'Every hour'
+    case 'daily':   return `Daily at ${h}`
+    case 'weekly':  return `${days[cfg.day_of_week]} at ${h}`
+    case 'monthly': return `Day ${cfg.day_of_month} at ${h}`
+    default:        return cfg.interval
+  }
+}
 
 function corruptToFileItem(f: CorruptFile): FileItem {
   return {
@@ -63,10 +95,9 @@ function corruptToFileItem(f: CorruptFile): FileItem {
 
 function StoragePage() {
   const queryClient = useQueryClient()
-
   const [previewCorrupt, setPreviewCorrupt] = useState<CorruptFile | null>(null)
 
-  // ── Corrupt file scan ──────────────────────────────────────────────────────
+  // -- Corrupt file scan
   const [selectedCorrupt, setSelectedCorrupt] = useState<Set<string>>(new Set())
 
   const { data: scanResult, isFetching: scanFetching, refetch: refetchScan } = useQuery<ScanResult>({
@@ -81,7 +112,7 @@ function StoragePage() {
     const result = await refetchScan()
     if (result.data) {
       if (result.data.corrupt_files.length === 0) {
-        toast.success(`Scan complete — no corrupt files found (${result.data.scanned_files} scanned)`)
+        toast.success(`Scan complete - no corrupt files found (${result.data.scanned_files} scanned)`)
       } else {
         toast.warning(`Found ${result.data.corrupt_files.length} corrupt file(s) out of ${result.data.scanned_files} scanned`)
       }
@@ -94,7 +125,7 @@ function StoragePage() {
     mutationFn: (ids: string[]) =>
       api.post<{ deleted: number; disk_deleted: number }>('/api/v1/admin/storage/purge-corrupt', { ids }),
     onSuccess: (data, ids) => {
-      toast.success(`${data.deleted} record(s) removed — ${data.disk_deleted} file(s) deleted from disk`)
+      toast.success(`${data.deleted} record(s) removed - ${data.disk_deleted} file(s) deleted from disk`)
       queryClient.setQueryData<ScanResult>(SCAN_KEY, prev =>
         prev ? { ...prev, corrupt_files: prev.corrupt_files.filter(f => !ids.includes(f.id)) } : prev
       )
@@ -112,7 +143,7 @@ function StoragePage() {
     )
   }
 
-  // ── Orphan file scan ───────────────────────────────────────────────────────
+  // -- Orphan file scan
   const [selectedOrphan, setSelectedOrphan] = useState<Set<string>>(new Set())
 
   const { data: orphanResult, isFetching: orphanFetching, refetch: refetchOrphans } = useQuery<OrphanScanResult>({
@@ -127,7 +158,7 @@ function StoragePage() {
     const result = await refetchOrphans()
     if (result.data) {
       if (result.data.orphan_files.length === 0) {
-        toast.success(`Scan complete — no orphan files found (${result.data.scanned_blobs} blobs scanned)`)
+        toast.success(`Scan complete - no orphan files found (${result.data.scanned_blobs} blobs scanned)`)
       } else {
         toast.warning(`Found ${result.data.orphan_files.length} orphan file(s) out of ${result.data.scanned_blobs} scanned`)
       }
@@ -140,7 +171,7 @@ function StoragePage() {
     mutationFn: (ids: string[]) =>
       api.post<{ deleted: number; freed_bytes: number }>('/api/v1/admin/storage/purge-orphans', { ids }),
     onSuccess: (data, ids) => {
-      toast.success(`${data.deleted} file(s) deleted — ${formatBytes(data.freed_bytes)} freed`)
+      toast.success(`${data.deleted} file(s) deleted - ${formatBytes(data.freed_bytes)} freed`)
       queryClient.setQueryData<OrphanScanResult>(ORPHAN_KEY, prev =>
         prev ? { ...prev, orphan_files: prev.orphan_files.filter(f => !ids.includes(f.id)) } : prev
       )
@@ -171,19 +202,51 @@ function StoragePage() {
     )
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // -- Schedule
+  const { data: scheduleData } = useQuery<ScanScheduleData>({
+    queryKey: SCHEDULE_KEY,
+    queryFn: () => api.get<ScanScheduleData>('/api/v1/admin/storage/schedule'),
+  })
+
+  const [draftCorrupt, setDraftCorrupt] = useState<ScanScheduleConfig>(DEFAULT_SCHED)
+  const [draftOrphan,  setDraftOrphan]  = useState<ScanScheduleConfig>({ ...DEFAULT_SCHED, hour: 3 })
+  const [scheduleSynced, setScheduleSynced] = useState(false)
+
+  useEffect(() => {
+    if (scheduleData && !scheduleSynced) {
+      setDraftCorrupt(scheduleData.corrupt)
+      setDraftOrphan(scheduleData.orphan)
+      setScheduleSynced(true)
+    }
+  }, [scheduleData, scheduleSynced])
+
+  const saveSchedule = useMutation({
+    mutationFn: (which: 'corrupt' | 'orphan') =>
+      api.put<{ ok: boolean }>('/api/v1/admin/storage/schedule', {
+        corrupt: which === 'corrupt' ? draftCorrupt : (scheduleData?.corrupt ?? draftCorrupt),
+        orphan:  which === 'orphan'  ? draftOrphan  : (scheduleData?.orphan  ?? draftOrphan),
+      }),
+    onSuccess: () => {
+      toast.success('Schedule saved')
+      queryClient.invalidateQueries({ queryKey: SCHEDULE_KEY })
+      setScheduleSynced(false)
+    },
+    onError: () => toast.error('Failed to save schedule'),
+  })
+
+  // -- Render
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">Storage</h1>
 
-      {/* ── Corrupt file scan ── */}
+      {/* Corrupt file scan */}
       <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-3">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">Corrupt file scan</h2>
         <p className="text-sm text-muted">
           Scans all binary files (images, PDFs, Office documents, archives, etc.) using two
-          checks: (1) reads 512 bytes to detect HTML error pages saved as binary files — a
-          common result of failed WebDAV migrations; (2) for JPEG/PNG/GIF/WebP, parses the
-          full image header to catch files with valid magic bytes but corrupt data after them.
+          checks: (1) reads 512 bytes to detect HTML error pages saved as binary files; (2) for
+          JPEG/PNG/GIF/WebP, parses the full image header to catch files with valid magic bytes
+          but corrupt data after them.
         </p>
         <button
           onClick={startScan}
@@ -191,12 +254,12 @@ function StoragePage() {
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
         >
           {scanFetching ? <Loader2 size={15} className="animate-spin" /> : <ScanSearch size={15} />}
-          {scanFetching ? 'Scanning…' : 'Scan for corrupt files'}
+          {scanFetching ? 'Scanning...' : 'Scan for corrupt files'}
         </button>
         {scanFetching && (
           <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
             <Loader2 size={14} className="animate-spin" />
-            <span>Scanning files — this may take a moment…</span>
+            <span>Scanning files - this may take a moment...</span>
           </div>
         )}
         {scanResult && !scanFetching && (
@@ -204,6 +267,13 @@ function StoragePage() {
             Scanned {scanResult.scanned_files} files in {scanResult.duration_ms} ms
           </p>
         )}
+        <SchedulePanel
+          value={draftCorrupt}
+          onChange={setDraftCorrupt}
+          onSave={() => saveSchedule.mutate('corrupt')}
+          isSaving={saveSchedule.isPending}
+          lastRun={scheduleData?.corrupt_last_run ?? ''}
+        />
       </section>
 
       {scanResult && !scanFetching && scanResult.corrupt_files.length > 0 && (
@@ -230,17 +300,16 @@ function StoragePage() {
       )}
       {scanResult && !scanFetching && scanResult.corrupt_files.length === 0 && (
         <p className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-          <span>✓</span> No corrupt files found.
+          <span>checkmark</span> No corrupt files found.
         </p>
       )}
 
-      {/* ── Orphan file scan ── */}
+      {/* Orphan file scan */}
       <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-3">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">Orphan file scan</h2>
         <p className="text-sm text-muted">
           Walks the physical storage directory and finds blobs that have no matching record in the
-          database — files that were never properly registered or whose DB entry was removed.
-          These can be safely deleted to free disk space.
+          database. These can be safely deleted to free disk space, or restored to a folder for review.
         </p>
         <button
           onClick={startOrphanScan}
@@ -248,12 +317,12 @@ function StoragePage() {
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
         >
           {orphanFetching ? <Loader2 size={15} className="animate-spin" /> : <FileQuestion size={15} />}
-          {orphanFetching ? 'Scanning…' : 'Scan for orphan files'}
+          {orphanFetching ? 'Scanning...' : 'Scan for orphan files'}
         </button>
         {orphanFetching && (
           <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
             <Loader2 size={14} className="animate-spin" />
-            <span>Walking storage directory — this may take a moment…</span>
+            <span>Walking storage directory - this may take a moment...</span>
           </div>
         )}
         {orphanResult && !orphanFetching && (
@@ -261,6 +330,13 @@ function StoragePage() {
             Scanned {orphanResult.scanned_blobs} blobs in {orphanResult.duration_ms} ms
           </p>
         )}
+        <SchedulePanel
+          value={draftOrphan}
+          onChange={setDraftOrphan}
+          onSave={() => saveSchedule.mutate('orphan')}
+          isSaving={saveSchedule.isPending}
+          lastRun={scheduleData?.orphan_last_run ?? ''}
+        />
       </section>
 
       {orphanResult && !orphanFetching && orphanResult.orphan_files.length > 0 && (
@@ -279,14 +355,14 @@ function StoragePage() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
             >
               <FolderInput size={13} />
-              {restoreOrphans.isPending ? 'Restoring…' : `Restore ${selectedOrphan.size} selected`}
+              {restoreOrphans.isPending ? 'Restoring...' : `Restore ${selectedOrphan.size} selected`}
             </button>
           }
           rows={orphanResult.orphan_files.map(f => ({
             id: f.id,
             col1: f.path,
             col1Title: f.path,
-            col2: '—',
+            col2: '/',
             col2Title: '',
             col3: formatBytes(f.size_bytes),
             col4: formatRelative(f.mod_time),
@@ -296,7 +372,7 @@ function StoragePage() {
       )}
       {orphanResult && !orphanFetching && orphanResult.orphan_files.length === 0 && (
         <p className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-          <span>✓</span> No orphan files found.
+          <span>checkmark</span> No orphan files found.
         </p>
       )}
 
@@ -314,7 +390,129 @@ function StoragePage() {
   )
 }
 
-// ── Shared table component ────────────────────────────────────────────────────
+// -- Schedule panel
+
+function SchedulePanel({ value, onChange, onSave, isSaving, lastRun }: {
+  value: ScanScheduleConfig
+  onChange: (v: ScanScheduleConfig) => void
+  onSave: () => void
+  isSaving: boolean
+  lastRun: string
+}) {
+  const [open, setOpen] = useState(false)
+  const sel = 'text-xs px-2 py-1 rounded border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1e2130] text-zinc-700 dark:text-slate-300'
+
+  return (
+    <div className="border border-zinc-200 dark:border-[#2d3148] rounded-lg overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 text-xs text-zinc-500 dark:text-slate-400 hover:bg-zinc-50 dark:hover:bg-[#1e2130] transition-colors"
+      >
+        <div className="flex items-center gap-1.5">
+          <Clock size={12} />
+          <span className="font-medium">Scheduled scan</span>
+          {value.enabled && (
+            <span className="px-1.5 py-0.5 bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 rounded text-[10px] font-medium">
+              {scheduleLabel(value)}
+            </span>
+          )}
+        </div>
+        <ChevronDown size={12} className={`transition-transform ${open ? '' : '-rotate-90'}`} />
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 pt-2 space-y-3 border-t border-zinc-100 dark:border-[#2d3148]">
+          {lastRun ? (
+            <p className="text-[11px] text-zinc-400">Last run: {formatRelative(lastRun)}</p>
+          ) : value.enabled ? (
+            <p className="text-[11px] text-zinc-400">Never run yet</p>
+          ) : null}
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={value.enabled}
+              onChange={e => onChange({ ...value, enabled: e.target.checked })}
+              className="rounded"
+            />
+            <span className="text-xs text-zinc-700 dark:text-slate-300">Enable automatic scheduled scan</span>
+          </label>
+
+          {value.enabled && (
+            <div className="flex flex-wrap gap-2 items-end">
+              <div>
+                <p className="text-[10px] text-zinc-400 mb-0.5">Interval</p>
+                <select
+                  value={value.interval}
+                  onChange={e => onChange({ ...value, interval: e.target.value as ScanScheduleConfig['interval'] })}
+                  className={sel}
+                >
+                  <option value="hourly">Hourly</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </div>
+              {value.interval !== 'hourly' && (
+                <div>
+                  <p className="text-[10px] text-zinc-400 mb-0.5">Hour (UTC)</p>
+                  <select
+                    value={value.hour}
+                    onChange={e => onChange({ ...value, hour: +e.target.value })}
+                    className={sel}
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {value.interval === 'weekly' && (
+                <div>
+                  <p className="text-[10px] text-zinc-400 mb-0.5">Day</p>
+                  <select
+                    value={value.day_of_week}
+                    onChange={e => onChange({ ...value, day_of_week: +e.target.value })}
+                    className={sel}
+                  >
+                    {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d, i) => (
+                      <option key={i} value={i}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {value.interval === 'monthly' && (
+                <div>
+                  <p className="text-[10px] text-zinc-400 mb-0.5">Day of month</p>
+                  <select
+                    value={value.day_of_month}
+                    onChange={e => onChange({ ...value, day_of_month: +e.target.value })}
+                    className={sel}
+                  >
+                    {Array.from({ length: 28 }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>{i + 1}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
+            onClick={onSave}
+            disabled={isSaving}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
+          >
+            {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Clock size={12} />}
+            {isSaving ? 'Saving...' : 'Save schedule'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// -- Shared table component
 
 function toggle(prev: Set<string>, id: string): Set<string> {
   const next = new Set(prev)
@@ -364,7 +562,7 @@ function FileTable({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
             >
               <Trash2 size={13} />
-              {isDeleting ? 'Deleting…' : `Delete ${selected.size} selected`}
+              {isDeleting ? 'Deleting...' : `Delete ${selected.size} selected`}
             </button>
           </div>
         )}
@@ -410,4 +608,3 @@ function FileTable({
     </section>
   )
 }
-

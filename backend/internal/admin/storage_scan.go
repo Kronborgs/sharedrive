@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"image"
 	_ "image/gif"
@@ -11,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rs/zerolog/log"
 	_ "golang.org/x/image/webp"
@@ -47,13 +50,15 @@ type storageScanResult struct {
 //     WebP): try image.DecodeConfig — this parses the image header structure
 //     and catches files that have valid magic bytes but corrupt/missing data
 //     after those bytes (e.g. FF D8 followed by garbage).
-func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
+//
+// runCorruptScan is the core scan logic, also used by the scheduler (scan_schedule.go).
+func runCorruptScan(ctx context.Context, db *pgxpool.Pool, filesRoot string) (storageScanResult, error) {
 	start := time.Now()
 
 	// Query all non-folder, non-deleted files whose content should be binary.
 	// Exclude formats that are legitimately text/HTML/XML — we cannot tell
 	// an HTML error page from real content in those formats.
-	rows, err := h.db.Query(r.Context(),
+	rows, err := db.Query(ctx,
 		`SELECT f.id, f.name, f.owner_id, f.size_bytes, COALESCE(f.mime_type,'') AS mime_type,
 		        f.updated_at, COALESCE(u.email, '') AS owner_email
 		 FROM files f
@@ -85,9 +90,8 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 		 ORDER BY f.size_bytes ASC, f.id ASC`,
 	)
 	if err != nil {
-		log.Error().Err(err).Msg("admin.StorageScan: query files")
-		httputil.RespondError(w, http.StatusInternalServerError, "database error")
-		return
+		log.Error().Err(err).Msg("runCorruptScan: query files")
+		return storageScanResult{}, err
 	}
 	defer rows.Close()
 
@@ -107,7 +111,6 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 	rows.Close()
 
 	corrupt := make([]corruptFile, 0)
-	filesRoot := h.cfg.FilesRoot
 
 	for _, c := range candidates {
 		path := scanStoragePath(filesRoot, c.id)
@@ -147,11 +150,20 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	httputil.Respond(w, http.StatusOK, storageScanResult{
+	return storageScanResult{
 		ScannedFiles: len(candidates),
 		CorruptFiles: corrupt,
 		DurationMs:   time.Since(start).Milliseconds(),
-	})
+	}, nil
+}
+
+func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
+	result, err := runCorruptScan(r.Context(), h.db, h.cfg.FilesRoot)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "scan failed")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, result)
 }
 
 // StoragePurgeCorrupt handles POST /api/v1/admin/storage/purge-corrupt
@@ -293,12 +305,9 @@ type orphanScanResult struct {
 	DurationMs   int64        `json:"duration_ms"`
 }
 
-// StorageScanOrphans handles POST /api/v1/admin/storage/scan-orphans
-// Walks the files root directory and returns physical blobs that have no
-// matching record in the files table (i.e. are not referenced by any file).
-func (h *Handler) StorageScanOrphans(w http.ResponseWriter, r *http.Request) {
+// runOrphanScan is the core orphan-scan logic, also used by the scheduler (scan_schedule.go).
+func runOrphanScan(ctx context.Context, db *pgxpool.Pool, filesRoot string) (orphanScanResult, error) {
 	start := time.Now()
-	filesRoot := h.cfg.FilesRoot
 
 	// 1. Walk disk — collect all UUID-named blobs.
 	type blob struct {
@@ -311,9 +320,8 @@ func (h *Handler) StorageScanOrphans(w http.ResponseWriter, r *http.Request) {
 
 	shards, err := os.ReadDir(filesRoot)
 	if err != nil {
-		log.Error().Err(err).Msg("admin.StorageScanOrphans: read root")
-		httputil.RespondError(w, http.StatusInternalServerError, "cannot read storage root")
-		return
+		log.Error().Err(err).Msg("runOrphanScan: read root")
+		return orphanScanResult{}, err
 	}
 	for _, shard := range shards {
 		if !shard.IsDir() || len(shard.Name()) != 2 {
@@ -357,14 +365,13 @@ func (h *Handler) StorageScanOrphans(w http.ResponseWriter, r *http.Request) {
 			ids[j] = b.id
 		}
 
-		rows, err := h.db.Query(r.Context(),
+		rows, err := db.Query(ctx,
 			`SELECT id::text FROM files WHERE id = ANY($1::uuid[])`,
 			ids,
 		)
 		if err != nil {
-			log.Error().Err(err).Msg("admin.StorageScanOrphans: db query")
-			httputil.RespondError(w, http.StatusInternalServerError, "database error")
-			return
+			log.Error().Err(err).Msg("runOrphanScan: db query")
+			return orphanScanResult{}, err
 		}
 		known := make(map[string]struct{}, len(batch))
 		for rows.Next() {
@@ -387,11 +394,20 @@ func (h *Handler) StorageScanOrphans(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	httputil.Respond(w, http.StatusOK, orphanScanResult{
+	return orphanScanResult{
 		ScannedBlobs: len(blobs),
 		OrphanFiles:  orphans,
 		DurationMs:   time.Since(start).Milliseconds(),
-	})
+	}, nil
+}
+
+func (h *Handler) StorageScanOrphans(w http.ResponseWriter, r *http.Request) {
+	result, err := runOrphanScan(r.Context(), h.db, h.cfg.FilesRoot)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "scan failed")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, result)
 }
 
 // StoragePurgeOrphans handles POST /api/v1/admin/storage/purge-orphans

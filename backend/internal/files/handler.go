@@ -383,6 +383,46 @@ func (h *Handler) PermanentDelete(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// BulkRestoreTrash handles POST /api/v1/files/trash/bulk-restore.
+func (h *Handler) BulkRestoreTrash(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
+		httputil.RespondError(w, http.StatusBadRequest, "ids required")
+		return
+	}
+	ctx := r.Context()
+	restored := 0
+	for _, id := range req.IDs {
+		if err := h.trash.Restore(ctx, id, actor.ID.String()); err == nil {
+			restored++
+		}
+	}
+	httputil.Respond(w, http.StatusOK, map[string]int{"restored": restored})
+}
+
+// BulkPermanentDeleteTrash handles POST /api/v1/files/trash/bulk-delete.
+func (h *Handler) BulkPermanentDeleteTrash(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
+		httputil.RespondError(w, http.StatusBadRequest, "ids required")
+		return
+	}
+	ctx := r.Context()
+	deleted := 0
+	for _, id := range req.IDs {
+		if err := h.trash.PermanentDelete(ctx, id, actor.ID.String()); err == nil {
+			deleted++
+		}
+	}
+	httputil.Respond(w, http.StatusOK, map[string]int{"deleted": deleted})
+}
+
 // EmptyTrash handles DELETE /api/v1/files/trash — permanently deletes all trashed files.
 func (h *Handler) EmptyTrash(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())

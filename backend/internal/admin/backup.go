@@ -47,12 +47,21 @@ type backupData struct {
 // ── Export ────────────────────────────────────────────────────────────────────
 
 // adminExportsDir returns the directory where admin export files are stored.
-// Returns ("", false) when BackupsRoot is not configured.
+// Returns ("", false) when no writable backup root can be found.
+// Tries cfg.BackupsRoot first, then /mnt/backup as a convention fallback
+// (the Unraid template mounts the external disk there).
 func (h *Handler) adminExportsDir() (string, bool) {
-	if h.cfg.BackupsRoot == "" {
-		return "", false
+	candidates := []string{h.cfg.BackupsRoot, "/mnt/backup"}
+	for _, p := range candidates {
+		if p == "" {
+			continue
+		}
+		info, err := os.Stat(p)
+		if err == nil && info.IsDir() {
+			return filepath.Join(p, "admin-exports"), true
+		}
 	}
-	return filepath.Join(h.cfg.BackupsRoot, "admin-exports"), true
+	return "", false
 }
 
 type exportMeta struct {

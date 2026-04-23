@@ -241,3 +241,167 @@ func min16(n int) int {
 	}
 	return 16
 }
+
+// ── Orphan file scan ──────────────────────────────────────────────────────────
+
+// orphanFile describes a physical file on disk that has no matching DB record.
+type orphanFile struct {
+	Path      string    `json:"path"`      // relative shard path, e.g. "ab/abcd1234-..."
+	ID        string    `json:"id"`        // UUID = filename on disk
+	SizeBytes int64     `json:"size_bytes"`
+	ModTime   time.Time `json:"mod_time"`
+}
+
+type orphanScanResult struct {
+	ScannedBlobs int          `json:"scanned_blobs"`
+	OrphanFiles  []orphanFile `json:"orphan_files"`
+	DurationMs   int64        `json:"duration_ms"`
+}
+
+// StorageScanOrphans handles POST /api/v1/admin/storage/scan-orphans
+// Walks the files root directory and returns physical blobs that have no
+// matching record in the files table (i.e. are not referenced by any file).
+func (h *Handler) StorageScanOrphans(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	filesRoot := h.cfg.FilesRoot
+
+	// 1. Walk disk — collect all UUID-named blobs.
+	type blob struct {
+		id      string
+		relPath string
+		size    int64
+		modTime time.Time
+	}
+	var blobs []blob
+
+	shards, err := os.ReadDir(filesRoot)
+	if err != nil {
+		log.Error().Err(err).Msg("admin.StorageScanOrphans: read root")
+		httputil.RespondError(w, http.StatusInternalServerError, "cannot read storage root")
+		return
+	}
+	for _, shard := range shards {
+		if !shard.IsDir() || len(shard.Name()) != 2 {
+			continue
+		}
+		shardPath := filepath.Join(filesRoot, shard.Name())
+		entries, err := os.ReadDir(shardPath)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || len(e.Name()) != 36 {
+				continue // skip non-UUID filenames
+			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			blobs = append(blobs, blob{
+				id:      e.Name(),
+				relPath: shard.Name() + "/" + e.Name(),
+				size:    info.Size(),
+				modTime: info.ModTime(),
+			})
+		}
+	}
+
+	// 2. Check DB in batches of 500.
+	const batchSize = 500
+	orphans := make([]orphanFile, 0)
+
+	for i := 0; i < len(blobs); i += batchSize {
+		end := i + batchSize
+		if end > len(blobs) {
+			end = len(blobs)
+		}
+		batch := blobs[i:end]
+
+		ids := make([]string, len(batch))
+		for j, b := range batch {
+			ids[j] = b.id
+		}
+
+		rows, err := h.db.Query(r.Context(),
+			`SELECT id::text FROM files WHERE id = ANY($1::uuid[])`,
+			ids,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("admin.StorageScanOrphans: db query")
+			httputil.RespondError(w, http.StatusInternalServerError, "database error")
+			return
+		}
+		known := make(map[string]struct{}, len(batch))
+		for rows.Next() {
+			var id string
+			if scanErr := rows.Scan(&id); scanErr == nil {
+				known[id] = struct{}{}
+			}
+		}
+		rows.Close()
+
+		for _, b := range batch {
+			if _, exists := known[b.id]; !exists {
+				orphans = append(orphans, orphanFile{
+					Path:      b.relPath,
+					ID:        b.id,
+					SizeBytes: b.size,
+					ModTime:   b.modTime,
+				})
+			}
+		}
+	}
+
+	httputil.Respond(w, http.StatusOK, orphanScanResult{
+		ScannedBlobs: len(blobs),
+		OrphanFiles:  orphans,
+		DurationMs:   time.Since(start).Milliseconds(),
+	})
+}
+
+// StoragePurgeOrphans handles POST /api/v1/admin/storage/purge-orphans
+// Permanently deletes the physical blobs identified as orphans.
+// Accepts a JSON body: { "ids": ["uuid1", "uuid2", ...] }
+func (h *Handler) StoragePurgeOrphans(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
+		httputil.RespondError(w, http.StatusBadRequest, "ids array required")
+		return
+	}
+	if len(req.IDs) > 10000 {
+		httputil.RespondError(w, http.StatusBadRequest, "too many ids")
+		return
+	}
+
+	filesRoot := h.cfg.FilesRoot
+	deleted := 0
+	freedBytes := int64(0)
+
+	for _, id := range req.IDs {
+		// Validate: must look like a UUID (36 chars) to prevent path traversal.
+		if len(id) != 36 {
+			continue
+		}
+		path := scanStoragePath(filesRoot, id)
+		info, err := os.Stat(path)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				log.Warn().Err(err).Str("id", id).Msg("admin.StoragePurgeOrphans: stat")
+			}
+			continue
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			log.Warn().Err(err).Str("id", id).Msg("admin.StoragePurgeOrphans: remove")
+			continue
+		}
+		deleted++
+		freedBytes += info.Size()
+	}
+
+	httputil.Respond(w, http.StatusOK, map[string]any{
+		"deleted":     deleted,
+		"freed_bytes": freedBytes,
+	})
+}

@@ -475,6 +475,8 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Post("/api/v1/admin/storage/scrub", s.adminHandler.StorageScrub)
 			r.Post("/api/v1/admin/storage/scan", s.adminHandler.StorageScan)
 			r.Post("/api/v1/admin/storage/purge-corrupt", s.adminHandler.StoragePurgeCorrupt)
+			r.Post("/api/v1/admin/storage/scan-orphans", s.adminHandler.StorageScanOrphans)
+			r.Post("/api/v1/admin/storage/purge-orphans", s.adminHandler.StoragePurgeOrphans)
 			r.Get("/api/v1/admin/io-stats", s.adminHandler.IOStats)
 
 			r.Post("/api/v1/admin/support-access/{id}/end", s.handleAdminEndSupportAccess)

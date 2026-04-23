@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import { formatBytes, formatRelative } from '@/lib/utils'
-import { AlertTriangle, ScanSearch, Trash2 } from 'lucide-react'
+import { AlertTriangle, Loader2, ScanSearch, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export const Route = createFileRoute('/_auth/admin/storage/')({
@@ -26,30 +26,42 @@ interface ScanResult {
   duration_ms: number
 }
 
-function StoragePage() {
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+const SCAN_KEY = ['admin', 'storage-scan']
 
-  const scan = useMutation({
-    mutationFn: () => api.post<ScanResult>('/api/v1/admin/storage/scan'),
-    onSuccess: result => {
-      setScanResult(result)
-      setSelected(new Set())
-      if (result.corrupt_files.length === 0) {
-        toast.success(`Scan complete — no corrupt files found (${result.scanned_files} scanned)`)
-      } else {
-        toast.warning(`Found ${result.corrupt_files.length} corrupt file(s) out of ${result.scanned_files} scanned`)
-      }
-    },
-    onError: () => toast.error('Scan failed'),
+function StoragePage() {
+  const queryClient = useQueryClient()
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [hasScanned, setHasScanned] = useState(false)
+
+  // Use useQuery with enabled:false so the result is cached across navigation
+  const { data: scanResult, isFetching, refetch } = useQuery<ScanResult>({
+    queryKey: SCAN_KEY,
+    queryFn: () => api.post<ScanResult>('/api/v1/admin/storage/scan'),
+    enabled: false,
+    staleTime: Infinity, // keep result until user explicitly rescans
   })
+
+  const startScan = async () => {
+    setHasScanned(true)
+    setSelected(new Set())
+    const result = await refetch()
+    if (result.data) {
+      if (result.data.corrupt_files.length === 0) {
+        toast.success(`Scan complete — no corrupt files found (${result.data.scanned_files} scanned)`)
+      } else {
+        toast.warning(`Found ${result.data.corrupt_files.length} corrupt file(s) out of ${result.data.scanned_files} scanned`)
+      }
+    } else if (result.error) {
+      toast.error('Scan failed')
+    }
+  }
 
   const purge = useMutation({
     mutationFn: (ids: string[]) =>
       api.post<{ deleted: number }>('/api/v1/admin/storage/purge-corrupt', { ids }),
     onSuccess: (data, ids) => {
       toast.success(`${data.deleted} file(s) moved to trash`)
-      setScanResult(prev =>
+      queryClient.setQueryData<ScanResult>(SCAN_KEY, prev =>
         prev
           ? { ...prev, corrupt_files: prev.corrupt_files.filter(f => !ids.includes(f.id)) }
           : prev
@@ -90,15 +102,25 @@ function StoragePage() {
           Nextcloud or similar systems.
         </p>
         <button
-          onClick={() => scan.mutate()}
-          disabled={scan.isPending}
+          onClick={startScan}
+          disabled={isFetching}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
         >
-          <ScanSearch size={15} />
-          {scan.isPending ? 'Scanning…' : 'Scan for corrupt files'}
+          {isFetching
+            ? <Loader2 size={15} className="animate-spin" />
+            : <ScanSearch size={15} />}
+          {isFetching ? 'Scanning…' : 'Scan for corrupt files'}
         </button>
 
-        {scanResult && (
+        {/* Loading indicator */}
+        {isFetching && (
+          <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+            <Loader2 size={14} className="animate-spin" />
+            <span>Reading file magic bytes — this may take a moment…</span>
+          </div>
+        )}
+
+        {scanResult && !isFetching && (
           <p className="text-xs text-zinc-400 dark:text-zinc-500">
             Scanned {scanResult.scanned_files} files in {scanResult.duration_ms} ms
           </p>
@@ -106,7 +128,7 @@ function StoragePage() {
       </section>
 
       {/* Results */}
-      {scanResult && scanResult.corrupt_files.length > 0 && (
+      {scanResult && !isFetching && scanResult.corrupt_files.length > 0 && (
         <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148]">
             <div className="flex items-center gap-2">
@@ -177,7 +199,7 @@ function StoragePage() {
         </section>
       )}
 
-      {scanResult && scanResult.corrupt_files.length === 0 && (
+      {scanResult && !isFetching && scanResult.corrupt_files.length === 0 && (
         <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
           <span>✓</span>
           <span>No corrupt files found.</span>

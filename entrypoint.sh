@@ -16,14 +16,10 @@ fi
 # Pre-create backup subdirectories if BACKUPS_ROOT is set and accessible.
 # USB/NAS drives are often mounted as root; creating the subdirs here (before
 # dropping to the app process) ensures the sharedrive user can write inside them.
-# Also try /mnt/backup — the conventional Unraid mount point — in case
-# BACKUPS_ROOT is not set or points to the host path (not visible in container).
-for BACKUP_CANDIDATE in "${BACKUPS_ROOT}" "/mnt/backup"; do
-  [ -n "${BACKUP_CANDIDATE}" ] || continue
-  [ -d "${BACKUP_CANDIDATE}" ] || continue
-  mkdir -p "${BACKUP_CANDIDATE}/tertiary" "${BACKUP_CANDIDATE}/buddy" 2>/dev/null || true
-  chown -R "${PUID}:${PGID}" "${BACKUP_CANDIDATE}" 2>/dev/null || true
-done
+if [ -n "${BACKUPS_ROOT}" ] && [ -d "${BACKUPS_ROOT}" ]; then
+  mkdir -p "${BACKUPS_ROOT}/tertiary" "${BACKUPS_ROOT}/buddy" 2>/dev/null || true
+  chown -R "${PUID}:${PGID}" "${BACKUPS_ROOT}" 2>/dev/null || true
+fi
 
 # Ensure data directories are writable by the sharedrive user.
 chown -R "${PUID}:${PGID}" /data 2>/dev/null || true

@@ -60,18 +60,16 @@ func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot s
 // ── GET /api/v1/backup/config ────────────────────────────────────────────────
 
 type backupConfigResponse struct {
-	TertiaryEnabled   bool  `json:"tertiary_enabled"`
-	BuddyEnabled      bool  `json:"buddy_enabled"`
-	WrapKeyConfigured bool  `json:"wrap_key_configured"`
-	DiskTotalBytes    int64 `json:"disk_total_bytes,omitempty"`
-	DiskFreeBytes     int64 `json:"disk_free_bytes,omitempty"`
+	TertiaryEnabled bool  `json:"tertiary_enabled"`
+	BuddyEnabled    bool  `json:"buddy_enabled"`
+	DiskTotalBytes  int64 `json:"disk_total_bytes,omitempty"`
+	DiskFreeBytes   int64 `json:"disk_free_bytes,omitempty"`
 }
 
 func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	resp := backupConfigResponse{
-		TertiaryEnabled:   h.tertiaryEnabled,
-		BuddyEnabled:      true, // always on — per-user configuration via web GUI
-		WrapKeyConfigured: h.autoBackup != nil && h.autoBackup.WrapKeyConfigured(),
+		TertiaryEnabled: h.tertiaryEnabled,
+		BuddyEnabled:    true, // always on — per-user configuration via web GUI
 	}
 	if h.tertiaryEnabled {
 		resp.DiskTotalBytes, resp.DiskFreeBytes = diskStats(h.backupsRoot)

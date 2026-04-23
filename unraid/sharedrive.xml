@@ -191,18 +191,6 @@
   ></Config>
 
   <Config
-    Name="Backup Wrap Key"
-    Target="BACKUP_WRAP_KEY"
-    Default=""
-    Mode=""
-    Description="AES-256-GCM key used to encrypt your backup token at rest so the server can run automatic scheduled backups without user interaction. Required for the Automatic Backup feature. Generate with: openssl rand -hex 32"
-    Type="Variable"
-    Display="always"
-    Required="false"
-    Mask="true"
-  ></Config>
-
-  <Config
     Name="TOTP Encrypt Key"
     Target="TOTP_ENCRYPT_KEY"
     Default=""

@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { fileExtension, monacoLanguage, TEXT_EDITOR_MAX_EDIT_BYTES, TEXT_EDITOR_MAX_LOAD_BYTES } from '@/lib/file-types'
 import type { FileItem } from '@/types/api'
+import { useI18n } from '@/lib/i18n'
 
 interface Props {
   item: FileItem
@@ -14,6 +15,7 @@ interface Props {
 
 export function TextEditor({ item, onClose }: Props) {
   const qc = useQueryClient()
+  const { t } = useI18n()
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null)
   const [dirty, setDirty] = useState(false)
   const [wordWrap, setWordWrap] = useState(false)
@@ -45,7 +47,7 @@ export function TextEditor({ item, onClose }: Props) {
   const { data: content, isLoading, isError, error } = useQuery({
     queryKey: ['text-editor', item.id],
     queryFn: async ({ signal }) => {
-      if (tooLargeToLoad) throw new Error('Filen er for stor til at åbne i editoren')
+      if (tooLargeToLoad) throw new Error(t('editor.tooLarge'))
       const res = await fetch(`/api/v1/files/${item.id}/preview`, {
         credentials: 'include',
         signal,
@@ -105,13 +107,13 @@ export function TextEditor({ item, onClose }: Props) {
       setDirty(false)
       setServerUpdatedAt(result?.data?.updated_at ?? new Date().toISOString())
       void qc.invalidateQueries({ queryKey: ['files'] })
-      toast.success('Fil gemt')
+      toast.success(t('editor.saved'))
     },
     onError: (err) => {
       if (err instanceof Error && err.message === 'CONFLICT') {
-        toast.error('Filen er ændret af en anden — genindlæs for at se ændringerne')
+        toast.error(t('editor.conflict'))
       } else {
-        toast.error(err instanceof Error ? err.message : 'Kunne ikke gemme filen')
+        toast.error(err instanceof Error ? err.message : t('editor.saveFailed'))
       }
     },
   })
@@ -152,10 +154,10 @@ export function TextEditor({ item, onClose }: Props) {
 
   const handleClose = useCallback(() => {
     if (dirty) {
-      if (!confirm('Du har ændringer der ikke er gemt. Vil du lukke alligevel?')) return
+      if (!confirm(t('editor.closeWithUnsaved'))) return
     }
     onClose()
-  }, [dirty, onClose])
+  }, [dirty, onClose, t])
 
   const editorOptions = useMemo(() => ({
     readOnly,
@@ -195,12 +197,12 @@ export function TextEditor({ item, onClose }: Props) {
         {readOnly && (
           <span className="flex items-center gap-1 text-[11px] text-amber-400">
             <Lock size={10} />
-            {tooLargeToEdit ? 'For stor til redigering' : 'Skrivebeskyttet'}
+            {tooLargeToEdit ? t('editor.tooLargeToEdit') : t('editor.readOnly')}
           </span>
         )}
 
         {dirty && (
-          <span className="text-[11px] text-brand-400 font-medium">Ikke gemt</span>
+          <span className="text-[11px] text-brand-400 font-medium">{t('editor.unsaved')}</span>
         )}
 
         {/* Word wrap toggle */}
@@ -211,7 +213,7 @@ export function TextEditor({ item, onClose }: Props) {
               ? 'bg-zinc-700 text-zinc-100'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
           }`}
-          title={wordWrap ? 'Slå tekstombrydning fra' : 'Slå tekstombrydning til'}
+          title={wordWrap ? t('editor.wordWrapOn') : t('editor.wordWrapOff')}
         >
           <WrapText size={14} />
         </button>
@@ -228,7 +230,7 @@ export function TextEditor({ item, onClose }: Props) {
             ) : (
               <Save size={12} />
             )}
-            Gem
+            {t('action.save')}
           </button>
         )}
 
@@ -237,10 +239,10 @@ export function TextEditor({ item, onClose }: Props) {
           <button
             onClick={handleRevert}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-700 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
-            title="Fortryd ændringer"
+            title={t('editor.revertTitle')}
           >
             <RotateCcw size={12} />
-            <span className="hidden sm:inline">Fortryd</span>
+            <span className="hidden sm:inline">{t('editor.revert')}</span>
           </button>
         )}
 
@@ -264,13 +266,13 @@ export function TextEditor({ item, onClose }: Props) {
           <div className="flex flex-col items-center justify-center h-full gap-4 text-zinc-400">
             <AlertTriangle size={48} className="text-zinc-600" />
             <p className="text-sm">
-              {error instanceof Error ? error.message : 'Kunne ikke indlæse filen'}
+              {error instanceof Error ? error.message : t('editor.loadFailed')}
             </p>
             <button
               onClick={handleClose}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-700 text-sm font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
             >
-              Luk
+              {t('action.close')}
             </button>
           </div>
         )}

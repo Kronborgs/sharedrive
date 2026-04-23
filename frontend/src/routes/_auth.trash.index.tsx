@@ -57,7 +57,7 @@ function TrashPage() {
     mutationFn: (ids: string[]) =>
       api.post<{ restored: number }>('/api/v1/files/trash/bulk-restore', { ids }),
     onSuccess: (data, ids) => {
-      toast.success(`${data.restored} fil(er) gendannet`)
+      toast.success(t('trash.bulkRestored', { count: String(data.restored) }))
       qc.setQueryData<FileItem[]>(['files', 'trash'], prev =>
         prev ? prev.filter(f => !ids.includes(f.id)) : prev,
       )
@@ -70,7 +70,7 @@ function TrashPage() {
     mutationFn: (ids: string[]) =>
       api.post<{ deleted: number }>('/api/v1/files/trash/bulk-delete', { ids }),
     onSuccess: (data, ids) => {
-      toast.success(`${data.deleted} fil(er) slettet permanent`)
+      toast.success(t('trash.bulkDeleted', { count: String(data.deleted) }))
       qc.setQueryData<FileItem[]>(['files', 'trash'], prev =>
         prev ? prev.filter(f => !ids.includes(f.id)) : prev,
       )
@@ -87,7 +87,7 @@ function TrashPage() {
 
   const handleAction = (action: ContextAction, item: FileItem) => {
     if (action === 'restore') restore.mutate(item.id)
-    else if (action === 'delete' && confirm(`Slet "${item.name}" permanent? Dette kan ikke fortrydes.`)) {
+    else if (action === 'delete' && confirm(t('confirm.deleteForeverNamed', { name: item.name }))) {
       deletePermanent.mutate(item.id)
     }
   }
@@ -108,18 +108,18 @@ function TrashPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-green-700 dark:text-green-400 border border-green-200 dark:border-green-900/50 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors disabled:opacity-50"
               >
                 <RotateCcw size={12} />
-                Gendan {selected.size} valgte
+                {t('trash.restoreSelected', { count: String(selected.size) })}
               </button>
               <button
                 onClick={() => {
-                  if (confirm(`Slet ${selected.size} fil(er) permanent? Dette kan ikke fortrydes.`))
+                  if (confirm(t('confirm.deleteForeverCount', { count: String(selected.size) })))
                     bulkDelete.mutate(selectedArr)
                 }}
                 disabled={bulkRestore.isPending || bulkDelete.isPending}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
               >
                 <Trash2 size={12} />
-                Slet {selected.size} valgte permanent
+                {t('trash.deleteSelected', { count: String(selected.size) })}
               </button>
             </>
           )}
@@ -173,7 +173,7 @@ function TrashPage() {
           siblings={items.filter(f => !f.is_folder)}
           onClose={() => setPreviewItem(null)}
           onDelete={item => {
-            if (confirm(`Slet "${item.name}" permanent? Dette kan ikke fortrydes.`)) {
+            if (confirm(t('confirm.deleteForeverNamed', { name: item.name }))) {
               deletePermanent.mutate(item.id)
               setPreviewItem(null)
             }

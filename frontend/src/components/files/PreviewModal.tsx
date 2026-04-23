@@ -7,6 +7,7 @@ import { ThreeMFRenderer } from './renderers/ThreeMFRenderer'
 import { AudioRenderer } from './renderers/AudioRenderer'
 import { PlaylistPlayer } from './renderers/PlaylistPlayer'
 import { EPUBRenderer } from './renderers/EPUBRenderer'
+import { useI18n } from '@/lib/i18n'
 
 interface PreviewModalProps {
   item: FileItem
@@ -53,6 +54,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
   // Internal navigation state — currentItem changes as user goes prev/next
   const [currentItem, setCurrentItem] = useState(item)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const { t } = useI18n()
 
   // Sync when the parent swaps out the item prop entirely (e.g. parent-level navigation)
   useEffect(() => { setCurrentItem(item); setConfirmDelete(false) }, [item.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -141,7 +143,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
               onClick={goPrev}
               disabled={!canNav}
               className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400 disabled:opacity-20 disabled:cursor-default"
-              title="Previous (←)"
+              title={t('preview.prevNav')}
             >
               <ChevronLeft size={16} />
             </button>
@@ -149,7 +151,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
               onClick={goNext}
               disabled={!canNav}
               className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400 disabled:opacity-20 disabled:cursor-default"
-              title="Next (→)"
+              title={t('preview.nextNav')}
             >
               <ChevronRight size={16} />
             </button>
@@ -163,33 +165,33 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
             className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
           >
             <Download size={12} />
-            Download
+            {t('action.download')}
           </a>
           {isPrintable && (
             <button
               onClick={handlePrint}
               className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-              title="Print"
+              title={t('preview.print')}
             >
               <Printer size={12} />
-              Print
+              {t('preview.print')}
             </button>
           )}
           {onDelete && (
             confirmDelete ? (
               <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-xs text-zinc-500 dark:text-slate-400 hidden sm:inline">Delete file?</span>
+                <span className="text-xs text-zinc-500 dark:text-slate-400 hidden sm:inline">{t('preview.deleteFile')}</span>
                 <button
                   onClick={() => { setConfirmDelete(false); onDelete(currentItem) }}
                   className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors"
                 >
-                  Delete
+                  {t('action.delete')}
                 </button>
                 <button
                   onClick={() => setConfirmDelete(false)}
                   className="px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-600 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                 >
-                  Cancel
+                  {t('action.cancel')}
                 </button>
               </div>
             ) : (
@@ -246,8 +248,8 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
               <AlertTriangle size={48} className="text-zinc-300 dark:text-slate-600" />
               <p className="text-sm">
                 {GOOGLE_STUB_EXTS.has(fileExt(currentItem.name))
-                  ? 'This is a Google Drive file and can only be opened in Google Drive.'
-                  : 'This file type cannot be previewed.'}
+                  ? t('preview.googleDriveFile')
+                  : t('preview.unsupported')}
               </p>
               <a
                 href={`/api/v1/files/${currentItem.id}/download`}
@@ -255,7 +257,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
               >
                 <Download size={14} />
-                Download instead
+                {t('preview.downloadInstead')}
               </a>
             </div>
           )}
@@ -269,6 +271,7 @@ function ImageRenderer({ url, name, onDelete }: { url: string; name: string; onD
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(false)
+  const { t } = useI18n()
 
   // Fetch as raw bytes and create a blob: URL so the browser sniffs the image
   // format from the actual file content — bypasses any wrong Content-Type header
@@ -309,15 +312,15 @@ function ImageRenderer({ url, name, onDelete }: { url: string; name: string; onD
       {error ? (
         <div className="flex flex-col items-center gap-3 text-muted">
           <AlertTriangle size={40} className="text-amber-400 dark:text-amber-500" />
-          <span className="text-sm font-medium">Failed to load image.</span>
-          <span className="text-xs text-zinc-400 dark:text-zinc-500">The file may be corrupted.</span>
+          <span className="text-sm font-medium">{t('preview.imageLoadFailed')}</span>
+          <span className="text-xs text-zinc-400 dark:text-zinc-500">{t('preview.imageMayBeCorrupt')}</span>
           {onDelete && (
             <button
               onClick={onDelete}
               className="mt-2 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors"
             >
               <Trash2 size={14} />
-              Delete corrupted file
+              {t('preview.deleteCorrupted')}
             </button>
           )}
         </div>
@@ -338,6 +341,7 @@ function TextRenderer({ url }: { url: string }) {
   const [content, setContent] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState(false)
+  const { t } = useI18n()
 
   useEffect(() => {
     // AbortController ensures the in-flight fetch is cancelled when the
@@ -356,14 +360,14 @@ function TextRenderer({ url }: { url: string }) {
     return () => controller.abort()
   }, [url])
 
-  if (error) return <div className="flex items-center justify-center h-full text-sm text-muted">Failed to load file.</div>
-  if (content === null) return <div className="flex items-center justify-center h-full text-sm text-muted">Loading…</div>
+  if (error) return <div className="flex items-center justify-center h-full text-sm text-muted">{t('preview.loadFailed')}</div>
+  if (content === null) return <div className="flex items-center justify-center h-full text-sm text-muted">{t('preview.loading')}</div>
 
   return (
     <div className="flex flex-col h-full">
       {truncated && (
         <div className="px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800 text-xs text-yellow-700 dark:text-yellow-400 shrink-0">
-          Preview truncated to 1 MB. Download the file to see the complete contents.
+          {t('preview.truncated')}
         </div>
       )}
       <pre className="flex-1 p-4 overflow-auto text-xs font-mono whitespace-pre-wrap break-all text-zinc-800 dark:text-slate-200 bg-zinc-50 dark:bg-[#0f1117]">

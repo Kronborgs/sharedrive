@@ -14,6 +14,7 @@ import {
   ListMusic,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/lib/i18n'
 
 export type ContextAction =
   | 'open'
@@ -53,27 +54,28 @@ interface MenuItem {
   audioOnly?: boolean
 }
 
-const normalItems: MenuItem[] = [
-  { action: 'open',     label: 'Open',      icon: <FolderOpen size={14} /> },
-  { action: 'download', label: 'Download',  icon: <Download size={14} />, divider: true },
-  { action: 'share',    label: 'Share…',    icon: <Share2 size={14} /> },
-  { action: 'rename',   label: 'Rename',    icon: <Pencil size={14} /> },
-  { action: 'move',     label: 'Move',      icon: <Scissors size={14} /> },
-  { action: 'copy',     label: 'Duplicate', icon: <Copy size={14} />, divider: true },
-  { action: 'backup',     label: 'Add to backup',   icon: <Archive size={14} /> },
-  { action: 'playlist',   label: 'Add to playlist',  icon: <ListMusic size={14} />, folderOnly: true },
-  { action: 'addtoqueue', label: 'Add to queue',      icon: <ListMusic size={14} />, audioOnly: true },
-  { action: 'info',       label: 'Details',           icon: <Info size={14} />, divider: true },
-  { action: 'trash',    label: 'Move to Trash', icon: <Trash2 size={14} />, danger: true },
-]
-
-const trashItems: MenuItem[] = [
-  { action: 'restore', label: 'Restore',  icon: <RotateCcw size={14} /> },
-  { action: 'delete',  label: 'Delete permanently', icon: <Trash2 size={14} />, danger: true },
-]
-
 export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, canAddToQueue = false, onAction, onClose }: FileContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const { t } = useI18n()
+
+  const normalItems: MenuItem[] = [
+    { action: 'open',       label: t('ctx.open'),          icon: <FolderOpen size={14} /> },
+    { action: 'download',   label: t('ctx.download'),      icon: <Download size={14} />, divider: true },
+    { action: 'share',      label: t('ctx.share'),         icon: <Share2 size={14} /> },
+    { action: 'rename',     label: t('ctx.rename'),        icon: <Pencil size={14} /> },
+    { action: 'move',       label: t('ctx.move'),          icon: <Scissors size={14} /> },
+    { action: 'copy',       label: t('ctx.copy'),          icon: <Copy size={14} />, divider: true },
+    { action: 'backup',     label: t('ctx.backup'),        icon: <Archive size={14} /> },
+    { action: 'playlist',   label: t('ctx.addToPlaylist'), icon: <ListMusic size={14} />, folderOnly: true },
+    { action: 'addtoqueue', label: t('ctx.addToQueue'),    icon: <ListMusic size={14} />, audioOnly: true },
+    { action: 'info',       label: t('ctx.info'),          icon: <Info size={14} />, divider: true },
+    { action: 'trash',      label: t('ctx.trash'),         icon: <Trash2 size={14} />, danger: true },
+  ]
+
+  const trashItems: MenuItem[] = [
+    { action: 'restore', label: t('ctx.restore'), icon: <RotateCcw size={14} /> },
+    { action: 'delete',  label: t('ctx.delete'),  icon: <Trash2 size={14} />, danger: true },
+  ]
 
   // Close on outside click / escape
   useEffect(() => {

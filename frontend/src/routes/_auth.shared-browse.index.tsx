@@ -150,7 +150,7 @@ function SharedBrowsePage() {
       case 'download': window.open(`/api/v1/files/${item.id}/download`, '_blank'); break
       case 'share': setShareItem(item); break
       case 'rename': setRenameId(item.id); setRenameName(item.name); break
-      case 'trash': if (confirm(`Move "${item.name}" to trash?`)) trash.mutate(item.id); break
+      case 'trash': if (confirm(t('confirm.trashNamed', { name: item.name }))) trash.mutate(item.id); break
     }
   }, [handleOpen, trash])
 

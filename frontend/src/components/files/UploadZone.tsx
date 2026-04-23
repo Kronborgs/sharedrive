@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Upload, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/lib/i18n'
 
 interface DropZoneProps {
   folderId: string | null
@@ -11,6 +12,7 @@ interface DropZoneProps {
 
 export function DropZone({ folderId: _folderId, onUploadStart, children }: DropZoneProps) {
   const [dragActive, setDragActive] = useState(false)
+  const { t } = useI18n()
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     noClick: true,
@@ -34,7 +36,7 @@ export function DropZone({ folderId: _folderId, onUploadStart, children }: DropZ
       {(isDragActive || dragActive) && (
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10 gap-2">
           <Upload size={28} className="text-brand-500" />
-          <p className="text-sm font-medium text-brand-600 dark:text-brand-400">Drop files here to upload</p>
+          <p className="text-sm font-medium text-brand-600 dark:text-brand-400">{t('upload.dragging')}</p>
         </div>
       )}
       {children}
@@ -83,6 +85,7 @@ function formatBytes(bytes: number): string {
 
 export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgressProps) {
   const active = uploads.filter(u => u.status !== 'done')
+  const { t } = useI18n()
 
   if (active.length === 0) return null
 
@@ -90,11 +93,11 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgr
     <div className="fixed bottom-4 right-4 w-80 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-xl z-50 overflow-hidden">
       <div className="px-3 py-2 border-b border-zinc-100 dark:border-[#2d3148] flex items-center justify-between">
         <span className="text-xs font-medium text-zinc-700 dark:text-slate-300">
-          Uploading {active.length} file{active.length > 1 ? 's' : ''}
+          {t('upload.uploading', { count: String(active.length) })}
         </span>
         {directUpload && (
           <span className="text-[10px] font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-1.5 py-0.5 rounded">
-            ⚡ Direkte
+            ⚡ {t('upload.direct')}
           </span>
         )}
       </div>
@@ -112,7 +115,7 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgr
               )}
             </div>
             {u.status === 'error' ? (
-              <p className="text-xs text-red-500">{u.error ?? 'Upload failed'}</p>
+              <p className="text-xs text-red-500">{u.error ?? t('upload.failed')}</p>
             ) : u.status === 'paused' ? (
               <>
                 <div className="h-1 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden mb-1">
@@ -122,7 +125,7 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgr
                   />
                 </div>
                 <p className="text-[10px] text-amber-500 dark:text-amber-400">
-                  Offline — genoptages automatisk når forbindelsen vender tilbage
+                  {t('upload.paused')}
                 </p>
               </>
             ) : (
@@ -148,7 +151,7 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgr
                 {/* Show a note while chunk boundary is being committed (speed drops to 0) */}
                 {u.speed === 0 && u.progress > 0 && u.progress < 100 && (
                   <p className="text-[10px] text-amber-500 dark:text-amber-400 mt-0.5">
-                    Gemmer chunk… et øjeblik
+                    {t('upload.saving')}
                   </p>
                 )}
               </>
@@ -159,12 +162,11 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgr
       <div className="px-3 py-2 border-t border-zinc-100 dark:border-[#2d3148]">
         {directUpload ? (
           <p className="text-[10px] text-green-600 dark:text-green-400 leading-snug">
-            Uploader direkte til serveren — bypasser Cloudflare for maksimal hastighed.
+            {t('upload.directNote')}
           </p>
         ) : (
           <p className="text-[10px] text-zinc-400 dark:text-slate-500 leading-snug">
-            Filer uploades via Cloudflare i 50 MB dele. Hastighed varierer — det er normalt at
-            progressbaren &quot;staller&quot; kortvarigt mellem dele.
+            {t('upload.cloudflareNote')}
           </p>
         )}
       </div>

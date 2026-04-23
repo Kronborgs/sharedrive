@@ -189,9 +189,10 @@ const translations = {
   'ctx.trash':         { da: 'Flyt til papirkurv', en: 'Move to trash' },
   'ctx.delete':        { da: 'Slet permanent',   en: 'Delete permanently' },
   'ctx.restore':       { da: 'Gendan',           en: 'Restore' },
-  'ctx.backup':        { da: 'Backup',           en: 'Backup' },
+  'ctx.backup':        { da: 'Tilføj til backup', en: 'Add to backup' },
   'ctx.addToPlaylist': { da: 'Tilføj til playlist', en: 'Add to playlist' },
   'ctx.addToQueue':    { da: 'Tilføj til kø',    en: 'Add to queue' },
+  'ctx.info':          { da: 'Detaljer',          en: 'Details' },
 
   // ── Language ──────────────────────────────────────────────────────────────
   'lang.label':        { da: 'Sprog',            en: 'Language' },
@@ -232,6 +233,64 @@ const translations = {
   'shared.folder':       { da: 'Mappe',          en: 'Folder' },
   'shared.expires':      { da: 'Udløber',        en: 'Expires' },
   'shared.emptyFolder':  { da: 'Denne mappe er tom', en: 'This folder is empty' },
+
+  // ── Confirm dialogs (parameterized) ──────────────────────────────────────
+  'confirm.trashNamed':{ da: 'Flytte "{name}" til papirkurven?', en: 'Move "{name}" to trash?' },
+  'confirm.deleteForeverNamed': { da: 'Slet "{name}" permanent? Dette kan ikke fortrydes.', en: 'Permanently delete "{name}"? This cannot be undone.' },
+  'confirm.deleteForeverCount': { da: 'Slet {count} fil(er) permanent? Dette kan ikke fortrydes.', en: 'Permanently delete {count} file(s)? This cannot be undone.' },
+
+  // ── Trash bulk actions ────────────────────────────────────────────────────
+  'trash.bulkRestored':    { da: '{count} fil(er) gendannet',         en: '{count} file(s) restored' },
+  'trash.bulkDeleted':     { da: '{count} fil(er) slettet permanent',  en: '{count} file(s) permanently deleted' },
+  'trash.restoreSelected': { da: 'Gendan {count} valgte',             en: 'Restore {count} selected' },
+  'trash.deleteSelected':  { da: 'Slet {count} valgte permanent',     en: 'Delete {count} selected permanently' },
+
+  // ── Text editor ───────────────────────────────────────────────────────────
+  'editor.tooLarge':         { da: 'Filen er for stor til at åbne i editoren', en: 'File is too large to open in the editor' },
+  'editor.tooLargeToEdit':   { da: 'For stor til redigering',         en: 'Too large to edit' },
+  'editor.readOnly':         { da: 'Skrivebeskyttet',                  en: 'Read-only' },
+  'editor.unsaved':          { da: 'Ikke gemt',                       en: 'Unsaved' },
+  'editor.wordWrapOn':       { da: 'Slå tekstombrydning fra',         en: 'Disable word wrap' },
+  'editor.wordWrapOff':      { da: 'Slå tekstombrydning til',         en: 'Enable word wrap' },
+  'editor.revert':           { da: 'Fortryd',                         en: 'Revert' },
+  'editor.revertTitle':      { da: 'Fortryd ændringer',               en: 'Revert changes' },
+  'editor.closeWithUnsaved': { da: 'Du har ændringer der ikke er gemt. Vil du lukke alligevel?', en: 'You have unsaved changes. Close anyway?' },
+  'editor.saved':            { da: 'Fil gemt',                        en: 'File saved' },
+  'editor.conflict':         { da: 'Filen er ændret af en anden — genindlæs for at se ændringerne', en: 'File was changed by someone else — reload to see the changes' },
+  'editor.saveFailed':       { da: 'Kunne ikke gemme filen',          en: 'Could not save file' },
+  'editor.loadFailed':       { da: 'Kunne ikke indlæse filen',        en: 'Could not load file' },
+
+  // ── Preview modal ─────────────────────────────────────────────────────────
+  'preview.prevNav':          { da: 'Forrige (←)',                    en: 'Previous (←)' },
+  'preview.nextNav':          { da: 'Næste (→)',                      en: 'Next (→)' },
+  'preview.deleteFile':       { da: 'Slet fil?',                      en: 'Delete file?' },
+  'preview.print':            { da: 'Print',                          en: 'Print' },
+  'preview.downloadInstead':  { da: 'Download i stedet',              en: 'Download instead' },
+  'preview.googleDriveFile':  { da: 'Dette er en Google Drive-fil og kan kun åbnes i Google Drive.', en: 'This is a Google Drive file and can only be opened in Google Drive.' },
+  'preview.unsupported':      { da: 'Denne filtype kan ikke forhåndsvises.', en: 'This file type cannot be previewed.' },
+  'preview.loadFailed':       { da: 'Kunne ikke indlæse filen.',      en: 'Failed to load file.' },
+  'preview.loading':          { da: 'Indlæser…',                      en: 'Loading…' },
+  'preview.imageLoadFailed':  { da: 'Billedet kunne ikke indlæses.',  en: 'Failed to load image.' },
+  'preview.imageMayBeCorrupt':{ da: 'Filen er muligvis beskadiget.',  en: 'The file may be corrupted.' },
+  'preview.deleteCorrupted':  { da: 'Slet beskadiget fil',            en: 'Delete corrupted file' },
+  'preview.truncated':        { da: 'Forhåndsvisning afkortet til 1 MB. Download filen for at se det fulde indhold.', en: 'Preview truncated to 1 MB. Download the file to see the complete contents.' },
+
+  // ── Banners ───────────────────────────────────────────────────────────────
+  'banner.adminSession': { da: 'Admin support-session — viser som {user}. Alle handlinger registreres.', en: 'Admin support session — viewing as {user}. All actions are recorded.' },
+  'banner.dismiss':      { da: 'Luk banner',                          en: 'Dismiss banner' },
+  'offline.message':     { da: 'Du er offline — uploads genoptages automatisk når forbindelsen vender tilbage', en: 'You are offline — uploads will resume automatically when the connection returns' },
+
+  // ── Upload zone ───────────────────────────────────────────────────────────
+  'upload.dragging':        { da: 'Slip filer her for at uploade',    en: 'Drop files here to upload' },
+  'upload.uploading':       { da: 'Uploader {count} fil(er)',         en: 'Uploading {count} file(s)' },
+  'upload.failed':          { da: 'Upload fejlede',                   en: 'Upload failed' },
+  'upload.paused':          { da: 'Offline — genoptages automatisk når forbindelsen vender tilbage', en: 'Offline — will resume automatically when the connection returns' },
+  'upload.saving':          { da: 'Gemmer chunk… et øjeblik',         en: 'Saving chunk… one moment' },
+  'upload.direct':          { da: 'Direkte',                          en: 'Direct' },
+  'upload.directNote':      { da: 'Uploader direkte til serveren — bypasser Cloudflare for maksimal hastighed.', en: 'Uploading directly to the server — bypasses Cloudflare for maximum speed.' },
+  'upload.cloudflareNote':  { da: 'Filer uploades via Cloudflare i 50 MB dele. Hastighed varierer — det er normalt at progressbaren "staller" kortvarigt mellem dele.', en: 'Files are uploaded via Cloudflare in 50 MB chunks. Speed may vary — it is normal for the progress bar to briefly stall between chunks.' },
+
+  // ── Context menu (additional) ─────────────────────────────────────────────
 } as const
 
 type TranslationKey = keyof typeof translations

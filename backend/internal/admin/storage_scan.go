@@ -26,9 +26,9 @@ type corruptFile struct {
 }
 
 type storageScanResult struct {
-	ScannedFiles int          `json:"scanned_files"`
+	ScannedFiles int           `json:"scanned_files"`
 	CorruptFiles []corruptFile `json:"corrupt_files"`
-	DurationMs   int64        `json:"duration_ms"`
+	DurationMs   int64         `json:"duration_ms"`
 }
 
 // StorageScan handles POST /api/v1/admin/storage/scan
@@ -114,8 +114,8 @@ func (h *Handler) StorageScan(w http.ResponseWriter, r *http.Request) {
 }
 
 // StoragePurgeCorrupt handles POST /api/v1/admin/storage/purge-corrupt
-// Soft-deletes all file records that are identified as corrupt (HTML/text content
-// masquerading as image files). Accepts a JSON body with an array of file IDs.
+// Soft-deletes the DB records AND removes the physical files from disk.
+// Accepts a JSON body: { "ids": ["uuid1", "uuid2", ...] }
 func (h *Handler) StoragePurgeCorrupt(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		IDs []string `json:"ids"`
@@ -129,6 +129,8 @@ func (h *Handler) StoragePurgeCorrupt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Soft-delete DB records first so the files are invisible to users
+	// even if the disk removal below partially fails.
 	tag, err := h.db.Exec(r.Context(),
 		`UPDATE files SET deleted_at = NOW()
 		 WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
@@ -140,8 +142,24 @@ func (h *Handler) StoragePurgeCorrupt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Remove the physical files from disk. Errors are logged but do not fail
+	// the request — the DB record is already gone, and a subsequent storage
+	// scrub will clean up any orphaned files.
+	diskDeleted := 0
+	for _, id := range req.IDs {
+		path := scanStoragePath(h.cfg.FilesRoot, id)
+		if err := os.Remove(path); err != nil {
+			if !os.IsNotExist(err) {
+				log.Warn().Err(err).Str("id", id).Msg("admin.StoragePurgeCorrupt: remove disk file")
+			}
+		} else {
+			diskDeleted++
+		}
+	}
+
 	httputil.Respond(w, http.StatusOK, map[string]any{
-		"deleted": tag.RowsAffected(),
+		"deleted":      tag.RowsAffected(),
+		"disk_deleted": diskDeleted,
 	})
 }
 
@@ -223,5 +241,3 @@ func min16(n int) int {
 	}
 	return 16
 }
-
-

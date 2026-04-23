@@ -58,9 +58,9 @@ function StoragePage() {
 
   const purge = useMutation({
     mutationFn: (ids: string[]) =>
-      api.post<{ deleted: number }>('/api/v1/admin/storage/purge-corrupt', { ids }),
+      api.post<{ deleted: number; disk_deleted: number }>('/api/v1/admin/storage/purge-corrupt', { ids }),
     onSuccess: (data, ids) => {
-      toast.success(`${data.deleted} file(s) moved to trash`)
+      toast.success(`${data.deleted} record(s) removed — ${data.disk_deleted} file(s) deleted from disk`)
       queryClient.setQueryData<ScanResult>(SCAN_KEY, prev =>
         prev
           ? { ...prev, corrupt_files: prev.corrupt_files.filter(f => !ids.includes(f.id)) }

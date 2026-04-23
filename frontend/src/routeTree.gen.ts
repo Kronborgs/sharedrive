@@ -33,6 +33,7 @@ import { Route as AuthAdminGroupsIndexRouteImport } from './routes/_auth.admin.g
 import { Route as AuthAdminBlockedIpsIndexRouteImport } from './routes/_auth.admin.blocked-ips.index'
 import { Route as AuthAdminBackupIndexRouteImport } from './routes/_auth.admin.backup.index'
 import { Route as AuthAdminAuditLogsIndexRouteImport } from './routes/_auth.admin.audit-logs.index'
+import { Route as AuthAdminStorageIndexRouteImport } from './routes/_auth.admin.storage.index'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -154,6 +155,11 @@ const AuthAdminAuditLogsIndexRoute = AuthAdminAuditLogsIndexRouteImport.update({
   path: '/admin/audit-logs/',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthAdminStorageIndexRoute = AuthAdminStorageIndexRouteImport.update({
+  id: '/admin/storage/',
+  path: '/admin/storage/',
+  getParentRoute: () => AuthRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -179,6 +185,7 @@ export interface FileRoutesByFullPath {
   '/admin/settings/': typeof AuthAdminSettingsIndexRoute
   '/admin/tags/': typeof AuthAdminTagsIndexRoute
   '/admin/users/': typeof AuthAdminUsersIndexRoute
+  '/admin/storage/': typeof AuthAdminStorageIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -203,6 +210,7 @@ export interface FileRoutesByTo {
   '/admin/settings': typeof AuthAdminSettingsIndexRoute
   '/admin/tags': typeof AuthAdminTagsIndexRoute
   '/admin/users': typeof AuthAdminUsersIndexRoute
+  '/admin/storage': typeof AuthAdminStorageIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -230,6 +238,7 @@ export interface FileRoutesById {
   '/_auth/admin/settings/': typeof AuthAdminSettingsIndexRoute
   '/_auth/admin/tags/': typeof AuthAdminTagsIndexRoute
   '/_auth/admin/users/': typeof AuthAdminUsersIndexRoute
+  '/_auth/admin/storage/': typeof AuthAdminStorageIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -257,6 +266,7 @@ export interface FileRouteTypes {
     | '/admin/settings/'
     | '/admin/tags/'
     | '/admin/users/'
+    | '/admin/storage/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -281,6 +291,7 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/tags'
     | '/admin/users'
+    | '/admin/storage'
   id:
     | '__root__'
     | '/'
@@ -307,6 +318,7 @@ export interface FileRouteTypes {
     | '/_auth/admin/settings/'
     | '/_auth/admin/tags/'
     | '/_auth/admin/users/'
+    | '/_auth/admin/storage/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -489,6 +501,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAdminAuditLogsIndexRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/admin/storage/': {
+      id: '/_auth/admin/storage/'
+      path: '/admin/storage'
+      fullPath: '/admin/storage/'
+      preLoaderRoute: typeof AuthAdminStorageIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
   }
 }
 
@@ -508,6 +527,7 @@ interface AuthRouteChildren {
   AuthAdminSettingsIndexRoute: typeof AuthAdminSettingsIndexRoute
   AuthAdminTagsIndexRoute: typeof AuthAdminTagsIndexRoute
   AuthAdminUsersIndexRoute: typeof AuthAdminUsersIndexRoute
+  AuthAdminStorageIndexRoute: typeof AuthAdminStorageIndexRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
@@ -526,6 +546,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthAdminSettingsIndexRoute: AuthAdminSettingsIndexRoute,
   AuthAdminTagsIndexRoute: AuthAdminTagsIndexRoute,
   AuthAdminUsersIndexRoute: AuthAdminUsersIndexRoute,
+  AuthAdminStorageIndexRoute: AuthAdminStorageIndexRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)

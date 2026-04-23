@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/yourname/privatedrive/internal/httputil"
+	"github.com/yourname/privatedrive/internal/middleware"
 )
 
 // corruptFile describes a file whose stored bytes do not match an expected
@@ -246,8 +247,8 @@ func min16(n int) int {
 
 // orphanFile describes a physical file on disk that has no matching DB record.
 type orphanFile struct {
-	Path      string    `json:"path"`      // relative shard path, e.g. "ab/abcd1234-..."
-	ID        string    `json:"id"`        // UUID = filename on disk
+	Path      string    `json:"path"` // relative shard path, e.g. "ab/abcd1234-..."
+	ID        string    `json:"id"`   // UUID = filename on disk
 	SizeBytes int64     `json:"size_bytes"`
 	ModTime   time.Time `json:"mod_time"`
 }
@@ -403,5 +404,113 @@ func (h *Handler) StoragePurgeOrphans(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]any{
 		"deleted":     deleted,
 		"freed_bytes": freedBytes,
+	})
+}
+
+// StorageRestoreOrphans handles POST /api/v1/admin/storage/restore-orphans
+// Creates file records for orphan blobs so they appear in the calling admin's
+// file browser inside a "Restored from cleanup" folder at their root.
+// Accepts a JSON body: { "ids": ["uuid1", ...] }
+func (h *Handler) StorageRestoreOrphans(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
+		httputil.RespondError(w, http.StatusBadRequest, "ids array required")
+		return
+	}
+	if len(req.IDs) > 10000 {
+		httputil.RespondError(w, http.StatusBadRequest, "too many ids")
+		return
+	}
+
+	actor := middleware.UserFromContext(r.Context())
+	if actor == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	ownerID := actor.ID.String()
+
+	// Find or create the "Restored from cleanup" folder at root (parent_id IS NULL).
+	const folderName = "Restored from cleanup"
+	var folderID string
+	err := h.db.QueryRow(r.Context(),
+		`SELECT id::text FROM files
+		 WHERE owner_id = $1::uuid
+		   AND is_folder = true
+		   AND name = $2
+		   AND parent_id IS NULL
+		   AND deleted_at IS NULL
+		 LIMIT 1`,
+		ownerID, folderName,
+	).Scan(&folderID)
+	if err != nil {
+		// Folder doesn't exist yet — create it.
+		if scanErr := h.db.QueryRow(r.Context(),
+			`INSERT INTO files (owner_id, parent_id, is_folder, name)
+			 VALUES ($1::uuid, NULL, true, $2)
+			 RETURNING id::text`,
+			ownerID, folderName,
+		).Scan(&folderID); scanErr != nil {
+			log.Error().Err(scanErr).Msg("admin.StorageRestoreOrphans: create folder")
+			httputil.RespondError(w, http.StatusInternalServerError, "could not create restore folder")
+			return
+		}
+	}
+
+	filesRoot := h.cfg.FilesRoot
+	restored := 0
+	skipped := 0
+
+	for _, id := range req.IDs {
+		// Validate UUID length to prevent path traversal.
+		if len(id) != 36 {
+			skipped++
+			continue
+		}
+		physPath := scanStoragePath(filesRoot, id)
+		info, err := os.Stat(physPath)
+		if err != nil {
+			log.Warn().Err(err).Str("id", id).Msg("admin.StorageRestoreOrphans: stat")
+			skipped++
+			continue
+		}
+
+		// Detect MIME type from the first 512 bytes.
+		mimeType := "application/octet-stream"
+		if magic, err := readMagicBytes(physPath); err == nil {
+			// Read 512 bytes for http.DetectContentType
+			buf := make([]byte, 512)
+			if f, err := os.Open(physPath); err == nil {
+				n, _ := f.Read(buf)
+				f.Close()
+				if n > 0 {
+					mimeType = http.DetectContentType(buf[:n])
+				}
+				_ = magic // readMagicBytes already opened it; reuse buf here
+			}
+		}
+
+		// Use the UUID as filename — no better name is available for orphan blobs.
+		fileName := id
+
+		_, insertErr := h.db.Exec(r.Context(),
+			`INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path)
+			 VALUES ($1::uuid, $2::uuid, $3::uuid, false, $4, $5, $6, $7)
+			 ON CONFLICT (id) DO NOTHING`,
+			id, ownerID, folderID, fileName, mimeType, info.Size(), physPath,
+		)
+		if insertErr != nil {
+			log.Warn().Err(insertErr).Str("id", id).Msg("admin.StorageRestoreOrphans: insert")
+			skipped++
+			continue
+		}
+		restored++
+	}
+
+	httputil.Respond(w, http.StatusOK, map[string]any{
+		"restored":  restored,
+		"skipped":   skipped,
+		"folder_id": folderID,
 	})
 }

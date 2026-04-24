@@ -11,7 +11,7 @@ import { TextEditor } from '@/components/files/TextEditor'
 import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import type { FileItem } from '@/types/api'
 import { useI18n } from '@/lib/i18n'
-import { Folder, File, Eye, Upload, Pencil, Trash2, Share2, Link, Users, Clock, X } from 'lucide-react'
+import { Folder, File, Eye, Upload, Pencil, Trash2, Share2, Link, Users, Clock, X, FolderOpen } from 'lucide-react'
 import { toast } from 'sonner'
 
 export const Route = createFileRoute('/_auth/shares/')({
@@ -52,7 +52,7 @@ interface MyShareEntry {
 }
 
 interface MyShareGroup {
-  item: SharedFileItem
+  item: SharedFileItem & { parent_id?: string | null }
   shares: MyShareEntry[]
 }
 
@@ -180,8 +180,11 @@ function ReceivedTab() {
   )
 }
 
+type PermField = 'can_view' | 'can_upload' | 'can_edit' | 'can_delete' | 'can_reshare'
+
 function SentTab() {
   const { t } = useI18n()
+  const navigate = useNavigate()
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
@@ -198,9 +201,19 @@ function SentTab() {
     },
   })
 
+  const updatePerm = useMutation({
+    mutationFn: ({ shareId, field, value }: { shareId: string; field: PermField; value: boolean }) =>
+      api.patch(`/api/v1/shares/${shareId}`, { [field]: value }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['files', 'my-shares'] }),
+  })
+
   const handleRevoke = (shareId: string) => {
     if (!confirm(t('shared.revokeConfirm'))) return
     revoke.mutate(shareId)
+  }
+
+  const togglePerm = (shareId: string, field: PermField, current: boolean) => {
+    updatePerm.mutate({ shareId, field, value: !current })
   }
 
   if (isLoading) {
@@ -215,14 +228,25 @@ function SentTab() {
     <div className="space-y-3">
       {data.map(group => (
         <div key={group.item.id} className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
-          {/* File/folder header */}
+          {/* File/folder header row */}
           <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148]">
             {group.item.is_folder
               ? <Folder className="w-4 h-4 text-indigo-400 shrink-0" />
               : <File className="w-4 h-4 text-zinc-400 dark:text-slate-500 shrink-0" />
             }
-            <span className="font-medium text-sm text-zinc-900 dark:text-slate-100 truncate">{group.item.name}</span>
-            <span className="ml-auto text-xs text-zinc-400 dark:text-slate-500 shrink-0">
+            <div className="flex-1 min-w-0">
+              <span className="font-medium text-sm text-zinc-900 dark:text-slate-100">{group.item.name}</span>
+              {/* Path / navigate to parent folder */}
+              <button
+                onClick={() => void navigate({ to: '/files', search: group.item.parent_id ? { folder: group.item.parent_id } : {} })}
+                className="flex items-center gap-1 text-xs text-zinc-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors mt-0.5"
+                title={t('shared.goToFolder')}
+              >
+                <FolderOpen className="w-3 h-3" />
+                {group.item.parent_id ? t('shared.goToFolder') : t('files.root')}
+              </button>
+            </div>
+            <span className="text-xs text-zinc-400 dark:text-slate-500 shrink-0">
               {t('shared.sharesCount', { n: String(group.shares.length) })}
             </span>
           </div>
@@ -231,7 +255,7 @@ function SentTab() {
           <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
             {group.shares.map(s => (
               <div key={s.id} className="flex items-center gap-3 px-4 py-2.5">
-                {/* Grantee icon */}
+                {/* Grantee avatar */}
                 {s.grantee_type === 'link'
                   ? <Link className="w-4 h-4 text-amber-400 shrink-0" />
                   : s.grantee_type === 'group'
@@ -262,20 +286,34 @@ function SentTab() {
                   )}
                 </div>
 
-                {/* Permission badges */}
-                <div className="flex items-center gap-1 shrink-0">
-                  {s.can_view    && <Eye    className="w-3.5 h-3.5 text-zinc-400 dark:text-slate-500" title="Vis" />}
-                  {s.can_upload  && <Upload className="w-3.5 h-3.5 text-blue-400" title="Upload" />}
-                  {s.can_edit    && <Pencil className="w-3.5 h-3.5 text-green-400" title="Rediger" />}
-                  {s.can_delete  && <Trash2 className="w-3.5 h-3.5 text-red-400" title="Slet" />}
-                  {s.can_reshare && <Share2 className="w-3.5 h-3.5 text-purple-400" title="Del videre" />}
+                {/* Permission toggle buttons — always shown, colored=on, dimmed=off */}
+                <div className="flex items-center gap-0.5 shrink-0">
+                  {([
+                    { field: 'can_view'    as PermField, icon: Eye,    on: 'text-zinc-600 dark:text-slate-200',   title: 'Vis' },
+                    { field: 'can_upload'  as PermField, icon: Upload, on: 'text-blue-500',                       title: 'Upload' },
+                    { field: 'can_edit'    as PermField, icon: Pencil, on: 'text-green-500',                      title: 'Rediger' },
+                    { field: 'can_delete'  as PermField, icon: Trash2, on: 'text-red-500',                        title: 'Slet' },
+                    { field: 'can_reshare' as PermField, icon: Share2, on: 'text-purple-500',                     title: 'Del videre' },
+                  ]).map(({ field, icon: Icon, on, title }) => (
+                    <button
+                      key={field}
+                      onClick={() => togglePerm(s.id, field, s[field])}
+                      disabled={updatePerm.isPending}
+                      title={title}
+                      className={`p-1 rounded transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-700/40 ${
+                        s[field] ? on : 'text-zinc-300 dark:text-zinc-600'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                    </button>
+                  ))}
                 </div>
 
                 {/* Revoke button */}
                 <button
                   onClick={() => handleRevoke(s.id)}
                   disabled={revoke.isPending}
-                  className="ml-2 p-1 rounded text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"
+                  className="ml-1 p-1 rounded text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"
                   title={t('shared.revokeShare')}
                 >
                   <X className="w-4 h-4" />

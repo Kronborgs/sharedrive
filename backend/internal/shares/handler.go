@@ -58,7 +58,7 @@ type Share struct {
 
 type createShareRequest struct {
 	ResourceID   string     `json:"resource_id"`
-	GranteeType  string     `json:"grantee_type"` // "user", "group", or "link"
+	GranteeType  string     `json:"grantee_type"`  // "user", "group", or "link"
 	GranteeEmail string     `json:"grantee_email"` // resolved to UUID for type=user
 	GranteeID    string     `json:"grantee_id"`    // UUID; used directly for group, or looked up for user
 	CanView      bool       `json:"can_view"`
@@ -408,10 +408,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	args := []interface{}{shareID, req.ExpiresAt}
 	argN := 3
 	boolFields := map[string]*bool{
-		"can_view":   req.CanView,
-		"can_upload": req.CanUpload,
-		"can_edit":   req.CanEdit,
-		"can_delete": req.CanDelete,
+		"can_view":    req.CanView,
+		"can_upload":  req.CanUpload,
+		"can_edit":    req.CanEdit,
+		"can_delete":  req.CanDelete,
 		"can_reshare": req.CanReshare,
 	}
 	for col, val := range boolFields {
@@ -474,12 +474,12 @@ func (h *Handler) SharedWithMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type sharedItem struct {
-		ID        string     `json:"id"`
-		Name      string     `json:"name"`
-		IsFolder  bool       `json:"is_folder"`
-		SizeBytes int64      `json:"size_bytes"`
-		MimeType  *string    `json:"mime_type"`
-		CreatedAt time.Time  `json:"created_at"`
+		ID        string    `json:"id"`
+		Name      string    `json:"name"`
+		IsFolder  bool      `json:"is_folder"`
+		SizeBytes int64     `json:"size_bytes"`
+		MimeType  *string   `json:"mime_type"`
+		CreatedAt time.Time `json:"created_at"`
 	}
 	type result struct {
 		Share Share      `json:"share"`
@@ -549,6 +549,7 @@ func (h *Handler) MyShares(w http.ResponseWriter, r *http.Request) {
 
 	type sharedItem struct {
 		ID        string    `json:"id"`
+		ParentID  *string   `json:"parent_id"`
 		Name      string    `json:"name"`
 		IsFolder  bool      `json:"is_folder"`
 		SizeBytes int64     `json:"size_bytes"`
@@ -567,7 +568,8 @@ func (h *Handler) MyShares(w http.ResponseWriter, r *http.Request) {
 		        u.email  AS grantee_email,
 		        g.name   AS grantee_group_name,
 		        s.pending_email, s.token,
-		        f.name, f.is_folder, COALESCE(f.size_bytes, 0), f.mime_type, f.created_at AS file_created_at
+		        f.name, f.is_folder, COALESCE(f.size_bytes, 0), f.mime_type, f.created_at AS file_created_at,
+		        f.parent_id
 		 FROM shares s
 		 JOIN files f ON f.id = s.resource_id AND f.deleted_at IS NULL
 		 LEFT JOIN users  u ON s.grantee_type = 'user'  AND u.id = s.grantee_id
@@ -594,6 +596,7 @@ func (h *Handler) MyShares(w http.ResponseWriter, r *http.Request) {
 			&s.ExpiresAt, &s.CreatedAt,
 			&s.GranteeEmail, &s.GranteeGroupName, &s.PendingEmail, &s.Token,
 			&item.Name, &item.IsFolder, &item.SizeBytes, &item.MimeType, &item.CreatedAt,
+			&item.ParentID,
 		); err != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 			return
@@ -627,11 +630,11 @@ func (h *Handler) SharedByLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type sharedFile struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
+		ID        string `json:"id"`
+		Name      string `json:"name"`
 		SizeBytes int64  `json:"size_bytes"`
-		MimeType string `json:"mime_type"`
-		IsFolder bool   `json:"is_folder"`
+		MimeType  string `json:"mime_type"`
+		IsFolder  bool   `json:"is_folder"`
 	}
 
 	type payload struct {
@@ -786,4 +789,3 @@ func (h *Handler) SharedFolderChildren(w http.ResponseWriter, r *http.Request) {
 		"folder_name": folderName,
 	})
 }
-

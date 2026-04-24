@@ -240,6 +240,7 @@ const translations = {
   'shared.revokeShare':  { da: 'Fjern deling',     en: 'Revoke share' },
   'shared.revokeConfirm':{ da: 'Fjern denne deling?', en: 'Remove this share?' },
   'shared.sharesCount':  { da: '{n} deling(er)',   en: '{n} share(s)' },
+  'shared.goToFolder':   { da: 'Åbn i Mine filer', en: 'Open in My files' },
 
   // ── Confirm dialogs (parameterized) ──────────────────────────────────────
   'confirm.trashNamed':{ da: 'Flytte "{name}" til papirkurven?', en: 'Move "{name}" to trash?' },

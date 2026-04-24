@@ -29,7 +29,8 @@ const translations = {
   'nav.settings':      { da: 'Indstillinger',    en: 'Settings' },
 
   // ── Common actions ────────────────────────────────────────────────────────
-  'action.upload':     { da: 'Upload',           en: 'Upload' },
+  'action.upload':     { da: 'Upload',               en: 'Upload' },
+  'action.uploadFolder': { da: 'Upload mappe',        en: 'Upload folder' },
   'action.download':   { da: 'Download',         en: 'Download' },
   'action.delete':     { da: 'Slet',             en: 'Delete' },
   'action.rename':     { da: 'Omdøb',            en: 'Rename' },

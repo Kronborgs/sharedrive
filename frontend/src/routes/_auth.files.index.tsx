@@ -20,7 +20,7 @@ import { TextEditor } from '@/components/files/TextEditor'
 import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import { useShareTarget } from '@/hooks/useShareTarget'
 import { useI18n } from '@/lib/i18n'
-import { LayoutList, LayoutGrid, Upload, FolderPlus, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive, FilePlus } from 'lucide-react'
+import { LayoutList, LayoutGrid, Upload, FolderPlus, FolderUp, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive, FilePlus } from 'lucide-react'
 import { toast } from 'sonner'
 
 const searchSchema = z.object({
@@ -87,7 +87,7 @@ function FilesPage() {
   } | null>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
-  const { uploads, startUpload, dismiss, directUpload } = useUploader(folderId)
+  const { uploads, startUpload, startFolderUpload, dismiss, directUpload } = useUploader(folderId)
 
   // Handle files received via Android Web Share Target
   const { pendingFiles: shareTargetFiles, clearPending: clearShareTarget } = useShareTarget(!!user)
@@ -633,6 +633,13 @@ function FilesPage() {
                   <Upload size={12} />
                   <span className="hidden sm:inline">{t('action.upload')}</span>
                   <input type="file" multiple className="sr-only" onChange={e => e.target.files && startUpload(Array.from(e.target.files))} />
+                </label>
+
+                {/* Upload folder — desktop only */}
+                <label className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors cursor-pointer">
+                  <FolderUp size={12} />
+                  {t('action.uploadFolder')}
+                  <input type="file" className="sr-only" {...({ webkitdirectory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={e => e.target.files && void startFolderUpload(e.target.files)} />
                 </label>
 
                 {/* New folder — desktop only */}

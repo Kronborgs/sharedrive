@@ -180,6 +180,7 @@ import { useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as tus from 'tus-js-client'
 import { api } from '@/lib/api'
+import type { FileItem } from '@/types/api'
 
 // Chunk size: 50 MB — safely below Cloudflare's 100 MB per-request limit.
 const TUS_CHUNK_SIZE = 50 * 1024 * 1024
@@ -382,5 +383,57 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     })
   }, [])
 
-  return { uploads, startUpload, dismiss, directUpload: !!(settings?.direct_upload_url?.trim()) }
+  // Folder upload: create the server folder tree then upload each file into the right folder.
+  // Reads webkitRelativePath from each File to reconstruct the hierarchy.
+  const startFolderUpload = useCallback(async (fileList: FileList) => {
+    const files = Array.from(fileList) as (File & { webkitRelativePath: string })[]
+    if (files.length === 0) return
+
+    // Map path string → server folder ID. Empty string = current root.
+    const folderIdMap = new Map<string, string>()
+    folderIdMap.set('', folderId ?? '')
+
+    // Collect unique directory paths, sorted shallowest-first so parents are created before children.
+    const folderPaths = new Set<string>()
+    for (const file of files) {
+      const parts = file.webkitRelativePath.split('/')
+      for (let i = 1; i < parts.length; i++) {
+        folderPaths.add(parts.slice(0, i).join('/'))
+      }
+    }
+    const sortedPaths = Array.from(folderPaths).sort((a, b) => {
+      const da = a.split('/').length
+      const db = b.split('/').length
+      return da !== db ? da - db : a.localeCompare(b)
+    })
+
+    // Create each folder on the server in order.
+    for (const folderPath of sortedPaths) {
+      const parts = folderPath.split('/')
+      const name = parts[parts.length - 1]
+      const parentPath = parts.slice(0, -1).join('/')
+      const parentId = folderIdMap.get(parentPath) ?? folderId
+      try {
+        const created = await api.post<FileItem>('/api/v1/files', {
+          name,
+          parent_id: parentId || null,
+        })
+        folderIdMap.set(folderPath, created.id)
+      } catch {
+        // Ignore — folder may already exist. Files will still upload.
+      }
+    }
+
+    // Queue each file upload into its correct folder.
+    for (const file of files) {
+      const parts = file.webkitRelativePath.split('/')
+      const dirPath = parts.slice(0, -1).join('/')
+      const targetId = folderIdMap.get(dirPath) ?? folderId
+      startUpload([file], targetId)
+    }
+
+    void qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] })
+  }, [folderId, qc, startUpload, queryKey])
+
+  return { uploads, startUpload, startFolderUpload, dismiss, directUpload: !!(settings?.direct_upload_url?.trim()) }
 }

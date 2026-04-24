@@ -355,6 +355,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/files/breadcrumbs", s.filesHandler.Breadcrumbs)
 		r.Get("/api/v1/files/search", s.filesHandler.Search)
 		r.Get("/api/v1/files/shared-with-me", s.handleSharedWithMe)
+		r.Get("/api/v1/files/my-shares", s.handleMyShares)
 		r.Get("/api/v1/files/shared/{id}/children", s.sharesHandler.SharedFolderChildren)
 		r.Get("/api/v1/files/trash", s.filesHandler.ListTrash)
 		r.Delete("/api/v1/files/trash", s.filesHandler.EmptyTrash)
@@ -657,6 +658,9 @@ func (s *Server) handleCreateFolder(w http.ResponseWriter, r *http.Request) { s.
 func (s *Server) handleRecentFiles(w http.ResponseWriter, r *http.Request)  { s.notImplemented(w) }
 func (s *Server) handleSharedWithMe(w http.ResponseWriter, r *http.Request) {
 	s.sharesHandler.SharedWithMe(w, r)
+}
+func (s *Server) handleMyShares(w http.ResponseWriter, r *http.Request) {
+	s.sharesHandler.MyShares(w, r)
 }
 func (s *Server) handleSharedByLink(w http.ResponseWriter, r *http.Request) {
 	s.sharesHandler.SharedByLink(w, r)

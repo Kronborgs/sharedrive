@@ -233,6 +233,13 @@ const translations = {
   'shared.folder':       { da: 'Mappe',          en: 'Folder' },
   'shared.expires':      { da: 'Udløber',        en: 'Expires' },
   'shared.emptyFolder':  { da: 'Denne mappe er tom', en: 'This folder is empty' },
+  'shared.myShares':     { da: 'Mine delinger',    en: 'My shares' },
+  'shared.noShares':     { da: 'Du deler ikke noget i øjeblikket', en: 'You are not sharing anything right now' },
+  'shared.publicLink':   { da: 'Offentligt link',  en: 'Public link' },
+  'shared.pendingInvite':{ da: 'Afventer invitation', en: 'Pending invite' },
+  'shared.revokeShare':  { da: 'Fjern deling',     en: 'Revoke share' },
+  'shared.revokeConfirm':{ da: 'Fjern denne deling?', en: 'Remove this share?' },
+  'shared.sharesCount':  { da: '{n} deling(er)',   en: '{n} share(s)' },
 
   // ── Confirm dialogs (parameterized) ──────────────────────────────────────
   'confirm.trashNamed':{ da: 'Flytte "{name}" til papirkurven?', en: 'Move "{name}" to trash?' },

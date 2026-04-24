@@ -536,6 +536,87 @@ func (h *Handler) SharedWithMe(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, out)
 }
 
+// MyShares handles GET /api/v1/files/my-shares.
+// Returns [{item, shares}] — all active shares owned by the current user,
+// grouped by resource and ordered by file name.
+func (h *Handler) MyShares(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	type sharedItem struct {
+		ID        string    `json:"id"`
+		Name      string    `json:"name"`
+		IsFolder  bool      `json:"is_folder"`
+		SizeBytes int64     `json:"size_bytes"`
+		MimeType  *string   `json:"mime_type"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+	type resourceShares struct {
+		Item   sharedItem `json:"item"`
+		Shares []Share    `json:"shares"`
+	}
+
+	rows, err := h.db.Query(ctx,
+		`SELECT s.id, s.resource_id, s.owner_id, s.grantee_type, s.grantee_id,
+		        s.can_view, s.can_upload, s.can_edit, s.can_delete, s.can_reshare,
+		        s.expires_at, s.created_at,
+		        u.email  AS grantee_email,
+		        g.name   AS grantee_group_name,
+		        s.pending_email, s.token,
+		        f.name, f.is_folder, COALESCE(f.size_bytes, 0), f.mime_type, f.created_at AS file_created_at
+		 FROM shares s
+		 JOIN files f ON f.id = s.resource_id AND f.deleted_at IS NULL
+		 LEFT JOIN users  u ON s.grantee_type = 'user'  AND u.id = s.grantee_id
+		 LEFT JOIN groups g ON s.grantee_type = 'group' AND g.id = s.grantee_id
+		 WHERE s.owner_id = $1 AND s.revoked_at IS NULL
+		 ORDER BY f.name ASC, s.created_at DESC`,
+		u.ID,
+	)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rows.Close()
+
+	grouped := make(map[string]*resourceShares)
+	order := []string{}
+
+	for rows.Next() {
+		var s Share
+		var item sharedItem
+		if err := rows.Scan(
+			&s.ID, &s.ResourceID, &s.OwnerID, &s.GranteeType, &s.GranteeID,
+			&s.CanView, &s.CanUpload, &s.CanEdit, &s.CanDelete, &s.CanReshare,
+			&s.ExpiresAt, &s.CreatedAt,
+			&s.GranteeEmail, &s.GranteeGroupName, &s.PendingEmail, &s.Token,
+			&item.Name, &item.IsFolder, &item.SizeBytes, &item.MimeType, &item.CreatedAt,
+		); err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		item.ID = s.ResourceID
+		if _, ok := grouped[s.ResourceID]; !ok {
+			grouped[s.ResourceID] = &resourceShares{Item: item}
+			order = append(order, s.ResourceID)
+		}
+		grouped[s.ResourceID].Shares = append(grouped[s.ResourceID].Shares, s)
+	}
+	if err := rows.Err(); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	out := make([]resourceShares, 0, len(order))
+	for _, id := range order {
+		out = append(out, *grouped[id])
+	}
+	httputil.Respond(w, http.StatusOK, out)
+}
+
 // SharedByLink handles GET /api/v1/public/shared/{token} — unauthenticated.
 func (h *Handler) SharedByLink(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

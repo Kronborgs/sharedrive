@@ -10,6 +10,22 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 
 ## Changelog
 
+### v1.1.4 — 24 April 2026
+
+#### New features
+- **Retro media player transport buttons** — Play, Pause, Previous, and Next controls in the sidebar player are now neumorphic press-down buttons styled after a vintage high-end tape deck. Each button physically depresses on click (inset shadow + 1 px translate) and lights up with a colour glow when active (green for play, purple for shuffle). Replaces the previous flat icon buttons.
+- **LED segment display** — a VFD-style readout panel replaces the plain text track name. Shows a cyan track-number counter (`01`, `02` …) and an amber scrolling track-name ticker that animates left–right for long titles. Clicking the display expands/collapses the track list.
+- **Upload folder** — a new "Upload mappe" button in the Files toolbar (desktop only) lets you select an entire local folder including subfolders. Sharedrive recreates the full folder hierarchy on the server and uploads each file into the correct subfolder. Available on browsers that support `webkitdirectory`.
+- **Mine delinger tab** — the "Delt med mig" page now includes a "Mine delinger" tab listing all shares you have created, with interactive per-permission toggles (View / Upload / Edit / Rename / Delete / Re-share) that update without leaving the page, and a "Navigate to folder" button that jumps directly to the shared folder in the file manager.
+
+#### Bug fixes
+- **WebDAV: argon2id latency on ARM** — app-password verification (argon2id) now uses an in-memory cache (5-minute TTL, SHA-256 key). Only the first request per credential window pays the 1–3 s hashing cost; subsequent requests on ARM servers (Raspberry Pi, ARM VPS) are instant.
+- **WebDAV: rate-limiter exhaustion** — the Redis sliding-window rate limiter previously counted every auth attempt including successful ones, which exhausted the budget for legitimate clients during normal use. The counter now only increments on failed authentication attempts.
+- **WebDAV: rename fails for root-level files** — renaming a file located in the WebDAV root (no parent folder) produced a PostgreSQL uuid cast error due to a `$2::uuid` cast on a null value. Fixed by using a nullable UUID helper.
+- **Folder delete returns 400** — deleting a folder that contained files triggered a database trigger (`trg_check_parent_owner`) that re-validated parent ownership during the soft-delete cascade, incorrectly firing after `deleted_at` was already set. Migration `0037` adds an early return when `NEW.deleted_at IS NOT NULL`.
+
+---
+
 ### v1.1.3 — 23 April 2026
 
 #### New features
@@ -107,12 +123,15 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 ### M3U Playlists
 - Create M3U playlists directly from selected audio files in the file manager
 - **Persistent sidebar player** — plays in the background while navigating; collapses to a mini-bar; expands to show track list with per-track remove button and Bass / Volume / Treble neumorphic dials
+- **Retro transport controls** — Play, Pause, Previous, and Next are neumorphic press-down buttons styled after a vintage tape deck; physically depress on click and glow when active
+- **LED display** — VFD-style panel shows a cyan track-number counter and an amber scrolling track-name ticker; click to expand/collapse the track list
 - **Mobile bottom bar** — floating mini-player on small screens; tap to expand full sheet with track list and controls
 - **Audio equaliser** — neumorphic dial controls for Bass (low-shelf 200 Hz), Volume, and Treble (high-shelf 4 kHz) via the Web Audio API; available in both the sidebar player and the audio preview modal; each dial sweeps ±12 dB
 - **Shuffle mode** — randomises track order; toggles with a single click; highlighted when active
 - **Cross-device state sync** — active playlist, current track index, volume and shuffle mode are saved server-side (per user) and restored on any device or browser after login; instant hydration from localStorage on same device
 - Add files or folders to the current playlist from the context menu ("Add to playlist")
 - Playlist files are editable (add/remove tracks, max 50)
+- **Upload folder** — select an entire local folder from the Files toolbar; Sharedrive recreates the folder hierarchy on the server and uploads each file into the correct subfolder
 
 ### Backup & Restore
 - **Per-user encrypted backup** — HMAC-SHA256 signed gzip JSON export (metadata only, no blobs)

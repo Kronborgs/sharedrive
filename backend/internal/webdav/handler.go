@@ -110,11 +110,14 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Rate-limit WebDAV auth attempts by IP to prevent credential brute-force.
+	// Rate-limit: fast-reject if the IP has already exhausted its failure budget,
+	// then count only *failed* authentication attempts (not every request).
+	// This prevents brute-force while allowing legitimate WebDAV sessions —
+	// which send credentials on every request — to run without consuming the budget.
+	ip := middleware.ClientIP(r)
 	if s.limiter != nil {
-		ip := middleware.ClientIP(r)
-		allowed, _, _, _ := s.limiter.Allow(r.Context(), "ip_webdav_auth:", ip, 20, 15*time.Minute)
-		if !allowed {
+		count, _ := s.limiter.Count(r.Context(), "ip_webdav_auth:", ip, 15*time.Minute)
+		if count >= 20 {
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return
 		}
@@ -122,6 +125,10 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	userID, resourceID, err := ValidateAppPassword(r.Context(), s.db, email, password)
 	if err != nil || userID != urlUserID {
+		// Only failed attempts consume the brute-force budget.
+		if s.limiter != nil {
+			s.limiter.Allow(r.Context(), "ip_webdav_auth:", ip, 20, 15*time.Minute)
+		}
 		s.auditSvc.Log(r.Context(), audit.Event{
 			Type:       audit.EventWebDAVLoginFailed,
 			ActorEmail: email,

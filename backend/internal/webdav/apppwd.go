@@ -3,10 +3,13 @@ package webdav
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/go-chi/chi/v5"
@@ -157,9 +160,43 @@ func (h *AppPasswordHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// credCache caches recently validated app-password credentials so that argon2id
+// does not run on every WebDAV request. This is important for ARM systems where
+// argon2id can take 1–3 s per hash, causing Windows WebClient to time out.
+//
+// Security note: if an app password is revoked it remains valid in cache for up
+// to credCacheTTL before the server begins rejecting it. The short TTL limits exposure.
+var credCache sync.Map
+
+const credCacheTTL = 5 * time.Minute
+
+type cachedCred struct {
+	userID     string
+	resourceID *string
+	expiresAt  time.Time
+}
+
+// credCacheKey returns a SHA-256 hex key for the email+password pair.
+// We hash rather than store the raw password as a long-lived map key.
+func credCacheKey(email, rawPassword string) string {
+	h := sha256.Sum256([]byte(email + ":" + rawPassword))
+	return hex.EncodeToString(h[:])
+}
+
 // ValidateAppPassword is used by the WebDAV handler to authenticate via basic auth.
 // Returns the userID and optional resourceID if the password matches an active app password.
 func ValidateAppPassword(ctx context.Context, db *pgxpool.Pool, email, rawPassword string) (userID string, resourceID *string, err error) {
+	// Fast path: return cached result to avoid a DB round-trip + argon2id on
+	// every WebDAV request. Critical for ARM CPUs where argon2id is 5–10× slower.
+	cacheKey := credCacheKey(email, rawPassword)
+	if v, ok := credCache.Load(cacheKey); ok {
+		c := v.(cachedCred)
+		if time.Now().Before(c.expiresAt) {
+			return c.userID, c.resourceID, nil
+		}
+		credCache.Delete(cacheKey) // stale — fall through to full verification
+	}
+
 	rows, err := db.Query(ctx,
 		`SELECT ap.password_hash, ap.id, u.id::TEXT, ap.resource_id::TEXT
 		 FROM app_passwords ap
@@ -187,6 +224,12 @@ func ValidateAppPassword(ctx context.Context, db *pgxpool.Pool, email, rawPasswo
 			_, _ = db.Exec(context.Background(),
 				`UPDATE app_passwords SET last_used_at = now() WHERE id = $1`, id)
 		}(apID)
+		// Cache the result so subsequent requests skip argon2id.
+		credCache.Store(cacheKey, cachedCred{
+			userID:     uID,
+			resourceID: resID,
+			expiresAt:  time.Now().Add(credCacheTTL),
+		})
 		return uID, resID, nil
 	}
 	return "", nil, fmt.Errorf("app password: invalid credentials")

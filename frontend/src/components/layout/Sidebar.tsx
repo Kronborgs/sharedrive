@@ -215,34 +215,9 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
 
             {/* Mini controls bar — always visible */}
             <div className="px-2 pt-2 pb-1.5">
-              {/* Row 1: retro transport controls + track name + expand/close */}
+              {/* Row 1: LED display — full width */}
               <div className="flex items-center gap-1 mb-1.5">
                 <CassetteIcon size={14} className="text-brand-500 shrink-0" />
-                <RetroButton
-                  onClick={prev}
-                  disabled={currentIndex === 0}
-                  icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="0" y="1" width="2" height="8"/><polygon points="8,1 2,5 8,9"/></svg>}
-                  label={t('player.previous')}
-                  size={22}
-                />
-                <RetroButton
-                  onClick={togglePlay}
-                  disabled={!currentTrack}
-                  active={isPlaying}
-                  color="#4ade80"
-                  icon={isPlaying
-                    ? <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="3" height="8"/><rect x="6" y="1" width="3" height="8"/></svg>
-                    : <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>}
-                  label={isPlaying ? t('player.pause') : t('player.play')}
-                  size={28}
-                />
-                <RetroButton
-                  onClick={next}
-                  disabled={!shuffle && currentIndex >= tracks.length - 1}
-                  icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="8" y="1" width="2" height="8"/><polygon points="2,1 8,5 2,9"/></svg>}
-                  label={t('player.next')}
-                  size={22}
-                />
                 <LedDisplay
                   text={tracks.length === 0 && !isLoadingTracks
                     ? (activePlaylistName ?? '---')
@@ -250,14 +225,6 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   trackNum={currentTrack ? currentIndex : null}
                   onClick={() => setPlayerExpanded(v => !v)}
                   expanded={playerExpanded}
-                />
-                <RetroButton
-                  onClick={toggleShuffle}
-                  active={shuffle}
-                  color="#a78bfa"
-                  icon={<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>}
-                  label={shuffle ? t('player.shuffleOn') : t('player.shuffleOff')}
-                  size={22}
                 />
                 <button
                   onClick={clearPlaylist}
@@ -268,7 +235,44 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                 </button>
               </div>
 
-              {/* Row 2: progress bar */}
+              {/* Row 2: transport controls */}
+              <div className="flex items-center justify-center gap-2 mb-1.5">
+                <RetroButton
+                  onClick={prev}
+                  disabled={currentIndex === 0}
+                  icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="0" y="1" width="2" height="8"/><polygon points="8,1 2,5 8,9"/></svg>}
+                  label={t('player.previous')}
+                  size={24}
+                />
+                <RetroButton
+                  onClick={togglePlay}
+                  disabled={!currentTrack}
+                  active={isPlaying}
+                  color="#4ade80"
+                  icon={isPlaying
+                    ? <svg width="11" height="11" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="3" height="8"/><rect x="6" y="1" width="3" height="8"/></svg>
+                    : <svg width="11" height="11" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>}
+                  label={isPlaying ? t('player.pause') : t('player.play')}
+                  size={32}
+                />
+                <RetroButton
+                  onClick={next}
+                  disabled={!shuffle && currentIndex >= tracks.length - 1}
+                  icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="8" y="1" width="2" height="8"/><polygon points="2,1 8,5 2,9"/></svg>}
+                  label={t('player.next')}
+                  size={24}
+                />
+                <RetroButton
+                  onClick={toggleShuffle}
+                  active={shuffle}
+                  color="#a78bfa"
+                  icon={<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>}
+                  label={shuffle ? t('player.shuffleOn') : t('player.shuffleOff')}
+                  size={24}
+                />
+              </div>
+
+              {/* Row 3: progress bar */}
               <div
                 className="w-full h-1 bg-zinc-200 dark:bg-[#2d3148] rounded-full cursor-pointer"
                 onClick={handleSeekClick}

@@ -178,12 +178,12 @@ export function LedDisplay({ text, trackNum, onClick, expanded = false }: LedDis
           border: '1px solid #1a2035',
           borderRadius: 4,
           boxShadow: 'inset 0 1px 5px #000c, 0 0 5px #22d3ee14',
-          padding: '2px 5px',
+          padding: '3px 6px',
           display: 'flex',
           alignItems: 'center',
           gap: 4,
           overflow: 'hidden',
-          height: 20,
+          height: 24,
         }}
       >
         {/* Track number — cyan, like a digital counter */}

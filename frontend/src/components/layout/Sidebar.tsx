@@ -217,7 +217,6 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
             <div className="px-2 pt-2 pb-1.5">
               {/* Row 1: LED display — full width */}
               <div className="flex items-center gap-1 mb-1.5">
-                <CassetteIcon size={14} className="text-brand-500 shrink-0" />
                 <LedDisplay
                   text={tracks.length === 0 && !isLoadingTracks
                     ? (activePlaylistName ?? '---')

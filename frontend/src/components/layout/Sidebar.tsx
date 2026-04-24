@@ -29,7 +29,7 @@ import { formatBytes, cn } from '@/lib/utils'
 import { WebDAVDialog } from '@/components/layout/WebDAVDialog'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
 import { AddMusicDialog } from '@/components/files/AddMusicDialog'
-import { Dial, RetroButton } from '@/components/files/Dial'
+import { Dial, RetroButton, LedDisplay, CassetteIcon } from '@/components/files/Dial'
 import { usePlaylist } from '@/lib/playlist-context'
 
 interface NavItem {
@@ -217,7 +217,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
             <div className="px-2 pt-2 pb-1.5">
               {/* Row 1: retro transport controls + track name + expand/close */}
               <div className="flex items-center gap-1 mb-1.5">
-                <Music size={11} className="text-brand-500 shrink-0" />
+                <CassetteIcon size={14} className="text-brand-500 shrink-0" />
                 <RetroButton
                   onClick={prev}
                   disabled={currentIndex === 0}
@@ -243,21 +243,14 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   label={t('player.next')}
                   size={22}
                 />
-                <button
+                <LedDisplay
+                  text={tracks.length === 0 && !isLoadingTracks
+                    ? (activePlaylistName ?? '---')
+                    : (currentTrack?.name ?? activePlaylistName ?? '---')}
+                  trackNum={currentTrack ? currentIndex : null}
                   onClick={() => setPlayerExpanded(v => !v)}
-                  className="flex-1 min-w-0 text-left flex items-center gap-0.5 group"
-                  title={playerExpanded ? t('player.hideList') : t('player.showList')}
-                >
-                  <span className="text-[11px] font-medium text-zinc-700 dark:text-slate-300 truncate group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
-                    {tracks.length === 0 && !isLoadingTracks
-                      ? t('player.empty' as any)
-                      : (currentTrack?.name ?? activePlaylistName)}
-                  </span>
-                  <ChevronDown
-                    size={10}
-                    className={cn('shrink-0 text-zinc-400 transition-transform', playerExpanded ? '' : '-rotate-90')}
-                  />
-                </button>
+                  expanded={playerExpanded}
+                />
                 <RetroButton
                   onClick={toggleShuffle}
                   active={shuffle}
@@ -628,8 +621,8 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                 onClick={() => setMobilePlayerOpen(v => !v)}
                 className="flex-1 min-w-0 flex items-center gap-2.5 text-left"
               >
-                <div className="w-9 h-9 rounded-lg bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center shrink-0">
-                  <Music size={16} className="text-brand-600 dark:text-brand-400" />
+                <div className="w-9 h-9 rounded-lg bg-zinc-800/80 flex items-center justify-center shrink-0">
+                  <CassetteIcon size={20} className="text-brand-400" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-zinc-900 dark:text-slate-100 truncate">

@@ -58,3 +58,9 @@
     @apply border-zinc-200 dark:border-[#2d3148];
   }
 }
+
+/* Retro LED display — scrolling track name ticker */
+@keyframes led-ticker {
+  0%,  18% { transform: translateX(0%); }
+  82%, 100% { transform: translateX(var(--led-shift, -55%)); }
+}

@@ -322,9 +322,9 @@ func (fs *userFS) Rename(ctx context.Context, oldName, newName string) error {
 	}
 
 	_, err = fs.db.Exec(ctx, `
-		UPDATE files SET name = $1, parent_id = $2::uuid
+		UPDATE files SET name = $1, parent_id = $2
 		WHERE id = $3::uuid AND deleted_at IS NULL
-	`, newBase, newParentID, rec.id)
+	`, newBase, nullableUUID(newParentID), rec.id)
 	if err != nil {
 		return fmt.Errorf("webdav rename: %w", err)
 	}

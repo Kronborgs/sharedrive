@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 interface DialProps {
   value: number          // 0–1
@@ -122,5 +122,85 @@ export function Dial({ value, onChange, label, color, size = 88 }: DialProps) {
         {label}
       </span>
     </div>
+  )
+}
+
+// ── Retro transport button ────────────────────────────────────────────────────
+// Looks like a high-end vintage tape deck button: chunky neumorphic pill that
+// depresses on press. Pass `active` to keep it pressed (e.g. play while playing).
+
+interface RetroButtonProps {
+  onClick: () => void
+  icon: React.ReactNode
+  label: string
+  disabled?: boolean
+  active?: boolean   // stays pressed / lit (e.g. play button while playing)
+  color?: string     // accent glow colour, defaults to #4ade80
+  size?: number      // button diameter, default 36
+}
+
+export function RetroButton({
+  onClick,
+  icon,
+  label,
+  disabled = false,
+  active = false,
+  color = '#4ade80',
+  size = 36,
+}: RetroButtonProps) {
+  const r = size / 2
+  const [pressed, setPressed] = useState(false)
+  const isDown = (active || pressed) && !disabled
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={() => setPressed(false)}
+      onPointerLeave={() => setPressed(false)}
+      onPointerCancel={() => setPressed(false)}
+      className="group relative select-none touch-none outline-none"
+      style={{ width: size, height: size, borderRadius: r, flexShrink: 0 }}
+    >
+      {/* Outer rim */}
+      <span
+        className="absolute inset-0 rounded-full transition-all duration-75"
+        style={{
+          background: isDown ? '#1a1d2e' : '#1c1f2e',
+          boxShadow: isDown
+            ? `inset 3px 3px 8px #0d0f18, inset -2px -2px 6px #2b2f45, 0 0 8px ${color}55`
+            : disabled
+              ? 'none'
+              : '3px 3px 8px #0d0f18, -2px -2px 6px #2b2f45',
+        }}
+      />
+      {/* Inner face */}
+      <span
+        className="absolute rounded-full transition-all duration-75"
+        style={{
+          inset: Math.round(size * 0.1),
+          background: isDown
+            ? `radial-gradient(circle at 40% 40%, #1e2133, #12151f)`
+            : `radial-gradient(circle at 35% 32%, #272b3e, #1a1d2e)`,
+          boxShadow: isDown
+            ? `inset 2px 2px 6px #0d0f18, inset -1px -1px 4px #2b2f45`
+            : `inset -1px -1px 4px #0d0f18, inset 1px 1px 3px #2b2f45`,
+        }}
+      />
+      {/* Icon */}
+      <span
+        className="absolute inset-0 flex items-center justify-center transition-all duration-75 pointer-events-none"
+        style={{
+          color: disabled ? '#3a3d4a' : isDown ? color : '#8b90a8',
+          filter: isDown && !disabled ? `drop-shadow(0 0 3px ${color})` : 'none',
+          transform: isDown ? 'translateY(1px)' : 'none',
+        }}
+      >
+        {icon}
+      </span>
+    </button>
   )
 }

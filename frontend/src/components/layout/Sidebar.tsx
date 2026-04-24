@@ -18,11 +18,6 @@ import {
   ShieldCheck,
   Music,
   X,
-  Play,
-  Pause,
-  SkipBack,
-  SkipForward,
-  Shuffle,
   Plus,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -34,7 +29,7 @@ import { formatBytes, cn } from '@/lib/utils'
 import { WebDAVDialog } from '@/components/layout/WebDAVDialog'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
 import { AddMusicDialog } from '@/components/files/AddMusicDialog'
-import { Dial } from '@/components/files/Dial'
+import { Dial, RetroButton } from '@/components/files/Dial'
 import { usePlaylist } from '@/lib/playlist-context'
 
 interface NavItem {
@@ -220,33 +215,34 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
 
             {/* Mini controls bar — always visible */}
             <div className="px-2 pt-2 pb-1.5">
-              {/* Row 1: icon + controls + track name + expand/close */}
+              {/* Row 1: retro transport controls + track name + expand/close */}
               <div className="flex items-center gap-1 mb-1.5">
                 <Music size={11} className="text-brand-500 shrink-0" />
-                <button
+                <RetroButton
                   onClick={prev}
                   disabled={currentIndex === 0}
-                  className="p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
-                  title={t('player.previous')}
-                >
-                  <SkipBack size={13} />
-                </button>
-                <button
+                  icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="0" y="1" width="2" height="8"/><polygon points="8,1 2,5 8,9"/></svg>}
+                  label={t('player.previous')}
+                  size={22}
+                />
+                <RetroButton
                   onClick={togglePlay}
                   disabled={!currentTrack}
-                  className="p-1 rounded-full bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-30 transition-colors shrink-0"
-                  title={isPlaying ? t('player.pause') : t('player.play')}
-                >
-                  {isPlaying ? <Pause size={11} /> : <Play size={11} />}
-                </button>
-                <button
+                  active={isPlaying}
+                  color="#4ade80"
+                  icon={isPlaying
+                    ? <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="3" height="8"/><rect x="6" y="1" width="3" height="8"/></svg>
+                    : <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>}
+                  label={isPlaying ? t('player.pause') : t('player.play')}
+                  size={28}
+                />
+                <RetroButton
                   onClick={next}
                   disabled={!shuffle && currentIndex >= tracks.length - 1}
-                  className="p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
-                  title={t('player.next')}
-                >
-                  <SkipForward size={13} />
-                </button>
+                  icon={<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="8" y="1" width="2" height="8"/><polygon points="2,1 8,5 2,9"/></svg>}
+                  label={t('player.next')}
+                  size={22}
+                />
                 <button
                   onClick={() => setPlayerExpanded(v => !v)}
                   className="flex-1 min-w-0 text-left flex items-center gap-0.5 group"
@@ -262,18 +258,14 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                     className={cn('shrink-0 text-zinc-400 transition-transform', playerExpanded ? '' : '-rotate-90')}
                   />
                 </button>
-                <button
+                <RetroButton
                   onClick={toggleShuffle}
-                  className={cn(
-                    'p-0.5 transition-colors shrink-0',
-                    shuffle
-                      ? 'text-brand-500 hover:text-brand-600'
-                      : 'text-zinc-300 hover:text-zinc-600 dark:hover:text-slate-300',
-                  )}
-                  title={shuffle ? t('player.shuffleOn') : t('player.shuffleOff')}
-                >
-                  <Shuffle size={11} />
-                </button>
+                  active={shuffle}
+                  color="#a78bfa"
+                  icon={<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>}
+                  label={shuffle ? t('player.shuffleOn') : t('player.shuffleOff')}
+                  size={22}
+                />
                 <button
                   onClick={clearPlaylist}
                   className="p-0.5 text-zinc-300 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0"
@@ -537,40 +529,40 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   <span className="text-[10px] text-zinc-400 tabular-nums">{fmt(progress)}</span>
                   <span className="text-[10px] text-zinc-400 tabular-nums">{fmt(duration)}</span>
                 </div>
-                <div className="flex items-center justify-center gap-6 mb-4">
-                  <button
+                <div className="flex items-center justify-center gap-4 mb-4">
+                  <RetroButton
                     onClick={toggleShuffle}
-                    className={cn(
-                      'p-2 transition-colors',
-                      shuffle
-                        ? 'text-brand-500 hover:text-brand-600'
-                        : 'text-zinc-300 dark:text-slate-600 hover:text-zinc-600 dark:hover:text-slate-300',
-                    )}
-                    title={shuffle ? t('player.shuffleOn') : t('player.shuffleOff')}
-                  >
-                    <Shuffle size={22} />
-                  </button>
-                  <button
+                    active={shuffle}
+                    color="#a78bfa"
+                    icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>}
+                    label={shuffle ? t('player.shuffleOn') : t('player.shuffleOff')}
+                    size={36}
+                  />
+                  <RetroButton
                     onClick={prev}
                     disabled={currentIndex === 0}
-                    className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
-                  >
-                    <SkipBack size={26} />
-                  </button>
-                  <button
+                    icon={<svg width="14" height="14" viewBox="0 0 10 10" fill="currentColor"><rect x="0" y="1" width="2" height="8"/><polygon points="8,1 2,5 8,9"/></svg>}
+                    label={t('player.previous')}
+                    size={42}
+                  />
+                  <RetroButton
                     onClick={togglePlay}
                     disabled={!currentTrack}
-                    className="p-3.5 rounded-full bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-30 transition-colors"
-                  >
-                    {isPlaying ? <Pause size={26} /> : <Play size={26} />}
-                  </button>
-                  <button
+                    active={isPlaying}
+                    color="#4ade80"
+                    icon={isPlaying
+                      ? <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="3" height="8"/><rect x="6" y="1" width="3" height="8"/></svg>
+                      : <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>}
+                    label={isPlaying ? t('player.pause') : t('player.play')}
+                    size={52}
+                  />
+                  <RetroButton
                     onClick={next}
                     disabled={!shuffle && currentIndex >= tracks.length - 1}
-                    className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors"
-                  >
-                    <SkipForward size={26} />
-                  </button>
+                    icon={<svg width="14" height="14" viewBox="0 0 10 10" fill="currentColor"><rect x="8" y="1" width="2" height="8"/><polygon points="2,1 8,5 2,9"/></svg>}
+                    label={t('player.next')}
+                    size={42}
+                  />
                 </div>
                 <div className="flex items-end justify-center gap-6 py-4" style={{ background: '#181b28' }}>
                   <Dial value={bass}   onChange={setBass}   label="Bass"   color="#22d3ee" size={76} />
@@ -646,27 +638,31 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   <p className="text-[10px] text-zinc-400 truncate">{activePlaylistName}</p>
                 </div>
               </button>
-              <button
+              <RetroButton
                 onClick={prev}
                 disabled={currentIndex === 0}
-                className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors shrink-0"
-              >
-                <SkipBack size={18} />
-              </button>
-              <button
+                icon={<svg width="12" height="12" viewBox="0 0 10 10" fill="currentColor"><rect x="0" y="1" width="2" height="8"/><polygon points="8,1 2,5 8,9"/></svg>}
+                label={t('player.previous')}
+                size={32}
+              />
+              <RetroButton
                 onClick={togglePlay}
                 disabled={!currentTrack}
-                className="p-2.5 rounded-full bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-30 transition-colors shrink-0"
-              >
-                {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-              </button>
-              <button
+                active={isPlaying}
+                color="#4ade80"
+                icon={isPlaying
+                  ? <svg width="13" height="13" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="3" height="8"/><rect x="6" y="1" width="3" height="8"/></svg>
+                  : <svg width="13" height="13" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>}
+                label={isPlaying ? t('player.pause') : t('player.play')}
+                size={38}
+              />
+              <RetroButton
                 onClick={next}
                 disabled={!shuffle && currentIndex >= tracks.length - 1}
-                className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 disabled:opacity-25 transition-colors shrink-0"
-              >
-                <SkipForward size={18} />
-              </button>
+                icon={<svg width="12" height="12" viewBox="0 0 10 10" fill="currentColor"><rect x="8" y="1" width="2" height="8"/><polygon points="2,1 8,5 2,9"/></svg>}
+                label={t('player.next')}
+                size={32}
+              />
               <button
                 onClick={clearPlaylist}
                 className="p-2 text-zinc-300 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0"

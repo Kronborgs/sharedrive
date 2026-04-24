@@ -3,17 +3,13 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchPlaylistTracks } from '@/lib/api'
 import type { PlaylistTrack } from '@/lib/api'
 import {
-  Play,
-  Pause,
-  SkipBack,
-  SkipForward,
   Music,
   Loader2,
   AlertTriangle,
   Volume2,
-  Shuffle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RetroButton } from '@/components/files/Dial'
 
 interface PlaylistPlayerProps {
   fileId: string
@@ -185,14 +181,14 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
       </div>
 
       {/* Player controls */}
-      <div className="shrink-0 border-t border-zinc-200 dark:border-[#2d3148] px-4 py-3 bg-white dark:bg-[#1a1d27]">
-        <p className="text-xs font-medium text-zinc-700 dark:text-slate-300 truncate mb-2">
+      <div className="shrink-0 border-t border-zinc-200 dark:border-[#2d3148] px-4 py-3" style={{ background: '#181b28' }}>
+        <p className="text-xs font-medium text-zinc-400 dark:text-slate-400 truncate mb-2">
           {current?.name ?? 'No track selected'}
         </p>
 
         {/* Progress bar */}
         <div
-          className="w-full h-1.5 bg-zinc-200 dark:bg-[#2d3148] rounded-full cursor-pointer mb-3"
+          className="w-full h-1.5 bg-zinc-700 rounded-full cursor-pointer mb-3"
           onClick={seek}
         >
           <div
@@ -202,39 +198,39 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
         </div>
 
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[10px] text-zinc-400 tabular-nums w-8">{fmt(progress)}</span>
+          <span className="text-[10px] text-zinc-500 tabular-nums w-8">{fmt(progress)}</span>
 
-          <div className="flex items-center gap-1.5">
-            <button
+          <div className="flex items-center gap-2.5">
+            <RetroButton
               onClick={() => setShuffle(v => !v)}
-              className={cn(
-                'p-1.5 rounded-lg transition-colors',
-                shuffle
-                  ? 'text-brand-500 hover:text-brand-600'
-                  : 'text-zinc-400 dark:text-slate-500 hover:bg-zinc-100 dark:hover:bg-[#2d3148]',
-              )}
-              title={shuffle ? 'Shuffle til' : 'Shuffle fra'}
-            >
-              <Shuffle size={14} />
-            </button>
+              active={shuffle}
+              color="#a78bfa"
+              icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>}
+              label={shuffle ? 'Shuffle til' : 'Shuffle fra'}
+              size={30}
+            />
 
-            <button
+            <RetroButton
               onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
               disabled={currentIndex === 0}
-              className="p-1.5 rounded-lg text-zinc-500 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] disabled:opacity-30 transition-colors"
-            >
-              <SkipBack size={16} />
-            </button>
+              icon={<svg width="13" height="13" viewBox="0 0 10 10" fill="currentColor"><rect x="0" y="1" width="2" height="8"/><polygon points="8,1 2,5 8,9"/></svg>}
+              label="Forrige"
+              size={30}
+            />
 
-            <button
+            <RetroButton
               onClick={togglePlay}
               disabled={!current}
-              className="p-2 rounded-full bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-30 transition-colors"
-            >
-              {isPlaying ? <Pause size={16} /> : <Play size={16} />}
-            </button>
+              active={isPlaying}
+              color="#4ade80"
+              icon={isPlaying
+                ? <svg width="13" height="13" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="3" height="8"/><rect x="6" y="1" width="3" height="8"/></svg>
+                : <svg width="13" height="13" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>}
+              label={isPlaying ? 'Pause' : 'Afspil'}
+              size={38}
+            />
 
-            <button
+            <RetroButton
               onClick={() => {
                 if (shuffle && tracks && tracks.length > 1) {
                   setCurrentIndex(i => {
@@ -247,13 +243,13 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
                 }
               }}
               disabled={!shuffle && currentIndex >= (tracks?.length ?? 1) - 1}
-              className="p-1.5 rounded-lg text-zinc-500 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] disabled:opacity-30 transition-colors"
-            >
-              <SkipForward size={16} />
-            </button>
+              icon={<svg width="13" height="13" viewBox="0 0 10 10" fill="currentColor"><rect x="8" y="1" width="2" height="8"/><polygon points="2,1 8,5 2,9"/></svg>}
+              label="Næste"
+              size={30}
+            />
           </div>
 
-          <span className="text-[10px] text-zinc-400 tabular-nums w-8 text-right">{fmt(duration)}</span>
+          <span className="text-[10px] text-zinc-500 tabular-nums w-8 text-right">{fmt(duration)}</span>
         </div>
       </div>
     </div>

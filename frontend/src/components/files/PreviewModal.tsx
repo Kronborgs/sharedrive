@@ -85,13 +85,13 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
 
   const handlePrint = useCallback(() => {
     const url = kind === 'office' ? pdfUrl : previewUrl
-    const iframe = document.createElement('iframe')
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:0'
 
     if (kind === 'image') {
-      // Inject a minimal HTML document so the image fills the print page
-      document.body.appendChild(iframe)
-      const doc = iframe.contentDocument!
+      // Open a same-origin blank popup and inject HTML so the image fills the print page.
+      // window.open() is not restricted by frame-src CSP unlike iframes.
+      const w = window.open('about:blank', '_blank', 'width=800,height=600')
+      if (!w) return
+      const doc = w.document
       doc.open()
       doc.write(
         `<!DOCTYPE html><html><head><style>` +
@@ -101,15 +101,15 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
       )
       doc.close()
       setTimeout(() => {
-        iframe.contentWindow?.print()
-        iframe.contentWindow!.onafterprint = () => iframe.remove()
+        w.print()
+        w.onafterprint = () => w.close()
       }, 400)
     } else {
-      iframe.src = url
-      document.body.appendChild(iframe)
-      iframe.onload = () => {
-        iframe.contentWindow?.print()
-        iframe.contentWindow!.onafterprint = () => iframe.remove()
+      const w = window.open(url, '_blank')
+      if (!w) return
+      w.onload = () => {
+        w.print()
+        w.onafterprint = () => w.close()
       }
     }
   }, [kind, previewUrl, pdfUrl])

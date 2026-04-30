@@ -62,10 +62,10 @@ export function AudioRenderer({ url, fileName, fileId, mimeType: rawMime }: Audi
   const gainRef    = useRef<GainNode | null>(null)
   const sourceRef  = useRef<MediaElementAudioSourceNode | null>(null)
 
-  // 0–1 values; 0.5 = center (flat)
+  // 0–1 for volume; -12..+12 dB for bass and treble (0 = flat)
   const [volume,  setVolume]  = useState(0.8)
-  const [bass,    setBass]    = useState(0.5)
-  const [treble,  setTreble]  = useState(0.5)
+  const [bass,    setBass]    = useState(0)
+  const [treble,  setTreble]  = useState(0)
 
   // Lazy-init Web Audio graph on first interaction to comply with autoplay policy
   const initAudio = useCallback(() => {
@@ -90,8 +90,8 @@ export function AudioRenderer({ url, fileName, fileId, mimeType: rawMime }: Audi
     gainRef.current   = gainNode
     // Apply current state
     gainNode.gain.value       = volume
-    bassFilter.gain.value     = (bass   - 0.5) * 24   // ±12 dB
-    trebleFilter.gain.value   = (treble - 0.5) * 24
+    bassFilter.gain.value     = bass          // dB, 0 = flat
+    trebleFilter.gain.value   = treble
   }, [volume, bass, treble])
 
   // Volume
@@ -102,12 +102,12 @@ export function AudioRenderer({ url, fileName, fileId, mimeType: rawMime }: Audi
 
   // Bass
   useEffect(() => {
-    if (bassRef.current) bassRef.current.gain.value = (bass - 0.5) * 24
+    if (bassRef.current) bassRef.current.gain.value = bass
   }, [bass])
 
   // Treble
   useEffect(() => {
-    if (trebleRef.current) trebleRef.current.gain.value = (treble - 0.5) * 24
+    if (trebleRef.current) trebleRef.current.gain.value = treble
   }, [treble])
 
   if (!supported) {
@@ -159,9 +159,9 @@ export function AudioRenderer({ url, fileName, fileId, mimeType: rawMime }: Audi
 
       {/* Three dials */}
       <div className="flex items-end gap-10">
-        <Dial value={bass}    onChange={setBass}    label="Bass"    color="#22d3ee" />
-        <Dial value={volume}  onChange={setVolume}  label="Volume"  color="#4ade80" />
-        <Dial value={treble}  onChange={setTreble}  label="Treble"  color="#f87171" />
+        <Dial value={bass}    onChange={setBass}    label="Bass"    color="#22d3ee" min={-12} max={12} step={0.5} />
+        <Dial value={volume}  onChange={setVolume}  label="Volume"  color="#4ade80" min={0}   max={1}  step={0.01} />
+        <Dial value={treble}  onChange={setTreble}  label="Treble"  color="#f87171" min={-12} max={12} step={0.5} />
       </div>
 
       {/* Native audio element (hidden controls, we drive it via Web Audio) */}

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // ── Cassette tape icon (retro media player icon) ──────────────────────────────
 export function CassetteIcon({ size = 12, className = '' }: { size?: number; className?: string }) {
@@ -26,59 +26,137 @@ export function CassetteIcon({ size = 12, className = '' }: { size?: number; cla
 }
 
 interface DialProps {
-  value: number          // 0–1
-  onChange: (v: number) => void
   label: string
+  value: number
+  min: number
+  max: number
+  step?: number
+  onChange: (value: number) => void
   color: string
-  size?: number          // outer diameter in px, default 88
+  size?: number
+  unit?: string
+  formatValue?: (value: number) => string
 }
 
 const DOT_COUNT = 20
 const MIN_ANGLE = -135
 const MAX_ANGLE = 135
 
-function valueToAngle(v: number) {
-  return MIN_ANGLE + v * (MAX_ANGLE - MIN_ANGLE)
-}
+export function Dial({ value, onChange, label, color, size = 88, min, max, step = 1 }: DialProps) {
+  const elRef = useRef<HTMLDivElement>(null)
 
-export function Dial({ value, onChange, label, color, size = 88 }: DialProps) {
-  const startY   = useRef<number | null>(null)
-  const startVal = useRef(value)
+  // stateRef keeps always-current values accessible inside the once-registered event handlers,
+  // avoiding stale closure issues without re-running the effect.
+  const stateRef = useRef({ value, onChange, min, max, step })
+  stateRef.current = { value, onChange, min, max, step }
 
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault()
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-    startY.current   = e.clientY
-    startVal.current = value
-  }, [value])
+  const dragRef = useRef<{
+    startX: number
+    startY: number
+    startValue: number
+    totalMovement: number
+    currentValue: number
+  } | null>(null)
 
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (startY.current === null) return
-    const dy    = startY.current - e.clientY   // drag up = increase
-    const delta = dy / 120                      // 120 px = full sweep
-    onChange(Math.max(0, Math.min(1, startVal.current + delta)))
-  }, [onChange])
+  useEffect(() => {
+    const el = elRef.current
+    if (!el) return
 
-  const onPointerUp = useCallback(() => { startY.current = null }, [])
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
-  const activeAngle  = valueToAngle(value)
-  const center       = size / 2
-  const ringR        = size / 2 - 4
-  const outerInset   = Math.round(size * 0.11)
-  const innerInset   = Math.round(size * 0.155)
-  const pointerArm   = (size / 2 - innerInset) * 0.72
-  const dotR         = size * 0.032
-  const dotRActive   = size * 0.043
+    const onPointerMove = (ev: PointerEvent) => {
+      const drag = dragRef.current
+      if (!drag) return
+      const { min, max, step, onChange } = stateRef.current
+      const dx = ev.clientX - drag.startX
+      const dy = drag.startY - ev.clientY              // up = positive
+      drag.totalMovement += Math.abs(ev.movementX || 0) + Math.abs(ev.movementY || 0)
+      // Dominant axis; 200 px of movement = full scale (min → max)
+      const primary = Math.abs(dx) >= Math.abs(dy) ? dx : dy
+      drag.currentValue = drag.startValue + (primary / 200) * (max - min)
+      const snapped = Math.round(drag.currentValue / step) * step
+      onChange(clamp(snapped, min, max))
+    }
+
+    const onPointerUpOrCancel = (ev: PointerEvent) => {
+      const drag = dragRef.current
+      if (!drag) return
+
+      // Tap: small total movement → jump value to the tapped angle on the knob
+      if (drag.totalMovement < 20) {
+        const { min, max, step, onChange } = stateRef.current
+        const rect = el.getBoundingClientRect()
+        const cx = rect.left + rect.width / 2
+        const cy = rect.top + rect.height / 2
+        const angleDeg = Math.atan2(ev.clientX - cx, -(ev.clientY - cy)) * (180 / Math.PI)
+        const clamped = clamp(angleDeg, -135, 135)
+        const ratio = (clamped + 135) / 270
+        const raw = min + ratio * (max - min)
+        const snapped = Math.round(raw / step) * step
+        onChange(clamp(snapped, min, max))
+      }
+
+      dragRef.current = null
+      el.removeEventListener('pointermove', onPointerMove)
+      el.removeEventListener('pointerup', onPointerUpOrCancel)
+      el.removeEventListener('pointercancel', onPointerUpOrCancel)
+    }
+
+    const onPointerDown = (e: PointerEvent) => {
+      e.preventDefault()                          // prevent mobile scroll/zoom capture
+      el.setPointerCapture(e.pointerId)           // keep events even if pointer leaves element
+      const { value } = stateRef.current
+      dragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startValue: value,
+        totalMovement: 0,
+        currentValue: value,
+      }
+      el.addEventListener('pointermove', onPointerMove)
+      el.addEventListener('pointerup', onPointerUpOrCancel)
+      el.addEventListener('pointercancel', onPointerUpOrCancel)
+    }
+
+    // passive: false is required so we can call preventDefault() and block mobile scroll
+    el.addEventListener('pointerdown', onPointerDown, { passive: false })
+    return () => {
+      el.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [])
+
+  const ratio       = (value - min) / (max - min)
+  const activeAngle = MIN_ANGLE + ratio * (MAX_ANGLE - MIN_ANGLE)
+  const center      = size / 2
+  const ringR       = size / 2 - 4
+  const outerInset  = Math.round(size * 0.11)
+  const innerInset  = Math.round(size * 0.155)
+  const pointerArm  = (size / 2 - innerInset) * 0.72
+  const dotR        = size * 0.032
+  const dotRActive  = size * 0.043
 
   return (
     <div className="flex flex-col items-center gap-2 select-none">
       <div
-        className="relative cursor-ns-resize touch-none"
-        style={{ width: size, height: size }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        ref={elRef}
+        className="relative cursor-ns-resize"
+        style={{ width: size, height: size, touchAction: 'none', userSelect: 'none', outline: 'none' }}
+        tabIndex={0}
+        role="slider"
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-label={label}
+        onKeyDown={(e) => {
+          const { value, onChange, min, max, step } = stateRef.current
+          if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+            e.preventDefault()
+            onChange(Math.min(max, value + step))
+          } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+            e.preventDefault()
+            onChange(Math.max(min, value - step))
+          }
+        }}
       >
         {/* Dots ring — SVG rotated so 0° is at the left-bottom */}
         <svg
@@ -92,7 +170,7 @@ export function Dial({ value, onChange, label, color, size = 88 }: DialProps) {
             const angleRad = (angleDeg * Math.PI) / 180
             const cx = center + ringR * Math.cos(angleRad)
             const cy = center + ringR * Math.sin(angleRad)
-            const active = angleDeg <= activeAngle
+            const active = fraction <= ratio
             return (
               <circle
                 key={i}

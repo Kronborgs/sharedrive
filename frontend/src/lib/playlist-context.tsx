@@ -85,16 +85,16 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   const [progress, setProgress]                     = useState(0)
   const [duration, setDuration]                     = useState(0)
   const [volume, setVolumeState]                    = useState(() => loadCache()?.vol ?? 1)
-  const [bass,   setBassState]                      = useState(0.5)
-  const [treble, setTrebleState]                    = useState(0.5)
+  const [bass,   setBassState]                      = useState(0)
+  const [treble, setTrebleState]                    = useState(0)
   const [shuffle, setShuffleState]                  = useState(() => loadCache()?.shuffle ?? false)
 
   // Web Audio refs — lazily initialised on first play
   const audioCtxRef    = useRef<AudioContext | null>(null)
   const bassFilterRef  = useRef<BiquadFilterNode | null>(null)
   const trebleFilterRef = useRef<BiquadFilterNode | null>(null)
-  const bassValRef     = useRef(0.5)
-  const trebleValRef   = useRef(0.5)
+  const bassValRef     = useRef(0)
+  const trebleValRef   = useRef(0)
 
   const { data: publicSettings } = useQuery({
     queryKey: ['system', 'settings'],
@@ -153,11 +153,11 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       const bassF = ctx.createBiquadFilter()
       bassF.type = 'lowshelf'
       bassF.frequency.value = 200
-      bassF.gain.value = (bassValRef.current - 0.5) * 24
+      bassF.gain.value = bassValRef.current
       const trebleF = ctx.createBiquadFilter()
       trebleF.type = 'highshelf'
       trebleF.frequency.value = 4000
-      trebleF.gain.value = (trebleValRef.current - 0.5) * 24
+      trebleF.gain.value = trebleValRef.current
       source.connect(bassF)
       bassF.connect(trebleF)
       trebleF.connect(ctx.destination)
@@ -329,13 +329,13 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
 
   const setBass = useCallback((v: number) => {
     bassValRef.current = v
-    if (bassFilterRef.current) bassFilterRef.current.gain.value = (v - 0.5) * 24
+    if (bassFilterRef.current) bassFilterRef.current.gain.value = v
     setBassState(v)
   }, [])
 
   const setTreble = useCallback((v: number) => {
     trebleValRef.current = v
-    if (trebleFilterRef.current) trebleFilterRef.current.gain.value = (v - 0.5) * 24
+    if (trebleFilterRef.current) trebleFilterRef.current.gain.value = v
     setTrebleState(v)
   }, [])
 

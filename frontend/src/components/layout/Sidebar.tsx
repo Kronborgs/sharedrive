@@ -355,9 +355,9 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
 
                 {/* Bass / Volume / Treble dials */}
                 <div className="flex items-end justify-center gap-5 px-2.5 py-3 border-t border-zinc-100 dark:border-[#2d3148]" style={{ background: '#181b28' }}>
-                  <Dial value={bass}   onChange={setBass}   label="Bass"   color="#22d3ee" size={60} />
-                  <Dial value={volume} onChange={setVolume} label="Volume" color="#4ade80" size={60} />
-                  <Dial value={treble} onChange={setTreble} label="Treble" color="#f87171" size={60} />
+                  <Dial value={bass}   onChange={setBass}   label="Bass"   color="#22d3ee" size={60} min={-12} max={12} step={0.5} />
+                  <Dial value={volume} onChange={setVolume} label="Volume" color="#4ade80" size={60} min={0}   max={1}  step={0.01} />
+                  <Dial value={treble} onChange={setTreble} label="Treble" color="#f87171" size={60} min={-12} max={12} step={0.5} />
                 </div>
               </div>
             )}
@@ -561,9 +561,9 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                   />
                 </div>
                 <div className="flex items-end justify-center gap-6 py-4" style={{ background: '#181b28' }}>
-                  <Dial value={bass}   onChange={setBass}   label="Bass"   color="#22d3ee" size={76} />
-                  <Dial value={volume} onChange={setVolume} label="Volume" color="#4ade80" size={76} />
-                  <Dial value={treble} onChange={setTreble} label="Treble" color="#f87171" size={76} />
+                  <Dial value={bass}   onChange={setBass}   label="Bass"   color="#22d3ee" size={76} min={-12} max={12} step={0.5} />
+                  <Dial value={volume} onChange={setVolume} label="Volume" color="#4ade80" size={76} min={0}   max={1}  step={0.01} />
+                  <Dial value={treble} onChange={setTreble} label="Treble" color="#f87171" size={76} min={-12} max={12} step={0.5} />
                 </div>
               </div>
 

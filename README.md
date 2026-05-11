@@ -10,6 +10,15 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 
 ## Changelog
 
+### v1.1.6 — 11 May 2026
+
+#### New features
+- **Admin → Blocked IPs: live lockout list** — the Blocked IPs page now shows all IPs currently locked out, including tier (60-minute / 6-hour / 24-hour / manual), time until expiry, and the total number of failed login attempts recorded for the IP. Previously the list was always empty.
+- **Admin → Blocked IPs: one-click unblock** — clicking Unblock on an active lockout immediately removes the Redis lockout key, the failure counter *and* the rate-limiter sliding-window counter, so the user can log in again straight away without waiting for the TTL to expire.
+- **Lockout targets real WAN IP** — login failures are now counted against the client's real WAN IP (from the `CF-Connecting-IP` header when the request comes through a trusted Cloudflare or LAN proxy), not the internal proxy IP. Requires `TRUSTED_PROXIES` to be set in the environment (comma-separated CIDRs).
+
+---
+
 ### v1.1.4 — 24 April 2026
 
 #### New features

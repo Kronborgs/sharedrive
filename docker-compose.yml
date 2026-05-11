@@ -27,6 +27,10 @@ services:
       # enable server-side backup storage (e.g. BACKUPS_ROOT=/mnt/backup).
       # You must also mount the disk at that path in the volumes section above.
       BACKUPS_ROOT: ${BACKUPS_ROOT:-}
+      # Trusted reverse-proxy CIDRs — requests from these are allowed to set
+      # CF-Connecting-IP / X-Forwarded-For so the real client WAN IP is used
+      # for rate limiting and lockout instead of the proxy's LAN IP.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
     depends_on:
       postgres:
         condition: service_healthy

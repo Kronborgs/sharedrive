@@ -390,6 +390,8 @@ func (h *Handler) UnblockIP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	h.rdb.Del(ctx, lockoutKeyPrefix+ip)
 	h.rdb.Del(ctx, lockoutKeyPrefix+"failures:"+ip)
+	// Also clear the rate limiter sliding-window counter so login is immediately allowed
+	h.rdb.Del(ctx, "rl:ip_login:"+ip)
 	// Also remove any DB-side manual block
 	h.db.Exec(ctx,
 		`DELETE FROM ip_whitelist WHERE ip_cidr = $1 AND description = 'Manually blocked by admin'`,

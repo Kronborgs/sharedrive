@@ -94,7 +94,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		fileSvc:        fileSvc,
 		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc, rdb, conv, ratelimit.New(rdb), ioTracker),
 		sharesHandler:  shares.NewHandler(db, smtp.New(cfg, db), cfg.AppBaseURL),
-		adminHandler:   admin.NewHandler(db, cfg, ioTracker),
+		adminHandler:   admin.NewHandler(db, cfg, ioTracker, rdb),
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),

@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 	mail "github.com/wneessen/go-mail"
 
@@ -30,10 +31,11 @@ type Handler struct {
 	db        *pgxpool.Pool
 	cfg       *config.Config
 	ioTracker *files.IOTracker
+	rdb       *redis.Client
 }
 
-func NewHandler(db *pgxpool.Pool, cfg *config.Config, ioTracker *files.IOTracker) *Handler {
-	return &Handler{db: db, cfg: cfg, ioTracker: ioTracker}
+func NewHandler(db *pgxpool.Pool, cfg *config.Config, ioTracker *files.IOTracker, rdb *redis.Client) *Handler {
+	return &Handler{db: db, cfg: cfg, ioTracker: ioTracker, rdb: rdb}
 }
 
 // ─── System Settings ─────────────────────────────────────────────────────────
@@ -324,24 +326,75 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 // ─── Blocked IPs ─────────────────────────────────────────────────────────────
 
 type blockedIPEntry struct {
-	IP        string    `json:"ip"`
-	LockedAt  time.Time `json:"locked_at"`
-	ExpiresAt time.Time `json:"expires_at"`
+	IP         string `json:"ip"`
+	Tier       string `json:"tier"`
+	TTLSeconds *int64 `json:"ttl_seconds"` // null = manual (no TTL)
 }
 
-// ListBlockedIPs lists IPs currently in the Redis lockout set.
-// Since lockout data is in Redis (ephemeral), we return from Redis via a scan.
-// For simplicity we return a placeholder — full implementation needs Redis scan.
+const lockoutKeyPrefix = "lockout:"
+
+// ListBlockedIPs lists IPs currently locked out (TTL-based entries in Redis).
 func (h *Handler) ListBlockedIPs(w http.ResponseWriter, r *http.Request) {
-	// The lockout data is stored in Redis as "lockout:ip:{ip}" keys.
-	// A full implementation would inject the Redis client and do a SCAN.
-	// Return empty list for now — the frontend handles empty state gracefully.
-	httputil.Respond(w, http.StatusOK, []blockedIPEntry{})
+	ctx := r.Context()
+	out := []blockedIPEntry{}
+
+	var cursor uint64
+	for {
+		keys, next, err := h.rdb.Scan(ctx, cursor, lockoutKeyPrefix+"*", 100).Result()
+		if err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		for _, key := range keys {
+			// Skip failure counters — only include active lockout entries.
+			if strings.HasPrefix(key, lockoutKeyPrefix+"failures:") {
+				continue
+			}
+			ip := strings.TrimPrefix(key, lockoutKeyPrefix)
+			ttl, err := h.rdb.TTL(ctx, key).Result()
+			if err != nil {
+				continue
+			}
+			// Determine tier label from TTL
+			tier := "manual"
+			var ttlSeconds *int64
+			if ttl > 0 {
+				secs := int64(ttl.Seconds())
+				ttlSeconds = &secs
+				switch {
+				case secs <= 61*60:
+					tier = "60m"
+				case secs <= 7*60*60:
+					tier = "6h"
+				default:
+					tier = "24h"
+				}
+			}
+			out = append(out, blockedIPEntry{IP: ip, Tier: tier, TTLSeconds: ttlSeconds})
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+
+	httputil.Respond(w, http.StatusOK, out)
 }
 
 func (h *Handler) UnblockIP(w http.ResponseWriter, r *http.Request) {
-	// ip := chi.URLParam(r, "ip")
-	// A full implementation would DELETE the Redis key and clear the lockout.
+	ip := chi.URLParam(r, "ip")
+	if ip == "" {
+		httputil.RespondError(w, http.StatusBadRequest, "ip is required")
+		return
+	}
+	ctx := r.Context()
+	h.rdb.Del(ctx, lockoutKeyPrefix+ip)
+	h.rdb.Del(ctx, lockoutKeyPrefix+"failures:"+ip)
+	// Also remove any DB-side manual block
+	h.db.Exec(ctx,
+		`DELETE FROM ip_whitelist WHERE ip_cidr = $1 AND description = 'Manually blocked by admin'`,
+		ip+"/32",
+	)
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

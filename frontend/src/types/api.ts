@@ -263,6 +263,7 @@ export interface BlockedIP {
   ip: string
   tier: string
   ttl_seconds: number | null // null = manual (no TTL)
+  attempt_count: number
 }
 
 export interface IPWhitelistEntry {

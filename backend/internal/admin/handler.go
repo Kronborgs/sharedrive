@@ -326,9 +326,10 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 // ─── Blocked IPs ─────────────────────────────────────────────────────────────
 
 type blockedIPEntry struct {
-	IP         string `json:"ip"`
-	Tier       string `json:"tier"`
-	TTLSeconds *int64 `json:"ttl_seconds"` // null = manual (no TTL)
+	IP           string `json:"ip"`
+	Tier         string `json:"tier"`
+	TTLSeconds   *int64 `json:"ttl_seconds"`    // null = manual (no TTL)
+	AttemptCount int64  `json:"attempt_count"` // total recorded failures
 }
 
 const lockoutKeyPrefix = "lockout:"
@@ -370,7 +371,12 @@ func (h *Handler) ListBlockedIPs(w http.ResponseWriter, r *http.Request) {
 					tier = "24h"
 				}
 			}
-			out = append(out, blockedIPEntry{IP: ip, Tier: tier, TTLSeconds: ttlSeconds})
+			// Fetch failure counter for this IP
+			var attemptCount int64
+			if n, err2 := h.rdb.Get(ctx, lockoutKeyPrefix+"failures:"+ip).Int64(); err2 == nil {
+				attemptCount = n
+			}
+			out = append(out, blockedIPEntry{IP: ip, Tier: tier, TTLSeconds: ttlSeconds, AttemptCount: attemptCount})
 		}
 		cursor = next
 		if cursor == 0 {

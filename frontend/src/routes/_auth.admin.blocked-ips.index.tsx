@@ -74,6 +74,7 @@ function BlockedIPsPage() {
               <tr className="border-b border-zinc-100 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117]">
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">IP Address</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Tier</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Attempts</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Expires</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -89,6 +90,12 @@ function BlockedIPsPage() {
                         : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
                     }`}>
                       {tierLabel[b.tier] ?? b.tier}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 dark:text-red-400">
+                      {b.attempt_count}
+                      <span className="font-normal text-muted">forsøg</span>
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-muted">

@@ -423,14 +423,14 @@ func (h *Handler) SetBuddyPeerConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.buddyCfg.SetPeerConfig(ctx, u.ID, req.PeerURL, req.PeerUserID, req.PeerToken); err != nil {
-		// URL/token validation errors are user-facing — return 400 with the message.
-		// Encryption or DB errors are internal — log and return 500.
+		// URL validation errors are user-facing — return 400 with the message.
+		// Encryption, wrap key, or DB errors are internal — log and return 500.
 		msg := err.Error()
-		if strings.Contains(msg, "peer URL") || strings.Contains(msg, "invalid") || strings.Contains(msg, "private") || strings.Contains(msg, "HTTPS") || strings.Contains(msg, "hostname") {
+		if strings.Contains(msg, "peer URL") || strings.Contains(msg, "private") || strings.Contains(msg, "HTTPS") || strings.Contains(msg, "hostname") {
 			httputil.RespondError(w, http.StatusBadRequest, msg)
 		} else {
 			log.Error().Err(err).Str("user_id", u.ID.String()).Msg("buddy config: SetPeerConfig failed")
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, "internal error: "+msg)
 		}
 		return
 	}

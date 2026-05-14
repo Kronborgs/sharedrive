@@ -31,6 +31,7 @@ import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
 import { AddMusicDialog } from '@/components/files/AddMusicDialog'
 import { Dial, RetroButton, LedDisplay, CassetteIcon } from '@/components/files/Dial'
 import { usePlaylist } from '@/lib/playlist-context'
+import { APP_VERSION } from '@/version'
 
 interface NavItem {
   to: string
@@ -456,6 +457,9 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                 <LogOut size={14} />
                 {t('action.signOut')}
               </button>
+              <div className="px-3 py-2 border-t border-zinc-100 dark:border-[#2d3148]">
+                <p className="text-xs text-zinc-400 dark:text-zinc-600">v{APP_VERSION}</p>
+              </div>
             </div>
           )}
         </div>

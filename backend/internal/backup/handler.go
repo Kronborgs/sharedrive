@@ -797,9 +797,9 @@ func (h *Handler) SetAutoConfig(w http.ResponseWriter, r *http.Request) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-// SetMailer wires up an SMTP mailer for buddy push-failure notifications.
+// SetMailer wires up an SMTP mailer for backup failure notifications.
 // Called from server.go after construction.
-func (h *Handler) SetMailer(m BuddyFailureMailer) {
+func (h *Handler) SetMailer(m BackupFailureMailer) {
 	if h.autoBackup != nil {
 		h.autoBackup.SetMailer(m)
 	}

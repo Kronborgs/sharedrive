@@ -390,7 +390,10 @@ function BackupPage() {
       setPeerURLInput(''); setPeerUserIDInput(''); setPeerTokenInput('')
       toast.success('Peer configuration saved')
     },
-    onError: () => toast.error('Failed to save peer configuration'),
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Failed to save peer configuration'
+      toast.error(msg)
+    },
   })
 
   const clearPeerConfigMutation = useMutation({

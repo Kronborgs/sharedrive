@@ -270,6 +270,17 @@ func (s *Server) buildRouter() *chi.Mux {
 			return v
 		},
 	))
+	// M1: Limit JSON request bodies globally to 4 MB. File-upload and backup
+	// endpoints apply their own tighter limits via MaxBytesReader, so this
+	// global cap only affects small JSON endpoints and prevents large-body DoS.
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, 4<<20) // 4 MB
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: s.cfg.CORSOrigins,
 		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},

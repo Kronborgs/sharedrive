@@ -326,11 +326,17 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		_ = RevokeSession(ctx, h.db, cookie.Value)
 	}
+	// Attributes must match the original Set-Cookie so the browser clears
+	// the Secure+HttpOnly cookie correctly across all browsers.
 	http.SetCookie(w, &http.Cookie{
-		Name:   sessionCookieName,
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/",
+		Domain:   h.cfg.CookieDomain,
+		HttpOnly: true,
+		Secure:   !h.cfg.IsDev(),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
 	})
 	u := middleware.UserFromContext(ctx)
 	if u != nil {

@@ -109,7 +109,7 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extra
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("X-Frame-Options", "DENY")
 			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-			h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+			h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=(), interest-cohort=()")
 			h.Set("Content-Security-Policy", csp)
 			// HSTS — only set over HTTPS connections
 			if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {

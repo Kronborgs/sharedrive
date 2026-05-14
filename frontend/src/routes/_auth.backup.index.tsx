@@ -248,9 +248,10 @@ function BackupPage() {
   const [receiveTokenCopied, setReceiveTokenCopied] = useState(false)
   const [peerURLInput, setPeerURLInput] = useState('')
 
-  // Restore token from localStorage on mount
+  // Restore token from sessionStorage on mount (sessionStorage clears on tab close,
+  // reducing XSS exposure compared to localStorage for this sensitive value)
   useEffect(() => {
-    const saved = localStorage.getItem('sharedrive_backup_token')
+    const saved = sessionStorage.getItem('sharedrive_backup_token')
     if (saved) {
       setExportToken(saved)
       setRestoreToken(saved)
@@ -259,9 +260,9 @@ function BackupPage() {
     }
   }, [])
 
-  // Persist token to localStorage whenever any token field changes
+  // Persist token to sessionStorage whenever any token field changes
   const saveToken = (t: string) => {
-    if (t) localStorage.setItem('sharedrive_backup_token', t)
+    if (t) sessionStorage.setItem('sharedrive_backup_token', t)
   }
 
   const [peerUserIDInput, setPeerUserIDInput] = useState('')
@@ -324,7 +325,7 @@ function BackupPage() {
       setRestoreToken(data.token)
       setTertiaryToken(data.token)
       setBuddyToken(data.token)
-      localStorage.setItem('sharedrive_backup_token', data.token)
+      sessionStorage.setItem('sharedrive_backup_token', data.token)
       void qc.invalidateQueries({ queryKey: ['backup', 'password'] })
     },
     onError: () => toast.error('Failed to generate backup password'),

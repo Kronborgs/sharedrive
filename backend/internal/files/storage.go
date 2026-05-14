@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -50,14 +51,10 @@ type Storage struct {
 func NewStorage(root string, encKeyHex ...string) *Storage {
 	s := &Storage{root: root}
 	if len(encKeyHex) > 0 && len(encKeyHex[0]) == 64 {
-		key := make([]byte, 32)
-		for i := 0; i < 32; i++ {
-			b := encKeyHex[0][i*2 : i*2+2]
-			var v byte
-			fmt.Sscanf(b, "%02x", &v)
-			key[i] = v
+		key, err := hex.DecodeString(encKeyHex[0])
+		if err == nil && len(key) == 32 {
+			s.encKey = key
 		}
-		s.encKey = key
 	}
 	return s
 }

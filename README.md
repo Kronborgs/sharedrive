@@ -10,6 +10,23 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 
 ## Changelog
 
+### v1.1.7 — 14 May 2026
+
+#### Security
+- **Internal security assessment** — full review of authentication, authorisation, encryption, API safety, frontend storage, security headers, rate limiting, SSRF, injection, and dependency hygiene. See [Security](#security) section for the full model.
+- **Logout cookie fix** — the session cookie clearing on logout now includes all original security attributes (`HttpOnly`, `Secure`, `SameSite=Lax`, `Domain`). Without matching attributes, some browsers did not reliably clear the cookie.
+- **Global JSON body limit** — a 4 MB `MaxBytesReader` is now applied globally to all non-upload endpoints, preventing large-body denial-of-service.
+- **Backup token moved to sessionStorage** — the backup export/restore token was previously stored in `localStorage` (persistent). It is now stored in `sessionStorage` (cleared when the tab closes), reducing the XSS exposure window.
+- **Hex key parsing hardened** — `FILE_ENCRYPT_KEY` parsing in the storage layer now uses stdlib `hex.DecodeString` with length validation instead of a manual byte loop, preventing silent zero-byte key corruption on malformed input.
+- **Permissions-Policy extended** — `payment`, `usb`, `display-capture`, and `interest-cohort` directives added to the header.
+
+#### Features
+- **App version in sidebar** — the current build version is shown at the bottom of the user menu popup in the sidebar, making it easy to verify which version is running after a deployment.
+- **Buddy backup wrap key auto-generated** — `BACKUP_WRAP_KEY` is no longer required in the Docker environment. If not set, a cryptographically random key is generated at first startup and stored in `system_settings`, so buddy backup works out of the box without admin intervention.
+- **Buddy backup error messages** — validation errors when saving peer configuration (invalid URL, missing HTTPS, etc.) are now surfaced as readable toast messages instead of a generic failure.
+
+---
+
 ### v1.1.6 — 11 May 2026
 
 #### New features
@@ -660,6 +677,95 @@ Every significant action is recorded permanently in the `audit_logs` table. Cove
 **WebDAV:** app password create/revoke, file put, file delete  
 
 Repeated login events are deduplicated; backup and delete events include enriched context. View and filter at Admin → Audit Logs.
+
+---
+
+## Security
+
+Sharedrive is designed with security as a core concern. This section documents the model and the controls in place.
+
+### Authentication
+
+| Control | Implementation |
+|---|---|
+| Password hashing | **Argon2id** (via `alexedwards/argon2id`, default params) — resistant to GPU/ASIC attacks |
+| Session tokens | 32-byte cryptographically random, **SHA-256 hashed** before storage — raw token never persists to DB |
+| Session cookies | `HttpOnly`, `Secure`, `SameSite=Lax` — inaccessible to JavaScript, not sent cross-site |
+| Session expiry | Configurable idle timeout with sliding window; absolute expiry enforced in DB |
+| Logout | Session immediately revoked in DB; clearing cookie includes all original security attributes |
+| Brute-force / lockout | Progressive IP lockout: 5 failures → 60 min, 10 → 6 h, 20 → 24 h; separate Redis rate limiter on top |
+| TOTP 2FA | TOTP secret encrypted at rest (AES-256-GCM); pending TOTP token has 10-min TTL and 5-attempt limit before invalidation |
+| Device trust | 30-day trusted-device cookie (HttpOnly, Secure) lets users skip 2FA on known devices |
+| Password reset | Token is 32-byte random, SHA-256 hashed, single-use, 1-hour TTL; email never confirms user existence |
+| Forced password change | Reset token delivered as HttpOnly cookie — never in URL or response body |
+
+### Authorisation
+
+- Every API endpoint behind `/api/v1/` (except auth and health) requires a valid session.
+- Admin endpoints have a dedicated `RequireAdmin` middleware that rejects non-admin sessions with 403.
+- File access is always validated against the authenticated user's ownership or an active share grant — IDOR is prevented at the service layer, not the controller.
+- Share tokens for link shares are 32-byte random, SHA-256 hashed.
+
+### Transport & Headers
+
+| Header | Value |
+|---|---|
+| `Content-Security-Policy` | `default-src 'self'`; inline script hashes computed at startup from `dist/index.html` — no `unsafe-eval` |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` (set when behind HTTPS proxy) |
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=(), interest-cohort=()` |
+
+CORS is configured with an explicit allow-list (`CORS_ORIGINS`) and `AllowCredentials: true` only for the listed origins.
+
+### IP & Rate Limiting
+
+All limits are applied against the **real client IP** — proxy headers are only trusted from CIDRs listed in `TRUSTED_PROXIES`, preventing IP spoofing.
+
+| Endpoint | Limit |
+|---|---|
+| Login | Configurable (default 5 per window) + progressive lockout |
+| TOTP verify | 10 per 60 s per IP |
+| Password reset | 10 per 15 min per IP |
+| Invite accept | 20 per 15 min per IP |
+| File download | Redis sliding-window limiter |
+
+### Encryption at Rest
+
+- **File content:** Optional AES-256-GCM per-chunk encryption when `FILE_ENCRYPT_KEY` is set. Existing unencrypted files remain readable (backward-compatible magic-byte detection).
+- **TOTP secrets:** AES-256-GCM, key from `TOTP_ENCRYPT_KEY`.
+- **Buddy backup tokens:** AES-256-GCM, key auto-generated per instance and stored in `system_settings` if `BACKUP_WRAP_KEY` is not set.
+- **Backup archives:** HMAC-SHA256 signed (`BACKUP_HMAC_SECRET`); tamper detection on restore.
+- **App passwords (WebDAV):** Argon2id hashed.
+
+### Request Safety
+
+- Global **4 MB JSON body limit** on all non-upload endpoints prevents large-body DoS.
+- File uploads use `http.MaxBytesReader` with per-user quota enforcement.
+- Backup restore endpoints apply a 512 MB decompressed limit.
+- **SSRF protection** on buddy backup peer URLs: literal private/reserved IP addresses are blocked; domain names are allowed (Cloudflare Tunnel, split-horizon DNS).
+- **Path traversal** is not possible — files are stored at UUID-sharded paths on disk with no user-supplied name component.
+
+### Secrets Handling
+
+- No secrets in repository or frontend bundle.
+- All keys and credentials are loaded from environment variables at startup.
+- Secrets are never logged; error responses to clients are generic (`"internal error"`).
+
+### Security Assessment (May 2026)
+
+A full internal security review was conducted in May 2026 covering authentication, authorisation, encryption, API safety, frontend storage, headers, rate limiting, SSRF, injection, and dependency hygiene. Findings and fixes applied:
+
+| Severity | Finding | Fix applied |
+|---|---|---|
+| High | Logout did not include `Secure`/`HttpOnly`/`SameSite` on the clearing `Set-Cookie` — browser may not clear the session cookie in edge cases | Cookie attributes now match original `Set-Cookie` on logout |
+| Medium | No global body-size limit on JSON endpoints — large bodies could exhaust memory | Global 4 MB `MaxBytesReader` middleware added to the router |
+| Medium | Backup token persisted to `localStorage` — survives browser restart, accessible to XSS | Moved to `sessionStorage` (cleared on tab close) |
+| Low | Manual hex parsing in `storage.go` used `fmt.Sscanf` — silent `\x00` bytes on invalid input | Replaced with `hex.DecodeString` + length validation |
+| Low | `Permissions-Policy` missing modern browser features | Added `payment`, `usb`, `display-capture`, `interest-cohort` |
+
+No critical vulnerabilities were found. All medium/high findings are remediated.
 
 ---
 

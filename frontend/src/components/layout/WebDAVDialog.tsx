@@ -7,6 +7,7 @@ import type { AppPassword, CreatedAppPassword } from '@/types/api'
 import { X, Copy, Check, Trash2, Plus, HardDrive, Monitor, Apple, Terminal } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDate } from '@/lib/utils'
+import { useI18n } from '@/lib/i18n'
 
 interface Props {
   onClose: () => void
@@ -15,11 +16,12 @@ interface Props {
 type Tab = 'windows' | 'macos' | 'linux'
 
 function CopyButton({ text, copyKey, copied, onCopy }: { text: string; copyKey: string; copied: string | null; onCopy: (t: string, k: string) => void }) {
+  const { t } = useI18n()
   return (
     <button
       onClick={() => onCopy(text, copyKey)}
       className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-      title="Copy"
+      title={t('webdav.copy')}
     >
       {copied === copyKey ? <Check size={13} /> : <Copy size={13} />}
     </button>
@@ -41,6 +43,7 @@ function CodeRow({ label, value, copyKey, copied, onCopy }: { label: string; val
 export function WebDAVDialog({ onClose }: Props) {
   const { user } = useAuth()
   const qc = useQueryClient()
+  const { t } = useI18n()
   const [newName, setNewName] = useState('')
   const [revealed, setRevealed] = useState<CreatedAppPassword | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
@@ -78,13 +81,13 @@ export function WebDAVDialog({ onClose }: Props) {
       setRevealed(data)
       setNewName('')
     },
-    onError: () => toast.error('Failed to create app password'),
+    onError: () => toast.error(t('webdav.createFailed')),
   })
 
   const revoke = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/me/app-passwords/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['app-passwords'] }),
-    onError: () => toast.error('Failed to revoke app password'),
+    onError: () => toast.error(t('webdav.revokeFailed')),
   })
 
   const copy = (text: string, key: string) => {
@@ -106,7 +109,7 @@ export function WebDAVDialog({ onClose }: Props) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 dark:border-[#2d3148]">
           <div className="flex items-center gap-2">
             <HardDrive size={16} className="text-brand-500" />
-            <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">WebDAV Access</h2>
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('webdav.title')}</h2>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors">
             <X size={16} />
@@ -137,7 +140,7 @@ export function WebDAVDialog({ onClose }: Props) {
             <div className="space-y-3">
               {/* Primary: GUI method */}
               <CodeRow
-                label="Sti til netværksdrev (kopiér denne)"
+                label={t('webdav.windowsNetPath')}
                 value={windowsUnc}
                 copyKey="winunc"
                 copied={copied}
@@ -155,8 +158,8 @@ export function WebDAVDialog({ onClose }: Props) {
               </ol>
 
               <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 space-y-2">
-                <p className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">Hæv filstørrelsesgrænseren til 4 GB</p>
-                <p className="text-[11px] text-blue-700 dark:text-blue-400">Windows tillader som standard kun filer op til 50 MB via WebDAV. Kør kommandoen nedenfor i <strong>Administrator PowerShell</strong>, frakobl og tilslut drevet igen.</p>
+                <p className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">{t('webdav.raiseLimitTitle')}</p>
+                <p className="text-[11px] text-blue-700 dark:text-blue-400">{t('webdav.raiseLimitDesc')}</p>
                 <div className="flex items-start gap-2 rounded border border-blue-200 dark:border-blue-700 bg-white dark:bg-[#0f1117] px-3 py-2">
                   <code className="flex-1 text-[10px] font-mono text-zinc-800 dark:text-slate-200 break-all select-all">{windowsRegCmd}</code>
                   <CopyButton text={windowsRegCmd} copyKey="winreg" copied={copied} onCopy={copy} />
@@ -169,17 +172,17 @@ export function WebDAVDialog({ onClose }: Props) {
                   onClick={() => setShowPSFallback(v => !v)}
                   className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-medium text-zinc-600 dark:text-slate-400 hover:text-zinc-900 dark:hover:text-slate-200 transition-colors"
                 >
-                  <span>Alternativt: tilknyt via PowerShell</span>
+                  <span>{t('webdav.altPowershell')}</span>
                   <span className="text-[10px]">{showPSFallback ? '▲' : '▼'}</span>
                 </button>
                 {showPSFallback && (
                   <div className="px-3 pb-3 space-y-2 border-t border-zinc-200 dark:border-[#2d3148] pt-2">
                     <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-2">
-                      <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 mb-0.5">Brug normal PowerShell — ikke administrator</p>
+                      <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 mb-0.5">{t('webdav.psWarningTitle')}</p>
                       <p className="text-[11px] text-amber-700 dark:text-amber-400">Åbn Start → søg "PowerShell" → klik direkte. Kør <strong>ikke</strong> som administrator, ellers vises drevet ikke i Stifinder.</p>
                     </div>
                     <CodeRow
-                      label="PowerShell-kommando (erstat APP-PASSWORD)"
+                      label={t('webdav.psCmdLabel')}
                       value={`net use S: "${windowsUnc}" /user:${user?.email ?? 'din@email.dk'} APP-PASSWORD /persistent:yes`}
                       copyKey="wincmd"
                       copied={copied}
@@ -208,7 +211,7 @@ export function WebDAVDialog({ onClose }: Props) {
             <div className="space-y-3">
               <CodeRow label="WebDAV URL" value={davUrl} copyKey="linurl" copied={copied} onCopy={copy} />
               <p className="text-[11px] text-zinc-500 dark:text-slate-500">Installer <code className="font-mono">davfs2</code> og mount engangsmount:</p>
-              <CodeRow label="Mount-kommando" value={linuxMount} copyKey="linmnt" copied={copied} onCopy={copy} />
+              <CodeRow label={t('webdav.linMountLabel')} value={linuxMount} copyKey="linmnt" copied={copied} onCopy={copy} />
               <p className="text-[11px] text-zinc-500 dark:text-slate-500">Eller tilføj til <code className="font-mono">/etc/fstab</code> for automatisk mount ved boot:</p>
               <CodeRow label="/etc/fstab entry" value={linuxFstab} copyKey="linfstab" copied={copied} onCopy={copy} />
               <p className="text-[11px] text-zinc-500 dark:text-slate-500">
@@ -222,7 +225,7 @@ export function WebDAVDialog({ onClose }: Props) {
           {revealed && (
             <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 space-y-2">
               <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                Kopiér adgangskoden nu — den vises ikke igen
+                {t('webdav.copyPasswordNow')}
               </p>
               <div className="flex items-center gap-2 rounded border border-amber-200 dark:border-amber-700 bg-white dark:bg-[#0f1117] px-3 py-1.5">
                 <span className="flex-1 text-sm font-mono text-zinc-900 dark:text-slate-100 break-all">{revealed.password}</span>
@@ -232,20 +235,20 @@ export function WebDAVDialog({ onClose }: Props) {
                 onClick={() => setRevealed(null)}
                 className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
               >
-                Jeg har gemt den, luk
+                {t('webdav.savedClose')}
               </button>
             </div>
           )}
 
           {/* Create new app password */}
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Opret app password</p>
+            <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('webdav.createAppPwd')}</p>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
-                placeholder="f.eks. Windows-PC, iPhone…"
+                placeholder={t('webdav.namePlaceholder')}
                 className="flex-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) create.mutate(newName.trim()) }}
               />
@@ -255,7 +258,7 @@ export function WebDAVDialog({ onClose }: Props) {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
               >
                 <Plus size={14} />
-                Opret
+                {t('webdav.create')}
               </button>
             </div>
           </div>
@@ -263,21 +266,21 @@ export function WebDAVDialog({ onClose }: Props) {
           {/* Existing app passwords */}
           {passwords && passwords.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Aktive app passwords</p>
+              <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('webdav.activePasswords')}</p>
               <ul className="space-y-1">
                 {passwords.map(p => (
                   <li key={p.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117]">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 truncate">{p.name}</p>
                       <p className="text-[11px] text-muted">
-                        {p.last_used_at ? `Sidst brugt ${formatDate(p.last_used_at)}` : 'Aldrig brugt'}
-                        {' · '}Oprettet {formatDate(p.created_at)}
+                        {p.last_used_at ? t('webdav.lastUsedOn', { when: formatDate(p.last_used_at) }) : t('webdav.neverUsed')}
+                        {' · '}{t('webdav.createdOn', { when: formatDate(p.created_at) })}
                       </p>
                     </div>
                     <button
                       onClick={() => revoke.mutate(p.id)}
                       className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                      title="Tilbagekald"
+                      title={t('webdav.revoke')}
                     >
                       <Trash2 size={13} />
                     </button>

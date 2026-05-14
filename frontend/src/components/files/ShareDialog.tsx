@@ -6,6 +6,7 @@ import type { FileItem, Share, SharePermissions, Group, AppPassword, CreatedAppP
 import { formatDate } from '@/lib/utils'
 import { X, Check, Link, Trash2, UserPlus, ChevronDown, ChevronUp, Copy, HardDrive, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { useI18n } from '@/lib/i18n'
 
 interface ShareDialogProps {
   item: FileItem
@@ -42,6 +43,14 @@ function PermCheckboxes({
   onChange: (p: SharePermissions) => void
   isFolder?: boolean
 }) {
+  const { t } = useI18n()
+  const permLabels: Partial<Record<string, string>> = {
+    can_view: t('share.permView'),
+    can_upload: t('share.permUpload'),
+    can_edit: t('share.permEdit'),
+    can_delete: t('share.permDelete'),
+    can_reshare: t('share.permReshare'),
+  }
   const keys = isFolder ? PERM_KEYS : PERM_KEYS.filter(k => k !== 'can_upload')
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1.5">
@@ -54,7 +63,7 @@ function PermCheckboxes({
             className="rounded border-zinc-300 dark:border-[#4d5678] text-brand-600"
           />
           <span className="text-xs text-zinc-700 dark:text-slate-300 capitalize">
-            {key.replace('can_', '')}
+            {permLabels[key] ?? key.replace('can_', '')}
           </span>
         </label>
       ))}
@@ -78,6 +87,7 @@ function ActiveShareRow({
   isFolder?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
+  const { t } = useI18n()
   const [editPerms, setEditPerms] = useState<SharePermissions>({
     can_view: s.can_view,
     can_upload: s.can_upload,
@@ -93,7 +103,7 @@ function ActiveShareRow({
 
   const displayName =
     s.grantee_type === 'link'
-      ? 'Public link'
+      ? t('share.publicLink')
       : s.grantee_email ?? s.pending_email ?? s.grantee_group_name ?? 'Unknown'
 
   return (
@@ -106,13 +116,13 @@ function ActiveShareRow({
         >
           <p className="text-xs font-medium text-zinc-900 dark:text-slate-100 truncate">{displayName}</p>
           {s.expires_at && (
-            <p className="text-[10px] text-muted">Expires {formatDate(s.expires_at)}</p>
+            <p className="text-[10px] text-muted">{t('share.expiresAt', { when: formatDate(s.expires_at) })}</p>
           )}
         </button>
         <button
           onClick={() => setExpanded(v => !v)}
           className="p-1 rounded text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-300 transition-colors"
-          title={expanded ? 'Collapse' : 'Edit permissions'}
+          title={expanded ? t('share.collapse') : t('share.editPermissions')}
         >
           {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         </button>
@@ -120,7 +130,7 @@ function ActiveShareRow({
           <button
             onClick={onCopyLink}
             className="p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-            title="Copy link"
+            title={t('share.copyLink')}
           >
             {copied ? <Check size={13} /> : <Link size={13} />}
           </button>
@@ -128,7 +138,7 @@ function ActiveShareRow({
         <button
           onClick={onRevoke}
           className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-          title="Revoke"
+          title={t('share.revoke')}
         >
           <Trash2 size={13} />
         </button>
@@ -138,18 +148,18 @@ function ActiveShareRow({
       {expanded && (
         <div className="border-t border-zinc-200 dark:border-[#2d3148] px-3 pb-3 pt-2 space-y-3">
           <div className="space-y-1.5">
-            <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-400">Permissions</p>
+            <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-400">{t('share.permissions')}</p>
             <PermCheckboxes perms={editPerms} onChange={setEditPerms} isFolder={isFolder} />
           </div>
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-400">Expiry</p>
+              <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-400">{t('share.expiry')}</p>
               <button
                 type="button"
                 onClick={() => setHasExpiry(v => !v)}
                 className="text-[11px] text-brand-600 dark:text-brand-400 hover:underline"
               >
-                {hasExpiry ? 'Remove expiry' : 'Set expiry'}
+                {hasExpiry ? t('share.removeExpiry') : t('share.setExpiry')}
               </button>
             </div>
             {hasExpiry ? (
@@ -160,7 +170,7 @@ function ActiveShareRow({
                 className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] px-3 py-1.5 text-xs text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             ) : (
-              <p className="text-xs text-muted">Never expires</p>
+              <p className="text-xs text-muted">{t('share.neverExpires')}</p>
             )}
           </div>
           <button
@@ -171,7 +181,7 @@ function ActiveShareRow({
             }}
             className="w-full py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium transition-colors"
           >
-            Save changes
+            {t('share.saveChanges')}
           </button>
         </div>
       )}
@@ -182,6 +192,7 @@ function ActiveShareRow({
 export function ShareDialog({ item, onClose }: ShareDialogProps) {
   const qc = useQueryClient()
   const { user } = useAuth()
+  const { t } = useI18n()
   const [tab, setTab] = useState<ShareTargetType>('user')
   const [email, setEmail] = useState('')
   const [groupId, setGroupId] = useState('')
@@ -252,13 +263,13 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
       setDavRevealed(data)
       setDavPwdName('')
     },
-    onError: () => toast.error('Kunne ikke oprette app password'),
+    onError: () => toast.error(t('share.appPwdCreateFailed')),
   })
 
   const davRevokePwd = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/me/app-passwords/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['app-passwords', 'resource', item.id] }),
-    onError: () => toast.error('Kunne ikke slette app password'),
+    onError: () => toast.error(t('share.appPwdDeleteFailed')),
   })
 
   const createShare = useMutation({
@@ -267,9 +278,9 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
       void qc.invalidateQueries({ queryKey: ['shares', item.id] })
       void qc.invalidateQueries({ queryKey: ['files'] })
       setEmail('')
-      toast.success('Share created')
+      toast.success(t('share.created'))
     },
-    onError: (e: Error) => toast.error(e.message || 'Failed to create share'),
+    onError: (e: Error) => toast.error(e.message || t('share.createFailed')),
   })
 
   const revokeShare = useMutation({
@@ -278,7 +289,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
       void qc.invalidateQueries({ queryKey: ['shares', item.id] })
       void qc.invalidateQueries({ queryKey: ['files'] })
     },
-    onError: () => toast.error('Failed to revoke share'),
+    onError: () => toast.error(t('share.revokeFailed')),
   })
 
   const updateShare = useMutation({
@@ -286,9 +297,9 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
       api.patch(`/api/v1/shares/${id}`, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['shares', item.id] })
-      toast.success('Share updated')
+      toast.success(t('share.updated'))
     },
-    onError: () => toast.error('Failed to update share'),
+    onError: () => toast.error(t('share.updateFailed')),
   })
 
   const handleCreate = () => {
@@ -332,7 +343,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 dark:border-[#2d3148]">
           <div>
-            <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">Share</h2>
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('share.title')}</h2>
             <p className="text-xs text-muted truncate max-w-[280px]" title={item.name}>{item.name}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors">
@@ -342,17 +353,17 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
 
         {/* Tab bar */}
         <div className="flex border-b border-zinc-100 dark:border-[#2d3148] px-5">
-          {(['user', 'group', 'link', 'webdav'] as ShareTargetType[]).map(t => (
+          {(['user', 'group', 'link', 'webdav'] as ShareTargetType[]).map(tabType => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={tabType}
+              onClick={() => setTab(tabType)}
               className={`py-2.5 px-3 text-sm font-medium border-b-2 transition-colors ${
-                tab === t
+                tab === tabType
                   ? 'border-brand-500 text-brand-600 dark:text-brand-400'
                   : 'border-transparent text-muted hover:text-zinc-700 dark:hover:text-slate-300'
               }`}
             >
-              {t === 'link' ? 'Link' : t === 'group' ? 'Group' : t === 'webdav' ? 'WebDAV' : 'User'}
+              {tabType === 'link' ? t('share.tabLink') : tabType === 'group' ? t('share.tabGroup') : tabType === 'webdav' ? t('share.tabWebdav') : t('share.tabUser')}
             </button>
           ))}
         </div>
@@ -361,7 +372,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
           {/* Target input */}
           {tab === 'user' && (
             <div className="space-y-1">
-              <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Email address</label>
+              <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('share.emailLabel')}</label>
               <input
                 type="email"
                 value={email}
@@ -373,13 +384,13 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
           )}
           {tab === 'group' && (
             <div className="space-y-1">
-              <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Group</label>
+              <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('share.groupLabel')}</label>
               <select
                 value={groupId}
                 onChange={e => setGroupId(e.target.value)}
                 className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
-                <option value="">Select a groupÔÇª</option>
+                {t('share.selectGroup')}
                 {groups?.map(g => (
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))}
@@ -388,27 +399,27 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
           )}
           {tab === 'link' && (
             <p className="text-xs text-muted">
-              Creates a public link that anyone with the URL can access. You can optionally password-protect it or set an expiry.
+              {t('share.publicLinkDesc')}
             </p>
           )}
 
           {tab === 'webdav' && (
             <div className="space-y-3">
               <p className="text-xs text-zinc-600 dark:text-slate-400">
-                Direkte WebDAV-adgang til denne {item.is_folder ? 'mappe' : 'fil'} med din email og et app password. Bruges f.eks. med KeePass, Windows Stifinder eller macOS Finder.
+                {t('share.davDesc', { type: item.is_folder ? t('share.folder') : t('share.file') })}
               </p>
 
               {/* File/folder URL */}
               <div className="space-y-1">
                 <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">
-                  {item.is_folder ? 'Mappe-URL' : 'Fil-URL'}
+                  {t(item.is_folder ? 'share.folderUrl' : 'share.fileUrl')}
                 </p>
                 <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
                   <span className="flex-1 text-xs font-mono text-zinc-900 dark:text-slate-100 break-all select-all">{davFileUrl}</span>
                   <button
                     onClick={() => copyDav(davFileUrl, 'file')}
                     className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                    title="Kopiér URL"
+                    title={t('share.webdavCopyUrl')}
                   >
                     {davCopied === 'file' ? <Check size={13} /> : <Copy size={13} />}
                   </button>
@@ -417,13 +428,13 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
 
               {/* Username */}
               <div className="space-y-1">
-                <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">Brugernavn</p>
+                <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">{t('share.username')}</p>
                 <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
                   <span className="flex-1 text-xs font-mono text-zinc-900 dark:text-slate-100 select-all">{user?.email ?? ''}</span>
                   <button
                     onClick={() => copyDav(user?.email ?? '', 'email')}
                     className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                    title="Kopiér email"
+                    title={t('share.webdavCopyEmail')}
                   >
                     {davCopied === 'email' ? <Check size={13} /> : <Copy size={13} />}
                   </button>
@@ -448,7 +459,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
               {davRevealed && (
                 <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 space-y-2">
                   <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                    Kopiér app password nu — det vises ikke igen
+                    {t('share.copyPwdNow')}
                   </p>
                   <div className="flex items-center gap-2 rounded border border-amber-200 dark:border-amber-700 bg-white dark:bg-[#0f1117] px-3 py-1.5">
                     <span className="flex-1 text-sm font-mono text-zinc-900 dark:text-slate-100 break-all select-all">{davRevealed.password}</span>
@@ -463,7 +474,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
                     onClick={() => setDavRevealed(null)}
                     className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
                   >
-                    Jeg har gemt det, luk
+                    {t('share.savedClose')}
                   </button>
                 </div>
               )}
@@ -471,14 +482,14 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
               {/* Create scoped app password */}
               <div className="space-y-1.5">
                 <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">
-                  Opret app password til denne {item.is_folder ? 'mappe' : 'fil'}
+                  {t('share.createPwdFor', { type: item.is_folder ? t('share.folder') : t('share.file') })}
                 </p>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={davPwdName}
                     onChange={e => setDavPwdName(e.target.value)}
-                    placeholder="f.eks. KeePass, Windows-PC…"
+                    placeholder={t('share.webdavNamePlaceholder')}
                     className="flex-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                     onKeyDown={e => { if (e.key === 'Enter' && davPwdName.trim()) davCreatePwd.mutate(davPwdName.trim()) }}
                   />
@@ -488,7 +499,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
                   >
                     <Plus size={14} />
-                    Opret
+                    {t('share.create')}
                   </button>
                 </div>
               </div>
@@ -496,20 +507,20 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
               {/* Existing scoped passwords */}
               {scopedPasswords && scopedPasswords.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">Aktive app passwords til denne {item.is_folder ? 'mappe' : 'fil'}</p>
+                  <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">{t('share.activePwdsFor', { type: item.is_folder ? t('share.folder') : t('share.file') })}</p>
                   <ul className="space-y-1">
                     {scopedPasswords.map(p => (
                       <li key={p.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117]">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 truncate">{p.name}</p>
                           <p className="text-[11px] text-muted">
-                            {p.last_used_at ? `Sidst brugt ${formatDate(p.last_used_at)}` : 'Aldrig brugt'}
+                            {p.last_used_at ? t('share.lastUsedOn', { when: formatDate(p.last_used_at) }) : t('share.neverUsed')}
                           </p>
                         </div>
                         <button
                           onClick={() => davRevokePwd.mutate(p.id)}
                           className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                          title="Slet"
+                          title={t('share.webdavDeleteTitle')}
                         >
                           <Trash2 size={13} />
                         </button>
@@ -524,20 +535,20 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
           {/* Permissions */}
           {tab !== 'webdav' && <>
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Permissions</p>
+            <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('share.permissions')}</p>
             <PermCheckboxes perms={perms} onChange={setPerms} isFolder={item.is_folder} />
           </div>
 
           {/* Expiry */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Expiry</label>
+              <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('share.expiry')}</label>
               <button
                 type="button"
                 onClick={() => setHasExpiry(v => !v)}
                 className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
               >
-                {hasExpiry ? 'Remove expiry' : 'Set expiry'}
+                {hasExpiry ? t('share.removeExpiry') : t('share.setExpiry')}
               </button>
             </div>
             {hasExpiry ? (
@@ -548,7 +559,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
                 className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             ) : (
-              <p className="text-xs text-muted">Never expires</p>
+              <p className="text-xs text-muted">{t('share.neverExpires')}</p>
             )}
           </div>
 
@@ -558,14 +569,14 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
             className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
           >
             <UserPlus size={14} />
-            {createShare.isPending ? 'Sharing…' : 'Share'}
+            {createShare.isPending ? t('share.sharing') : t('share.title')}
           </button>
           </>}
 
           {/* Existing shares */}
           {shares && shares.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-[#2d3148]">
-              <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">Active shares</p>
+              <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('share.activeShares')}</p>
               <ul className="space-y-1.5">
                 {shares.map(s => (
                   <ActiveShareRow

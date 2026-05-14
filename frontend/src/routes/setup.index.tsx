@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { Check, CheckCircle2, ChevronRight, Mail, Upload, XCircle } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
 
 export const Route = createFileRoute('/setup/')({
   component: SetupPage,
@@ -45,6 +46,7 @@ const STEPS = ['Site', 'Admin account', 'Email (optional)'] as const
 // ─── Page ────────────────────────────────────────────────────────
 
 function SetupPage() {
+  const { t } = useI18n()
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [s1, setS1] = useState<Step1Values | null>(null)
@@ -68,10 +70,10 @@ function SetupPage() {
         const data = await r.json() as { error?: string }
         throw new Error(data.error ?? 'Restore failed')
       }
-      toast.success('Restore complete! Redirecting to login…')
+      toast.success(t('setup.restoreComplete'))
       setTimeout(() => void navigate({ to: '/login' }), 1200)
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Restore failed')
+      toast.error(err instanceof Error ? err.message : t('setup.restoreFailed'))
     } finally {
       setRestoring(false)
     }
@@ -95,10 +97,10 @@ function SetupPage() {
           tls: s3.smtp_tls,
         },
       })
-      toast.success('Setup complete! Redirecting to login…')
+      toast.success(t('setup.setupComplete'))
       setTimeout(() => void navigate({ to: '/login' }), 1200)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Setup failed'
+      const msg = err instanceof Error ? err.message : t('setup.setupFailed')
       toast.error(msg)
     } finally {
       setSubmitting(false)
@@ -111,7 +113,7 @@ function SetupPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <img src="/logo_name.png" alt="Sharedrive" className="h-10 w-auto mx-auto mb-2" />
-          <p className="text-sm text-muted mt-1">First-time setup</p>
+          <p className="text-sm text-muted mt-1">{t('setup.firstTimeSetup')}</p>
         </div>
 
         {/* Steps indicator */}
@@ -169,28 +171,29 @@ function Step1({
     resolver: zodResolver(step1Schema),
     defaultValues: { site_name: 'Sharedrive' },
   })
+  const { t } = useI18n()
   return (
     <div className="space-y-5">
       <form onSubmit={handleSubmit(onNext)} className="space-y-4">
         <div>
-          <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100 mb-1">Site configuration</h2>
-          <p className="text-sm text-muted">Give your Sharedrive instance a name.</p>
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100 mb-1">{t('setup.siteConfigTitle')}</h2>
+          <p className="text-sm text-muted">{t('setup.siteConfigDesc')}</p>
         </div>
         <div className="space-y-1">
-          <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Site name</label>
-          <input {...register('site_name')} className={inputClass} placeholder="My Private Drive" />
+          <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('setup.siteName')}</label>
+          <input {...register('site_name')} className={inputClass} placeholder={t('setup.sitePlaceholder')} />
           {errors.site_name && <p className="text-xs text-red-500">{errors.site_name.message}</p>}
         </div>
-        <button type="submit" className={btnClass}>Continue</button>
+        <button type="submit" className={btnClass}>{t('setup.continue')}</button>
       </form>
 
       {/* Restore from backup */}
       <div className="border-t border-zinc-100 dark:border-[#2d3148] pt-4 space-y-3">
-        <p className="text-xs text-muted text-center">— or restore from a previous backup —</p>
+        <p className="text-xs text-muted text-center">{t('setup.orRestore')}</p>
         <label className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors w-full">
           <Upload size={14} className="shrink-0 text-zinc-400" />
           <span className="truncate text-zinc-600 dark:text-slate-400">
-            {restoreFile ? restoreFile.name : 'Choose backup file (.json.gz)…'}
+            {restoreFile ? restoreFile.name : t('setup.chooseBackupFile')}
           </span>
           <input
             type="file"
@@ -205,7 +208,7 @@ function Step1({
             disabled={restoring}
             className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
           >
-            {restoring ? 'Restoring…' : 'Restore from backup'}
+            {restoring ? t('setup.restoring') : t('setup.restoreFromBackup')}
           </button>
         )}
       </div>
@@ -216,38 +219,39 @@ function Step1({
 // ─── Step 2: Admin account ──────────────────────────────────────
 
 function Step2({ onBack, onNext }: { onBack: () => void; onNext: (v: Step2Values) => void }) {
+  const { t } = useI18n()
   const { register, handleSubmit, formState: { errors } } = useForm<Step2Values>({
     resolver: zodResolver(step2Schema),
   })
   return (
     <form onSubmit={handleSubmit(onNext)} className="space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100 mb-1">Admin account</h2>
-        <p className="text-sm text-muted">Create the first administrator account.</p>
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100 mb-1">{t('setup.adminAccountTitle')}</h2>
+        <p className="text-sm text-muted">{t('setup.adminAccountDesc')}</p>
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Display name</label>
-        <input {...register('display_name')} className={inputClass} placeholder="Admin" />
+        <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('setup.displayName')}</label>
+        <input {...register('display_name')} className={inputClass} placeholder={t('setup.displayNamePlh')} />
         {errors.display_name && <p className="text-xs text-red-500">{errors.display_name.message}</p>}
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Email</label>
+        <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('setup.email')}</label>
         <input type="email" {...register('email')} className={inputClass} placeholder="admin@example.com" />
         {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Password</label>
+        <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('setup.password')}</label>
         <input type="password" {...register('password')} className={inputClass} />
         {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
       </div>
       <div className="space-y-1">
-        <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Confirm password</label>
+        <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('setup.confirmPassword')}</label>
         <input type="password" {...register('confirm')} className={inputClass} />
         {errors.confirm && <p className="text-xs text-red-500">{errors.confirm.message}</p>}
       </div>
       <div className="flex gap-2 pt-1">
-        <button type="button" onClick={onBack} className={backBtnClass}>Back</button>
-        <button type="submit" className={btnClass + ' flex-1'}>Continue</button>
+        <button type="button" onClick={onBack} className={backBtnClass}>{t('setup.back')}</button>
+        <button type="submit" className={btnClass + ' flex-1'}>{t('setup.continue')}</button>
       </div>
     </form>
   )
@@ -264,6 +268,7 @@ function Step3({
   onNext: (v: Step3Values) => void
   submitting: boolean
 }) {
+  const { t } = useI18n()
   const { register, handleSubmit, watch, getValues } = useForm<Step3Values>({
     defaultValues: { smtp_port: 587, smtp_tls: true, skip: false },
   })
@@ -275,11 +280,11 @@ function Step3({
   const handleTestEmail = async () => {
     const v = getValues()
     if (!v.smtp_host || !v.smtp_from_address) {
-      setTestResult({ ok: false, msg: 'Fill in host and from address first' })
+      setTestResult({ ok: false, msg: t('setup.testFillHost') })
       return
     }
     if (!testTo) {
-      setTestResult({ ok: false, msg: 'Enter a recipient address for the test' })
+      setTestResult({ ok: false, msg: t('setup.testEnterRecipient') })
       return
     }
     setTesting(true)
@@ -294,17 +299,17 @@ function Step3({
         to_address: testTo,
         tls: v.smtp_tls,
       })
-      setTestResult({ ok: true, msg: `Test email sent to ${testTo}` })
+      setTestResult({ ok: true, msg: t('setup.testEmailSent', { to: testTo }) })
     } catch (err: unknown) {
-      const raw = err instanceof Error ? err.message : 'Test failed'
+      const raw = err instanceof Error ? err.message : t('setup.testFailed')
       // Surface the most useful part of common SMTP errors
       let msg = raw
       if (raw.includes('535') || raw.includes('534') || raw.includes('InvalidSecondFactor') || raw.includes('password')) {
-        msg = 'Authentication failed — check your username and password (Gmail requires an App Password)'
+        msg = t('setup.testAuthFailed')
       } else if (raw.includes('connection refused') || raw.includes('dial')) {
-        msg = 'Could not connect — check host and port'
+        msg = t('setup.testConnFailed')
       } else if (raw.includes('certificate') || raw.includes('tls')) {
-        msg = 'TLS error — try toggling the TLS/STARTTLS setting'
+        msg = t('setup.testTlsError')
       }
       setTestResult({ ok: false, msg })
     } finally {
@@ -315,47 +320,47 @@ function Step3({
   return (
     <form onSubmit={handleSubmit(onNext)} className="space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100 mb-1">Email (SMTP)</h2>
-        <p className="text-sm text-muted">Used for password resets and invitations. You can configure this later.</p>
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100 mb-1">{t('setup.smtpTitle')}</h2>
+        <p className="text-sm text-muted">{t('setup.smtpDesc')}</p>
       </div>
 
       <label className="flex items-center gap-2 cursor-pointer">
         <input type="checkbox" {...register('skip')} className="rounded border-zinc-300 text-brand-600" />
-        <span className="text-sm text-zinc-700 dark:text-slate-300">Skip for now</span>
+        <span className="text-sm text-zinc-700 dark:text-slate-300">{t('setup.skipForNow')}</span>
       </label>
 
       {!skip && (
         <>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Host</label>
+              <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('setup.smtpHost')}</label>
               <input {...register('smtp_host')} className={inputClass} placeholder="smtp.example.com" />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Port</label>
+              <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('setup.smtpPort')}</label>
               <input type="number" {...register('smtp_port')} className={inputClass} />
             </div>
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Username</label>
+            <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('setup.smtpUsername')}</label>
             <input {...register('smtp_username')} className={inputClass} />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Password</label>
+            <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('setup.password')}</label>
             <input type="password" {...register('smtp_password')} className={inputClass} />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">From address</label>
+            <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('setup.smtpFromAddress')}</label>
             <input type="email" {...register('smtp_from_address')} className={inputClass} placeholder="noreply@example.com" />
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" {...register('smtp_tls')} className="rounded border-zinc-300 text-brand-600" />
-            <span className="text-sm text-zinc-700 dark:text-slate-300">Use TLS/STARTTLS</span>
+            <span className="text-sm text-zinc-700 dark:text-slate-300">{t('setup.useTls')}</span>
           </label>
 
           {/* Test email */}
           <div className="border-t border-zinc-100 dark:border-[#2d3148] pt-3 space-y-2">
-            <p className="text-xs text-muted">Send a test email to verify your settings:</p>
+            <p className="text-xs text-muted">{t('setup.testEmailDesc')}</p>
             <div className="flex gap-2">
               <input
                 type="email"
@@ -371,7 +376,7 @@ function Step3({
                 className="flex items-center gap-1.5 shrink-0 px-3 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] disabled:opacity-50 transition-colors"
               >
                 <Mail size={13} />
-                {testing ? 'Sending…' : 'Test'}
+                {testing ? t('setup.sending') : t('setup.test')}
               </button>
             </div>
             {testResult && (
@@ -391,9 +396,9 @@ function Step3({
       )}
 
       <div className="flex gap-2 pt-1">
-        <button type="button" onClick={onBack} className={backBtnClass}>Back</button>
+        <button type="button" onClick={onBack} className={backBtnClass}>{t('setup.back')}</button>
         <button type="submit" disabled={submitting} className={btnClass + ' flex-1'}>
-          {submitting ? 'Setting up…' : 'Complete setup'}
+          {submitting ? t('setup.settingUp') : t('setup.completeSetup')}
         </button>
       </div>
     </form>

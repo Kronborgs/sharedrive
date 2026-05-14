@@ -7,6 +7,7 @@ import { AlertTriangle, ChevronDown, Clock, Eye, FileQuestion, FolderInput, Load
 import { toast } from 'sonner'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import type { FileItem } from '@/types/api'
+import { useI18n } from '@/lib/i18n'
 
 export const Route = createFileRoute('/_auth/admin/storage/')({
   component: StoragePage,
@@ -96,6 +97,7 @@ function corruptToFileItem(f: CorruptFile): FileItem {
 function StoragePage() {
   const queryClient = useQueryClient()
   const [previewCorrupt, setPreviewCorrupt] = useState<CorruptFile | null>(null)
+  const { t } = useI18n()
 
   // -- Corrupt file scan
   const [selectedCorrupt, setSelectedCorrupt] = useState<Set<string>>(new Set())
@@ -112,12 +114,12 @@ function StoragePage() {
     const result = await refetchScan()
     if (result.data) {
       if (result.data.corrupt_files.length === 0) {
-        toast.success(`Scan complete - no corrupt files found (${result.data.scanned_files} scanned)`)
+        toast.success(t('storage.scanComplete', { n: String(result.data.scanned_files) }))
       } else {
-        toast.warning(`Found ${result.data.corrupt_files.length} corrupt file(s) out of ${result.data.scanned_files} scanned`)
+        toast.warning(t('storage.corruptFound', { corrupt: String(result.data.corrupt_files.length), n: String(result.data.scanned_files) }))
       }
     } else if (result.error) {
-      toast.error('Scan failed')
+      toast.error(t('storage.scanFailed'))
     }
   }
 
@@ -125,13 +127,13 @@ function StoragePage() {
     mutationFn: (ids: string[]) =>
       api.post<{ deleted: number; disk_deleted: number }>('/api/v1/admin/storage/purge-corrupt', { ids }),
     onSuccess: (data, ids) => {
-      toast.success(`${data.deleted} record(s) removed - ${data.disk_deleted} file(s) deleted from disk`)
+      toast.success(t('storage.purged', { records: String(data.deleted), files: String(data.disk_deleted) }))
       queryClient.setQueryData<ScanResult>(SCAN_KEY, prev =>
         prev ? { ...prev, corrupt_files: prev.corrupt_files.filter(f => !ids.includes(f.id)) } : prev
       )
       setSelectedCorrupt(new Set())
     },
-    onError: () => toast.error('Purge failed'),
+    onError: () => toast.error(t('storage.purgeFailed')),
   })
 
   const toggleAllCorrupt = () => {
@@ -158,12 +160,12 @@ function StoragePage() {
     const result = await refetchOrphans()
     if (result.data) {
       if (result.data.orphan_files.length === 0) {
-        toast.success(`Scan complete - no orphan files found (${result.data.scanned_blobs} blobs scanned)`)
+        toast.success(t('storage.orphanScanComplete', { n: String(result.data.scanned_blobs) }))
       } else {
-        toast.warning(`Found ${result.data.orphan_files.length} orphan file(s) out of ${result.data.scanned_blobs} scanned`)
+        toast.warning(t('storage.orphansFound', { orphans: String(result.data.orphan_files.length), n: String(result.data.scanned_blobs) }))
       }
     } else if (result.error) {
-      toast.error('Orphan scan failed')
+      toast.error(t('storage.orphanScanFailed'))
     }
   }
 
@@ -171,26 +173,26 @@ function StoragePage() {
     mutationFn: (ids: string[]) =>
       api.post<{ deleted: number; freed_bytes: number }>('/api/v1/admin/storage/purge-orphans', { ids }),
     onSuccess: (data, ids) => {
-      toast.success(`${data.deleted} file(s) deleted - ${formatBytes(data.freed_bytes)} freed`)
+      toast.success(t('storage.orphansPurged', { n: String(data.deleted), bytes: formatBytes(data.freed_bytes) }))
       queryClient.setQueryData<OrphanScanResult>(ORPHAN_KEY, prev =>
         prev ? { ...prev, orphan_files: prev.orphan_files.filter(f => !ids.includes(f.id)) } : prev
       )
       setSelectedOrphan(new Set())
     },
-    onError: () => toast.error('Purge failed'),
+    onError: () => toast.error(t('storage.orphanPurgeFailed')),
   })
 
   const restoreOrphans = useMutation({
     mutationFn: (ids: string[]) =>
       api.post<{ restored: number; skipped: number; folder_id: string }>('/api/v1/admin/storage/restore-orphans', { ids }),
     onSuccess: (data, ids) => {
-      toast.success(`${data.restored} file(s) restored to "Restored from cleanup" folder`)
+      toast.success(t('storage.orphansRestored', { n: String(data.restored) }))
       queryClient.setQueryData<OrphanScanResult>(ORPHAN_KEY, prev =>
         prev ? { ...prev, orphan_files: prev.orphan_files.filter(f => !ids.includes(f.id)) } : prev
       )
       setSelectedOrphan(new Set())
     },
-    onError: () => toast.error('Restore failed'),
+    onError: () => toast.error(t('storage.restoreFailed')),
   })
 
   const toggleAllOrphans = () => {
@@ -227,17 +229,17 @@ function StoragePage() {
         orphan:  which === 'orphan'  ? draftOrphan  : (scheduleData?.orphan  ?? draftOrphan),
       }),
     onSuccess: () => {
-      toast.success('Schedule saved')
+      toast.success(t('storage.scheduleSaved'))
       queryClient.invalidateQueries({ queryKey: SCHEDULE_KEY })
       setScheduleSynced(false)
     },
-    onError: () => toast.error('Failed to save schedule'),
+    onError: () => toast.error(t('storage.scheduleFailed')),
   })
 
   // -- Render
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">Storage</h1>
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('storage.title')}</h1>
 
       {/* Corrupt file scan */}
       <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-3">

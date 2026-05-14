@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { z } from 'zod'
 import { api, ApiClientError } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
+import { useI18n } from '@/lib/i18n'
 
 const searchSchema = z.object({
   pending_token: z.string(),
@@ -18,6 +19,7 @@ export default function TOTPPage() {
   const { pending_token, trust_device } = Route.useSearch()
   const navigate = useNavigate()
   const { refetch } = useAuth()
+  const { t } = useI18n()
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -33,7 +35,7 @@ export default function TOTPPage() {
       if (err instanceof ApiClientError) {
         setError(err.message)
       } else {
-        setError('An unexpected error occurred. Please try again.')
+        setError(t('login.unexpectedError'))
       }
       setCode('')
     } finally {
@@ -51,10 +53,10 @@ export default function TOTPPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">
-            Two-factor authentication
+            {t('totp.title')}
           </h1>
           <p className="text-sm text-muted mt-1">
-            Enter the 6-digit code from your authenticator app
+            {t('totp.enterCode')}
           </p>
         </div>
 
@@ -68,7 +70,7 @@ export default function TOTPPage() {
               {error.toLowerCase().includes('expired') && (
                 <div className="mt-1">
                   <Link to="/login" className="underline font-medium">
-                    Return to login →
+                    {t('totp.returnToLogin')}
                   </Link>
                 </div>
               )}
@@ -77,7 +79,7 @@ export default function TOTPPage() {
 
           <div className="space-y-1">
             <label className="block text-sm font-medium text-zinc-700 dark:text-slate-300">
-              Authentication code
+              {t('totp.codeLabel')}
             </label>
             <input
               type="text"
@@ -105,12 +107,12 @@ export default function TOTPPage() {
             disabled={isSubmitting || code.length !== 6}
             className="w-full rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-medium py-2 text-sm transition-colors"
           >
-            {isSubmitting ? 'Verifying…' : 'Verify'}
+            {isSubmitting ? t('totp.verifying') : t('totp.verify')}
           </button>
 
           <div className="text-center">
             <Link to="/login" className="text-xs text-brand-600 dark:text-brand-400 hover:underline">
-              ← Back to login
+              {t('totp.backToLogin')}
             </Link>
           </div>
         </form>

@@ -3,6 +3,7 @@ import { X, ShieldCheck, Copy, Check, AlertTriangle, Loader2 } from 'lucide-reac
 import QRCode from 'qrcode'
 import { fetchTOTPSetup, confirmTOTPSetup, disableTOTP } from '@/lib/api'
 import { toast } from 'sonner'
+import { useI18n } from '@/lib/i18n'
 
 type Mode = 'setup' | 'disable'
 
@@ -28,6 +29,7 @@ export function TOTPSetupDialog({ isEnabled, onClose, onChanged }: Props) {
 }
 
 function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const { t } = useI18n()
   const [step, setStep] = useState<Step>('qr')
   const [secret, setSecret] = useState('')
   const [qrDataUrl, setQrDataUrl] = useState('')
@@ -45,7 +47,7 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
         const dataUrl = await QRCode.toDataURL(data.provisioning_uri, { width: 200, margin: 2 })
         setQrDataUrl(dataUrl)
       })
-      .catch(() => setError('Failed to load TOTP setup. Please try again.'))
+      .catch(() => setError(t('totp.loadFailed')))
       .finally(() => setLoading(false))
   }, [])
 
@@ -59,7 +61,7 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
       setBackupCodes(res.backup_codes)
       setStep('backup')
     } catch {
-      setError('Invalid code — please try again.')
+      setError(t('totp.invalidCode'))
       setCode('')
     } finally {
       setLoading(false)
@@ -85,7 +87,7 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
         <div className="flex items-center gap-2">
           <ShieldCheck size={16} className="text-brand-600 dark:text-brand-400" />
           <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">
-            Set up two-factor authentication
+            {t('totp.setupTitle')}
           </h2>
         </div>
         <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148]">
@@ -98,7 +100,7 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
         {step === 'qr' && (
           <div className="space-y-4">
             <p className="text-sm text-zinc-600 dark:text-slate-400">
-              Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.), then click <strong>Next</strong>.
+              {t('totp.scanQr')}
             </p>
             {loading && (
               <div className="flex justify-center py-8">
@@ -111,10 +113,10 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
             {!loading && qrDataUrl && (
               <>
                 <div className="flex justify-center">
-                  <img src={qrDataUrl} alt="TOTP QR code" className="rounded-lg border border-zinc-200 dark:border-[#2d3148]" width={200} height={200} />
+                  <img src={qrDataUrl} alt={t('totp.qrAlt')} className="rounded-lg border border-zinc-200 dark:border-[#2d3148]" width={200} height={200} />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-zinc-500 dark:text-slate-500">Or enter the key manually:</p>
+                  <p className="text-xs text-zinc-500 dark:text-slate-500">{t('totp.orEnterManually')}</p>
                   <div className="flex items-center gap-2 bg-zinc-50 dark:bg-[#0f1117] rounded-lg px-3 py-2 border border-zinc-200 dark:border-[#2d3148]">
                     <code className="flex-1 text-xs font-mono text-zinc-800 dark:text-slate-200 break-all">{secret}</code>
                     <button onClick={copySecret} className="shrink-0 text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400">
@@ -126,7 +128,7 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
                   onClick={() => setStep('verify')}
                   className="w-full py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
                 >
-                  Next — enter verification code
+                  {t('totp.nextStep')}
                 </button>
               </>
             )}
@@ -137,7 +139,7 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
         {step === 'verify' && (
           <div className="space-y-4">
             <p className="text-sm text-zinc-600 dark:text-slate-400">
-              Enter the 6-digit code from your authenticator app to confirm setup.
+              {t('totp.confirmStep')}
             </p>
             {error && (
               <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
@@ -169,14 +171,14 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
                 onClick={() => setStep('qr')}
                 className="flex-1 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-600 dark:text-slate-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
               >
-                Back
+                {t('totp.back')}
               </button>
               <button
                 onClick={() => void handleVerify()}
                 disabled={code.length !== 6 || loading}
                 className="flex-1 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
               >
-                {loading ? 'Verifying…' : 'Confirm'}
+                {loading ? t('totp.confirming') : t('totp.confirm')}
               </button>
             </div>
           </div>
@@ -186,7 +188,7 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
         {step === 'backup' && (
           <div className="space-y-4">
             <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-              Save your backup codes now — they will not be shown again. Each code can only be used once.
+              {t('totp.saveBackupCodes')}
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               {backupCodes.map(c => (
@@ -201,13 +203,13 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-600 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
               >
                 {copiedCode ? <Check size={14} /> : <Copy size={14} />}
-                Copy all
+                {t('totp.copyAll')}
               </button>
               <button
                 onClick={onDone}
                 className="flex-1 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
               >
-                Done — 2FA is now active
+                {t('totp.done2faActive')}
               </button>
             </div>
           </div>
@@ -219,15 +221,16 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
 
 function DisableFlow({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [loading, setLoading] = useState(false)
+  const { t } = useI18n()
 
   const handleDisable = async () => {
     setLoading(true)
     try {
       await disableTOTP()
-      toast.success('Two-factor authentication disabled')
+      toast.success(t('totp.disabled'))
       onDone()
     } catch {
-      toast.error('Failed to disable 2FA')
+      toast.error(t('totp.disableFailed'))
       setLoading(false)
     }
   }
@@ -235,25 +238,25 @@ function DisableFlow({ onClose, onDone }: { onClose: () => void; onDone: () => v
   return (
     <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-2xl shadow-2xl w-full max-w-sm">
       <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 dark:border-[#2d3148]">
-        <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">Disable two-factor authentication</h2>
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('totp.disableTitle')}</h2>
         <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148]">
           <X size={16} />
         </button>
       </div>
       <div className="p-5 space-y-4">
         <p className="text-sm text-zinc-600 dark:text-slate-400">
-          This will remove the extra layer of protection from your account. Are you sure?
+          {t('totp.disableConfirm')}
         </p>
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-600 dark:text-slate-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors">
-            Cancel
+            {t('totp.cancel')}
           </button>
           <button
             onClick={() => void handleDisable()}
             disabled={loading}
             className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
           >
-            {loading ? 'Disabling…' : 'Disable 2FA'}
+            {loading ? t('totp.disabling') : t('totp.disable2fa')}
           </button>
         </div>
       </div>

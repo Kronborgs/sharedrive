@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { api } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { useI18n } from '@/lib/i18n'
 
 const searchSchema = z.object({
   token: z.string().catch(''),
@@ -37,6 +38,7 @@ export const Route = createFileRoute('/accept-invite/')({
 function AcceptInvitePage() {
   const navigate = useNavigate()
   const { token } = Route.useSearch()
+  const { t } = useI18n()
 
   const { data: invite, isLoading, isError } = useQuery({
     queryKey: ['invite', token],
@@ -55,10 +57,10 @@ function AcceptInvitePage() {
         display_name: values.display_name,
         password: values.password,
       })
-      toast.success('Account created! Redirecting to login…')
+      toast.success(t('invite.accountCreated'))
       setTimeout(() => void navigate({ to: '/login' }), 1200)
     } catch {
-      toast.error('Invalid or expired invitation link.')
+      toast.error(t('invite.invalidLink'))
     }
   }
 
@@ -73,7 +75,7 @@ function AcceptInvitePage() {
   if (isLoading) {
     return (
       <Shell>
-        <p className="text-sm text-muted text-center">Verifying invitation…</p>
+        <p className="text-sm text-muted text-center">{t('invite.verifying')}</p>
       </Shell>
     )
   }
@@ -82,10 +84,10 @@ function AcceptInvitePage() {
     return (
       <Shell>
         <p className="text-sm text-red-500 text-center">
-          This invitation link is invalid or has expired.
+          {t('invite.invalidExpired')}
         </p>
         <a href="/login" className="block text-center text-xs text-brand-600 dark:text-brand-400 hover:underline mt-3">
-          Back to login
+          {t('invite.backToLogin')}
         </a>
       </Shell>
     )
@@ -93,30 +95,30 @@ function AcceptInvitePage() {
 
   return (
     <Shell>
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100 mb-1">Create account</h1>
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100 mb-1">{t('invite.createAccount')}</h1>
       <p className="text-sm text-muted mb-5">
-        You've been invited by <strong>{invite.inviter_name}</strong>. Your email will be{' '}
+        {t('invite.invitedBy')} <strong>{invite.inviter_name}</strong>. {t('invite.yourEmailWillBe')}{' '}
         <strong>{invite.email}</strong>.
       </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-1">
-          <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Display name</label>
-          <input {...register('display_name')} className={inputClass} placeholder="Your name" />
+          <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('invite.displayName')}</label>
+          <input {...register('display_name')} className={inputClass} placeholder={t('invite.yourName')} />
           {errors.display_name && <p className="text-xs text-red-500">{errors.display_name.message}</p>}
         </div>
         <div className="space-y-1">
-          <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Password</label>
+          <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('login.password')}</label>
           <input type="password" {...register('password')} className={inputClass} />
           {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
         </div>
         <div className="space-y-1">
-          <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">Confirm password</label>
+          <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('reset.confirmPassword')}</label>
           <input type="password" {...register('confirm')} className={inputClass} />
           {errors.confirm && <p className="text-xs text-red-500">{errors.confirm.message}</p>}
         </div>
         <button type="submit" disabled={isSubmitting} className={btnClass}>
-          {isSubmitting ? 'Creating account…' : 'Create account'}
+          {isSubmitting ? t('invite.creatingAccount') : t('invite.createAccount')}
         </button>
       </form>
     </Shell>

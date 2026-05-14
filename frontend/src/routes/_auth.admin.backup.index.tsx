@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import { formatBytes, formatDate } from '@/lib/utils'
 import { Download, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
+import { useI18n } from '@/lib/i18n'
 
 interface BackupMeta {
   filename: string
@@ -20,6 +21,7 @@ export const Route = createFileRoute('/_auth/admin/backup/')({
 function BackupPage() {
   const qc = useQueryClient()
   const [restoreFile, setRestoreFile] = useState<File | null>(null)
+  const { t } = useI18n()
 
   const { data: backups, isLoading } = useQuery({
     queryKey: ['admin', 'backups'],
@@ -42,19 +44,19 @@ function BackupPage() {
         URL.revokeObjectURL(url)
       }),
     onSuccess: () => {
-      toast.success('Backup downloaded')
+      toast.success(t('adminBackup.downloaded'))
       void qc.invalidateQueries({ queryKey: ['admin', 'backups'] })
     },
-    onError: () => toast.error('Backup failed'),
+    onError: () => toast.error(t('adminBackup.failed')),
   })
 
   const deleteBackup = useMutation({
     mutationFn: (filename: string) => api.delete(`/api/v1/admin/backup/${encodeURIComponent(filename)}`),
     onSuccess: () => {
-      toast.success('Backup deleted')
+      toast.success(t('adminBackup.deleted'))
       void qc.invalidateQueries({ queryKey: ['admin', 'backups'] })
     },
-    onError: () => toast.error('Delete failed'),
+    onError: () => toast.error(t('adminBackup.deleteFailed')),
   })
 
   const restoreBackup = useMutation({
@@ -73,7 +75,7 @@ function BackupPage() {
       }
     },
     onSuccess: () => {
-      toast.success('Restore complete — please reload the page')
+      toast.success(t('adminBackup.restoreComplete'))
       setRestoreFile(null)
     },
     onError: (err: Error) => toast.error(err.message),
@@ -81,14 +83,13 @@ function BackupPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">Backup &amp; Restore</h1>
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('adminBackup.title')}</h1>
 
       {/* Export */}
       <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">Export</h2>
+          <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('adminBackup.exportTitle')}</h2>
         <p className="text-sm text-muted">
-          Downloads a compressed JSON backup of all users, groups, shares, and system settings.
-          File content is <strong>not</strong> included — only metadata.
+          {t('adminBackup.exportDesc')}
         </p>
         <button
           onClick={() => createBackup.mutate()}
@@ -96,19 +97,19 @@ function BackupPage() {
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
         >
           <Download size={15} />
-          {createBackup.isPending ? 'Creating…' : 'Create & Download Backup'}
+          {createBackup.isPending ? t('adminBackup.creating') : t('adminBackup.createDownload')}
         </button>
       </section>
 
       {/* Previous backups */}
       <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148]">
-          <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">Previous Exports</h2>
+          <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('adminBackup.previousExports')}</h2>
         </div>
         {isLoading ? (
-          <div className="p-6 text-sm text-muted text-center">Loading…</div>
+          <div className="p-6 text-sm text-muted text-center">{t('adminBackup.loading')}</div>
         ) : !backups?.length ? (
-          <div className="p-6 text-sm text-muted text-center">No previous backups</div>
+          <div className="p-6 text-sm text-muted text-center">{t('adminBackup.noPrevious')}</div>
         ) : (
           <ul className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
             {backups.map((b) => (
@@ -120,19 +121,19 @@ function BackupPage() {
                 <a
                   href={`/api/v1/admin/backup/${encodeURIComponent(b.filename)}/download`}
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
-                  title="Download"
+                  title={t('adminBackup.downloadTitle')}
                 >
                   <Download size={14} />
                 </a>
                 <button
                   onClick={() => {
-                    if (confirm(`Delete backup "${b.filename}"?`)) {
+                    if (confirm(t('adminBackup.deleteConfirm', { name: b.filename }))) {
                       deleteBackup.mutate(b.filename)
                     }
                   }}
                   disabled={deleteBackup.isPending}
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40"
-                  title="Delete"
+                  title={t('adminBackup.deleteTitle')}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -144,15 +145,14 @@ function BackupPage() {
 
       {/* Restore */}
       <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">Restore</h2>
+          <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('adminBackup.restoreTitle')}</h2>
         <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
-          <strong>Warning:</strong> Restore will overwrite existing users, groups, shares, and settings.
-          File contents are not affected. This action cannot be undone.
+          {t('adminBackup.restoreWarning')}
         </div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors">
             <Upload size={14} />
-            {restoreFile ? restoreFile.name : 'Choose backup file…'}
+            {restoreFile ? restoreFile.name : t('adminBackup.chooseFile')}
             <input
               type="file"
               accept=".json,.gz,.json.gz"
@@ -163,14 +163,14 @@ function BackupPage() {
           {restoreFile && (
             <button
               onClick={() => {
-                if (confirm('Are you sure you want to restore from this backup? This will overwrite current data.')) {
+                if (confirm(t('adminBackup.restoreConfirm'))) {
                   restoreBackup.mutate()
                 }
               }}
               disabled={restoreBackup.isPending}
               className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
             >
-              {restoreBackup.isPending ? 'Restoring…' : 'Restore'}
+              {restoreBackup.isPending ? t('adminBackup.restoring') : t('adminBackup.restore')}
             </button>
           )}
         </div>

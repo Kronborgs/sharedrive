@@ -7,6 +7,7 @@ import { api, adminRevokeTOTP, adminRequireTOTP, adminUnrequireTOTP } from '@/li
 import { useAuth } from '@/lib/auth-context'
 import type { User, Group, PaginatedResponse, GuestUser } from '@/types/api'
 import { formatBytes, formatDate } from '@/lib/utils'
+import { useI18n } from '@/lib/i18n'
 
 export const Route = createFileRoute('/_auth/admin/users/')({
   component: AdminUsersPage,
@@ -35,6 +36,7 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUse
   // Pre-select the default quota; fall back to first preset if 0
   const initial = defaultQuotaBytes > 0 ? defaultQuotaBytes : QUOTA_OPTIONS[0].bytes
   const isPreset = QUOTA_OPTIONS.some(q => q.bytes === initial)
+  const { t } = useI18n()
 
   const [email, setEmail]               = useState('')
   const [displayName, setDisplayName]   = useState('')
@@ -59,7 +61,7 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUse
       quota_bytes: quotaBytes,
       group_ids: selectedGroups,
     }),
-    onSuccess: () => { toast.success('User created'); onCreated(); onClose() },
+    onSuccess: () => { toast.success(t('users.created')); onCreated(); onClose() },
     onError: (e: Error) => setError(e.message),
   })
 
@@ -67,7 +69,7 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUse
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-[#2d3148]">
-          <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">New user</h2>
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('users.newUser')}</h2>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-200 transition-colors">
             <X size={18} />
           </button>
@@ -77,29 +79,29 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUse
           className="px-6 py-5 space-y-4"
           onSubmit={e => { e.preventDefault(); setError(''); create.mutate(undefined) }}
         >
-          <Field label="Email address (login name)">
+          <Field label={t('users.emailField')}>
             <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
               placeholder="user@example.com" className={inputCls} />
           </Field>
 
-          <Field label="Full name">
+          <Field label={t('users.fullName')}>
             <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)}
-              placeholder="Defaults to email if left empty" className={inputCls} />
+              placeholder={t('users.fullNamePlaceholder')} className={inputCls} />
           </Field>
 
-          <Field label="Password">
+          <Field label={t('login.password')}>
             <div className="relative">
               <input type={showPw ? 'text' : 'password'} required minLength={8}
                 value={password} onChange={e => setPassword(e.target.value)}
-                placeholder="Min. 8 characters" className={inputCls + ' pr-14'} />
+                placeholder={t('users.passwordMinChars')} className={inputCls + ' pr-14'} />
               <button type="button" onClick={() => setShowPw(v => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300">
-                {showPw ? 'Hide' : 'Show'}
+                {showPw ? t('users.hide') : t('users.show')}
               </button>
             </div>
           </Field>
 
-          <Field label="Role">
+          <Field label={t('users.role')}>
             <div className="flex gap-4">
               {(['user', 'admin'] as const).map(r => (
                 <label key={r} className="flex items-center gap-2 cursor-pointer">
@@ -111,12 +113,12 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUse
             </div>
           </Field>
 
-          <Field label="Quota">
+          <Field label={t('users.quota')}>
             <select value={quotaSelect} onChange={e => setQuotaSelect(Number(e.target.value))} className={inputCls}>
               {QUOTA_OPTIONS.map(q => (
                 <option key={q.bytes} value={q.bytes}>{q.label}</option>
               ))}
-              <option value={CUSTOM_SENTINEL}>Custom…</option>
+              <option value={CUSTOM_SENTINEL}>{t('users.custom')}</option>
             </select>
             {quotaSelect === CUSTOM_SENTINEL && (
               <div className="flex items-center gap-2 mt-1.5">
@@ -128,7 +130,7 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUse
             )}
           </Field>
 
-          <Field label="Groups">
+          <Field label={t('users.groups')}>
             <GroupCombobox
               allGroups={groups}
               selected={selectedGroups}
@@ -141,11 +143,11 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUse
           <div className="flex justify-end gap-3 pt-1">
             <button type="button" onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors">
-              Cancel
+              {t('users.cancel')}
             </button>
             <button type="submit" disabled={create.isPending}
               className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
-              {create.isPending ? 'Creating…' : 'Create user'}
+              {create.isPending ? t('users.creatingUser') : t('users.createUser')}
             </button>
           </div>
         </form>
@@ -167,6 +169,7 @@ function GroupCombobox({ allGroups, selected, onChange }: GroupComboboxProps) {
   const [open, setOpen]     = useState(false)
   const [busy, setBusy]     = useState(false)
   const ref                 = useRef<HTMLDivElement>(null)
+  const { t } = useI18n()
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -240,7 +243,7 @@ function GroupCombobox({ allGroups, selected, onChange }: GroupComboboxProps) {
           value={input}
           onChange={e => { setInput(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
-          placeholder="Search or create a group…"
+          placeholder={t('users.searchOrCreateGroup')}
           className={inputCls}
         />
 
@@ -258,11 +261,11 @@ function GroupCombobox({ allGroups, selected, onChange }: GroupComboboxProps) {
               <button type="button" onMouseDown={createAndAdd} disabled={busy}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-brand-600 dark:text-brand-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50">
                 <Plus size={13} className="shrink-0" />
-                {busy ? 'Creating…' : `Create group "${trimmed}"`}
+                {busy ? t('users.creatingGroup') : t('users.createGroupNamed', { name: trimmed })}
               </button>
             )}
             {filtered.length === 0 && !canCreate && (
-              <div className="px-3 py-2 text-xs text-muted">No groups found</div>
+              <div className="px-3 py-2 text-xs text-muted">{t('users.noGroupsFound')}</div>
             )}
           </div>
         )}
@@ -290,6 +293,7 @@ function AdminUsersPage() {
   const [tab, setTab] = useState<'users' | 'guests' | 'groups'>('users')
   const [showDialog, setShowDialog] = useState(false)
   const [editUser, setEditUser] = useState<User | null>(null)
+  const { t } = useI18n()
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'users'],
@@ -316,33 +320,33 @@ function AdminUsersPage() {
 
   const lockMutation = useMutation({
     mutationFn: (id: string) => api.post(`/api/v1/admin/users/${id}/lock`),
-    onSuccess: () => { toast.success('User locked'); invalidateUsers() },
-    onError: () => toast.error('Failed to lock user'),
+    onSuccess: () => { toast.success(t('users.locked')); invalidateUsers() },
+    onError: () => toast.error(t('users.lockFailed')),
   })
 
   const unlockMutation = useMutation({
     mutationFn: (id: string) => api.post(`/api/v1/admin/users/${id}/unlock`),
-    onSuccess: () => { toast.success('User unlocked'); invalidateUsers() },
-    onError: () => toast.error('Failed to unlock user'),
+    onSuccess: () => { toast.success(t('users.unlocked')); invalidateUsers() },
+    onError: () => toast.error(t('users.unlockFailed')),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/admin/users/${id}`),
-    onSuccess: () => { toast.success('User deleted'); invalidateUsers() },
-    onError: () => toast.error('Failed to delete user'),
+    onSuccess: () => { toast.success(t('users.deleted')); invalidateUsers() },
+    onError: () => toast.error(t('users.deleteFailed')),
   })
 
   const forceResetMutation = useMutation({
     mutationFn: (id: string) => api.post(`/api/v1/admin/users/${id}/force-password-reset`),
-    onSuccess: () => toast.success('User will be prompted to set a new password on next login'),
-    onError: () => toast.error('Failed to force password reset'),
+    onSuccess: () => toast.success(t('users.passwordResetForced')),
+    onError: () => toast.error(t('users.passwordResetFailed')),
   })
 
   const changeRoleMutation = useMutation({
     mutationFn: ({ id, role }: { id: string; role: 'user' | 'admin' }) =>
       api.patch(`/api/v1/admin/users/${id}`, { role }),
     onSuccess: (_data, { role }) => {
-      toast.success(role === 'admin' ? 'User promoted to admin' : 'User demoted to user')
+      toast.success(role === 'admin' ? t('users.promoted') : t('users.demoted'))
       invalidateUsers()
     },
     onError: (e: Error) => toast.error(e.message),
@@ -367,7 +371,7 @@ function AdminUsersPage() {
         {tab === 'users' && (
           <button onClick={() => setShowDialog(true)}
             className="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors">
-            New user
+            {t('users.newUser')}
           </button>
         )}
       </div>
@@ -376,17 +380,17 @@ function AdminUsersPage() {
       {tab === 'users' && (
         <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
           {isLoading ? (
-            <div className="flex items-center justify-center h-40 text-sm text-muted">Loading…</div>
+            <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.loading')}</div>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117]">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">User</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Role</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Quota</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Last login</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Status</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">2FA</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.colUser')}</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.role')}</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.quota')}</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.lastLogin')}</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.status')}</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.twofa')}</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -402,41 +406,41 @@ function AdminUsersPage() {
                     onUnlock={id => unlockMutation.mutate(id)}
                     onChangeRole={role => changeRoleMutation.mutate({ id: user.id, role })}
                     onRevokeTOTP={async id => {
-                      if (confirm('Remove 2FA from this user? They will be able to log in without a second factor.')) {
+                      if (confirm(t('users.confirmRevokeTOTP'))) {
                         try {
                           await adminRevokeTOTP(id)
-                          toast.success('2FA removed')
+                          toast.success(t('users.totpRevoked'))
                           void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
                         } catch {
-                          toast.error('Failed to remove 2FA')
+                          toast.error(t('users.totpRevokeFailed'))
                         }
                       }
                     }}
                     onRequireTOTP={async id => {
                       try {
                         await adminRequireTOTP(id)
-                        toast.success('2FA setup required for this user')
+                        toast.success(t('users.totpRequired'))
                         void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
                       } catch {
-                        toast.error('Failed to require 2FA')
+                        toast.error(t('users.totpRequireFailed'))
                       }
                     }}
                     onUnrequireTOTP={async id => {
                       try {
                         await adminUnrequireTOTP(id)
-                        toast.success('2FA requirement removed')
+                        toast.success(t('users.totpRequirementRemoved'))
                         void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
                       } catch {
-                        toast.error('Failed to remove 2FA requirement')
+                        toast.error(t('users.totpRequirementRemoveFailed'))
                       }
                     }}
                     onDelete={id => {
-                      if (confirm(`Delete user "${data?.items?.find(u => u.id === id)?.display_name ?? id}"?\n\nThis will permanently remove the user and all their files. This cannot be undone.`)) {
+                      if (confirm(t('users.confirmDelete', { name: data?.items?.find(u => u.id === id)?.display_name ?? id }))) {
                         deleteMutation.mutate(id)
                       }
                     }}
                     onForceReset={id => {
-                      if (confirm('Force this user to set a new password on their next login?')) {
+                      if (confirm(t('users.confirmForceReset'))) {
                         forceResetMutation.mutate(id)
                       }
                     }}
@@ -444,7 +448,7 @@ function AdminUsersPage() {
                 ))}
                 {(data?.items?.length ?? 0) === 0 && (
                   <tr>
-                    <td colSpan={7} className="text-center py-8 text-muted">No users found</td>
+                    <td colSpan={7} className="text-center py-8 text-muted">{t('users.noUsersFound')}</td>
                   </tr>
                 )}
               </tbody>
@@ -510,24 +514,25 @@ function GuestsPanel({
   qc: ReturnType<typeof useQueryClient>
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const { t } = useI18n()
 
   const promote = useMutation({
     mutationFn: (id: string) => api.post(`/api/v1/admin/guests/${id}/promote`, {}),
     onSuccess: () => {
-      toast.success('Guest promoted to user')
+      toast.success(t('users.guestPromoted'))
       void qc.invalidateQueries({ queryKey: ['admin', 'guests'] })
       void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
     },
-    onError: () => toast.error('Failed to promote guest'),
+    onError: () => toast.error(t('users.guestPromoteFailed')),
   })
 
   const deactivate = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/admin/guests/${id}`),
     onSuccess: () => {
-      toast.success('Guest removed')
+      toast.success(t('users.guestRemoved'))
       void qc.invalidateQueries({ queryKey: ['admin', 'guests'] })
     },
-    onError: () => toast.error('Failed to remove guest'),
+    onError: () => toast.error(t('users.guestRemoveFailed')),
   })
 
   const toggle = (id: string) =>
@@ -540,9 +545,9 @@ function GuestsPanel({
   return (
     <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
       {isLoading ? (
-        <div className="flex items-center justify-center h-40 text-sm text-muted">Loading…</div>
+        <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.loading')}</div>
       ) : guests.length === 0 ? (
-        <div className="flex items-center justify-center h-40 text-sm text-muted">No guest users</div>
+        <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.noGuests')}</div>
       ) : (
         <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
           {guests.map(guest => {
@@ -581,43 +586,43 @@ function GuestsPanel({
                     </div>
                     <p className="text-xs text-muted truncate">{guest.email}</p>
                     <p className="text-xs text-zinc-400 mt-0.5">
-                      Invited by {guest.invited_by_name ?? '—'} · {formatDate(guest.created_at)}
+                      {t('users.invitedBy')} {guest.invited_by_name ?? '—'} · {formatDate(guest.created_at)}
                       {guest.last_login_at
-                        ? ` · Last login ${formatDate(guest.last_login_at)}`
-                        : ' · Never logged in'
+                        ? ` · ${t('users.lastLoginAt')} ${formatDate(guest.last_login_at)}`
+                        : ` · ${t('users.neverLoggedIn')}`
                       }
                     </p>
                   </div>
 
                   {/* Shared count badge */}
                   <div className="text-xs text-muted shrink-0">
-                    {guest.shared_items.length} shared item{guest.shared_items.length !== 1 ? 's' : ''}
+                    {guest.shared_items.length} {t('users.sharedItemLabel')}
                   </div>
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => {
-                        if (confirm(`Promote "${guest.display_name || guest.email}" to a regular user? They will get full access to their own file storage.`)) {
+                        if (confirm(t('users.confirmPromoteGuest', { name: guest.display_name || guest.email }))) {
                           promote.mutate(guest.id)
                         }
                       }}
                       disabled={promote.isPending}
                       className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
-                      title="Promote to regular user"
+                      title={t('users.promoteToUser')}
                     >
                       <UserCheck size={13} />
-                      Promote
+                      {t('users.promote')}
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm(`Remove guest "${guest.email}"? They will lose access to all shared items.`)) {
+                        if (confirm(t('users.confirmRemoveGuest', { email: guest.email }))) {
                           deactivate.mutate(guest.id)
                         }
                       }}
                       disabled={deactivate.isPending}
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                      title="Remove guest"
+                      title={t('users.removeGuest')}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -628,7 +633,7 @@ function GuestsPanel({
                 {isExpanded && (
                   <div className="px-12 pb-3 space-y-1">
                     {guest.shared_items.length === 0 ? (
-                      <p className="text-xs text-muted py-1">Nothing shared with this guest yet</p>
+                      <p className="text-xs text-muted py-1">{t('users.nothingShared')}</p>
                     ) : (
                       guest.shared_items.map(item => (
                         <div key={item.resource_id} className="flex items-center gap-2 text-xs text-zinc-600 dark:text-slate-400">
@@ -637,7 +642,7 @@ function GuestsPanel({
                             : <File size={13} className="text-zinc-400 shrink-0" />
                           }
                           <span className="font-medium text-zinc-800 dark:text-slate-200 truncate">{item.name}</span>
-                          <span className="text-zinc-400 shrink-0">shared by {item.owner_email}</span>
+                          <span className="text-zinc-400 shrink-0">{t('users.sharedBy')} {item.owner_email}</span>
                         </div>
                       ))
                     )}
@@ -658,6 +663,7 @@ function GroupsPanel({ groups, qc }: { groups: Group[]; qc: ReturnType<typeof us
   const [editId, setEditId]     = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editColor, setEditColor] = useState('')
+  const { t } = useI18n()
 
   const create = useMutation({
     mutationFn: () => api.post<Group>('/api/v1/admin/groups', { name, color }),
@@ -682,23 +688,23 @@ function GroupsPanel({ groups, qc }: { groups: Group[]; qc: ReturnType<typeof us
         className="px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148] flex gap-3 flex-wrap items-end"
       >
         <div className="flex-1 min-w-[150px] space-y-1">
-          <label className="text-xs text-muted uppercase tracking-wide font-medium">Group name</label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="New group…"
+          <label className="text-xs text-muted uppercase tracking-wide font-medium">{t('users.groupName')}</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder={t('users.newGroupPlaceholder')}
             className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500" />
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-muted uppercase tracking-wide font-medium">Color</label>
+          <label className="text-xs text-muted uppercase tracking-wide font-medium">{t('users.color')}</label>
           <ColorPicker value={color} onChange={setColor} />
         </div>
         <button type="submit" disabled={!name.trim() || create.isPending}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors shrink-0">
           <Plus size={14} />
-          Create
+          {t('users.create')}
         </button>
       </form>
 
       {groups.length === 0 ? (
-        <div className="p-8 text-center text-sm text-muted">No groups yet</div>
+        <div className="p-8 text-center text-sm text-muted">{t('users.noGroups')}</div>
       ) : (
         <ul className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
           {groups.map(g => (
@@ -715,11 +721,11 @@ function GroupsPanel({ groups, qc }: { groups: Group[]; qc: ReturnType<typeof us
                   <ColorPicker value={editColor} onChange={setEditColor} />
                   <button type="submit" disabled={!editName.trim() || update.isPending}
                     className="px-3 py-1 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium">
-                    Save
+                    {t('users.save')}
                   </button>
                   <button type="button" onClick={() => setEditId(null)}
                     className="px-3 py-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted hover:bg-zinc-50 dark:hover:bg-[#2d3148]">
-                    Cancel
+                    {t('users.cancel')}
                   </button>
                 </form>
               ) : (
@@ -733,7 +739,7 @@ function GroupsPanel({ groups, qc }: { groups: Group[]; qc: ReturnType<typeof us
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors" title="Edit">
                       <Pencil size={14} />
                     </button>
-                    <button onClick={() => { if (confirm(`Delete group "${g.name}"?`)) remove.mutate(g.id) }}
+                    <button onClick={() => { if (confirm(t('users.confirmDeleteGroup', { name: g.name }))) remove.mutate(g.id) }}
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete">
                       <Trash2 size={14} />
                     </button>
@@ -778,6 +784,7 @@ function UserRow({
   const percent = user.quota_bytes > 0
     ? Math.min(100, (user.quota_used_bytes / user.quota_bytes) * 100)
     : 0
+  const { t } = useI18n()
 
   return (
     <tr className="hover:bg-zinc-50 dark:hover:bg-[#0f1117] transition-colors">
@@ -820,28 +827,28 @@ function UserRow({
           user.is_active ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
         }`}>
           <span className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
-          {user.is_active ? 'Active' : 'Locked'}
+          {user.is_active ? t('users.active') : t('users.lockedStatus')}
         </span>
       </td>
       <td className="px-4 py-3">
         {user.totp_enabled ? (
           <button
             onClick={() => onRevokeTOTP(user.id)}
-            title="2FA active — click to revoke"
+            title={t('users.totpActiveRevoke')}
             className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
           >
             <ShieldCheck size={13} />
-            Enabled
+            {t('users.enabled')}
           </button>
         ) : user.force_totp_setup ? (
           <div className="inline-flex items-center gap-1.5">
             <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
               <ShieldCheck size={13} />
-              Required
+              {t('users.required')}
             </span>
             <button
               onClick={() => onUnrequireTOTP(user.id)}
-              title="Cancel 2FA requirement"
+              title={t('users.cancelTotpReq')}
               className="text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors leading-none"
             >
               ✕
@@ -851,14 +858,14 @@ function UserRow({
           <div className="inline-flex items-center gap-1.5">
             <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
               <ShieldOff size={13} />
-              Off
+              {t('users.off')}
             </span>
             <button
               onClick={() => onRequireTOTP(user.id)}
-              title="Force 2FA setup for this user"
+              title={t('users.forceTotpSetup')}
               className="text-xs text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors underline underline-offset-2"
             >
-              Force
+              {t('users.force')}
             </button>
           </div>
         )}
@@ -868,30 +875,30 @@ function UserRow({
           <button
             onClick={() => onEdit(user)}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-            title="Edit quota &amp; settings"
+            title={t('users.editQuota')}
           >
             <Pencil size={14} />
           </button>
           {user.role === 'admin' ? (
             <button
               onClick={() => {
-                if (confirm(`Demote "${user.display_name}" from admin to user?`))
+                if (confirm(t('users.confirmDemote', { name: user.display_name })))
                   onChangeRole('user')
               }}
               disabled={isLastAdmin || isSelf}
               className="p-1.5 rounded-lg text-purple-500 hover:text-zinc-500 dark:hover:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title={isLastAdmin ? 'Cannot demote the last admin' : isSelf ? 'Cannot demote yourself' : 'Demote to user'}
+              title={isLastAdmin ? t('users.cannotDemoteLastAdmin') : isSelf ? t('users.cannotDemoteSelf') : t('users.demoteToUser')}
             >
               <ShieldCheck size={14} />
             </button>
           ) : (
             <button
               onClick={() => {
-                if (confirm(`Promote "${user.display_name}" to admin?`))
+                if (confirm(t('users.confirmPromote', { name: user.display_name })))
                   onChangeRole('admin')
               }}
               className="p-1.5 rounded-lg text-zinc-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
-              title="Promote to admin"
+              title={t('users.promoteToAdmin')}
             >
               <ShieldOff size={14} />
             </button>
@@ -901,7 +908,7 @@ function UserRow({
               onClick={() => onLock(user.id)}
               disabled={isSelf}
               className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title={isSelf ? 'Cannot lock your own account' : 'Lock account'}
+              title={isSelf ? t('users.cannotLockSelf') : t('users.lockAccount')}
             >
               <LockOpen size={14} />
             </button>
@@ -909,7 +916,7 @@ function UserRow({
             <button
               onClick={() => onUnlock(user.id)}
               className="p-1.5 rounded-lg text-zinc-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
-              title="Unlock account"
+              title={t('users.unlockAccount')}
             >
               <Lock size={14} />
             </button>
@@ -965,6 +972,7 @@ function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () =>
   const [quotaInput, setQuotaInput]     = useState(() => formatQuotaForInput(user.quota_bytes))
   const [uploadInput, setUploadInput]   = useState(() => user.max_upload_bytes != null ? formatQuotaForInput(user.max_upload_bytes) : '')
   const [trashDays, setTrashDays]       = useState<string>(user.trash_retention_days != null ? String(user.trash_retention_days) : '')
+  const { t } = useI18n()
 
   const { data: stats } = useQuery({
     queryKey: ['admin', 'stats'],
@@ -991,24 +999,24 @@ function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () =>
       trash_retention_days: trashDays !== '' ? parseInt(trashDays, 10) : null,
     }),
     onSuccess: () => { onSaved(); onClose() },
-    onError: () => toast.error('Failed to save'),
+    onError: () => toast.error(t('users.saveFailed')),
   })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">Edit {user.display_name}</h2>
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('users.editUser', { name: user.display_name })}</h2>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600"><X size={16} /></button>
         </div>
 
         <div className="space-y-4">
-          <Field label="Quota">
+          <Field label={t('users.quota')}>
             <input
               type="text"
               value={quotaInput}
               onChange={e => setQuotaInput(e.target.value)}
-              placeholder="e.g. 100 GB, 2 TB, 500 MB"
+              placeholder={t('users.quotaPlaceholder')}
               className={`w-full px-3 py-2 rounded-lg border text-sm text-zinc-900 dark:text-slate-100 bg-white dark:bg-[#0f1117] ${
                 !isValid
                   ? 'border-red-400 dark:border-red-500'
@@ -1022,25 +1030,25 @@ function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () =>
                 <p className="text-xs text-muted">{formatBytes(parsedBytes!)} ({parsedBytes!.toLocaleString()} bytes)</p>
               )}
               {!isValid && quotaInput.trim() !== '' && (
-                <p className="text-xs text-red-500">Invalid format — use e.g. "100 GB" or "2 TB"</p>
+                <p className="text-xs text-red-500">{t('users.quotaInvalidFormat')}</p>
               )}
               {overLimit && maxQuotaBytes !== null && (
                 <p className="text-xs text-amber-500">
-                  Exceeds available headroom — max allowed: {formatBytes(maxQuotaBytes)} (75% of {formatBytes(stats!.disk_free_bytes)} free)
+                  {t('users.quotaExceedsHeadroom', { max: formatBytes(maxQuotaBytes), free: formatBytes(stats!.disk_free_bytes) })}
                 </p>
               )}
               {!overLimit && maxQuotaBytes !== null && (
-                <p className="text-xs text-muted">Max: {formatBytes(maxQuotaBytes)} (75% of free disk)</p>
+                <p className="text-xs text-muted">{t('users.quotaMax', { max: formatBytes(maxQuotaBytes) })}</p>
               )}
             </div>
           </Field>
 
-          <Field label="Max file upload size">
+          <Field label={t('users.maxUploadSize')}>
             <input
               type="text"
               value={uploadInput}
               onChange={e => setUploadInput(e.target.value)}
-              placeholder="e.g. 256 MB, 1 GB (empty = system default)"
+              placeholder={t('users.maxUploadPlaceholder')}
               className={`w-full px-3 py-2 rounded-lg border text-sm text-zinc-900 dark:text-slate-100 bg-white dark:bg-[#0f1117] ${
                 !uploadIsValid
                   ? 'border-red-400 dark:border-red-500'
@@ -1052,36 +1060,36 @@ function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () =>
                 <p className="text-xs text-muted">{formatQuotaForInput(parsedUpload)} ({parsedUpload.toLocaleString()} bytes)</p>
               )}
               {!uploadIsValid && uploadInput.trim() !== '' && (
-                <p className="text-xs text-red-500">Invalid format — use e.g. "256 MB" or "1 GB"</p>
+                <p className="text-xs text-red-500">{t('users.quotaInvalidFormat')}</p>
               )}
               {uploadIsValid && uploadInput.trim() === '' && (
-                <p className="text-xs text-muted">Will use system default max upload size</p>
+                <p className="text-xs text-muted">{t('users.usesSystemDefault')}</p>
               )}
             </div>
           </Field>
 
-          <Field label="Trash retention (days)">
+          <Field label={t('users.trashRetention')}>
             <input
               type="number"
               min={1}
               max={365}
-              placeholder="30 (default)"
+              placeholder="30"
               value={trashDays}
               onChange={e => setTrashDays(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-[#2d3148] bg-white dark:bg-[#0f1117] text-sm text-zinc-900 dark:text-slate-100"
             />
-            <p className="text-xs text-muted mt-1">Leave empty to use system default (30 days)</p>
+            <p className="text-xs text-muted mt-1">{t('users.trashRetentionDesc')}</p>
           </Field>
         </div>
 
         <div className="flex justify-end gap-2 mt-6">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148]">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148]">{t('users.cancel')}</button>
           <button
             onClick={() => save.mutate()}
             disabled={save.isPending || !isValid || overLimit || !uploadIsValid}
             className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
           >
-            {save.isPending ? 'Saving…' : 'Save'}
+            {save.isPending ? t('settings.saving') : t('users.save')}
           </button>
         </div>
       </div>

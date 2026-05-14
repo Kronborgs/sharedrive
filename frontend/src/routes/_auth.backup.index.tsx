@@ -41,6 +41,7 @@ import {
   Network,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useI18n } from '@/lib/i18n'
 
 export const Route = createFileRoute('/_auth/backup/')({
   component: BackupPage,
@@ -63,6 +64,7 @@ function FileTreeNode({
   ancestorIDs: Set<string>
   allChecked: boolean
 }) {
+  const { t } = useI18n()
   const isAncestor = ancestorIDs.has(item.id)
   const isChecked = allChecked || selectedIDs.includes(item.id)
   const isIndeterminate = !isChecked && isAncestor
@@ -138,7 +140,7 @@ function FileTreeNode({
       </div>
       {expanded && item.is_folder && (
         loadingChildren
-          ? <p className="text-xs text-zinc-400 py-0.5" style={{ paddingLeft: `${(depth + 1) * 14 + 20}px` }}>Loading…</p>
+          ? <p className="text-xs text-zinc-400 py-0.5" style={{ paddingLeft: `${(depth + 1) * 14 + 20}px` }}>{t('backup.pickerLoading')}</p>
           : (children ?? []).map(c => (
               <FileTreeNode key={c.id} item={c} depth={depth + 1} selectedIDs={selectedIDs} onToggle={onToggle} ancestorIDs={ancestorIDs} allChecked={allChecked} />
             ))
@@ -156,6 +158,7 @@ function FolderPicker({
   selectedIDs: string[]
   onChange: (ids: string[]) => void
 }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   // manualMode=true means the user has explicitly unchecked "All files"
   // and is choosing specific items. Without this flag, selectedIDs=[] is
@@ -227,7 +230,7 @@ function FolderPicker({
         className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 transition-colors"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        {allChecked ? 'All files' : manualMode && selectedIDs.length === 0 ? 'Nothing selected' : `${selectedIDs.length} item(s) selected`}
+        {allChecked ? t('backup.allFiles') : manualMode && selectedIDs.length === 0 ? t('backup.nothingSelected') : t('backup.nItemsSelected', { count: selectedIDs.length })}
       </button>
 
       {open && (
@@ -253,11 +256,11 @@ function FolderPicker({
               className="sr-only"
             />
             <span className={`text-xs font-semibold ${allChecked ? 'text-brand-700 dark:text-brand-300' : 'text-zinc-700 dark:text-slate-300'}`}>
-              All files
+              {t('backup.allFiles')}
             </span>
           </label>
           {pickerLoading && (
-            <p className="text-xs text-zinc-400 pt-1">Loading…</p>
+            <p className="text-xs text-zinc-400 pt-1">{t('backup.pickerLoading')}</p>
           )}
           {!pickerLoading && items.length > 0 && (
             <div className="border-t border-zinc-200 dark:border-[#2d3148] pt-1.5">
@@ -275,7 +278,7 @@ function FolderPicker({
             </div>
           )}
           {!pickerLoading && items.length === 0 && (
-            <p className="text-xs text-zinc-400 pt-1">No files yet</p>
+            <p className="text-xs text-zinc-400 pt-1">{t('backup.noFilesYet')}</p>
           )}
         </div>
       )}
@@ -287,6 +290,7 @@ function FolderPicker({
 
 function BackupPage() {
   const qc = useQueryClient()
+  const { t } = useI18n()
 
   // password token state
   const [newToken, setNewToken] = useState<string | null>(null)
@@ -414,7 +418,7 @@ function BackupPage() {
       sessionStorage.setItem('sharedrive_backup_token', data.token)
       void qc.invalidateQueries({ queryKey: ['backup', 'password'] })
     },
-    onError: () => toast.error('Failed to generate backup password'),
+    onError: () => toast.error(t('backup.tokenPasswordFailed')),
   })
 
   const revokeMutation = useMutation({
@@ -422,28 +426,28 @@ function BackupPage() {
     onSuccess: () => {
       setNewToken(null)
       void qc.invalidateQueries({ queryKey: ['backup', 'password'] })
-      toast.success('Backup password revoked')
+      toast.success(t('backup.tokenRevoked'))
     },
-    onError: () => toast.error('Failed to revoke backup password'),
+    onError: () => toast.error(t('backup.tokenRevokeFailed')),
   })
 
   const deleteTertiaryMutation = useMutation({
     mutationFn: (filename: string) => api.delete(`/api/v1/backup/tertiary/${encodeURIComponent(filename)}`),
-    onSuccess: () => { void refetchTertiary(); toast.success('Archive deleted') },
-    onError: () => toast.error('Delete failed'),
+    onSuccess: () => { void refetchTertiary(); toast.success(t('backup.archiveDeleted')) },
+    onError: () => toast.error(t('backup.archiveDeleteFailed')),
   })
 
   const deleteBuddyMutation = useMutation({
     mutationFn: (filename: string) => api.delete(`/api/v1/backup/buddy/received/${encodeURIComponent(filename)}`),
-    onSuccess: () => { void refetchBuddyReceived(); toast.success('Archive deleted') },
-    onError: () => toast.error('Delete failed'),
+    onSuccess: () => { void refetchBuddyReceived(); toast.success(t('backup.archiveDeleted')) },
+    onError: () => toast.error(t('backup.archiveDeleteFailed')),
   })
 
   const saveAutoConfigMutation = useMutation({
     mutationFn: (body: { enabled: boolean; interval_hours: number; retention_days: number; folder_ids: string[] }) =>
       api.put('/api/v1/backup/auto', body),
-    onSuccess: () => { void refetchAutoConfig(); toast.success('Auto backup settings saved') },
-    onError: () => toast.error('Failed to save auto backup settings'),
+    onSuccess: () => { void refetchAutoConfig(); toast.success(t('backup.autoSaved')) },
+    onError: () => toast.error(t('backup.autoSaveFailed')),
   })
 
   const generateReceiveTokenMutation = useMutation({
@@ -453,7 +457,7 @@ function BackupPage() {
       setReceiveTokenCopied(false)
       void refetchBuddyConfig()
     },
-    onError: () => toast.error('Failed to generate receive token'),
+    onError: () => toast.error(t('backup.receiveTokenGenFailed')),
   })
 
   const revokeReceiveTokenMutation = useMutation({
@@ -461,9 +465,9 @@ function BackupPage() {
     onSuccess: () => {
       setNewReceiveToken(null)
       void refetchBuddyConfig()
-      toast.success('Receive token revoked')
+      toast.success(t('backup.receiveTokenRevoked'))
     },
-    onError: () => toast.error('Failed to revoke receive token'),
+    onError: () => toast.error(t('backup.receiveTokenRevokeFailed')),
   })
 
   const savePeerConfigMutation = useMutation({
@@ -475,7 +479,7 @@ function BackupPage() {
     onSuccess: () => {
       void refetchBuddyConfig()
       setPeerURLInput(''); setPeerUserIDInput(''); setPeerTokenInput('')
-      toast.success('Peer configuration saved')
+      toast.success(t('backup.peerSaved'))
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : 'Failed to save peer configuration'
@@ -488,27 +492,27 @@ function BackupPage() {
     onSuccess: () => {
       void refetchBuddyConfig()
       setBuddyToken('')
-      toast.success('Peer configuration cleared')
+      toast.success(t('backup.peerCleared'))
     },
-    onError: () => toast.error('Failed to clear peer configuration'),
+    onError: () => toast.error(t('backup.peerClearFailed')),
   })
 
   const tunnelConnectMutation = useMutation({
     mutationFn: () => api.post('/api/v1/backup/buddy/tunnel/connect', {}),
-    onSuccess: () => { void refetchTunnelStatus(); toast.success('Reverse tunnel forbundet') },
-    onError: (e: unknown) => toast.error((e as Error).message ?? 'Tunnel forbindelse fejlede'),
+    onSuccess: () => { void refetchTunnelStatus(); toast.success(t('backup.tunnelConnected')) },
+    onError: (e: unknown) => toast.error((e as Error).message ?? t('backup.tunnelConnectFailed')),
   })
 
   const tunnelDisconnectMutation = useMutation({
     mutationFn: () => api.delete('/api/v1/backup/buddy/tunnel/connect'),
-    onSuccess: () => { void refetchTunnelStatus(); toast.success('Reverse tunnel afbrudt') },
-    onError: () => toast.error('Afbrydelse fejlede'),
+    onSuccess: () => { void refetchTunnelStatus(); toast.success(t('backup.tunnelDisconnected')) },
+    onError: () => toast.error(t('backup.tunnelDisconnectFailed')),
   })
 
   const deletePushedMutation = useMutation({
     mutationFn: (filename: string) => api.delete(`/api/v1/backup/buddy/pushed/${encodeURIComponent(filename)}`),
-    onSuccess: () => { void refetchPushedArchives(); toast.success('Arkiv slettet hos peer') },
-    onError: () => toast.error('Kunne ikke slette arkiv hos peer'),
+    onSuccess: () => { void refetchPushedArchives(); toast.success(t('backup.peerArchiveDeleted')) },
+    onError: () => toast.error(t('backup.peerArchiveDeleteFailed')),
   })
 
   // ── handlers ──────────────────────────────────────────────────────────────
@@ -521,7 +525,7 @@ function BackupPage() {
   }
 
   const handleExport = async () => {
-    if (!exportToken.trim()) { toast.error('Enter your backup token first'); return }
+    if (!exportToken.trim()) { toast.error(t('backup.enterTokenFirst')); return }
     try {
       const response = await fetch('/api/v1/backup/export', {
         method: 'POST',
@@ -547,13 +551,13 @@ function BackupPage() {
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
-      toast.success('Backup downloaded')
-    } catch { toast.error('Export failed') }
+      toast.success(t('backup.downloaded'))
+    } catch { toast.error(t('backup.exportFailed')) }
   }
 
   const handleRestore = async () => {
-    if (!restoreToken.trim()) { toast.error('Enter your backup token'); return }
-    if (!restoreFile) { toast.error('Select a .shdbak file'); return }
+    if (!restoreToken.trim()) { toast.error(t('backup.enterToken')); return }
+    if (!restoreFile) { toast.error(t('backup.selectFile')); return }
     const form = new FormData()
     form.append('token', restoreToken.trim())
     form.append('file', restoreFile)
@@ -562,7 +566,7 @@ function BackupPage() {
         method: 'POST', credentials: 'include', body: form,
       })
       const data = await response.json() as RestoreResult | { error: string }
-      if (!response.ok) { toast.error((data as { error: string }).error ?? 'Restore failed'); return }
+      if (!response.ok) { toast.error((data as { error: string }).error ?? t('backup.restoreFailed')); return }
       const r = data as RestoreResult
       toast.success(
         `Restored ${r.files_restored} file(s) and ${r.folders_restored} folder(s) ` +
@@ -573,7 +577,7 @@ function BackupPage() {
       void qc.invalidateQueries({ queryKey: ['me'] })
       setRestoreFile(null); setRestoreToken('')
       if (fileInputRef.current) fileInputRef.current.value = ''
-    } catch { toast.error('Restore failed') }
+    } catch { toast.error(t('backup.restoreFailed')) }
   }
 
   const handleStoreTertiary = async () => {
@@ -584,10 +588,10 @@ function BackupPage() {
         token: tertiaryToken.trim(),
         ...(tertiaryFolderIDs.length > 0 && { folder_ids: tertiaryFolderIDs }),
       })
-      toast.success('Archive saved to server storage')
+      toast.success(t('backup.archiveSaved'))
       void refetchTertiary()
     } catch (e: unknown) {
-      toast.error((e as Error).message ?? 'Failed to save archive')
+      toast.error((e as Error).message ?? t('backup.archiveSaveFailed'))
     } finally {
       setTertiarySaving(false)
     }
@@ -601,15 +605,15 @@ function BackupPage() {
   }
 
   const handleBuddyPush = async () => {
-    if (!buddyToken.trim()) { toast.error('Indtast din backup-nøgle'); return }
-    if (!status?.has_password) { toast.error('Generer en backup-nøgle først'); return }
+    if (!buddyToken.trim()) { toast.error(t('backup.enterTokenFirst')); return }
+    if (!status?.has_password) { toast.error(t('backup.generateTokenFirst')); return }
     setBuddyPushing(true)
     try {
       await api.post('/api/v1/backup/buddy/push', {
         token: buddyToken.trim(),
         ...(( buddyConfig?.auto_push_folder_ids?.length ?? 0) > 0 && { folder_ids: buddyConfig!.auto_push_folder_ids }),
       })
-      toast.success('Push startet — kører i baggrunden')
+      toast.success(t('backup.pushStarted'))
       // Refetch immediately so polling picks up push_in_progress = true.
       void refetchBuddyConfig()
       // Also do a short-delay refetch to catch fast failures (e.g. peer 503).
@@ -617,7 +621,7 @@ function BackupPage() {
       setTimeout(() => {
         refetchBuddyConfig().then(result => {
           if (!result.data?.push_in_progress && result.data?.last_push_error) {
-            toast.error('Push fejlede: ' + result.data.last_push_error)
+            toast.error(t('backup.pushFailed') + ': ' + result.data.last_push_error)
           } else if (!result.data?.push_in_progress) {
             // Push succeeded — refresh the list of archives stored at peer
             void refetchPushedArchives()
@@ -630,9 +634,9 @@ function BackupPage() {
       if ((e as { status?: number }).status === 403) {
         setBuddyToken('')
         sessionStorage.removeItem('sharedrive_backup_token')
-        toast.error('Forkert backup-nøgle — indtast din nøgle fra "Backup Token" fanen igen')
+        toast.error(t('backup.wrongToken'))
       } else {
-        toast.error((e as Error).message ?? 'Buddy push failed')
+        toast.error((e as Error).message ?? t('backup.pushFailed'))
       }
     } finally {
       setBuddyPushing(false)
@@ -648,11 +652,10 @@ function BackupPage() {
       <div>
         <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100 flex items-center gap-2">
           <Archive size={20} />
-          Backup
+          {t('backup.title')}
         </h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-slate-400">
-          Export an encrypted archive of all your files. Your backup token is the only key —
-          store it somewhere safe. Without it the archive cannot be decrypted.
+          {t('backup.description')}
         </p>
       </div>
 
@@ -669,7 +672,7 @@ function BackupPage() {
                 : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 cursor-pointer'
           }`}
         >
-          <HardDrive size={14} /> Server Storage
+          <HardDrive size={14} /> {t('backup.tabStorage')}
         </button>
         <button
           type="button"
@@ -682,7 +685,7 @@ function BackupPage() {
                 : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 cursor-pointer'
           }`}
         >
-          <Server size={14} /> Buddy Backup
+          <Server size={14} /> {t('backup.tabBuddy')}
         </button>
         <button
           type="button"
@@ -693,7 +696,7 @@ function BackupPage() {
               : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 cursor-pointer'
           }`}
         >
-          <ShieldCheck size={14} /> Backup Token
+          <ShieldCheck size={14} /> {t('backup.tabToken')}
         </button>
       </div>
 
@@ -702,9 +705,9 @@ function BackupPage() {
         !hasToken ? (
           <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10 px-6 py-8 text-center space-y-3">
             <ShieldCheck size={32} className="mx-auto text-amber-500" />
-            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Backup token required</p>
+            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{t('backup.tokenRequired')}</p>
             <p className="text-xs text-amber-600 dark:text-amber-500">
-              Go to the <button type="button" onClick={() => setActiveTab('token')} className="underline font-medium">Backup Token</button> tab to generate your encryption token before using server storage backup.
+              {t('backup.tokenRequiredDesc')}
             </p>
           </div>
         ) : (
@@ -713,27 +716,27 @@ function BackupPage() {
             <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <HardDrive size={16} className="text-brand-500" />
-                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Server storage backup</h2>
+                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.storageTitle')}</h2>
               </div>
               <p className="text-sm text-zinc-500 dark:text-slate-400">
-                Writes an encrypted archive directly to a mounted disk or storage box on the server.
+                {t('backup.storageDesc')}
               </p>
               <p className="text-xs text-zinc-400 dark:text-slate-500">
-                Uses the backup token from the <button type="button" onClick={() => setActiveTab('token')} className="underline hover:text-zinc-600 dark:hover:text-slate-300">Backup Token</button> tab to encrypt archives.
+                {t('backup.tabToken')}
               </p>
 
               {config?.tertiary_enabled && config.disk_total_bytes != null && config.disk_total_bytes > 0 && (
                 <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-slate-400">
                   <HardDrive size={12} />
                   <span>
-                    {formatBytes(config.disk_free_bytes ?? 0)} free of {formatBytes(config.disk_total_bytes)}
+                    {t('backup.diskFree', { free: formatBytes(config.disk_free_bytes ?? 0), total: formatBytes(config.disk_total_bytes) })}
                   </span>
                 </div>
               )}
 
               {!config?.tertiary_enabled ? (
                 <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-4 py-3 text-xs text-zinc-500 dark:text-slate-400 space-y-1">
-                  <p className="font-medium text-zinc-700 dark:text-slate-300">Not configured</p>
+                  <p className="font-medium text-zinc-700 dark:text-slate-300">{t('backup.notConfigured')}</p>
                   <p>Set <code className="bg-zinc-100 dark:bg-[#1a1d27] px-1 rounded">BACKUPS_ROOT=/mnt/backup</code> in your environment to enable this feature.</p>
                 </div>
               ) : (
@@ -768,7 +771,7 @@ function BackupPage() {
 
                   {tertiaryList && tertiaryList.length > 0 && (
                     <div className="space-y-1 pt-1">
-                      <p className="text-xs font-medium text-zinc-500 dark:text-slate-400">Stored archives</p>
+                      <p className="text-xs font-medium text-zinc-500 dark:text-slate-400">{t('backup.storedArchives')}</p>
                       {tertiaryList.map(a => (
                         <div
                           key={a.filename}
@@ -796,7 +799,7 @@ function BackupPage() {
                     </div>
                   )}
                   {tertiaryList?.length === 0 && (
-                    <p className="text-xs text-zinc-400">No archives stored yet.</p>
+                    <p className="text-xs text-zinc-400">{t('backup.noArchives')}</p>
                   )}
                 </>
               )}
@@ -807,7 +810,7 @@ function BackupPage() {
               <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
                 <div className="flex items-center gap-2">
                   <Clock size={16} className="text-brand-500" />
-                  <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Automatic backup</h2>
+                  <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.autoTitle')}</h2>
                 </div>
                 <p className="text-sm text-zinc-500 dark:text-slate-400">
                   Schedule automatic backups to server storage. Uses the same folders selected above.
@@ -816,7 +819,7 @@ function BackupPage() {
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-zinc-700 dark:text-slate-300">Enable auto backup</span>
+                    <span className="text-sm text-zinc-700 dark:text-slate-300">{t('backup.enableAuto')}</span>
                     <button
                       type="button"
                       onClick={() => saveAutoConfigMutation.mutate({
@@ -835,7 +838,7 @@ function BackupPage() {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">Interval</label>
+                    <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">{t('backup.interval')}</label>
                     <select
                       value={autoConfig?.interval_hours ?? 24}
                       onChange={e => saveAutoConfigMutation.mutate({
@@ -846,16 +849,16 @@ function BackupPage() {
                       })}
                       className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] px-3 py-1.5 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 [&>option]:bg-white [&>option]:dark:bg-[#1a1d27] [&>option]:text-zinc-900 [&>option]:dark:text-slate-100"
                     >
-                      <option value={6}>Every 6 hours</option>
-                      <option value={12}>Every 12 hours</option>
-                      <option value={24}>Every 24 hours</option>
-                      <option value={48}>Every 48 hours</option>
-                      <option value={168}>Weekly</option>
+                      <option value={6}>{t('backup.every6h')}</option>
+                      <option value={12}>{t('backup.every12h')}</option>
+                      <option value={24}>{t('backup.every24h')}</option>
+                      <option value={48}>{t('backup.every48h')}</option>
+                      <option value={168}>{t('backup.weekly')}</option>
                     </select>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">Keep backups</label>
+                    <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">{t('backup.keepBackups')}</label>
                     <select
                       value={autoConfig?.retention_days ?? 30}
                       onChange={e => saveAutoConfigMutation.mutate({
@@ -866,19 +869,19 @@ function BackupPage() {
                       })}
                       className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] px-3 py-1.5 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 [&>option]:bg-white [&>option]:dark:bg-[#1a1d27] [&>option]:text-zinc-900 [&>option]:dark:text-slate-100"
                     >
-                      <option value={7}>7 days</option>
-                      <option value={14}>14 days</option>
-                      <option value={30}>30 days</option>
-                      <option value={60}>60 days</option>
-                      <option value={90}>90 days</option>
-                      <option value={180}>180 days</option>
-                      <option value={365}>1 year</option>
+                      <option value={7}>{t('backup.7days')}</option>
+                      <option value={14}>{t('backup.14days')}</option>
+                      <option value={30}>{t('backup.30days')}</option>
+                      <option value={60}>{t('backup.60days')}</option>
+                      <option value={90}>{t('backup.90days')}</option>
+                      <option value={180}>{t('backup.180days')}</option>
+                      <option value={365}>{t('backup.1year')}</option>
                     </select>
                   </div>
 
                   {autoConfig?.last_run_at && (
                     <p className="text-xs text-zinc-400">
-                      Last auto-backup: {new Date(autoConfig.last_run_at).toLocaleString()}
+                      {t('backup.lastAutoAt', { when: new Date(autoConfig.last_run_at).toLocaleString() })}
                     </p>
                   )}
 
@@ -887,9 +890,9 @@ function BackupPage() {
                     <div className="flex items-start gap-3 rounded-lg border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/10 px-4 py-3 text-sm">
                       <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-500" />
                       <div>
-                        <p className="font-medium text-red-700 dark:text-red-400">Server backup fejler</p>
+                        <p className="font-medium text-red-700 dark:text-red-400">{t('backup.autoFailing')}</p>
                         <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">
-                          Fejlet siden {new Date(autoConfig.auto_failed_since).toLocaleString()}. Scheduler prøver automatisk igen.
+                          {t('backup.failingSince', { when: new Date(autoConfig.auto_failed_since).toLocaleString() })}
                         </p>
                       </div>
                     </div>
@@ -903,7 +906,7 @@ function BackupPage() {
               <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-3">
                 <div className="flex items-center gap-2">
                   <Bell size={16} className="text-brand-500" />
-                  <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Email-notifikationer</h2>
+                  <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.notificationsTitle')}</h2>
                 </div>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
@@ -912,13 +915,13 @@ function BackupPage() {
                     onChange={e => {
                       api.put('/api/v1/backup/notify', { enabled: e.target.checked })
                         .then(() => { void refetchAutoConfig(); void refetchBuddyConfig() })
-                        .catch(() => toast.error('Kunne ikke gemme'))
+                        .catch(() => toast.error(t('backup.savingFailed')))
                     }}
                     className="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
                   />
                   <div>
-                    <p className="text-sm text-zinc-700 dark:text-slate-300">Email-notifikation ved fejl</p>
-                    <p className="text-xs text-zinc-400 dark:text-slate-500">Modtag en email hvis en automatisk backup fejler i mere end 24 timer (gælder server backup og buddy backup)</p>
+                    <p className="text-sm text-zinc-700 dark:text-slate-300">{t('backup.notifyOnFailure')}</p>
+                    <p className="text-xs text-zinc-400 dark:text-slate-500">{t('backup.notifyOnFailureDesc')}</p>
                   </div>
                 </label>
               </section>
@@ -928,7 +931,7 @@ function BackupPage() {
             <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <Download size={16} className="text-brand-500" />
-                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Export backup</h2>
+                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.exportTitle')}</h2>
               </div>
               <p className="text-sm text-zinc-500 dark:text-slate-400">
                 Downloads an AES-256 encrypted archive (<code className="text-xs">.shdbak</code>) to your device.
@@ -938,7 +941,7 @@ function BackupPage() {
                   type="password"
                   value={exportToken}
                   onChange={e => { setExportToken(e.target.value); saveToken(e.target.value) }}
-                  placeholder="Backup token"
+                  placeholder={t('backup.tokenPlaceholder')}
                   className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
                 <button
@@ -946,7 +949,7 @@ function BackupPage() {
                   disabled={!exportToken.trim()}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
                 >
-                  <Download size={14} /> Download
+                  <Download size={14} /> {t('backup.download')}
                 </button>
               </div>
               <FolderPicker selectedIDs={exportFolderIDs} onChange={setExportFolderIDs} />
@@ -956,7 +959,7 @@ function BackupPage() {
             <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <Upload size={16} className="text-brand-500" />
-                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Restore from backup</h2>
+                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.restoreTitle')}</h2>
               </div>
               <p className="text-sm text-zinc-500 dark:text-slate-400">
                 Upload a <code className="text-xs">.shdbak</code> file to restore files. Existing files
@@ -967,14 +970,14 @@ function BackupPage() {
                   type="password"
                   value={restoreToken}
                   onChange={e => setRestoreToken(e.target.value)}
-                  placeholder="Backup token"
+                  placeholder={t('backup.tokenPlaceholder')}
                   className="w-full text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
                 <div className="flex gap-2 items-center">
                   <label className="flex-1 flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border border-dashed border-zinc-300 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors">
                     <Upload size={14} className="text-zinc-400" />
                     <span className="text-sm text-zinc-500 dark:text-slate-400 truncate">
-                      {restoreFile ? restoreFile.name : 'Choose .shdbak file…'}
+                      {restoreFile ? restoreFile.name : t('backup.chooseFile')}
                     </span>
                     <input
                       ref={fileInputRef}
@@ -989,7 +992,7 @@ function BackupPage() {
                     disabled={!restoreToken.trim() || !restoreFile}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
                   >
-                    Restore
+                    {t('backup.restore')}
                   </button>
                 </div>
               </div>
@@ -1003,9 +1006,9 @@ function BackupPage() {
         !hasToken ? (
           <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10 px-6 py-8 text-center space-y-3">
             <ShieldCheck size={32} className="mx-auto text-amber-500" />
-            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Backup token required</p>
+            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{t('backup.tokenRequired')}</p>
             <p className="text-xs text-amber-600 dark:text-amber-500">
-              Go to the <button type="button" onClick={() => setActiveTab('token')} className="underline font-medium">Backup Token</button> tab to generate your encryption token before using buddy backup.
+              {t('backup.tokenRequiredDesc')}
             </p>
           </div>
         ) : (
@@ -1015,12 +1018,9 @@ function BackupPage() {
               <div className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 px-4 py-3 flex items-start gap-3">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-500" />
                 <div className="space-y-0.5 flex-1">
-                  <p className="text-sm font-medium text-red-700 dark:text-red-400">Buddy push fejler</p>
+                  <p className="text-sm font-medium text-red-700 dark:text-red-400">{t('backup.buddyPushFailing')}</p>
                   <p className="text-xs text-red-600 dark:text-red-400">
-                    Din buddy-push har ikke virket siden {new Date(buddyConfig.push_failed_since).toLocaleString()}.
-                    Kontroller at peer serveren ({buddyConfig.peer_url || 'ukendt'}) er online.
-                    Backup vil automatisk forsøge igen ved næste kørsel.
-                    {buddyConfig.last_push_error && <> Seneste fejl: <span className="font-mono">{buddyConfig.last_push_error}</span></>}
+                    {t('backup.failingSince', { when: new Date(buddyConfig.push_failed_since).toLocaleString() })}
                   </p>
                 </div>
               </div>
@@ -1032,17 +1032,17 @@ function BackupPage() {
               <div className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-4 space-y-1">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-slate-400">
                   <ArrowDownToLine size={13} className="text-brand-500" />
-                  You store for buddy
+                  {t('backup.youStoreForBuddy')}
                 </div>
                 {buddyConfig?.has_receive_token && buddyReceived && buddyReceived.length > 0 ? (
                   <>
                     <p className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
                       {formatBytes(buddyReceived.reduce((s, a) => s + a.size_bytes, 0))}
                     </p>
-                    <p className="text-xs text-zinc-400">{buddyReceived.length} archive{buddyReceived.length !== 1 ? 's' : ''}</p>
+                    <p className="text-xs text-zinc-400">{buddyReceived.length} {buddyReceived.length !== 1 ? t('backup.archives') : t('backup.archive')}</p>
                   </>
                 ) : (
-                  <p className="text-sm text-zinc-400 dark:text-slate-500">No archives received</p>
+                  <p className="text-sm text-zinc-400 dark:text-slate-500">{t('backup.noReceived')}</p>
                 )}
               </div>
 
@@ -1050,14 +1050,14 @@ function BackupPage() {
               <div className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-4 space-y-1">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-slate-400">
                   <ArrowUpToLine size={13} className="text-brand-500" />
-                  Buddy stores for you
+                  {t('backup.buddyStoresForYou')}
                 </div>
                 {buddyConfig?.peer_configured && (pushedArchives && pushedArchives.length > 0) ? (
                   <>
                     <p className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
                       {formatBytes(pushedArchives.reduce((s, a) => s + a.size_bytes, 0))}
                     </p>
-                    <p className="text-xs text-zinc-400">{pushedArchives.length} arkiv{pushedArchives.length !== 1 ? 'er' : ''}</p>
+                    <p className="text-xs text-zinc-400">{pushedArchives.length} {pushedArchives.length !== 1 ? t('backup.archives') : t('backup.archive')}</p>
                   </>
                 ) : buddyConfig?.peer_configured && buddyConfig.last_push_at ? (
                   <>
@@ -1065,11 +1065,11 @@ function BackupPage() {
                       {formatBytes(buddyConfig.last_push_bytes ?? 0)}
                     </p>
                     <p className="text-xs text-zinc-400">
-                      Sidst pushet {new Date(buddyConfig.last_push_at).toLocaleDateString()}
+                      {t('backup.lastAutoAt', { when: new Date(buddyConfig.last_push_at).toLocaleDateString() })}
                     </p>
                   </>
                 ) : (
-                  <p className="text-sm text-zinc-400 dark:text-slate-500">Ikke pushet endnu</p>
+                  <p className="text-sm text-zinc-400 dark:text-slate-500">{t('backup.noArchivesYet')}</p>
                 )}
               </div>
               {/* Tunnel status card — only when peer is configured */}
@@ -1083,34 +1083,34 @@ function BackupPage() {
                     <>
                       <p className="text-sm font-semibold text-green-600 dark:text-green-400 flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
-                        Aktiv
+                        {t('backup.tunnelActive')}
                       </p>
                       <button
                         onClick={() => tunnelDisconnectMutation.mutate()}
                         disabled={tunnelDisconnectMutation.isPending}
                         className="text-xs text-red-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                       >
-                        Afbryd
+                        {t('backup.tunnelDisconnect')}
                       </button>
                     </>
                   ) : tunnelStatus?.peer_connected_here ? (
                     <>
                       <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
-                        Peer forbundet
+                        {t('backup.tunnelPeerConnected')}
                       </p>
-                      <p className="text-xs text-zinc-400">Din peer har åbnet tunnel hertil</p>
+                      <p className="text-xs text-zinc-400">{t('backup.tunnelPeerConnectedDesc')}</p>
                     </>
                   ) : (
                     <>
-                      <p className="text-sm text-zinc-400 dark:text-slate-500">Inaktiv</p>
+                      <p className="text-sm text-zinc-400 dark:text-slate-500">{t('backup.tunnelInactive')}</p>
                       <button
                         onClick={() => tunnelConnectMutation.mutate()}
                         disabled={tunnelConnectMutation.isPending}
                         className="text-xs text-brand-600 dark:text-brand-400 hover:underline transition-colors flex items-center gap-1"
                       >
                         {tunnelConnectMutation.isPending && <RefreshCw size={10} className="animate-spin" />}
-                        Aktiver (CGNAT)
+                        {t('backup.tunnelActivateCgnat')}
                       </button>
                     </>
                   )}
@@ -1120,26 +1120,25 @@ function BackupPage() {
             <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-5">
               <div className="flex items-center gap-2">
                 <Server size={16} className="text-brand-500" />
-                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Buddy backup</h2>
+                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.buddyTitle')}</h2>
               </div>
               <p className="text-sm text-zinc-500 dark:text-slate-400">
-                Push encrypted archives to a peer Sharedrive server for off-site redundancy.
-                Exchange your receive info with a trusted friend — they configure your details on their side, you configure theirs on yours.
+                {t('backup.buddyDesc')}
               </p>
 
               {/* ── Your receive info ───────────────────────────────────── */}
               <div className="space-y-3 border-t border-zinc-100 dark:border-[#2d3148] pt-4">
-                <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Your receive info — share with your buddy</p>
-                <p className="text-xs text-zinc-500 dark:text-slate-400">Give these three values to your buddy so they can push archives to you.</p>
+                <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">{t('backup.receiveInfo')}</p>
+                <p className="text-xs text-zinc-500 dark:text-slate-400">{t('backup.receiveInfoDesc')}</p>
 
                 {/* URL */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Server URL</span>
+                  <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">{t('backup.serverUrl')}</span>
                   <code className="flex-1 text-xs font-mono bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] rounded px-2 py-1 truncate">{window.location.origin}</code>
                   <button
-                    onClick={() => { void navigator.clipboard.writeText(window.location.origin); toast.success('URL copied') }}
+                    onClick={() => { void navigator.clipboard.writeText(window.location.origin); toast.success(t('backup.urlCopied')) }}
                     className="shrink-0 p-1.5 rounded border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-                    title="Copy URL"
+                    title={t('backup.copyUrl')}
                   >
                     <Copy size={12} />
                   </button>
@@ -1147,12 +1146,12 @@ function BackupPage() {
 
                 {/* User ID */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Your User ID</span>
+                  <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">{t('backup.yourUserId')}</span>
                   <code className="flex-1 text-xs font-mono bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] rounded px-2 py-1 truncate">{buddyConfig?.user_id ?? '…'}</code>
                   <button
-                    onClick={() => { if (buddyConfig?.user_id) { void navigator.clipboard.writeText(buddyConfig.user_id); toast.success('User ID copied') } }}
+                    onClick={() => { if (buddyConfig?.user_id) { void navigator.clipboard.writeText(buddyConfig.user_id); toast.success(t('backup.userIdCopied')) } }}
                     className="shrink-0 p-1.5 rounded border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-                    title="Copy User ID"
+                    title={t('backup.copyUserId')}
                   >
                     <Copy size={12} />
                   </button>
@@ -1160,28 +1159,28 @@ function BackupPage() {
 
                 {/* Receive token */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">Receive token</span>
+                  <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">{t('backup.receiveTokenLabel')}</span>
                   {buddyConfig?.has_receive_token ? (
                     <span className="flex-1 text-xs font-mono text-zinc-500 dark:text-slate-400">
                       {buddyConfig.receive_token_prefix}••••••••••••••••••••••••••••••••••••
                     </span>
                   ) : (
-                    <span className="flex-1 text-xs text-zinc-400">Not generated yet</span>
+                    <span className="flex-1 text-xs text-zinc-400">{t('backup.notGeneratedYet')}</span>
                   )}
                   <button
                     onClick={() => generateReceiveTokenMutation.mutate()}
                     disabled={generateReceiveTokenMutation.isPending}
                     className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
                   >
-                    <RefreshCw size={10} /> {buddyConfig?.has_receive_token ? 'Rotate' : 'Generate'}
+                    <RefreshCw size={10} /> {buddyConfig?.has_receive_token ? t('backup.rotate') : t('backup.generate')}
                   </button>
                   {buddyConfig?.has_receive_token && (
                     <button
-                      onClick={() => { if (confirm('Revoke receive token? Your buddy will no longer be able to push archives to you.')) revokeReceiveTokenMutation.mutate() }}
+                      onClick={() => { if (confirm(t('backup.revokeReceiveToken'))) revokeReceiveTokenMutation.mutate() }}
                       disabled={revokeReceiveTokenMutation.isPending}
                       className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
                     >
-                      <Trash2 size={10} /> Revoke
+                      <Trash2 size={10} /> {t('backup.revoke')}
                     </button>
                   )}
                 </div>
@@ -1190,7 +1189,7 @@ function BackupPage() {
                   <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
                     <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400">
                       <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                      <p className="text-xs font-medium">Save this token now — it will never be shown again. Give it to your buddy.</p>
+                      <p className="text-xs font-medium">{t('backup.receiveTokenSaveNow')}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 text-xs font-mono bg-white dark:bg-[#0f1117] border border-amber-200 dark:border-amber-800 rounded px-3 py-2 break-all text-zinc-800 dark:text-slate-200 select-all">
@@ -1199,7 +1198,7 @@ function BackupPage() {
                       <button
                         onClick={handleCopyReceiveToken}
                         className="shrink-0 p-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
-                        title="Copy token"
+                        title={t('backup.copyReceiveToken')}
                       >
                         {receiveTokenCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                       </button>
@@ -1210,15 +1209,14 @@ function BackupPage() {
 
               {/* ── Push to peer ────────────────────────────────────────── */}
               <div className="space-y-3 border-t border-zinc-100 dark:border-[#2d3148] pt-4">
-                <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Push to peer</p>
-                <p className="text-xs text-zinc-500 dark:text-slate-400">Enter the receive info your buddy gave you.</p>
+                <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">{t('backup.pushToPeer')}</p>
+                <p className="text-xs text-zinc-500 dark:text-slate-400">{t('backup.pushToPeerDesc')}</p>
 
                 {/* Token explanation box */}
                 <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 px-3 py-2.5 space-y-0.5">
-                  <p className="text-xs font-medium text-blue-700 dark:text-blue-400">Hvad er "Backup token"?</p>
+                  <p className="text-xs font-medium text-blue-700 dark:text-blue-400">{t('backup.encKeyExplainTitle')}</p>
                   <p className="text-xs text-blue-600 dark:text-blue-500">
-                    Det er din <strong>personlige krypteringsnøgle</strong> fra fanen "Backup Token" — ikke det token du tastede ved opsætning af peer-forbindelsen.
-                    Det peer-token du tastede tidligere er gemt og bruges automatisk til at autentificere. Din backup-nøgle bruges til at kryptere selve arkivet.
+                    {t('backup.encKeyExplainDesc')}
                   </p>
                 </div>
 
@@ -1228,20 +1226,19 @@ function BackupPage() {
                       <span className="text-xs text-zinc-500 dark:text-slate-400">Peer:</span>
                       <span className="flex-1 text-xs font-mono text-zinc-700 dark:text-slate-300 truncate">{buddyConfig.peer_url}</span>
                       <button
-                        onClick={() => { if (confirm('Clear peer configuration? You will no longer be able to push to this peer.')) clearPeerConfigMutation.mutate() }}
+                        onClick={() => { if (confirm(t('backup.clearPeerConfig'))) clearPeerConfigMutation.mutate() }}
                         disabled={clearPeerConfigMutation.isPending}
                         className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
                       >
-                        <Trash2 size={10} /> Clear
+                        <Trash2 size={10} /> {t('backup.peerClear')}
                       </button>
                     </div>
 
-                    {/* When token is available, show a single prominent push button */}
                     {buddyToken.trim() ? (
                       <div className="space-y-2">
                         <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-500">
                           <Check size={12} />
-                          Krypteringsnøgle klar — klikker du "Push backup now" krypteres og sendes arkivet til din buddy
+                          {t('backup.encKeyReady')}
                         </div>
                         <button
                           onClick={handleBuddyPush}
@@ -1249,8 +1246,8 @@ function BackupPage() {
                           className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
                         >
                           {(buddyPushing || buddyConfig?.push_in_progress)
-                            ? <><RefreshCw size={15} className="animate-spin" /> Pushing to buddy…</>
-                            : <><ArrowUpToLine size={15} /> Push backup now</>}
+                            ? <><RefreshCw size={15} className="animate-spin" /> {t('backup.pushingNow')}</>
+                            : <><ArrowUpToLine size={15} /> {t('backup.pushNow')}</>}
                         </button>
                         {buddyConfig?.last_push_error && (
                           <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
@@ -1265,7 +1262,7 @@ function BackupPage() {
                               interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
                               on_change: buddyConfig?.auto_push_on_change ?? false,
                               folder_ids: ids,
-                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
                           }}
                         />
                         <button
@@ -1273,7 +1270,7 @@ function BackupPage() {
                           onClick={() => setBuddyToken('')}
                           className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 transition-colors"
                         >
-                          Brug en anden nøgle
+                          {t('backup.useAnotherKey')}
                         </button>
                       </div>
                     ) : (
@@ -1283,7 +1280,7 @@ function BackupPage() {
                             type="password"
                             value={buddyToken}
                             onChange={e => { setBuddyToken(e.target.value); saveToken(e.target.value) }}
-                            placeholder="Din backup-krypteringsnøgle (fra Backup Token fanen)"
+                            placeholder={t('backup.encKeyPlaceholder')}
                             className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                           />
                           <button
@@ -1292,7 +1289,7 @@ function BackupPage() {
                             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
                           >
                             {(buddyPushing || buddyConfig?.push_in_progress)
-                              ? <><RefreshCw size={14} className="animate-spin" /> Pushing…</>
+                              ? <><RefreshCw size={14} className="animate-spin" /> {t('backup.pushingNow')}</>
                               : <><ArrowUpToLine size={14} /> Push</>}
                           </button>
                         </div>
@@ -1301,7 +1298,7 @@ function BackupPage() {
                             <AlertTriangle size={12} /> {buddyConfig.last_push_error}
                           </p>
                         )}
-                        <p className="text-xs text-zinc-400">Find din nøgle under <button type="button" onClick={() => setActiveTab('token')} className="underline hover:text-zinc-600 dark:hover:text-slate-300">Backup Token</button> fanen.</p>
+                        <p className="text-xs text-zinc-400">{t('backup.tabToken')}</p>
                         <FolderPicker
                           selectedIDs={buddyConfig?.auto_push_folder_ids ?? []}
                           onChange={ids => {
@@ -1310,7 +1307,7 @@ function BackupPage() {
                               interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
                               on_change: buddyConfig?.auto_push_on_change ?? false,
                               folder_ids: ids,
-                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
                           }}
                         />
                       </div>
@@ -1322,14 +1319,14 @@ function BackupPage() {
                       type="url"
                       value={peerURLInput}
                       onChange={e => setPeerURLInput(e.target.value)}
-                      placeholder="Peer server URL (e.g. https://peer.example.com)"
+                      placeholder={t('backup.peerUrlPlaceholder')}
                       className="w-full text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
                     <input
                       type="text"
                       value={peerUserIDInput}
                       onChange={e => setPeerUserIDInput(e.target.value)}
-                      placeholder="Peer user ID (UUID from their backup page)"
+                      placeholder={t('backup.peerUserIdPlaceholder')}
                       className="w-full text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
                     <div className="flex gap-2">
@@ -1337,7 +1334,7 @@ function BackupPage() {
                         type="password"
                         value={peerTokenInput}
                         onChange={e => setPeerTokenInput(e.target.value)}
-                        placeholder="Peer receive token (from their backup page)"
+                        placeholder={t('backup.peerTokenPlaceholder')}
                         className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                       />
                       <button
@@ -1345,7 +1342,7 @@ function BackupPage() {
                         disabled={!peerURLInput.trim() || !peerUserIDInput.trim() || !peerTokenInput.trim() || savePeerConfigMutation.isPending}
                         className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
                       >
-                        Save
+                        {t('users.save')}
                       </button>
                     </div>
                   </div>
@@ -1358,11 +1355,10 @@ function BackupPage() {
               <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
                 <div className="flex items-center gap-2">
                   <Clock size={16} className="text-brand-500" />
-                  <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Automatisk buddy push</h2>
+                  <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.autoBuddyTitle')}</h2>
                 </div>
                 <p className="text-sm text-zinc-500 dark:text-slate-400">
-                  Push automatisk til din buddy på et fast interval — eller straks når dine filer ændres.
-                  Kræver at du har genereret en backup-nøgle (bruges til kryptering).
+                  {t('backup.autoBuddyDesc')}
                 </p>
                 <div className="space-y-3">
                   {/* Enable toggle */}
@@ -1378,7 +1374,7 @@ function BackupPage() {
                           interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
                           on_change: buddyConfig?.auto_push_on_change ?? false,
                           folder_ids: buddyConfig?.auto_push_folder_ids ?? [],
-                        }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                        }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
                       }}
                       className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-1"
                       style={{ backgroundColor: buddyConfig?.auto_push_enabled ? 'var(--color-brand-600, #6366f1)' : '#d1d5db' }}
@@ -1386,7 +1382,7 @@ function BackupPage() {
                       <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${buddyConfig?.auto_push_enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
                     </button>
                     <span className="text-sm text-zinc-700 dark:text-slate-300">
-                      {buddyConfig?.auto_push_enabled ? 'Aktiveret' : 'Deaktiveret'}
+                      {buddyConfig?.auto_push_enabled ? t('backup.enabled') : t('backup.disabled')}
                     </span>
                   </label>
 
@@ -1403,20 +1399,20 @@ function BackupPage() {
                               interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
                               on_change: e.target.checked,
                               folder_ids: buddyConfig?.auto_push_folder_ids ?? [],
-                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
                           }}
                           className="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
                         />
                         <div>
-                          <p className="text-sm text-zinc-700 dark:text-slate-300">Push ved filændringer</p>
-                          <p className="text-xs text-zinc-400 dark:text-slate-500">Pusher automatisk inden for ~15 min efter at du har ændret filer (uanset interval)</p>
+                          <p className="text-sm text-zinc-700 dark:text-slate-300">{t('backup.pushOnChange')}</p>
+                          <p className="text-xs text-zinc-400 dark:text-slate-500">{t('backup.pushOnChangeDesc')}</p>
                         </div>
                       </label>
 
                       {/* Interval selector */}
                       {!buddyConfig?.auto_push_on_change && (
                         <div className="flex items-center gap-3">
-                          <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">Interval</label>
+                          <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">{t('backup.interval')}</label>
                           <select
                             value={buddyConfig?.auto_push_interval_hours ?? 24}
                             onChange={e => {
@@ -1425,23 +1421,23 @@ function BackupPage() {
                                 interval_hours: Number(e.target.value),
                                 on_change: false,
                                 folder_ids: buddyConfig?.auto_push_folder_ids ?? [],
-                              }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                              }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
                             }}
                             className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-2 py-1 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
                           >
-                            <option value={1}>Hver time</option>
-                            <option value={6}>Hver 6. time</option>
-                            <option value={12}>Hver 12. time</option>
-                            <option value={24}>Dagligt</option>
-                            <option value={48}>Hver 2. dag</option>
-                            <option value={168}>Ugentligt</option>
+                            <option value={1}>{t('backup.everyHour')}</option>
+                            <option value={6}>{t('backup.every6Hours')}</option>
+                            <option value={12}>{t('backup.every12Hours')}</option>
+                            <option value={24}>{t('backup.daily')}</option>
+                            <option value={48}>{t('backup.every2Days')}</option>
+                            <option value={168}>{t('backup.weekly')}</option>
                           </select>
                         </div>
                       )}
 
                       {/* Folder picker */}
                       <div>
-                        <p className="text-xs text-zinc-500 dark:text-slate-400 mb-1">Mapper (tom = alle filer)</p>
+                        <p className="text-xs text-zinc-500 dark:text-slate-400 mb-1">{t('backup.foldersLabel')}</p>
                         <FolderPicker
                           selectedIDs={buddyConfig?.auto_push_folder_ids ?? []}
                           onChange={ids => {
@@ -1450,7 +1446,7 @@ function BackupPage() {
                               interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
                               on_change: buddyConfig?.auto_push_on_change ?? false,
                               folder_ids: ids,
-                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
                           }}
                         />
                       </div>
@@ -1458,7 +1454,7 @@ function BackupPage() {
                       {/* Last run */}
                       {buddyConfig?.auto_push_last_run_at && (
                         <p className="text-xs text-zinc-400 dark:text-slate-500 flex items-center gap-1">
-                          <Clock size={11} /> Sidst kørt {new Date(buddyConfig.auto_push_last_run_at).toLocaleString()}
+                          <Clock size={11} /> {t('backup.lastAutoAt', { when: new Date(buddyConfig.auto_push_last_run_at).toLocaleString() })}
                         </p>
                       )}
                     </div>
@@ -1473,7 +1469,7 @@ function BackupPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <ArrowUpToLine size={16} className="text-brand-500" />
-                    <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Arkiver lagret hos peer</h2>
+                    <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.pushedTitle')}</h2>
                   </div>
                   <button
                     onClick={() => void refetchPushedArchives()}
@@ -1484,12 +1480,12 @@ function BackupPage() {
                   </button>
                 </div>
                 <p className="text-sm text-zinc-500 dark:text-slate-400">
-                  Arkiver du har pushet til din peer. Du kan slette dem for at frigøre plads hos dem.
+                  {t('backup.pushedDesc')}
                 </p>
                 {pushedArchives && pushedArchives.length > 0 ? (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-slate-400 pb-1 border-b border-zinc-100 dark:border-[#2d3148]">
-                      <span>{pushedArchives.length} arkiv{pushedArchives.length !== 1 ? 'er' : ''}</span>
+                      <span>{pushedArchives.length} {pushedArchives.length !== 1 ? t('backup.archives') : t('backup.archive')}</span>
                       <span className="font-medium">{formatBytes(pushedArchives.reduce((s, a) => s + a.size_bytes, 0))} total</span>
                     </div>
                     <div className="space-y-1">
@@ -1502,10 +1498,10 @@ function BackupPage() {
                           <span className="text-zinc-400 shrink-0">{formatBytes(a.size_bytes)}</span>
                           <span className="text-zinc-400 shrink-0">{new Date(a.received_at).toLocaleDateString()}</span>
                           <button
-                            onClick={() => { if (confirm('Slet dette arkiv hos peer?')) deletePushedMutation.mutate(a.filename) }}
+                            onClick={() => { if (confirm(t('backup.confirmDeleteAtPeer'))) deletePushedMutation.mutate(a.filename) }}
                             disabled={deletePushedMutation.isPending}
                             className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors disabled:opacity-50"
-                            title="Slet hos peer"
+                            title={t('backup.deleteAtPeer')}
                           >
                             <Trash2 size={12} />
                           </button>
@@ -1514,9 +1510,9 @@ function BackupPage() {
                     </div>
                   </div>
                 ) : pushedArchives ? (
-                  <p className="text-xs text-zinc-400">Ingen arkiver fundet hos peer.</p>
+                  <p className="text-xs text-zinc-400">{t('backup.noPushed')}</p>
                 ) : (
-                  <p className="text-xs text-zinc-400">Klik opdater for at hente liste fra peer.</p>
+                  <p className="text-xs text-zinc-400">{t('backup.fetchFromPeer')}</p>
                 )}
               </section>
             )}
@@ -1525,18 +1521,18 @@ function BackupPage() {
             <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <Server size={16} className="text-brand-500" />
-                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Received buddy archives</h2>
+                <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.receivedTitle')}</h2>
               </div>
               <p className="text-sm text-zinc-500 dark:text-slate-400">
-                Archives pushed here by your buddy. Download and restore to recover files.
+                  {t('backup.receivedDesc')}
               </p>
 
               {!buddyConfig?.has_receive_token ? (
-                <p className="text-xs text-zinc-400 dark:text-slate-500">Generate a receive token above to allow your buddy to push archives here.</p>
+                <p className="text-xs text-zinc-400 dark:text-slate-500">{t('backup.receiveTokenNeeded')}</p>
               ) : buddyReceived && buddyReceived.length > 0 ? (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-slate-400 pb-1 border-b border-zinc-100 dark:border-[#2d3148]">
-                    <span>{buddyReceived.length} archive{buddyReceived.length !== 1 ? 's' : ''}</span>
+                    <span>{buddyReceived.length} {buddyReceived.length !== 1 ? t('backup.archives') : t('backup.archive')}</span>
                     <span className="font-medium">{formatBytes(buddyReceived.reduce((s, a) => s + a.size_bytes, 0))} total</span>
                   </div>
                   <div className="space-y-1">
@@ -1568,7 +1564,7 @@ function BackupPage() {
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-zinc-400">No archives received yet.</p>
+                <p className="text-xs text-zinc-400">{t('backup.noReceived')}</p>
               )}
             </section>
           </div>
@@ -1580,58 +1576,55 @@ function BackupPage() {
         <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
           <div className="flex items-center gap-2">
             <ShieldCheck size={16} className="text-brand-500" />
-            <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Backup token</h2>
+            <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.tokenTitle')}</h2>
           </div>
           <p className="text-sm text-zinc-500 dark:text-slate-400">
-            This token is used to encrypt and decrypt all backup archives. It is required before you can use Server Storage or Buddy Backup.
-          </p>
-          <p className="text-sm text-zinc-500 dark:text-slate-400">
-            Store it safely. It may be required for disaster recovery.
+            {t('backup.tokenDesc')}
           </p>
 
           {isLoading ? (
-            <p className="text-sm text-zinc-400">Loading…</p>
+            <p className="text-sm text-zinc-400">{t('backup.tokenLoading')}</p>
           ) : status?.has_password ? (
             <div className="space-y-3">
               <p className="text-sm text-zinc-600 dark:text-slate-400">
-                A backup token is active.
+                {t('backup.tokenActive')}
                 {status.created_at && <> Created {new Date(status.created_at).toLocaleDateString()}.</>}
                 {status.last_used_at && <> Last used {new Date(status.last_used_at).toLocaleDateString()}.</>}
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    if (confirm('Generate a new token? The current one will be permanently revoked. Existing backups encrypted with the old token will still require the old token to restore.')) {
+                    if (confirm(t('backup.rotateTokenConfirm'))) {
                       generateMutation.mutate()
                     }
                   }}
                   disabled={generateMutation.isPending}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-[#2d3148] text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
                 >
-                  <RefreshCw size={12} /> Rotate token
+                  <RefreshCw size={12} /> {t('backup.tokenRotate')}
                 </button>
                 <button
                   onClick={() => {
-                    if (confirm('Revoke your backup token? You will no longer be able to export or restore.')) {
+                    if (confirm(t('backup.revokeTokenConfirm'))) {
                       revokeMutation.mutate()
                     }
                   }}
                   disabled={revokeMutation.isPending}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
                 >
-                  <Trash2 size={12} /> Revoke
+                  <Trash2 size={12} /> {t('backup.tokenRevoke')}
                 </button>
               </div>
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm text-zinc-500 dark:text-slate-400">No backup token yet.</p>
+              <p className="text-sm text-zinc-500 dark:text-slate-400">{t('backup.tokenNone')}</p>
               <button
                 onClick={() => generateMutation.mutate()}
                 disabled={generateMutation.isPending}
                 className="px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
               >
-                Generate token
+                {t('backup.tokenGenerate')}
               </button>
             </div>
           )}
@@ -1640,7 +1633,7 @@ function BackupPage() {
             <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
               <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                <p className="text-sm font-medium">Save this token now — it will never be shown again.</p>
+                <p className="text-sm font-medium">{t('backup.tokenSaveNow')}</p>
               </div>
               <div className="flex items-center gap-2">
                 <code className="flex-1 text-xs font-mono bg-white dark:bg-[#0f1117] border border-amber-200 dark:border-amber-800 rounded px-3 py-2 break-all text-zinc-800 dark:text-slate-200 select-all">

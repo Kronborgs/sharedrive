@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { prepareDownload } from '@/lib/api'
 import { Copy, Check, Download, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { useI18n } from '@/lib/i18n'
 
 interface DownloadDialogProps {
   ids: string[]
@@ -12,6 +13,7 @@ interface DownloadDialogProps {
 type Step = 'configure' | 'ready' | 'downloading'
 
 export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
+  const { t } = useI18n()
   const [usePassword, setUsePassword] = useState(true)
   const [passwordMode, setPasswordMode] = useState<'generate' | 'custom'>('generate')
   const [customPassword, setCustomPassword] = useState('')
@@ -31,7 +33,7 @@ export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
       setGeneratedPassword(res.password)
       setStep('ready')
     },
-    onError: () => toast.error('Failed to prepare download'),
+    onError: () => toast.error(t('download.prepareFailed')),
   })
 
   const handleCopy = () => {
@@ -62,7 +64,7 @@ export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">
-            Download {ids.length} item{ids.length !== 1 ? 's' : ''}
+            Download {ids.length} {ids.length !== 1 ? t('download.items') : t('download.item')}
           </h3>
           <button onClick={onClose} className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] text-zinc-400">
             <X size={14} />
@@ -79,7 +81,7 @@ export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
                 onChange={e => setUsePassword(e.target.checked)}
                 className="w-4 h-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
               />
-              <span className="text-sm text-zinc-700 dark:text-slate-300">Password-protect ZIP</span>
+              <span className="text-sm text-zinc-700 dark:text-slate-300">{t('download.protectZip')}</span>
             </label>
 
             {usePassword && (
@@ -91,7 +93,7 @@ export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
                     onChange={() => setPasswordMode('generate')}
                     className="text-brand-600"
                   />
-                  <span className="text-sm text-zinc-700 dark:text-slate-300">Generate random password</span>
+                  <span className="text-sm text-zinc-700 dark:text-slate-300">{t('download.generatePwd')}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -100,12 +102,12 @@ export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
                     onChange={() => setPasswordMode('custom')}
                     className="text-brand-600"
                   />
-                  <span className="text-sm text-zinc-700 dark:text-slate-300">Use custom password</span>
+                  <span className="text-sm text-zinc-700 dark:text-slate-300">{t('download.useCustomPwd')}</span>
                 </label>
                 {passwordMode === 'custom' && (
                   <input
                     type="password"
-                    placeholder="Min 4 characters"
+                    placeholder={t('download.minChars')}
                     value={customPassword}
                     onChange={e => setCustomPassword(e.target.value)}
                     className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -119,14 +121,14 @@ export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
                 onClick={onClose}
                 className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted"
               >
-                Cancel
+                {t('download.cancel')}
               </button>
               <button
                 onClick={() => prepare.mutate()}
                 disabled={!canContinue}
                 className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
               >
-                {prepare.isPending ? 'Preparing…' : 'Continue'}
+                {prepare.isPending ? t('download.preparing') : t('download.continue')}
               </button>
             </div>
           </>
@@ -135,7 +137,7 @@ export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
             {/* Step 2: show password and download button */}
             {generatedPassword && (
               <div className="space-y-1">
-                <p className="text-xs text-muted">ZIP password — save this before downloading:</p>
+                <p className="text-xs text-muted">{t('download.saveZipPwd')}</p>
                 <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
                   <code className="flex-1 text-sm font-mono text-zinc-900 dark:text-slate-100 select-all break-all">
                     {generatedPassword}
@@ -143,7 +145,7 @@ export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
                   <button
                     onClick={handleCopy}
                     className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-[#2d3148] text-zinc-500 shrink-0"
-                    title="Copy password"
+                    title={t('download.copyPwd')}
                   >
                     {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                   </button>
@@ -156,14 +158,14 @@ export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
                 onClick={onClose}
                 className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted"
               >
-                Cancel
+                {t('download.cancel')}
               </button>
               <button
                 onClick={handleDownload}
                 className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
               >
                 <Download size={14} />
-                Download now
+                {t('download.downloadNow')}
               </button>
             </div>
           </>
@@ -173,8 +175,8 @@ export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
             <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
               <Check size={20} className="text-green-600 dark:text-green-400" />
             </div>
-            <p className="text-sm font-medium text-zinc-900 dark:text-slate-100">Download started</p>
-            <p className="text-xs text-muted">Your browser should prompt you to save the file.</p>
+            <p className="text-sm font-medium text-zinc-900 dark:text-slate-100">{t('download.started')}</p>
+            <p className="text-xs text-muted">{t('download.browserPrompt')}</p>
           </div>
         )}
       </div>

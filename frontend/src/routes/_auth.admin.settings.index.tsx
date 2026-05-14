@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useState } from 'react'
 import { ONLYOFFICE_GROUPS, TEXT_EDITOR_GROUPS } from '@/lib/file-types'
+import { useI18n } from '@/lib/i18n'
 
 export const Route = createFileRoute('/_auth/admin/settings/')({
   component: SettingsPage,
@@ -56,6 +57,7 @@ function toMB(m: number) { return Math.round(m * 1024 * 1024) }
 function SettingsPage() {
   const qc = useQueryClient()
   const [tab, setTab] = useState<Tab>('general')
+  const { t } = useI18n()
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'settings'],
@@ -81,8 +83,8 @@ function SettingsPage() {
 
   const testOO = useMutation({
     mutationFn: () => api.get<{ ok: boolean; error?: string; status?: number }>('/api/v1/onlyoffice/test'),
-    onSuccess: (d) => setOoTestResult({ ok: d.ok, msg: d.ok ? 'Forbindelse OK' : (d.error ?? `HTTP ${d.status}`) }),
-    onError: () => setOoTestResult({ ok: false, msg: 'Test fejlede' }),
+    onSuccess: (d) => setOoTestResult({ ok: d.ok, msg: d.ok ? t('settings.connectionOk') : (d.error ?? `HTTP ${d.status}`) }),
+    onError: () => setOoTestResult({ ok: false, msg: t('settings.testFailed') }),
   })
 
   if (data && !ooURLLoaded) {
@@ -102,21 +104,21 @@ function SettingsPage() {
       return api.patch('/api/v1/admin/settings', body)
     },
     onSuccess: () => {
-      toast.success('Indstillinger gemt')
+      toast.success(t('settings.saved'))
       setSmtpPassword('')
       void qc.invalidateQueries({ queryKey: ['admin', 'settings'] })
       void qc.invalidateQueries({ queryKey: ['system', 'settings'] })
     },
-    onError: () => toast.error('Kunne ikke gemme indstillinger'),
+    onError: () => toast.error(t('settings.saveFailed')),
   })
 
   const testSMTP = useMutation({
     mutationFn: () => api.post('/api/v1/admin/settings/smtp-test', { to: testRecipient }),
     onSuccess: () => {
-      setSmtpResult({ ok: true, msg: `Test-email sendt til ${testRecipient || 'din email'}` })
+      setSmtpResult({ ok: true, msg: t('settings.testEmailSentTo', { to: testRecipient || 'din email' }) })
     },
     onError: (err) => {
-      const msg = err instanceof Error ? err.message : 'SMTP test fejlede'
+      const msg = err instanceof Error ? err.message : t('settings.smtpTestFailed')
       setSmtpResult({ ok: false, msg })
     },
   })
@@ -127,31 +129,31 @@ function SettingsPage() {
       const body: Record<string, string> = { onlyoffice_url: ooURL }
       if (ooSecret) body.onlyoffice_jwt_secret = ooSecret
       await api.patch('/api/v1/admin/settings', body)
-      toast.success('OnlyOffice indstillinger gemt')
+      toast.success(t('settings.ooSaved'))
       setOoSecret('')
       void qc.invalidateQueries({ queryKey: ['admin', 'settings'] })
     } catch {
-      toast.error('Kunne ikke gemme OnlyOffice indstillinger')
+      toast.error(t('settings.ooSaveFailed'))
     } finally {
       setOoSaving(false)
     }
   }
 
   if (isLoading) {
-    return <div className="p-8 text-center text-sm text-muted">Indlaeder...</div>
+    return <div className="p-8 text-center text-sm text-muted">{t('settings.loading')}</div>
   }
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'general', label: 'Generelt' },
-    { id: 'smtp', label: 'SMTP' },
-    { id: 'onlyoffice', label: 'OnlyOffice' },
-    { id: 'texteditor', label: 'Text Editor' },
-    { id: 'player', label: 'Afspilning' },
+    { id: 'general',    label: t('settings.tabGeneral') },
+    { id: 'smtp',       label: t('settings.tabSmtp') },
+    { id: 'onlyoffice', label: t('settings.tabOnlyOffice') },
+    { id: 'texteditor', label: t('settings.tabTextEditor') },
+    { id: 'player',     label: t('settings.tabPlayer') },
   ]
 
   return (
     <div className="space-y-5 max-w-2xl">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">Systemindstillinger</h1>
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('settings.title')}</h1>
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-zinc-200 dark:border-[#2d3148]">
@@ -175,25 +177,25 @@ function SettingsPage() {
       {tab === 'general' && (
         <form onSubmit={handleSubmit(values => save.mutate(values))} className="space-y-5">
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-4">
-            <Field label="Sitenavn" error={errors.site_name?.message}>
+            <Field label={t('settings.siteName')} error={errors.site_name?.message}>
               <input {...register('site_name')} className={inputClass} />
             </Field>
-            <Toggle label="Tillad offentlig registrering" description="Alle med URL kan oprette en konto." name="allow_registrations" register={register} />
-            <Toggle label="Kraev invitation" description="Nye konti skal have et gyldigt invitationslink." name="require_invite" register={register} />
-            <Field label="Standard kvote (GB)" error={errors.default_quota_bytes?.message}>
+            <Toggle label={t('settings.allowReg')} description={t('settings.allowRegDesc')} name="allow_registrations" register={register} />
+            <Toggle label={t('settings.requireInvite')} description={t('settings.requireInviteDesc')} name="require_invite" register={register} />
+            <Field label={t('settings.defaultQuota')} error={errors.default_quota_bytes?.message}>
               <input type="number" step="0.5" min="0" {...register('default_quota_bytes')} className={inputClass} />
             </Field>
-            <Field label="Maks uploadstorrelse (MB)" error={errors.max_upload_bytes?.message}>
+            <Field label={t('settings.maxUpload')} error={errors.max_upload_bytes?.message}>
               <input type="number" step="1" min="0" {...register('max_upload_bytes')} className={inputClass} />
             </Field>
-            <Field label="Direkte upload-URL" error={errors.direct_upload_url?.message}>
-              <input type="url" {...register('direct_upload_url')} placeholder="https://upload.ditdomaene.dk" className={inputClass} />
-              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">Valgfri URL der bypasser Cloudflare. Lad feltet staa tomt for normal rute.</p>
+            <Field label={t('settings.directUploadUrl')} error={errors.direct_upload_url?.message}>
+              <input type="url" {...register('direct_upload_url')} placeholder={t('settings.directUploadUrlPlaceholder')} className={inputClass} />
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">{t('settings.directUploadUrlDesc')}</p>
             </Field>
           </section>
           <div className="flex justify-end">
             <button type="submit" disabled={!isDirty || save.isPending} className="px-5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
-              {save.isPending ? 'Gemmer...' : 'Gem aendringer'}
+              {save.isPending ? t('settings.saving') : t('settings.saveChanges')}
             </button>
           </div>
         </form>
@@ -203,28 +205,28 @@ function SettingsPage() {
         <form onSubmit={handleSubmit(values => save.mutate(values))} className="space-y-5">
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Host" error={errors.smtp_host?.message}>
+              <Field label={t('settings.smtpHost')} error={errors.smtp_host?.message}>
                 <input {...register('smtp_host')} placeholder="smtp.example.com" className={inputClass} />
               </Field>
-              <Field label="Port" error={errors.smtp_port?.message}>
+              <Field label={t('settings.smtpPort')} error={errors.smtp_port?.message}>
                 <input type="number" {...register('smtp_port')} className={inputClass} />
               </Field>
             </div>
-            <Field label="Brugernavn" error={errors.smtp_username?.message}>
+            <Field label={t('settings.username')} error={errors.smtp_username?.message}>
               <input {...register('smtp_username')} className={inputClass} />
             </Field>
-            <Field label="Adgangskode">
-              <input type="password" value={smtpPassword} onChange={e => setSmtpPassword(e.target.value)} placeholder="Lad feltet staa tomt for at beholde eksisterende" autoComplete="new-password" className={inputClass} />
+            <Field label={t('settings.smtpPassword')}>
+              <input type="password" value={smtpPassword} onChange={e => setSmtpPassword(e.target.value)} placeholder={t('settings.smtpPasswordPlaceholder')} autoComplete="new-password" className={inputClass} />
             </Field>
-            <Field label="Afsenderadresse" error={errors.smtp_from_address?.message}>
+            <Field label={t('settings.fromAddress')} error={errors.smtp_from_address?.message}>
               <input type="email" {...register('smtp_from_address')} placeholder="noreply@example.com" className={inputClass} />
             </Field>
-            <Toggle label="Brug TLS/STARTTLS" description="Aktiver krypteret SMTP-forbindelse." name="smtp_tls" register={register} />
+            <Toggle label={t('settings.useTls')} description={t('settings.useTlsDesc')} name="smtp_tls" register={register} />
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <input type="email" value={testRecipient} onChange={e => { setTestRecipient(e.target.value); setSmtpResult(null) }} placeholder="Testmodtager (standard: din email)" className={`${inputClass} flex-1`} />
+                <input type="email" value={testRecipient} onChange={e => { setTestRecipient(e.target.value); setSmtpResult(null) }} placeholder={t('settings.testRecipientPlaceholder')} className={`${inputClass} flex-1`} />
                 <button type="button" onClick={() => { setSmtpResult(null); testSMTP.mutate() }} disabled={testSMTP.isPending} className="text-sm text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-50 whitespace-nowrap">
-                  {testSMTP.isPending ? 'Sender...' : 'Send test-email'}
+                  {testSMTP.isPending ? t('settings.sending') : t('settings.sendTestEmail')}
                 </button>
               </div>
               {smtpResult && (
@@ -236,7 +238,7 @@ function SettingsPage() {
           </section>
           <div className="flex justify-end">
             <button type="submit" disabled={(!isDirty && !smtpPassword) || save.isPending} className="px-5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
-              {save.isPending ? 'Gemmer...' : 'Gem aendringer'}
+              {save.isPending ? t('settings.saving') : t('settings.saveChanges')}
             </button>
           </div>
         </form>
@@ -247,15 +249,15 @@ function SettingsPage() {
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-4">
             <div className="space-y-1">
               <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">OnlyOffice Document Server</h2>
-              <p className="text-xs text-muted">Tilslut en selvhostet OnlyOffice Document Server for at redigere og samarbejde om dokumenter direkte i Sharedrive. Hvis intet er konfigureret, vises filer som normalt.</p>
+              <p className="text-xs text-muted">{t('settings.ooDesc')}</p>
             </div>
-            <Field label="Document Server URL">
+            <Field label={t('settings.ooUrlLabel')}>
               <input type="url" value={ooURL} onChange={e => setOoURL(e.target.value)} placeholder="https://onlyoffice.ditdomaene.dk" className={inputClass} />
-              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">URL til din OnlyOffice Document Server. Lad feltet staa tomt for at deaktivere.</p>
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">{t('settings.ooUrlDesc')}</p>
             </Field>
-            <Field label="JWT Secret">
-              <input type="password" value={ooSecret} onChange={e => setOoSecret(e.target.value)} placeholder="Lad feltet staa tomt for at beholde eksisterende secret" autoComplete="new-password" className={inputClass} />
-              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">Skal matche jwt.secret i din OnlyOffice-konfiguration. Anbefales staerkt.</p>
+            <Field label={t('settings.ooSecretLabel')}>
+              <input type="password" value={ooSecret} onChange={e => setOoSecret(e.target.value)} placeholder={t('settings.ooSecretPlaceholder')} autoComplete="new-password" className={inputClass} />
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">{t('settings.ooSecretDesc')}</p>
             </Field>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -265,9 +267,9 @@ function SettingsPage() {
                   disabled={testOO.isPending || !ooURL}
                   className="text-sm text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-50 whitespace-nowrap"
                 >
-                  {testOO.isPending ? 'Tester...' : 'Test forbindelse'}
+                  {testOO.isPending ? t('settings.testing') : t('settings.testConnection')}
                 </button>
-                {!ooURL && <span className="text-xs text-muted">Gem en URL forst</span>}
+                {!ooURL && <span className="text-xs text-muted">{t('settings.saveUrlFirst')}</span>}
               </div>
               {ooTestResult && (
                 <p className={`text-xs px-1 ${ooTestResult.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -277,8 +279,8 @@ function SettingsPage() {
             </div>
           </section>
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-3">
-            <h3 className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Understoettede formater</h3>
-            <div className="grid grid-cols-3 gap-3 text-xs text-muted">
+            <h3 className="text-xs font-semibold text-zinc-700 dark:text-slate-300">{t('settings.supportedFormats')}</h3>
+            <div>
               {ONLYOFFICE_GROUPS.map(group => (
                 <div key={group.label}>
                   <p className="font-medium text-zinc-600 dark:text-slate-400 mb-1">{group.label}</p>
@@ -291,7 +293,7 @@ function SettingsPage() {
           </section>
           <div className="flex justify-end">
             <button type="button" onClick={() => { void saveOnlyOffice() }} disabled={ooSaving} className="px-5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
-              {ooSaving ? 'Gemmer...' : 'Gem OnlyOffice-indstillinger'}
+              {ooSaving ? t('settings.saving') : t('settings.saveOo')}
             </button>
           </div>
         </div>
@@ -302,11 +304,11 @@ function SettingsPage() {
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-4">
             <div className="space-y-1">
               <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">Text Editor</h2>
-              <p className="text-xs text-muted">Denne editor bruges til tekstbaserede filer, kildekode, konfigurationsfiler, markup og logfiler der ikke haandteres af OnlyOffice.</p>
+              <p className="text-xs text-muted">{t('settings.textEditorDesc')}</p>
             </div>
           </section>
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-3">
-            <h3 className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Understoettede formater</h3>
+            <h3 className="text-xs font-semibold text-zinc-700 dark:text-slate-300">{t('settings.supportedFormats')}</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs text-muted">
               {TEXT_EDITOR_GROUPS.map(group => (
                 <div key={group.label}>
@@ -319,16 +321,16 @@ function SettingsPage() {
             </div>
           </section>
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-2">
-            <h3 className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Funktioner</h3>
+            <h3 className="text-xs font-semibold text-zinc-700 dark:text-slate-300">{t('settings.textEditorFeatures')}</h3>
             <ul className="text-xs text-muted space-y-1 list-disc list-inside">
-              <li>Syntaksfremhaevning baseret paa filtype</li>
-              <li>Linjenumre, soeg/erstat, tabulering</li>
-              <li>Lys/moerk tema — foelger Sharedrive-tema</li>
-              <li>Redigering op til 5 MB — stoerre filer aabnes skrivebeskyttet</li>
-              <li>Filer over 20 MB kan ikke aabnes i editoren</li>
-              <li>Skrivebeskyttet tilstand naar brugeren ikke har skriveadgang</li>
-              <li>Gem med Ctrl+S, advarsel ved browser-luk med ugemte aendringer</li>
-              <li>Konfliktbeskyttelse: advarer hvis filen er aendret paa serveren</li>
+              <li>{t('settings.teFeature1')}</li>
+              <li>{t('settings.teFeature2')}</li>
+              <li>{t('settings.teFeature3')}</li>
+              <li>{t('settings.teFeature4')}</li>
+              <li>{t('settings.teFeature5')}</li>
+              <li>{t('settings.teFeature6')}</li>
+              <li>{t('settings.teFeature7')}</li>
+              <li>{t('settings.teFeature8')}</li>
             </ul>
           </section>
         </div>
@@ -338,17 +340,17 @@ function SettingsPage() {
         <form onSubmit={handleSubmit(values => save.mutate(values))} className="space-y-5">
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-4">
             <div className="space-y-1">
-              <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">Musikafspiller</h2>
-              <p className="text-xs text-muted">Juster grænser for musikafspilleren. Ændringer gælder for alle brugere.</p>
+              <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('settings.playerTitle')}</h2>
+              <p className="text-xs text-muted">{t('settings.playerDesc')}</p>
             </div>
-            <Field label="Maks antal numre i en playliste" error={errors.playlist_max_tracks?.message}>
+            <Field label={t('settings.maxPlaylistTracks')} error={errors.playlist_max_tracks?.message}>
               <input type="number" step="1" min="1" max="10000" {...register('playlist_max_tracks')} className={inputClass} />
-              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">Standard: 200. Høje værdier (over 1000) kan medføre langsommere indlæsning af playlister.</p>
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">{t('settings.maxPlaylistTracksDesc')}</p>
             </Field>
           </section>
           <div className="flex justify-end">
             <button type="submit" disabled={!isDirty || save.isPending} className="px-5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
-              {save.isPending ? 'Gemmer...' : 'Gem ændringer'}
+              {save.isPending ? t('settings.saving') : t('settings.saveChanges')}
             </button>
           </div>
         </form>

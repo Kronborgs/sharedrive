@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { api } from '@/lib/api'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { useI18n } from '@/lib/i18n'
 
 const searchSchema = z.object({
   token: z.string().catch(''),
@@ -28,6 +29,7 @@ export const Route = createFileRoute('/reset-password/')({
 function ResetPasswordPage() {
   const navigate = useNavigate()
   const { token, forced } = Route.useSearch()
+  const { t } = useI18n()
   const [requestEmail, setRequestEmail] = useState('')
   const [requestSent, setRequestSent] = useState(false)
   const [requestLoading, setRequestLoading] = useState(false)
@@ -46,7 +48,7 @@ function ResetPasswordPage() {
         await api.post('/api/v1/auth/password-reset/request', { email: requestEmail })
         setRequestSent(true)
       } catch {
-        toast.error('Request failed. Please try again.')
+        toast.error(t('reset.requestFailed'))
       } finally {
         setRequestLoading(false)
       }
@@ -54,12 +56,12 @@ function ResetPasswordPage() {
 
     return (
       <AuthShell>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100 mb-1">Reset password</h1>
-        <p className="text-sm text-muted mb-5">Enter your email to receive a reset link.</p>
+        <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100 mb-1">{t('reset.title')}</h1>
+        <p className="text-sm text-muted mb-5">{t('reset.description')}</p>
 
         {requestSent ? (
           <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-sm text-emerald-700 dark:text-emerald-400">
-            If that email is registered, you'll receive a reset link shortly.
+            {t('reset.sent')}
           </div>
         ) : (
           <form onSubmit={handleRequest} className="space-y-4">
@@ -72,12 +74,12 @@ function ResetPasswordPage() {
               required
             />
             <button type="submit" disabled={requestLoading} className={btnClass}>
-              {requestLoading ? 'Sending…' : 'Send reset link'}
+              {requestLoading ? t('reset.sending') : t('reset.sendLink')}
             </button>
           </form>
         )}
         <p className="text-xs text-center text-muted mt-4">
-          <a href="/login" className="text-brand-600 dark:text-brand-400 hover:underline">Back to login</a>
+          <a href="/login" className="text-brand-600 dark:text-brand-400 hover:underline">{t('reset.backToLogin')}</a>
         </p>
       </AuthShell>
     )
@@ -90,28 +92,28 @@ function ResetPasswordPage() {
         token,
         new_password: values.password,
       })
-      toast.success('Password updated! Redirecting to login…')
+      toast.success(t('reset.passwordUpdated'))
       setTimeout(() => void navigate({ to: '/login' }), 1500)
     } catch {
-      toast.error('Reset link is invalid or expired.')
+      toast.error(t('reset.invalidLink'))
     }
   }
 
   return (
     <AuthShell>
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100 mb-1">Choose a new password</h1>
-      <p className="text-sm text-muted mb-5">Must be at least 12 characters.</p>
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100 mb-1">{t('reset.newPasswordTitle')}</h1>
+      <p className="text-sm text-muted mb-5">{t('reset.minChars')}</p>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-1">
-          <input type="password" {...register('password')} placeholder="New password" className={inputClass} />
+          <input type="password" {...register('password')} placeholder={t('reset.newPassword')} className={inputClass} />
           {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
         </div>
         <div className="space-y-1">
-          <input type="password" {...register('confirm')} placeholder="Confirm password" className={inputClass} />
+          <input type="password" {...register('confirm')} placeholder={t('reset.confirmPassword')} className={inputClass} />
           {errors.confirm && <p className="text-xs text-red-500">{errors.confirm.message}</p>}
         </div>
         <button type="submit" disabled={isSubmitting} className={btnClass}>
-          {isSubmitting ? 'Saving…' : 'Set new password'}
+          {isSubmitting ? t('reset.saving') : t('reset.setPassword')}
         </button>
       </form>
     </AuthShell>

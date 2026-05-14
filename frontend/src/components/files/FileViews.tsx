@@ -5,6 +5,7 @@ import { useRef, useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { FileThumbnail } from './FileThumbnail'
+import { useI18n } from '@/lib/i18n'
 
 interface FileListProps {
   items: FileItem[]
@@ -18,6 +19,7 @@ interface FileListProps {
 }
 
 export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, onSelectAll, onQuickShare, highlightId }: FileListProps) {
+  const { t } = useI18n()
   const [localHighlight, setLocalHighlight] = useState(highlightId)
 
   // Sync whenever a new highlight arrives (new search navigation)
@@ -55,8 +57,8 @@ export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, 
         <div className="w-16 h-16 rounded-2xl bg-zinc-100 dark:bg-[#2d3148] flex items-center justify-center">
           <Folder size={28} className="text-zinc-400" />
         </div>
-        <p className="text-sm text-muted">This folder is empty</p>
-        <p className="text-xs text-zinc-400">Drag files here or click Upload to add files</p>
+        <p className="text-sm text-muted">{t('fileview.emptyFolder')}</p>
+        <p className="text-xs text-zinc-400">{t('fileview.dragToUpload')}</p>
       </div>
     )
   }
@@ -77,9 +79,9 @@ export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, 
               />
             ) : null}
           </th>
-          <th className="text-left px-3 py-2.5 text-xs font-medium text-muted uppercase">Name</th>
-          <th className="text-right px-3 py-2.5 text-xs font-medium text-muted uppercase w-24 hidden md:table-cell">Size</th>
-          <th className="text-right px-3 py-2.5 text-xs font-medium text-muted uppercase w-32 hidden md:table-cell">Modified</th>
+          <th className="text-left px-3 py-2.5 text-xs font-medium text-muted uppercase">{t('fileview.nameColumn')}</th>
+          <th className="text-right px-3 py-2.5 text-xs font-medium text-muted uppercase w-24 hidden md:table-cell">{t('fileview.sizeColumn')}</th>
+          <th className="text-right px-3 py-2.5 text-xs font-medium text-muted uppercase w-32 hidden md:table-cell">{t('fileview.modifiedColumn')}</th>
           <th className="w-16" />
         </tr>
       </thead>
@@ -120,6 +122,7 @@ function FileRow({
 }) {
   const moreRef = useRef<HTMLButtonElement>(null)
   const rowRef = useRef<HTMLTableRowElement>(null)
+  const { t } = useI18n()
 
   // Scroll this row into view when it becomes the highlighted one
   useEffect(() => {
@@ -181,7 +184,7 @@ function FileRow({
           ))}
           {item.shared && (
             <span className="shrink-0 hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
-              Shared
+              {t('fileview.shared')}
             </span>
           )}
         </div>
@@ -198,7 +201,7 @@ function FileRow({
             <button
               onClick={e => { e.stopPropagation(); onQuickShare(item) }}
               className="p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-              title="Share…"
+              title={t('fileview.shareTitle')}
             >
               <UserPlus size={14} />
             </button>
@@ -207,7 +210,7 @@ function FileRow({
             ref={moreRef}
             onClick={e => { e.stopPropagation(); onContextMenu(item, moreRef.current!.getBoundingClientRect().left, moreRef.current!.getBoundingClientRect().bottom) }}
             className="p-1 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-            title="More options"
+            title={t('fileview.moreOptions')}
           >
             <MoreVertical size={14} />
           </button>
@@ -227,14 +230,15 @@ interface FileGridProps {
 }
 
 export function FileGrid({ items, selectedIds, onSelect, onOpen, onContextMenu }: FileGridProps) {
+  const { t } = useI18n()
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
         <div className="w-16 h-16 rounded-2xl bg-zinc-100 dark:bg-[#2d3148] flex items-center justify-center">
           <Folder size={28} className="text-zinc-400" />
         </div>
-        <p className="text-sm text-muted">This folder is empty</p>
-        <p className="text-xs text-zinc-400">Drag files here or click Upload to add files</p>
+        <p className="text-sm text-muted">{t('fileview.emptyFolder')}</p>
+        <p className="text-xs text-zinc-400">{t('fileview.dragToUpload')}</p>
       </div>
     )
   }
@@ -277,6 +281,7 @@ export function FileGrid({ items, selectedIds, onSelect, onOpen, onContextMenu }
 // Lazily fetches recursive folder size via GET /api/v1/files/{id}/size.
 // Shows "…" while loading, then the formatted size + file count.
 function FolderSize({ id }: { id: string }) {
+  const { t } = useI18n()
   const { data } = useQuery({
     queryKey: ['folder-size', id],
     queryFn: ({ signal }) =>
@@ -286,6 +291,6 @@ function FolderSize({ id }: { id: string }) {
   })
 
   if (!data) return <span className="text-zinc-400">…</span>
-  if (data.size_bytes === 0) return <span className="text-zinc-400">Empty</span>
+  if (data.size_bytes === 0) return <span className="text-zinc-400">{t('fileview.empty')}</span>
   return <>{formatBytes(data.size_bytes)}</>
 }

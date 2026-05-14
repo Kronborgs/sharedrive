@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import type { AuditLog, PaginatedResponse } from '@/types/api'
 import { formatRelative, formatDate } from '@/lib/utils'
 import { z } from 'zod'
+import { useI18n } from '@/lib/i18n'
 
 const searchSchema = z.object({
   page: z.number().catch(1),
@@ -96,6 +97,7 @@ function eventColor(event: string): string {
 export function AuditLogsPage() {
   const navigate = Route.useNavigate()
   const { page, event, user } = Route.useSearch()
+  const { t } = useI18n()
 
   const [userFilter, setUserFilter] = useState<string>(user)
   const limit = 50
@@ -123,7 +125,7 @@ export function AuditLogsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">Audit Log</h1>
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('audit.title')}</h1>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
@@ -143,14 +145,14 @@ export function AuditLogsPage() {
           <input
             value={userFilter}
             onChange={e => setUserFilter(e.target.value)}
-            placeholder="Filter by email…"
+            placeholder={t('audit.filterByEmail')}
             className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] text-zinc-900 dark:text-slate-100 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500 w-52"
           />
           <button
             type="submit"
             className="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
           >
-            Search
+            {t('audit.search')}
           </button>
           {user && (
             <button
@@ -158,28 +160,28 @@ export function AuditLogsPage() {
               onClick={() => { setUserFilter(''); setUser('') }}
               className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
             >
-              Clear
+              {t('audit.clear')}
             </button>
           )}
         </form>
-        <span className="ml-auto text-xs text-muted self-center">{total} total events</span>
+        <span className="ml-auto text-xs text-muted self-center">{t('audit.totalEvents', { n: String(total) })}</span>
       </div>
 
       {/* Table */}
       <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
         {isLoading ? (
-          <div className="p-8 text-center text-sm text-muted">Loading…</div>
+          <div className="p-8 text-center text-sm text-muted">{t('audit.loading')}</div>
         ) : logs.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted">No audit events found</div>
+          <div className="p-8 text-center text-sm text-muted">{t('audit.noEvents')}</div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-100 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117]">
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase w-36">Time</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Event</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Actor</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Target</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase hidden md:table-cell">IP</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase w-36">{t('audit.colTime')}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('audit.colEvent')}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('audit.colActor')}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('audit.colTarget')}</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase hidden md:table-cell">{t('audit.colIp')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
@@ -217,15 +219,15 @@ export function AuditLogsPage() {
             disabled={page === 1}
             className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm disabled:opacity-40 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
           >
-            Prev
+            {t('audit.prev')}
           </button>
-          <span className="text-sm text-muted px-2">Page {page} of {totalPages}</span>
+          <span className="text-sm text-muted px-2">{t('audit.pageOf', { page: String(page), total: String(totalPages) })}</span>
           <button
             onClick={() => setPage(page + 1)}
             disabled={page === totalPages}
             className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm disabled:opacity-40 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
           >
-            Next
+            {t('audit.next')}
           </button>
         </div>
       )}

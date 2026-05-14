@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { api } from '@/lib/api'
 import type { Tag } from '@/types/api'
 import { Pencil, Trash2, Plus } from 'lucide-react'
+import { useI18n } from '@/lib/i18n'
 
 export const Route = createFileRoute('/_auth/admin/tags/')({
   component: TagsPage,
@@ -22,6 +23,7 @@ function TagsPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editColor, setEditColor] = useState('')
+  const { t } = useI18n()
 
   const { data: tags, isLoading } = useQuery({
     queryKey: ['admin', 'tags'],
@@ -49,9 +51,9 @@ function TagsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">Tags</h1>
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('tags.title')}</h1>
       <p className="text-sm text-muted">
-        Admin-defined tags can be applied to files by anyone. Custom colors help organize file libraries.
+        {t('tags.desc')}
       </p>
 
       <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
@@ -63,7 +65,7 @@ function TagsPage() {
           <input
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="Tag name…"
+            placeholder={t('tags.placeholder')}
             className="flex-1 min-w-[140px] rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
           <div className="flex gap-1">
@@ -84,14 +86,14 @@ function TagsPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
           >
             <Plus size={14} />
-            Create
+            {t('tags.create')}
           </button>
         </form>
 
         {isLoading ? (
-          <div className="p-8 text-center text-sm text-muted">Loading…</div>
+          <div className="p-8 text-center text-sm text-muted">{t('tags.loading')}</div>
         ) : tags?.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted">No tags yet</div>
+          <div className="p-8 text-center text-sm text-muted">{t('tags.noTags')}</div>
         ) : (
           <ul className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
             {tags?.map(tag => (
@@ -118,8 +120,8 @@ function TagsPage() {
                         />
                       ))}
                     </div>
-                    <button type="submit" disabled={!editName.trim()} className="px-3 py-1 rounded-lg bg-brand-600 text-white text-sm font-medium">Save</button>
-                    <button type="button" onClick={() => setEditId(null)} className="px-3 py-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted">Cancel</button>
+                    <button type="submit" disabled={!editName.trim()} className="px-3 py-1 rounded-lg bg-brand-600 text-white text-sm font-medium">{t('tags.editTitle')}</button>
+                    <button type="button" onClick={() => setEditId(null)} className="px-3 py-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted">{t('users.cancel')}</button>
                   </form>
                 ) : (
                   <>
@@ -134,14 +136,14 @@ function TagsPage() {
                       <button
                         onClick={() => { setEditId(tag.id); setEditName(tag.name); setEditColor(tag.color) }}
                         className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-                        title="Edit"
+                        title={t('tags.editTitle')}
                       >
                         <Pencil size={14} />
                       </button>
                       <button
-                        onClick={() => { if (confirm(`Delete tag "${tag.name}"?`)) remove.mutate(tag.id) }}
+                        onClick={() => { if (confirm(t('tags.deleteConfirm', { name: tag.name }))) remove.mutate(tag.id) }}
                         className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        title="Delete"
+                        title={t('tags.deleteTitle')}
                       >
                         <Trash2 size={14} />
                       </button>

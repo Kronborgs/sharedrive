@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { api, ApiClientError } from '@/lib/api'
 import type { LoginResponse } from '@/types/api'
 import { useAuth } from '@/lib/auth-context'
+import { useI18n } from '@/lib/i18n'
 
 export const Route = createFileRoute('/login/')({
   component: LoginPage,
@@ -21,6 +22,7 @@ type FormValues = z.infer<typeof schema>
 export default function LoginPage() {
   const navigate = useNavigate()
   const { refetch } = useAuth()
+  const { t } = useI18n()
   const [error, setError] = useState<string | null>(null)
 
   const {
@@ -49,7 +51,7 @@ export default function LoginPage() {
       if (err instanceof ApiClientError) {
         setError(err.message)
       } else {
-        setError('An unexpected error occurred. Please try again.')
+        setError(t('login.unexpectedError'))
       }
     }
   }
@@ -60,7 +62,7 @@ export default function LoginPage() {
         {/* Logo / wordmark */}
         <div className="mb-8 text-center">
           <img src="/logo_name.png" alt="Sharedrive" className="h-10 w-auto mx-auto mb-2" />
-          <p className="text-sm text-muted">Sign in to your account</p>
+          <p className="text-sm text-muted">{t('login.signIn')}</p>
         </div>
 
         <form
@@ -75,14 +77,14 @@ export default function LoginPage() {
 
           <div className="space-y-1">
             <label className="block text-sm font-medium text-zinc-700 dark:text-slate-300">
-              Email
+              {t('login.email')}
             </label>
             <input
               {...register('email')}
               type="email"
               autoComplete="email"
               className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
-              placeholder="you@example.com"
+              placeholder={t('login.emailPlaceholder')}
             />
             {errors.email && (
               <p className="text-xs text-red-500">{errors.email.message}</p>
@@ -91,7 +93,7 @@ export default function LoginPage() {
 
           <div className="space-y-1">
             <label className="block text-sm font-medium text-zinc-700 dark:text-slate-300">
-              Password
+              {t('login.password')}
             </label>
             <input
               {...register('password')}
@@ -113,7 +115,7 @@ export default function LoginPage() {
               className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-600 text-brand-600 focus:ring-brand-500"
             />
             <label htmlFor="trust" className="text-sm text-zinc-600 dark:text-slate-400">
-              Trust this device for 30 days
+              {t('login.trustDevice')}
             </label>
           </div>
 
@@ -122,7 +124,7 @@ export default function LoginPage() {
             disabled={isSubmitting}
             className="w-full rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-medium py-2 text-sm transition-colors"
           >
-            {isSubmitting ? 'Signing in…' : 'Sign in'}
+            {isSubmitting ? t('login.signingIn') : t('login.submit')}
           </button>
 
           <div className="text-center">
@@ -130,7 +132,7 @@ export default function LoginPage() {
               href="/reset-password"
               className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
             >
-              Forgot your password?
+              {t('login.forgotPassword')}
             </a>
           </div>
         </form>

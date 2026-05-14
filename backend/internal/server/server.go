@@ -330,8 +330,9 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Post("/api/v1/public/onlyoffice/create", s.ooHandler.PublicCreateDocument)
 	r.Post("/api/v1/public/files/create-text", s.filesHandler.PublicCreateTextFile)
 
-	// ── Buddy backup receive (per-user token auth, no user session) ──────────
+	// ── Buddy backup public endpoints (no user session) ─────────────────────
 	r.Post("/api/v1/backup/buddy/receive", s.backupHandler.BuddyReceive)
+	r.Get("/api/v1/backup/buddy/server-info", s.backupHandler.BuddyServerInfo)
 
 	// ── Authenticated API routes ───────────────────────────────────────────
 	r.Group(func(r chi.Router) {

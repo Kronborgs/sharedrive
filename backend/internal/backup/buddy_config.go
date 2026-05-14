@@ -48,17 +48,22 @@ type BuddyUserStatus struct {
 	ReceiveTokenPrefix string     `json:"receive_token_prefix"` // first 8 chars for UI hint
 	LastPushAt         *time.Time `json:"last_push_at,omitempty"`
 	LastPushBytes      int64      `json:"last_push_bytes"`
+	PushInProgress     bool       `json:"push_in_progress"`
+	LastPushError      string     `json:"last_push_error,omitempty"`
 }
 
 // GetStatus returns the current buddy config summary for the user (no secrets exposed).
 func (s *BuddyConfigService) GetStatus(ctx context.Context, userID uuid.UUID) (*BuddyUserStatus, error) {
-	var peerURL, receiveTokenHash, receiveTokenPrefix string
+	var peerURL, receiveTokenHash, receiveTokenPrefix, lastPushError string
 	var lastPushAt *time.Time
 	var lastPushBytes int64
+	var pushInProgress bool
 	err := s.db.QueryRow(ctx,
-		`SELECT peer_url, receive_token_hash, receive_token_prefix, last_push_at, last_push_bytes
+		`SELECT peer_url, receive_token_hash, receive_token_prefix,
+		        last_push_at, last_push_bytes, push_in_progress, last_push_error
 		 FROM user_buddy_configs WHERE user_id = $1`, userID,
-	).Scan(&peerURL, &receiveTokenHash, &receiveTokenPrefix, &lastPushAt, &lastPushBytes)
+	).Scan(&peerURL, &receiveTokenHash, &receiveTokenPrefix,
+		&lastPushAt, &lastPushBytes, &pushInProgress, &lastPushError)
 	if err != nil {
 		// No row yet — return empty status (not an error)
 		return &BuddyUserStatus{UserID: userID.String()}, nil
@@ -71,14 +76,27 @@ func (s *BuddyConfigService) GetStatus(ctx context.Context, userID uuid.UUID) (*
 		ReceiveTokenPrefix: receiveTokenPrefix,
 		LastPushAt:         lastPushAt,
 		LastPushBytes:      lastPushBytes,
+		PushInProgress:     pushInProgress,
+		LastPushError:      lastPushError,
 	}, nil
+}
+
+// SetPushInProgress marks the push as started or finished (with optional error).
+func (s *BuddyConfigService) SetPushInProgress(ctx context.Context, userID uuid.UUID, inProgress bool, pushErr string) error {
+	_, err := s.db.Exec(ctx,
+		`UPDATE user_buddy_configs
+		 SET push_in_progress = $2, last_push_error = $3, updated_at = NOW()
+		 WHERE user_id = $1`, userID, inProgress, pushErr,
+	)
+	return err
 }
 
 // UpdateLastPush records the time and size of the most recent successful push.
 func (s *BuddyConfigService) UpdateLastPush(ctx context.Context, userID uuid.UUID, sizeBytes int64) error {
 	_, err := s.db.Exec(ctx,
 		`UPDATE user_buddy_configs
-		 SET last_push_at = NOW(), last_push_bytes = $2, updated_at = NOW()
+		 SET last_push_at = NOW(), last_push_bytes = $2,
+		     push_in_progress = FALSE, last_push_error = '', updated_at = NOW()
 		 WHERE user_id = $1`, userID, sizeBytes,
 	)
 	return err

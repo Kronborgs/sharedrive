@@ -24,6 +24,7 @@ import (
 
 // Handler is the thin HTTP layer for all backup operations.
 type Handler struct {
+	db         *pgxpool.Pool
 	passwords  *PasswordService
 	backups    *Service
 	restores   *RestoreService
@@ -43,6 +44,7 @@ func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot s
 	svc := NewService(db, storage)
 	tert := NewTertiaryService(backupsRoot, svc)
 	return &Handler{
+		db:              db,
 		passwords:       NewPasswordService(db, wrapKey),
 		backups:         svc,
 		restores:        NewRestoreService(db, storage),
@@ -494,6 +496,21 @@ func (h *Handler) RevokeBuddyReceiveToken(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ── GET /api/v1/backup/buddy/server-info (public, no auth) ───────────────────
+// Returns this server's preferred upload URL so peers can bypass Cloudflare.
+
+type buddyServerInfoResponse struct {
+	DirectUploadURL string `json:"direct_upload_url"` // empty string if not configured
+}
+
+func (h *Handler) BuddyServerInfo(w http.ResponseWriter, r *http.Request) {
+	var uploadURL string
+	_ = h.db.QueryRow(r.Context(),
+		`SELECT value FROM system_settings WHERE key = 'direct_upload_url'`,
+	).Scan(&uploadURL)
+	httputil.Respond(w, http.StatusOK, buddyServerInfoResponse{DirectUploadURL: uploadURL})
+}
+
 // ── POST /api/v1/backup/buddy/push ────────────────────────────────────────────
 
 type buddyPushRequest struct {
@@ -532,17 +549,32 @@ func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pushSize, err := h.buddy.Push(ctx, u.ID, req.Token, folderIDs, peerURL, peerUserID, peerToken)
-	if err != nil {
-		log.Error().Err(err).Str("user_id", u.ID.String()).Msg("buddy push")
-		httputil.RespondError(w, http.StatusBadGateway, "buddy push failed: "+err.Error())
-		return
+	// Mark as in-progress synchronously so the UI can reflect it immediately.
+	if err := h.buddyCfg.SetPushInProgress(ctx, u.ID, true, ""); err != nil {
+		log.Warn().Err(err).Str("user_id", u.ID.String()).Msg("buddy push: failed to set in_progress")
 	}
-	h.passwords.TouchLastUsed(ctx, u.ID)
-	if err := h.buddyCfg.UpdateLastPush(ctx, u.ID, pushSize); err != nil {
-		log.Warn().Err(err).Str("user_id", u.ID.String()).Msg("buddy push: failed to update last push stats")
-	}
-	w.WriteHeader(http.StatusNoContent)
+
+	// Return 202 immediately — the actual push runs in the background.
+	w.WriteHeader(http.StatusAccepted)
+
+	// Background goroutine: push to peer and update stats when done.
+	// Uses a detached context so the push continues after the HTTP request ends.
+	go func() {
+		bgCtx := context.Background()
+		userID := u.ID
+		pushSize, pushErr := h.buddy.Push(bgCtx, userID, req.Token, folderIDs, peerURL, peerUserID, peerToken)
+		if pushErr != nil {
+			log.Error().Err(pushErr).Str("user_id", userID.String()).Msg("buddy push (async)")
+			if err := h.buddyCfg.SetPushInProgress(bgCtx, userID, false, pushErr.Error()); err != nil {
+				log.Warn().Err(err).Str("user_id", userID.String()).Msg("buddy push: failed to record error")
+			}
+			return
+		}
+		h.passwords.TouchLastUsed(bgCtx, userID)
+		if err := h.buddyCfg.UpdateLastPush(bgCtx, userID, pushSize); err != nil {
+			log.Warn().Err(err).Str("user_id", userID.String()).Msg("buddy push: failed to update last push stats")
+		}
+	}()
 }
 
 // BuddyReceive accepts an archive pushed from a peer. Authentication is per-user:

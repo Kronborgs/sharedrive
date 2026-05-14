@@ -61,11 +61,13 @@ function FileTreeNode({
   allChecked: boolean
 }) {
   const isAncestor = ancestorIDs.has(item.id)
-  const [expanded, setExpanded] = useState(isAncestor)
+  const isChecked = allChecked || selectedIDs.includes(item.id) || isAncestor
+  // Auto-expand when allChecked so the user can see the full tree
+  const [expanded, setExpanded] = useState(isAncestor || allChecked)
 
   useEffect(() => {
-    if (isAncestor) setExpanded(true)
-  }, [isAncestor])
+    if (isAncestor || allChecked) setExpanded(true)
+  }, [isAncestor, allChecked])
 
   const { data: children, isLoading: loadingChildren } = useQuery({
     queryKey: ['files', item.id, 'picker-children'],
@@ -77,8 +79,12 @@ function FileTreeNode({
   return (
     <div>
       <div
-        className="flex items-center gap-1 py-0.5"
-        style={{ paddingLeft: `${depth * 14}px` }}
+        className={`flex items-center gap-1 py-1 rounded-md px-1 transition-colors ${
+          isChecked
+            ? 'bg-brand-50 dark:bg-brand-900/20'
+            : 'hover:bg-zinc-100 dark:hover:bg-[#2d3148]/50'
+        }`}
+        style={{ paddingLeft: `${depth * 14 + 4}px` }}
       >
         {item.is_folder ? (
           <button
@@ -92,16 +98,29 @@ function FileTreeNode({
           <span className="w-4 shrink-0" />
         )}
         <label className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
+          <span className={`flex items-center justify-center w-4 h-4 rounded shrink-0 border transition-colors ${
+            isChecked
+              ? 'bg-brand-600 border-brand-600'
+              : 'border-zinc-300 dark:border-[#4a5070] bg-white dark:bg-[#1a1d27]'
+          }`}>
+            {isChecked && (
+              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </span>
           <input
             type="checkbox"
-            checked={allChecked || selectedIDs.includes(item.id) || isAncestor}
+            checked={isChecked}
             onChange={() => onToggle(item.id)}
-            className="accent-brand-600 shrink-0"
+            className="sr-only"
           />
           {item.is_folder
-            ? <Folder size={11} className="text-zinc-400 shrink-0" />
-            : <FileIcon size={11} className="text-zinc-400 shrink-0" />}
-          <span className="text-xs text-zinc-700 dark:text-slate-300 truncate">{item.name}</span>
+            ? <Folder size={12} className={isChecked ? 'text-brand-500 shrink-0' : 'text-zinc-400 shrink-0'} />
+            : <FileIcon size={12} className={isChecked ? 'text-brand-400 shrink-0' : 'text-zinc-400 shrink-0'} />}
+          <span className={`text-xs truncate ${isChecked ? 'text-brand-700 dark:text-brand-300 font-medium' : 'text-zinc-700 dark:text-slate-300'}`}>
+            {item.name}
+          </span>
         </label>
       </div>
       {expanded && item.is_folder && (
@@ -184,15 +203,30 @@ function FolderPicker({
       </button>
 
       {open && (
-        <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3 space-y-1.5">
-          <label className="flex items-center gap-2 cursor-pointer">
+        <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-2 space-y-0.5">
+          <label className={`flex items-center gap-2 cursor-pointer rounded-md px-2 py-1.5 transition-colors ${
+            allChecked ? 'bg-brand-50 dark:bg-brand-900/20' : 'hover:bg-zinc-100 dark:hover:bg-[#2d3148]/50'
+          }`}>
+            <span className={`flex items-center justify-center w-4 h-4 rounded shrink-0 border transition-colors ${
+              allChecked
+                ? 'bg-brand-600 border-brand-600'
+                : 'border-zinc-300 dark:border-[#4a5070] bg-white dark:bg-[#1a1d27]'
+            }`}>
+              {allChecked && (
+                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                  <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </span>
             <input
               type="checkbox"
               checked={allChecked}
               onChange={() => onChange([])}
-              className="accent-brand-600"
+              className="sr-only"
             />
-            <span className="text-xs font-medium text-zinc-700 dark:text-slate-300">All files</span>
+            <span className={`text-xs font-semibold ${allChecked ? 'text-brand-700 dark:text-brand-300' : 'text-zinc-700 dark:text-slate-300'}`}>
+              All files
+            </span>
           </label>
           {pickerLoading && (
             <p className="text-xs text-zinc-400 pt-1">Loading…</p>
@@ -314,6 +348,8 @@ function BackupPage() {
   const { data: buddyConfig, refetch: refetchBuddyConfig } = useQuery({
     queryKey: ['backup', 'buddy-config'],
     queryFn: ({ signal }) => api.get<BuddyUserConfig>('/api/v1/backup/buddy/config', signal),
+    // Poll every 3 s while a push is in progress so the UI updates when it finishes.
+    refetchInterval: (query) => (query.state.data?.push_in_progress ? 3000 : false),
   })
 
   const { data: buddyReceived, refetch: refetchBuddyReceived } = useQuery({
@@ -514,7 +550,10 @@ function BackupPage() {
         token: buddyToken.trim(),
         ...(buddyFolderIDs.length > 0 && { folder_ids: buddyFolderIDs }),
       })
-      toast.success('Archive pushed to buddy server')
+      // Server returned 202 — push is running in the background.
+      // Refetch config immediately so polling kicks in (push_in_progress = true).
+      void refetchBuddyConfig()
+      toast.success('Push started — running in the background')
     } catch (e: unknown) {
       toast.error((e as Error).message ?? 'Buddy push failed')
     } finally {
@@ -1022,13 +1061,18 @@ function BackupPage() {
                         </div>
                         <button
                           onClick={handleBuddyPush}
-                          disabled={buddyPushing}
+                          disabled={buddyPushing || buddyConfig?.push_in_progress}
                           className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
                         >
-                          {buddyPushing
+                          {(buddyPushing || buddyConfig?.push_in_progress)
                             ? <><RefreshCw size={15} className="animate-spin" /> Pushing to buddy…</>
                             : <><ArrowUpToLine size={15} /> Push backup now</>}
                         </button>
+                        {buddyConfig?.last_push_error && (
+                          <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                            <AlertTriangle size={12} /> {buddyConfig.last_push_error}
+                          </p>
+                        )}
                         <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
                         <button
                           type="button"
@@ -1050,14 +1094,19 @@ function BackupPage() {
                           />
                           <button
                             onClick={handleBuddyPush}
-                            disabled={!buddyToken.trim() || buddyPushing}
+                            disabled={!buddyToken.trim() || buddyPushing || buddyConfig?.push_in_progress}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
                           >
-                            {buddyPushing
+                            {(buddyPushing || buddyConfig?.push_in_progress)
                               ? <><RefreshCw size={14} className="animate-spin" /> Pushing…</>
                               : <><ArrowUpToLine size={14} /> Push</>}
                           </button>
                         </div>
+                        {buddyConfig?.last_push_error && (
+                          <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                            <AlertTriangle size={12} /> {buddyConfig.last_push_error}
+                          </p>
+                        )}
                         <p className="text-xs text-zinc-400">Find din nøgle under <button type="button" onClick={() => setActiveTab('token')} className="underline hover:text-zinc-600 dark:hover:text-slate-300">Backup Token</button> fanen.</p>
                         <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
                       </div>

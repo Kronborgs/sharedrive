@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -29,9 +30,35 @@ var buddyHTTPClient = &http.Client{
 	},
 }
 
-// BuddyService handles the secondary backup layer — push/receive between
-// two Sharedrive instances.
-//
+// BuddyServerInfo is returned by GET /api/v1/backup/buddy/server-info on a peer.
+type BuddyServerInfo struct {
+	DirectUploadURL string `json:"direct_upload_url"` // empty if not configured
+}
+
+// fetchPeerDirectUploadURL probes a peer for its preferred upload URL.
+// Returns the direct URL if the peer has one configured, otherwise returns baseURL.
+func fetchPeerDirectUploadURL(ctx context.Context, baseURL string) string {
+	infoURL := strings.TrimRight(baseURL, "/") + "/api/v1/backup/buddy/server-info"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, infoURL, nil)
+	if err != nil {
+		return baseURL
+	}
+	resp, err := buddyHTTPClient.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return baseURL
+	}
+	defer resp.Body.Close()
+	var info BuddyServerInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil || info.DirectUploadURL == "" {
+		return baseURL
+	}
+	log.Info().Str("base_url", baseURL).Str("upload_url", info.DirectUploadURL).Msg("buddy: using peer direct upload URL")
+	return info.DirectUploadURL
+}
+
 // Push: stream an encrypted archive to a peer server over HTTPS.
 // Receive: accept an archive pushed from a peer and store it on disk.
 // Archives pushed to this server are stored under BACKUPS_ROOT/buddy/<senderUserID>/.
@@ -103,11 +130,17 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	}
 	mw.Close()
 
-	endpoint := strings.TrimRight(peerBaseURL, "/") + "/api/v1/backup/buddy/receive"
-	if !strings.HasPrefix(endpoint, "https://") {
+	receiveEndpoint := strings.TrimRight(peerBaseURL, "/") + "/api/v1/backup/buddy/receive"
+	if !strings.HasPrefix(receiveEndpoint, "https://") {
 		return 0, fmt.Errorf("buddy push: peer URL must use HTTPS")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &body)
+
+	// Use the peer's direct upload URL if configured — bypasses Cloudflare size limits.
+	// We still validate the base URL above; the upload URL is only used for the actual POST.
+	uploadBase := fetchPeerDirectUploadURL(ctx, peerBaseURL)
+	uploadEndpoint := strings.TrimRight(uploadBase, "/") + "/api/v1/backup/buddy/receive"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadEndpoint, &body)
 	if err != nil {
 		return 0, fmt.Errorf("buddy push: request: %w", err)
 	}

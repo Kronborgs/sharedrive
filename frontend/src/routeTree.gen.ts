@@ -28,12 +28,12 @@ import { Route as AuthAdminIndexRouteImport } from './routes/_auth.admin.index'
 import { Route as AuthActivityIndexRouteImport } from './routes/_auth.activity.index'
 import { Route as AuthAdminUsersIndexRouteImport } from './routes/_auth.admin.users.index'
 import { Route as AuthAdminTagsIndexRouteImport } from './routes/_auth.admin.tags.index'
+import { Route as AuthAdminStorageIndexRouteImport } from './routes/_auth.admin.storage.index'
 import { Route as AuthAdminSettingsIndexRouteImport } from './routes/_auth.admin.settings.index'
 import { Route as AuthAdminGroupsIndexRouteImport } from './routes/_auth.admin.groups.index'
 import { Route as AuthAdminBlockedIpsIndexRouteImport } from './routes/_auth.admin.blocked-ips.index'
 import { Route as AuthAdminBackupIndexRouteImport } from './routes/_auth.admin.backup.index'
 import { Route as AuthAdminAuditLogsIndexRouteImport } from './routes/_auth.admin.audit-logs.index'
-import { Route as AuthAdminStorageIndexRouteImport } from './routes/_auth.admin.storage.index'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -129,6 +129,11 @@ const AuthAdminTagsIndexRoute = AuthAdminTagsIndexRouteImport.update({
   path: '/admin/tags/',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthAdminStorageIndexRoute = AuthAdminStorageIndexRouteImport.update({
+  id: '/admin/storage/',
+  path: '/admin/storage/',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthAdminSettingsIndexRoute = AuthAdminSettingsIndexRouteImport.update({
   id: '/admin/settings/',
   path: '/admin/settings/',
@@ -155,11 +160,6 @@ const AuthAdminAuditLogsIndexRoute = AuthAdminAuditLogsIndexRouteImport.update({
   path: '/admin/audit-logs/',
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthAdminStorageIndexRoute = AuthAdminStorageIndexRouteImport.update({
-  id: '/admin/storage/',
-  path: '/admin/storage/',
-  getParentRoute: () => AuthRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -183,9 +183,9 @@ export interface FileRoutesByFullPath {
   '/admin/blocked-ips/': typeof AuthAdminBlockedIpsIndexRoute
   '/admin/groups/': typeof AuthAdminGroupsIndexRoute
   '/admin/settings/': typeof AuthAdminSettingsIndexRoute
+  '/admin/storage/': typeof AuthAdminStorageIndexRoute
   '/admin/tags/': typeof AuthAdminTagsIndexRoute
   '/admin/users/': typeof AuthAdminUsersIndexRoute
-  '/admin/storage/': typeof AuthAdminStorageIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -208,9 +208,9 @@ export interface FileRoutesByTo {
   '/admin/blocked-ips': typeof AuthAdminBlockedIpsIndexRoute
   '/admin/groups': typeof AuthAdminGroupsIndexRoute
   '/admin/settings': typeof AuthAdminSettingsIndexRoute
+  '/admin/storage': typeof AuthAdminStorageIndexRoute
   '/admin/tags': typeof AuthAdminTagsIndexRoute
   '/admin/users': typeof AuthAdminUsersIndexRoute
-  '/admin/storage': typeof AuthAdminStorageIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -236,9 +236,9 @@ export interface FileRoutesById {
   '/_auth/admin/blocked-ips/': typeof AuthAdminBlockedIpsIndexRoute
   '/_auth/admin/groups/': typeof AuthAdminGroupsIndexRoute
   '/_auth/admin/settings/': typeof AuthAdminSettingsIndexRoute
+  '/_auth/admin/storage/': typeof AuthAdminStorageIndexRoute
   '/_auth/admin/tags/': typeof AuthAdminTagsIndexRoute
   '/_auth/admin/users/': typeof AuthAdminUsersIndexRoute
-  '/_auth/admin/storage/': typeof AuthAdminStorageIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -264,9 +264,9 @@ export interface FileRouteTypes {
     | '/admin/blocked-ips/'
     | '/admin/groups/'
     | '/admin/settings/'
+    | '/admin/storage/'
     | '/admin/tags/'
     | '/admin/users/'
-    | '/admin/storage/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -289,9 +289,9 @@ export interface FileRouteTypes {
     | '/admin/blocked-ips'
     | '/admin/groups'
     | '/admin/settings'
+    | '/admin/storage'
     | '/admin/tags'
     | '/admin/users'
-    | '/admin/storage'
   id:
     | '__root__'
     | '/'
@@ -316,9 +316,9 @@ export interface FileRouteTypes {
     | '/_auth/admin/blocked-ips/'
     | '/_auth/admin/groups/'
     | '/_auth/admin/settings/'
+    | '/_auth/admin/storage/'
     | '/_auth/admin/tags/'
     | '/_auth/admin/users/'
-    | '/_auth/admin/storage/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -466,6 +466,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAdminTagsIndexRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/admin/storage/': {
+      id: '/_auth/admin/storage/'
+      path: '/admin/storage'
+      fullPath: '/admin/storage/'
+      preLoaderRoute: typeof AuthAdminStorageIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/admin/settings/': {
       id: '/_auth/admin/settings/'
       path: '/admin/settings'
@@ -501,13 +508,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAdminAuditLogsIndexRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_auth/admin/storage/': {
-      id: '/_auth/admin/storage/'
-      path: '/admin/storage'
-      fullPath: '/admin/storage/'
-      preLoaderRoute: typeof AuthAdminStorageIndexRouteImport
-      parentRoute: typeof AuthRoute
-    }
   }
 }
 
@@ -525,9 +525,9 @@ interface AuthRouteChildren {
   AuthAdminBlockedIpsIndexRoute: typeof AuthAdminBlockedIpsIndexRoute
   AuthAdminGroupsIndexRoute: typeof AuthAdminGroupsIndexRoute
   AuthAdminSettingsIndexRoute: typeof AuthAdminSettingsIndexRoute
+  AuthAdminStorageIndexRoute: typeof AuthAdminStorageIndexRoute
   AuthAdminTagsIndexRoute: typeof AuthAdminTagsIndexRoute
   AuthAdminUsersIndexRoute: typeof AuthAdminUsersIndexRoute
-  AuthAdminStorageIndexRoute: typeof AuthAdminStorageIndexRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
@@ -544,9 +544,9 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthAdminBlockedIpsIndexRoute: AuthAdminBlockedIpsIndexRoute,
   AuthAdminGroupsIndexRoute: AuthAdminGroupsIndexRoute,
   AuthAdminSettingsIndexRoute: AuthAdminSettingsIndexRoute,
+  AuthAdminStorageIndexRoute: AuthAdminStorageIndexRoute,
   AuthAdminTagsIndexRoute: AuthAdminTagsIndexRoute,
   AuthAdminUsersIndexRoute: AuthAdminUsersIndexRoute,
-  AuthAdminStorageIndexRoute: AuthAdminStorageIndexRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)

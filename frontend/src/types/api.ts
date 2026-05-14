@@ -215,6 +215,8 @@ export interface BuddyUserConfig {
   receive_token_prefix: string
   last_push_at?: string | null
   last_push_bytes?: number
+  push_in_progress?: boolean
+  last_push_error?: string
 }
 
 export interface GeneratedBuddyReceiveToken {

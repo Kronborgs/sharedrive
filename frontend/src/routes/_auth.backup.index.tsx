@@ -154,6 +154,10 @@ function FolderPicker({
   onChange: (ids: string[]) => void
 }) {
   const [open, setOpen] = useState(false)
+  // manualMode=true means the user has explicitly unchecked "All files"
+  // and is choosing specific items. Without this flag, selectedIDs=[] is
+  // ambiguous between "all files" and "nothing selected yet".
+  const [manualMode, setManualMode] = useState(false)
 
   const { data: rootItems, isLoading: pickerLoading } = useQuery({
     queryKey: ['files', 'root-for-picker'],
@@ -186,12 +190,24 @@ function FolderPicker({
 
   const resolvedAncestors = ancestorIDs ?? new Set<string>()
   const items = rootItems ?? []
-  const allChecked = selectedIDs.length === 0
+  // allChecked = true when in "all files" mode (no explicit selection)
+  const allChecked = selectedIDs.length === 0 && !manualMode
+
+  const handleAllFilesToggle = () => {
+    if (allChecked) {
+      // Uncheck "All files" → enter manual mode with nothing selected
+      setManualMode(true)
+    } else {
+      // Check "All files" → clear manual selection and go back to all-mode
+      setManualMode(false)
+      onChange([])
+    }
+  }
 
   const toggle = (id: string) => {
     if (allChecked) {
-      // Switching from "all files" to explicit: select only the clicked item.
-      // (The old "select all root minus clicked" was broken for nested items.)
+      // Clicked an item while in all-files mode → enter manual mode with only that item
+      setManualMode(true)
       onChange([id])
     } else if (selectedIDs.includes(id)) {
       onChange(selectedIDs.filter(x => x !== id))
@@ -208,7 +224,7 @@ function FolderPicker({
         className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 transition-colors"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        {allChecked ? 'All files' : `${selectedIDs.length} item(s) selected`}
+        {allChecked ? 'All files' : manualMode && selectedIDs.length === 0 ? 'Nothing selected' : `${selectedIDs.length} item(s) selected`}
       </button>
 
       {open && (
@@ -230,7 +246,7 @@ function FolderPicker({
             <input
               type="checkbox"
               checked={allChecked}
-              onChange={() => onChange([])}
+              onChange={handleAllFilesToggle}
               className="sr-only"
             />
             <span className={`text-xs font-semibold ${allChecked ? 'text-brand-700 dark:text-brand-300' : 'text-zinc-700 dark:text-slate-300'}`}>

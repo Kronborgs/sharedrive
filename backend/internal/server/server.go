@@ -334,7 +334,10 @@ func (s *Server) buildRouter() *chi.Mux {
 
 	// ── Buddy backup public endpoints (no user session) ─────────────────────
 	r.Post("/api/v1/backup/buddy/receive", s.backupHandler.BuddyReceive)
-	r.Get("/api/v1/backup/buddy/server-info", s.backupHandler.BuddyServerInfo) // Reverse-tunnel endpoint: CGNAT peers connect here via WebSocket so this
+	r.Get("/api/v1/backup/buddy/server-info", s.backupHandler.BuddyServerInfo)
+	// Sender-archives: lets the pusher list/delete archives stored on this instance using their receive token.
+	r.Get("/api/v1/backup/buddy/sender-archives", s.backupHandler.ListSenderArchives)
+	r.Delete("/api/v1/backup/buddy/sender-archives/{filename}", s.backupHandler.DeleteSenderArchive) // Reverse-tunnel endpoint: CGNAT peers connect here via WebSocket so this
 	// instance can push archives back through the tunnel.
 	r.Get("/api/v1/backup/buddy/tunnel", s.backupHandler.BuddyTunnel)
 	// ── Authenticated API routes ───────────────────────────────────────────
@@ -432,6 +435,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/backup/buddy/received", s.backupHandler.ListBuddyReceived)
 		r.Get("/api/v1/backup/buddy/received/{filename}", s.backupHandler.DownloadBuddyReceived)
 		r.Delete("/api/v1/backup/buddy/received/{filename}", s.backupHandler.DeleteBuddyReceived)
+		// Pushed: proxy calls to peer to list/delete archives the current user has pushed there.
+		r.Get("/api/v1/backup/buddy/pushed", s.backupHandler.ListPushedArchives)
+		r.Delete("/api/v1/backup/buddy/pushed/{filename}", s.backupHandler.DeletePushedArchive)
 
 		// SSE (admin-in-account banner)
 		r.Get("/api/v1/me/events", s.handleSSE)

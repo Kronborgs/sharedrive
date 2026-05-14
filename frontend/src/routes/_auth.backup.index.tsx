@@ -386,6 +386,13 @@ function BackupPage() {
     refetchInterval: 10_000, // poll every 10s to reflect tunnel state changes
   })
 
+  const { data: pushedArchives, refetch: refetchPushedArchives } = useQuery({
+    queryKey: ['backup', 'buddy-pushed'],
+    queryFn: ({ signal }) => api.get<BuddyArchive[]>('/api/v1/backup/buddy/pushed', signal),
+    enabled: buddyConfig?.peer_configured ?? false,
+    staleTime: 30_000,
+  })
+
   const { data: buddyReceived, refetch: refetchBuddyReceived } = useQuery({
     queryKey: ['backup', 'buddy-received'],
     queryFn: ({ signal }) => api.get<BuddyArchive[]>('/api/v1/backup/buddy/received', signal),
@@ -498,6 +505,12 @@ function BackupPage() {
     onError: () => toast.error('Afbrydelse fejlede'),
   })
 
+  const deletePushedMutation = useMutation({
+    mutationFn: (filename: string) => api.delete(`/api/v1/backup/buddy/pushed/${encodeURIComponent(filename)}`),
+    onSuccess: () => { void refetchPushedArchives(); toast.success('Arkiv slettet hos peer') },
+    onError: () => toast.error('Kunne ikke slette arkiv hos peer'),
+  })
+
   // ── handlers ──────────────────────────────────────────────────────────────
 
   const handleCopyToken = async () => {
@@ -605,6 +618,9 @@ function BackupPage() {
         refetchBuddyConfig().then(result => {
           if (!result.data?.push_in_progress && result.data?.last_push_error) {
             toast.error('Push fejlede: ' + result.data.last_push_error)
+          } else if (!result.data?.push_in_progress) {
+            // Push succeeded — refresh the list of archives stored at peer
+            void refetchPushedArchives()
           }
         }).catch(() => {})
       }, 1500)
@@ -1036,17 +1052,24 @@ function BackupPage() {
                   <ArrowUpToLine size={13} className="text-brand-500" />
                   Buddy stores for you
                 </div>
-                {buddyConfig?.peer_configured && buddyConfig.last_push_at ? (
+                {buddyConfig?.peer_configured && (pushedArchives && pushedArchives.length > 0) ? (
+                  <>
+                    <p className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
+                      {formatBytes(pushedArchives.reduce((s, a) => s + a.size_bytes, 0))}
+                    </p>
+                    <p className="text-xs text-zinc-400">{pushedArchives.length} arkiv{pushedArchives.length !== 1 ? 'er' : ''}</p>
+                  </>
+                ) : buddyConfig?.peer_configured && buddyConfig.last_push_at ? (
                   <>
                     <p className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
                       {formatBytes(buddyConfig.last_push_bytes ?? 0)}
                     </p>
                     <p className="text-xs text-zinc-400">
-                      Last push {new Date(buddyConfig.last_push_at).toLocaleDateString()}
+                      Sidst pushet {new Date(buddyConfig.last_push_at).toLocaleDateString()}
                     </p>
                   </>
                 ) : (
-                  <p className="text-sm text-zinc-400 dark:text-slate-500">Not pushed yet</p>
+                  <p className="text-sm text-zinc-400 dark:text-slate-500">Ikke pushet endnu</p>
                 )}
               </div>
               {/* Tunnel status card — only when peer is configured */}
@@ -1441,6 +1464,60 @@ function BackupPage() {
                     </div>
                   )}
                 </div>
+              </section>
+            )}
+
+            {/* ── Arkiver lagret hos peer ──────────────────────────────── */}
+            {buddyConfig?.peer_configured && (
+              <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpToLine size={16} className="text-brand-500" />
+                    <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Arkiver lagret hos peer</h2>
+                  </div>
+                  <button
+                    onClick={() => void refetchPushedArchives()}
+                    className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-400"
+                    title="Opdater liste"
+                  >
+                    <RefreshCw size={13} />
+                  </button>
+                </div>
+                <p className="text-sm text-zinc-500 dark:text-slate-400">
+                  Arkiver du har pushet til din peer. Du kan slette dem for at frigøre plads hos dem.
+                </p>
+                {pushedArchives && pushedArchives.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-slate-400 pb-1 border-b border-zinc-100 dark:border-[#2d3148]">
+                      <span>{pushedArchives.length} arkiv{pushedArchives.length !== 1 ? 'er' : ''}</span>
+                      <span className="font-medium">{formatBytes(pushedArchives.reduce((s, a) => s + a.size_bytes, 0))} total</span>
+                    </div>
+                    <div className="space-y-1">
+                      {pushedArchives.map(a => (
+                        <div
+                          key={a.filename}
+                          className="flex items-center gap-2 rounded-lg border border-zinc-100 dark:border-[#2d3148] px-3 py-2 text-xs"
+                        >
+                          <span className="flex-1 font-mono text-zinc-700 dark:text-slate-300 truncate">{a.filename}</span>
+                          <span className="text-zinc-400 shrink-0">{formatBytes(a.size_bytes)}</span>
+                          <span className="text-zinc-400 shrink-0">{new Date(a.received_at).toLocaleDateString()}</span>
+                          <button
+                            onClick={() => { if (confirm('Slet dette arkiv hos peer?')) deletePushedMutation.mutate(a.filename) }}
+                            disabled={deletePushedMutation.isPending}
+                            className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors disabled:opacity-50"
+                            title="Slet hos peer"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : pushedArchives ? (
+                  <p className="text-xs text-zinc-400">Ingen arkiver fundet hos peer.</p>
+                ) : (
+                  <p className="text-xs text-zinc-400">Klik opdater for at hente liste fra peer.</p>
+                )}
               </section>
             )}
 

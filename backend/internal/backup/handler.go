@@ -836,6 +836,189 @@ func (h *Handler) DeleteBuddyReceived(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ── GET /api/v1/backup/buddy/sender-archives ──────────────────────────────────
+// Public endpoint — authenticated with the receive token (same as BuddyReceive).
+// Lets the sender (pusher) list archives they have stored on this instance.
+//
+//   Authorization: Bearer {receive_token}
+//   ?receiver_user_id={UUID}
+
+func (h *Handler) ListSenderArchives(w http.ResponseWriter, r *http.Request) {
+	if !h.tertiaryEnabled {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "backup storage not configured on this server")
+		return
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		httputil.RespondError(w, http.StatusUnauthorized, "missing bearer token")
+		return
+	}
+	token := auth[7:]
+	receiverID, err := uuid.Parse(r.URL.Query().Get("receiver_user_id"))
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid receiver_user_id")
+		return
+	}
+	if err := h.buddyCfg.ValidateReceiveToken(r.Context(), receiverID, token); err != nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "invalid receive token")
+		return
+	}
+	archives, err := h.buddy.ListReceived(receiverID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, archives)
+}
+
+// ── DELETE /api/v1/backup/buddy/sender-archives/{filename} ───────────────────
+// Same token-auth as above. Lets the sender remove one of their archives.
+
+func (h *Handler) DeleteSenderArchive(w http.ResponseWriter, r *http.Request) {
+	if !h.tertiaryEnabled {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "backup storage not configured on this server")
+		return
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		httputil.RespondError(w, http.StatusUnauthorized, "missing bearer token")
+		return
+	}
+	token := auth[7:]
+	receiverID, err := uuid.Parse(r.URL.Query().Get("receiver_user_id"))
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid receiver_user_id")
+		return
+	}
+	if err := h.buddyCfg.ValidateReceiveToken(r.Context(), receiverID, token); err != nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "invalid receive token")
+		return
+	}
+	filename := chi.URLParam(r, "filename")
+	if err := h.buddy.DeleteReceived(receiverID, filename); err != nil {
+		if strings.Contains(err.Error(), "invalid filename") {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid filename")
+			return
+		}
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── GET /api/v1/backup/buddy/pushed ──────────────────────────────────────────
+// Authenticated (user session). Proxies to the peer to list archives this user
+// has pushed there. Works via tunnel or direct HTTPS.
+
+func (h *Handler) ListPushedArchives(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	cfg, err := h.buddyCfg.GetStatus(ctx, u.ID)
+	if err != nil || !cfg.PeerConfigured {
+		httputil.RespondError(w, http.StatusBadRequest, "peer not configured")
+		return
+	}
+	peerURL, peerUserID, peerToken, err := h.buddyCfg.GetPeerConfig(ctx, u.ID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	endpoint := strings.TrimRight(peerURL, "/") +
+		"/api/v1/backup/buddy/sender-archives?receiver_user_id=" + peerUserID
+
+	var httpClient *http.Client
+	if h.tunnelMgr != nil {
+		if tr := h.tunnelMgr.HTTPTransport(u.ID); tr != nil {
+			httpClient = &http.Client{Transport: tr, Timeout: 30 * time.Second}
+			endpoint = "http://tunnel-peer/api/v1/backup/buddy/sender-archives?receiver_user_id=" + peerUserID
+		}
+	}
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+peerToken)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadGateway, "could not reach peer: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		httputil.RespondError(w, resp.StatusCode, "peer returned error")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	io.Copy(w, resp.Body) //nolint:errcheck
+}
+
+// ── DELETE /api/v1/backup/buddy/pushed/{filename} ────────────────────────────
+// Authenticated (user session). Proxies a delete request to the peer.
+
+func (h *Handler) DeletePushedArchive(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	cfg, err := h.buddyCfg.GetStatus(ctx, u.ID)
+	if err != nil || !cfg.PeerConfigured {
+		httputil.RespondError(w, http.StatusBadRequest, "peer not configured")
+		return
+	}
+	peerURL2, peerUserID2, peerToken2, err := h.buddyCfg.GetPeerConfig(ctx, u.ID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	filename := chi.URLParam(r, "filename")
+
+	endpoint := strings.TrimRight(peerURL2, "/") +
+		"/api/v1/backup/buddy/sender-archives/" + filename + "?receiver_user_id=" + peerUserID2
+
+	var httpClient *http.Client
+	if h.tunnelMgr != nil {
+		if tr := h.tunnelMgr.HTTPTransport(u.ID); tr != nil {
+			httpClient = &http.Client{Transport: tr, Timeout: 30 * time.Second}
+			endpoint = "http://tunnel-peer/api/v1/backup/buddy/sender-archives/" + filename + "?receiver_user_id=" + peerUserID2
+		}
+	}
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+peerToken2)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadGateway, "could not reach peer: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		httputil.RespondError(w, resp.StatusCode, "peer returned error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ── PUT /api/v1/backup/buddy/auto ─────────────────────────────────────────────
 
 type buddyAutoConfigRequest struct {

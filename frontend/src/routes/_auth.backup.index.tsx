@@ -305,7 +305,6 @@ function BackupPage() {
 
   // buddy push state
   const [buddyToken, setBuddyToken] = useState('')
-  const [buddyFolderIDs, setBuddyFolderIDs] = useState<string[]>([])
   const [buddyPushing, setBuddyPushing] = useState(false)
 
   // tab state
@@ -573,7 +572,7 @@ function BackupPage() {
     try {
       await api.post('/api/v1/backup/buddy/push', {
         token: buddyToken.trim(),
-        ...(buddyFolderIDs.length > 0 && { folder_ids: buddyFolderIDs }),
+        ...(( buddyConfig?.auto_push_folder_ids?.length ?? 0) > 0 && { folder_ids: buddyConfig!.auto_push_folder_ids }),
       })
       // Server returned 202 — push is running in the background.
       // Refetch config immediately so polling kicks in (push_in_progress = true).
@@ -1098,7 +1097,17 @@ function BackupPage() {
                             <AlertTriangle size={12} /> {buddyConfig.last_push_error}
                           </p>
                         )}
-                        <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
+                        <FolderPicker
+                          selectedIDs={buddyConfig?.auto_push_folder_ids ?? []}
+                          onChange={ids => {
+                            api.put('/api/v1/backup/buddy/auto', {
+                              enabled: buddyConfig?.auto_push_enabled ?? false,
+                              interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
+                              on_change: buddyConfig?.auto_push_on_change ?? false,
+                              folder_ids: ids,
+                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                          }}
+                        />
                         <button
                           type="button"
                           onClick={() => setBuddyToken('')}
@@ -1133,7 +1142,17 @@ function BackupPage() {
                           </p>
                         )}
                         <p className="text-xs text-zinc-400">Find din nøgle under <button type="button" onClick={() => setActiveTab('token')} className="underline hover:text-zinc-600 dark:hover:text-slate-300">Backup Token</button> fanen.</p>
-                        <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
+                        <FolderPicker
+                          selectedIDs={buddyConfig?.auto_push_folder_ids ?? []}
+                          onChange={ids => {
+                            api.put('/api/v1/backup/buddy/auto', {
+                              enabled: buddyConfig?.auto_push_enabled ?? false,
+                              interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
+                              on_change: buddyConfig?.auto_push_on_change ?? false,
+                              folder_ids: ids,
+                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                          }}
+                        />
                       </div>
                     )}
                   </div>

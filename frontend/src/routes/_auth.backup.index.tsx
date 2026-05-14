@@ -11,6 +11,7 @@ import type {
   TertiaryArchive,
   BuddyArchive,
   BuddyUserConfig,
+  BuddyTunnelStatus,
   GeneratedBuddyReceiveToken,
   AutoBackupConfig,
 } from '@/types/api'
@@ -37,6 +38,7 @@ import {
   ToggleRight,
   ArrowUpToLine,
   ArrowDownToLine,
+  Network,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -377,6 +379,13 @@ function BackupPage() {
     refetchInterval: (query) => (query.state.data?.push_in_progress ? 3000 : false),
   })
 
+  const { data: tunnelStatus, refetch: refetchTunnelStatus } = useQuery({
+    queryKey: ['backup', 'tunnel-status'],
+    queryFn: ({ signal }) => api.get<BuddyTunnelStatus>('/api/v1/backup/buddy/tunnel/status', signal),
+    enabled: buddyConfig?.peer_configured ?? false,
+    refetchInterval: 10_000, // poll every 10s to reflect tunnel state changes
+  })
+
   const { data: buddyReceived, refetch: refetchBuddyReceived } = useQuery({
     queryKey: ['backup', 'buddy-received'],
     queryFn: ({ signal }) => api.get<BuddyArchive[]>('/api/v1/backup/buddy/received', signal),
@@ -475,6 +484,18 @@ function BackupPage() {
       toast.success('Peer configuration cleared')
     },
     onError: () => toast.error('Failed to clear peer configuration'),
+  })
+
+  const tunnelConnectMutation = useMutation({
+    mutationFn: () => api.post('/api/v1/backup/buddy/tunnel/connect', {}),
+    onSuccess: () => { void refetchTunnelStatus(); toast.success('Reverse tunnel forbundet') },
+    onError: (e: unknown) => toast.error((e as Error).message ?? 'Tunnel forbindelse fejlede'),
+  })
+
+  const tunnelDisconnectMutation = useMutation({
+    mutationFn: () => api.delete('/api/v1/backup/buddy/tunnel/connect'),
+    onSuccess: () => { void refetchTunnelStatus(); toast.success('Reverse tunnel afbrudt') },
+    onError: () => toast.error('Afbrydelse fejlede'),
   })
 
   // ── handlers ──────────────────────────────────────────────────────────────
@@ -990,7 +1011,7 @@ function BackupPage() {
             )}
 
             {/* ── Storage balance overview ─────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid gap-3 ${buddyConfig?.peer_configured ? 'grid-cols-3' : 'grid-cols-2'}`}>
               {/* What I store for buddy */}
               <div className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-4 space-y-1">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-slate-400">
@@ -1028,6 +1049,50 @@ function BackupPage() {
                   <p className="text-sm text-zinc-400 dark:text-slate-500">Not pushed yet</p>
                 )}
               </div>
+              {/* Tunnel status card — only when peer is configured */}
+              {buddyConfig?.peer_configured && (
+                <div className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-4 space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-slate-400">
+                    <Network size={13} className="text-brand-500" />
+                    Reverse tunnel
+                  </div>
+                  {tunnelStatus?.connected_to_peer ? (
+                    <>
+                      <p className="text-sm font-semibold text-green-600 dark:text-green-400 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+                        Aktiv
+                      </p>
+                      <button
+                        onClick={() => tunnelDisconnectMutation.mutate()}
+                        disabled={tunnelDisconnectMutation.isPending}
+                        className="text-xs text-red-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                      >
+                        Afbryd
+                      </button>
+                    </>
+                  ) : tunnelStatus?.peer_connected_here ? (
+                    <>
+                      <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
+                        Peer forbundet
+                      </p>
+                      <p className="text-xs text-zinc-400">Din peer har åbnet tunnel hertil</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-zinc-400 dark:text-slate-500">Inaktiv</p>
+                      <button
+                        onClick={() => tunnelConnectMutation.mutate()}
+                        disabled={tunnelConnectMutation.isPending}
+                        className="text-xs text-brand-600 dark:text-brand-400 hover:underline transition-colors flex items-center gap-1"
+                      >
+                        {tunnelConnectMutation.isPending && <RefreshCw size={10} className="animate-spin" />}
+                        Aktiver (CGNAT)
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-5">
               <div className="flex items-center gap-2">

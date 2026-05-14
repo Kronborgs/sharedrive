@@ -19,7 +19,11 @@ require (
 	golang.org/x/net v0.37.0
 )
 
-require golang.org/x/image v0.38.0
+require (
+	github.com/hashicorp/yamux v0.1.1
+	golang.org/x/image v0.38.0
+	nhooyr.io/websocket v1.8.17
+)
 
 require (
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect

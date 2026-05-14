@@ -63,14 +63,19 @@ func fetchPeerDirectUploadURL(ctx context.Context, baseURL string) string {
 // Receive: accept an archive pushed from a peer and store it on disk.
 // Archives pushed to this server are stored under BACKUPS_ROOT/buddy/<senderUserID>/.
 type BuddyService struct {
-	root    string
-	backups *Service
+	root      string
+	backups   *Service
+	tunnelMgr *TunnelManager // optional — enables tunnel-based push to CGNAT peers
 }
 
 // NewBuddyService creates a BuddyService.
 func NewBuddyService(root string, backups *Service) *BuddyService {
 	return &BuddyService{root: root, backups: backups}
 }
+
+// SetTunnelManager wires the reverse-tunnel manager so Push can route through
+// an active tunnel when the peer is behind CGNAT.
+func (s *BuddyService) SetTunnelManager(tm *TunnelManager) { s.tunnelMgr = tm }
 
 // BuddyArchive describes an archive received from a peer.
 type BuddyArchive struct {
@@ -135,6 +140,35 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 		return 0, fmt.Errorf("buddy push: peer URL must use HTTPS")
 	}
 
+	// If there is an active reverse tunnel to this peer, push through it.
+	// The tunnel bypasses CGNAT and Cloudflare upload limits entirely.
+	var httpClient *http.Client
+	if s.tunnelMgr != nil {
+		if tr := s.tunnelMgr.HTTPTransport(userID); tr != nil {
+			httpClient = &http.Client{Transport: tr, Timeout: 10 * time.Minute}
+			// Use a plain http:// URL — traffic is already tunnelled (no extra TLS needed).
+			uploadEndpoint := "http://tunnel-peer/api/v1/backup/buddy/receive"
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadEndpoint, &body)
+			if err != nil {
+				return 0, fmt.Errorf("buddy push (tunnel): request: %w", err)
+			}
+			req.Header.Set("Content-Type", mw.FormDataContentType())
+			req.Header.Set("Authorization", "Bearer "+peerToken)
+			resp, err := httpClient.Do(req)
+			if err != nil {
+				return 0, fmt.Errorf("buddy push (tunnel): http: %w", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+				msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+				return 0, fmt.Errorf("buddy push (tunnel): peer returnerede HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
+			}
+			log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Int64("bytes", fi.Size()).Msg("buddy: archive pushed via tunnel")
+			return fi.Size(), nil
+		}
+	}
+
+	// No tunnel — fall through to direct HTTPS push.
 	// Use the peer's direct upload URL if configured — bypasses Cloudflare size limits.
 	// We still validate the base URL above; the upload URL is only used for the actual POST.
 	uploadBase := fetchPeerDirectUploadURL(ctx, peerBaseURL)
@@ -161,7 +195,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 			detail = "no details from peer"
 		}
 		if resp.StatusCode == http.StatusServiceUnavailable {
-			return 0, fmt.Errorf("buddy push: modtager-serveren har ikke backup-lager konfigureret (sæt BACKUPS_ROOT på peer-instansen): %s", detail)
+			return 0, fmt.Errorf("buddy push: modtager-serveren har ikke backup-lager konfigureret (sæt BACKUPS_ROOT på peer-instansen)")
 		}
 		return 0, fmt.Errorf("buddy push: peer returnerede HTTP %d: %s", resp.StatusCode, detail)
 	}

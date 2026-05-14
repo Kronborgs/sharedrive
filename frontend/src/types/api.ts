@@ -228,6 +228,16 @@ export interface BuddyUserConfig {
   notify_on_failure?: boolean
 }
 
+export interface BuddyServerInfo {
+  direct_upload_url: string
+  tunnel_supported: boolean
+}
+
+export interface BuddyTunnelStatus {
+  peer_connected_here: boolean  // a CGNAT peer has reverse-tunneled TO this instance
+  connected_to_peer: boolean    // this instance has tunneled TO the peer
+}
+
 export interface GeneratedBuddyReceiveToken {
   token: string
   prefix: string

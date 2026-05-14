@@ -334,8 +334,9 @@ func (s *Server) buildRouter() *chi.Mux {
 
 	// ── Buddy backup public endpoints (no user session) ─────────────────────
 	r.Post("/api/v1/backup/buddy/receive", s.backupHandler.BuddyReceive)
-	r.Get("/api/v1/backup/buddy/server-info", s.backupHandler.BuddyServerInfo)
-
+	r.Get("/api/v1/backup/buddy/server-info", s.backupHandler.BuddyServerInfo) // Reverse-tunnel endpoint: CGNAT peers connect here via WebSocket so this
+	// instance can push archives back through the tunnel.
+	r.Get("/api/v1/backup/buddy/tunnel", s.backupHandler.BuddyTunnel)
 	// ── Authenticated API routes ───────────────────────────────────────────
 	r.Group(func(r chi.Router) {
 		r.Use(s.authHandler.SessionMiddleware)
@@ -424,6 +425,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/backup/buddy/push", s.backupHandler.BuddyPush)
 		r.Put("/api/v1/backup/buddy/auto", s.backupHandler.SetBuddyAutoConfig)
 		r.Put("/api/v1/backup/notify", s.backupHandler.SetBackupNotifyConfig)
+		// Reverse tunnel management (client side — connect this instance to peer's tunnel)
+		r.Post("/api/v1/backup/buddy/tunnel/connect", s.backupHandler.BuddyTunnelConnect)
+		r.Delete("/api/v1/backup/buddy/tunnel/connect", s.backupHandler.BuddyTunnelDisconnect)
+		r.Get("/api/v1/backup/buddy/tunnel/status", s.backupHandler.BuddyTunnelStatus)
 		r.Get("/api/v1/backup/buddy/received", s.backupHandler.ListBuddyReceived)
 		r.Get("/api/v1/backup/buddy/received/{filename}", s.backupHandler.DownloadBuddyReceived)
 		r.Delete("/api/v1/backup/buddy/received/{filename}", s.backupHandler.DeleteBuddyReceived)

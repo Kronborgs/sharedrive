@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
+	"nhooyr.io/websocket"
 
 	"github.com/yourname/privatedrive/internal/audit"
 	"github.com/yourname/privatedrive/internal/files"
@@ -37,6 +38,10 @@ type Handler struct {
 
 	tertiaryEnabled bool   // true when backupsRoot volume is mounted
 	backupsRoot     string // BACKUPS_ROOT path for disk stats
+
+	// Reverse tunnel support — lets a public instance push to CGNAT peers.
+	tunnelMgr    *TunnelManager // server side: manages sessions from CGNAT peers
+	tunnelClient *TunnelClient  // client side: outbound tunnel to peer
 }
 
 // NewHandler creates a backup Handler.
@@ -46,6 +51,8 @@ func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot s
 	buddySvc := NewBuddyService(backupsRoot, svc)
 	buddyCfgSvc := NewBuddyConfigService(db, wrapKey)
 	autoSvc := NewAutoBackupService(db, wrapKey, tert, buddySvc, buddyCfgSvc, auditSvc)
+	tm := NewTunnelManager()
+	buddySvc.SetTunnelManager(tm)
 	return &Handler{
 		db:              db,
 		passwords:       NewPasswordService(db, wrapKey),
@@ -59,6 +66,8 @@ func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot s
 		limiter:         limiter,
 		tertiaryEnabled: backupsRoot != "",
 		backupsRoot:     backupsRoot,
+		tunnelMgr:       tm,
+		tunnelClient:    NewTunnelClient(""),
 	}
 }
 
@@ -500,10 +509,11 @@ func (h *Handler) RevokeBuddyReceiveToken(w http.ResponseWriter, r *http.Request
 }
 
 // ── GET /api/v1/backup/buddy/server-info (public, no auth) ───────────────────
-// Returns this server's preferred upload URL so peers can bypass Cloudflare.
+// Returns this server's preferred upload URL and tunnel capability.
 
 type buddyServerInfoResponse struct {
 	DirectUploadURL string `json:"direct_upload_url"` // empty string if not configured
+	TunnelSupported bool   `json:"tunnel_supported"`  // true: accepts reverse-tunnel WebSocket
 }
 
 func (h *Handler) BuddyServerInfo(w http.ResponseWriter, r *http.Request) {
@@ -511,7 +521,132 @@ func (h *Handler) BuddyServerInfo(w http.ResponseWriter, r *http.Request) {
 	_ = h.db.QueryRow(r.Context(),
 		`SELECT value FROM system_settings WHERE key = 'direct_upload_url'`,
 	).Scan(&uploadURL)
-	httputil.Respond(w, http.StatusOK, buddyServerInfoResponse{DirectUploadURL: uploadURL})
+	httputil.Respond(w, http.StatusOK, buddyServerInfoResponse{
+		DirectUploadURL: uploadURL,
+		TunnelSupported: true, // all instances support inbound tunnel connections
+	})
+}
+
+// ── GET /api/v1/backup/buddy/tunnel (public WebSocket, peer-token auth) ───────
+// A CGNAT peer connects here to establish a reverse tunnel so THIS instance
+// can push backup archives back to the peer.
+//
+// Auth: same as BuddyReceive — Bearer <local-user's receive token>
+//   - X-Receiver-User-ID: <local user UUID>
+func (h *Handler) BuddyTunnel(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		httputil.RespondError(w, http.StatusUnauthorized, "missing bearer token")
+		return
+	}
+	token := auth[7:]
+
+	receiverIDStr := r.Header.Get("X-Receiver-User-ID")
+	receiverID, err := uuid.Parse(receiverIDStr)
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid X-Receiver-User-ID header")
+		return
+	}
+
+	if err := h.buddyCfg.ValidateReceiveToken(ctx, receiverID, token); err != nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "invalid receive token")
+		return
+	}
+
+	// Rate-limit by IP: max 10 tunnel connections per hour.
+	if h.limiter != nil {
+		ip := middleware.ClientIP(r)
+		allowed, _, _, _ := h.limiter.Allow(ctx, "ip_buddy_tunnel:", ip, 10, 1*time.Hour)
+		if !allowed {
+			httputil.RespondError(w, http.StatusTooManyRequests, "too many tunnel connections")
+			return
+		}
+	}
+
+	// Upgrade to WebSocket. InsecureSkipVerify skips the Origin-check — this
+	// endpoint is machine-to-machine, not browser-initiated.
+	wsConn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		Subprotocols:       []string{"buddy-tunnel"},
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		log.Warn().Err(err).Str("user_id", receiverID.String()).Msg("buddy tunnel: websocket accept")
+		return
+	}
+
+	nc := websocket.NetConn(ctx, wsConn, websocket.MessageBinary)
+
+	done, err := h.tunnelMgr.Register(receiverID, nc)
+	if err != nil {
+		log.Error().Err(err).Str("user_id", receiverID.String()).Msg("buddy tunnel: register")
+		wsConn.Close(websocket.StatusInternalError, "tunnel setup failed")
+		return
+	}
+
+	// Block until the yamux session closes (peer disconnect or server shutdown).
+	<-done
+}
+
+// ── POST /api/v1/backup/buddy/tunnel/connect (authenticated) ─────────────────
+// Tells this instance to connect to the peer's tunnel endpoint.
+// Used when this instance is behind CGNAT and can't receive direct pushes.
+
+func (h *Handler) BuddyTunnelConnect(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	peerURL, peerUserID, peerToken, err := h.buddyCfg.GetPeerConfig(ctx, u.ID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusPreconditionRequired, "peer not configured")
+		return
+	}
+
+	// Connect using a background context so the tunnel outlives this HTTP request.
+	if err := h.tunnelClient.Connect(context.Background(), peerURL, peerToken, peerUserID); err != nil {
+		httputil.RespondError(w, http.StatusBadGateway, "tunnel connect failed: "+err.Error())
+		return
+	}
+
+	httputil.Respond(w, http.StatusOK, map[string]bool{"connected": true})
+}
+
+// ── DELETE /api/v1/backup/buddy/tunnel/connect (authenticated) ───────────────
+// Disconnects this instance's outbound tunnel.
+
+func (h *Handler) BuddyTunnelDisconnect(w http.ResponseWriter, r *http.Request) {
+	u := middleware.UserFromContext(r.Context())
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	h.tunnelClient.Disconnect()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── GET /api/v1/backup/buddy/tunnel/status (authenticated) ───────────────────
+// Returns whether a reverse tunnel is active in either direction.
+
+type buddyTunnelStatusResponse struct {
+	PeerConnectedHere bool `json:"peer_connected_here"` // a CGNAT peer has tunneled TO this instance
+	ConnectedToPeer   bool `json:"connected_to_peer"`   // this instance has tunneled TO the peer
+}
+
+func (h *Handler) BuddyTunnelStatus(w http.ResponseWriter, r *http.Request) {
+	u := middleware.UserFromContext(r.Context())
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, buddyTunnelStatusResponse{
+		PeerConnectedHere: h.tunnelMgr.IsConnected(u.ID),
+		ConnectedToPeer:   h.tunnelClient.IsConnected(),
+	})
 }
 
 // ── POST /api/v1/backup/buddy/push ────────────────────────────────────────────

@@ -1,3 +1,4 @@
+-- +goose Up
 -- Track auto-backup failures for offline/error retry + 24h email notification.
 -- Covers both buddy push (user_buddy_configs) and tertiary auto-backup (user_backup_auto_config).
 -- failed_since: set on first failure, cleared on success.
@@ -15,3 +16,14 @@ ALTER TABLE user_backup_auto_config
   ADD COLUMN IF NOT EXISTS auto_failed_since         TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS notify_on_failure         BOOLEAN NOT NULL DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS last_failure_notified_at  TIMESTAMPTZ;
+
+-- +goose Down
+ALTER TABLE user_buddy_configs
+  DROP COLUMN IF EXISTS push_failed_since,
+  DROP COLUMN IF EXISTS notify_on_failure,
+  DROP COLUMN IF EXISTS last_failure_notified_at;
+
+ALTER TABLE user_backup_auto_config
+  DROP COLUMN IF EXISTS auto_failed_since,
+  DROP COLUMN IF EXISTS notify_on_failure,
+  DROP COLUMN IF EXISTS last_failure_notified_at;

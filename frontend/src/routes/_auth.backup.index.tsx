@@ -61,8 +61,9 @@ function FileTreeNode({
   allChecked: boolean
 }) {
   const isAncestor = ancestorIDs.has(item.id)
-  const isChecked = allChecked || selectedIDs.includes(item.id) || isAncestor
-  // Auto-expand when allChecked so the user can see the full tree
+  const isChecked = allChecked || selectedIDs.includes(item.id)
+  const isIndeterminate = !isChecked && isAncestor
+  // Auto-expand when a descendant is selected or allChecked
   const [expanded, setExpanded] = useState(isAncestor || allChecked)
 
   useEffect(() => {
@@ -82,6 +83,8 @@ function FileTreeNode({
         className={`flex items-center gap-1 py-1 rounded-md px-1 transition-colors ${
           isChecked
             ? 'bg-brand-50 dark:bg-brand-900/20'
+            : isIndeterminate
+            ? 'bg-brand-50/40 dark:bg-brand-900/10'
             : 'hover:bg-zinc-100 dark:hover:bg-[#2d3148]/50'
         }`}
         style={{ paddingLeft: `${depth * 14 + 4}px` }}
@@ -101,11 +104,18 @@ function FileTreeNode({
           <span className={`flex items-center justify-center w-4 h-4 rounded shrink-0 border transition-colors ${
             isChecked
               ? 'bg-brand-600 border-brand-600'
+              : isIndeterminate
+              ? 'bg-brand-400/30 border-brand-400'
               : 'border-zinc-300 dark:border-[#4a5070] bg-white dark:bg-[#1a1d27]'
           }`}>
             {isChecked && (
               <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
                 <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+            {isIndeterminate && (
+              <svg width="8" height="2" viewBox="0 0 8 2" fill="none">
+                <path d="M1 1H7" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
               </svg>
             )}
           </span>
@@ -116,9 +126,9 @@ function FileTreeNode({
             className="sr-only"
           />
           {item.is_folder
-            ? <Folder size={12} className={isChecked ? 'text-brand-500 shrink-0' : 'text-zinc-400 shrink-0'} />
+            ? <Folder size={12} className={isChecked || isIndeterminate ? 'text-brand-500 shrink-0' : 'text-zinc-400 shrink-0'} />
             : <FileIcon size={12} className={isChecked ? 'text-brand-400 shrink-0' : 'text-zinc-400 shrink-0'} />}
-          <span className={`text-xs truncate ${isChecked ? 'text-brand-700 dark:text-brand-300 font-medium' : 'text-zinc-700 dark:text-slate-300'}`}>
+          <span className={`text-xs truncate ${isChecked ? 'text-brand-700 dark:text-brand-300 font-medium' : isIndeterminate ? 'text-brand-600/70 dark:text-brand-400/70' : 'text-zinc-700 dark:text-slate-300'}`}>
             {item.name}
           </span>
         </label>
@@ -177,13 +187,12 @@ function FolderPicker({
   const resolvedAncestors = ancestorIDs ?? new Set<string>()
   const items = rootItems ?? []
   const allChecked = selectedIDs.length === 0
-  const totalChecked = selectedIDs.length + resolvedAncestors.size
 
   const toggle = (id: string) => {
     if (allChecked) {
-      // Switching from "all" to explicit: select all root items except the clicked one
-      const rootIds = items.map(i => i.id)
-      onChange(rootIds.filter(x => x !== id))
+      // Switching from "all files" to explicit: select only the clicked item.
+      // (The old "select all root minus clicked" was broken for nested items.)
+      onChange([id])
     } else if (selectedIDs.includes(id)) {
       onChange(selectedIDs.filter(x => x !== id))
     } else {
@@ -199,7 +208,7 @@ function FolderPicker({
         className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 transition-colors"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        {allChecked ? 'All files' : `${totalChecked} item(s) selected`}
+        {allChecked ? 'All files' : `${selectedIDs.length} item(s) selected`}
       </button>
 
       {open && (

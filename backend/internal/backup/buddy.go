@@ -154,7 +154,16 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return 0, fmt.Errorf("buddy push: peer returned HTTP %d", resp.StatusCode)
+		// Read up to 512 bytes of the body for a diagnostic message.
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		detail := strings.TrimSpace(string(msg))
+		if detail == "" {
+			detail = "no details from peer"
+		}
+		if resp.StatusCode == http.StatusServiceUnavailable {
+			return 0, fmt.Errorf("buddy push: modtager-serveren har ikke backup-lager konfigureret (sæt BACKUPS_ROOT på peer-instansen): %s", detail)
+		}
+		return 0, fmt.Errorf("buddy push: peer returnerede HTTP %d: %s", resp.StatusCode, detail)
 	}
 
 	log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Int64("bytes", fi.Size()).Msg("buddy: archive pushed")

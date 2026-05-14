@@ -567,18 +567,26 @@ function BackupPage() {
   }
 
   const handleBuddyPush = async () => {
-    if (!buddyToken.trim()) { toast.error('Enter your backup token'); return }
-    if (!status?.has_password) { toast.error('Generate a backup token first'); return }
+    if (!buddyToken.trim()) { toast.error('Indtast din backup-nøgle'); return }
+    if (!status?.has_password) { toast.error('Generer en backup-nøgle først'); return }
     setBuddyPushing(true)
     try {
       await api.post('/api/v1/backup/buddy/push', {
         token: buddyToken.trim(),
         ...(( buddyConfig?.auto_push_folder_ids?.length ?? 0) > 0 && { folder_ids: buddyConfig!.auto_push_folder_ids }),
       })
-      // Server returned 202 — push is running in the background.
-      // Refetch config immediately so polling kicks in (push_in_progress = true).
+      toast.success('Push startet — kører i baggrunden')
+      // Refetch immediately so polling picks up push_in_progress = true.
       void refetchBuddyConfig()
-      toast.success('Push started — running in the background')
+      // Also do a short-delay refetch to catch fast failures (e.g. peer 503).
+      // If the goroutine fails in < 1s the regular refetch interval never fires.
+      setTimeout(() => {
+        refetchBuddyConfig().then(result => {
+          if (!result.data?.push_in_progress && result.data?.last_push_error) {
+            toast.error('Push fejlede: ' + result.data.last_push_error)
+          }
+        }).catch(() => {})
+      }, 1500)
     } catch (e: unknown) {
       // 403 means the backup token is wrong (stale sessionStorage).
       // Clear it so the input field reappears and the user can re-enter.

@@ -65,11 +65,12 @@ func (s *BuddyService) buddyDir(userID uuid.UUID) (string, error) {
 // peerBaseURL is the peer's base URL; peerUserID is the peer's user UUID;
 // peerToken is the receive token the peer generated for us to authenticate.
 // folderIDs restricts scope; pass nil to include all files.
-func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken string, folderIDs []uuid.UUID, peerBaseURL, peerUserID, peerToken string) error {
+// Returns the number of bytes in the pushed archive.
+func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken string, folderIDs []uuid.UUID, peerBaseURL, peerUserID, peerToken string) (int64, error) {
 	// Export to a temp file first — multipart needs io.ReaderAt/Seeker semantics.
 	tmp, err := os.CreateTemp("", "shdbak-buddy-push-*")
 	if err != nil {
-		return fmt.Errorf("buddy push: create temp: %w", err)
+		return 0, fmt.Errorf("buddy push: create temp: %w", err)
 	}
 	defer func() {
 		tmp.Close()
@@ -77,15 +78,15 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	}()
 
 	if err := s.backups.Export(ctx, tmp, userID, rawToken, folderIDs); err != nil {
-		return fmt.Errorf("buddy push: export: %w", err)
+		return 0, fmt.Errorf("buddy push: export: %w", err)
 	}
 
 	fi, err := tmp.Stat()
 	if err != nil {
-		return fmt.Errorf("buddy push: stat: %w", err)
+		return 0, fmt.Errorf("buddy push: stat: %w", err)
 	}
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("buddy push: seek: %w", err)
+		return 0, fmt.Errorf("buddy push: seek: %w", err)
 	}
 
 	// Assemble multipart body.
@@ -95,36 +96,36 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	archiveName := time.Now().UTC().Format("20060102T150405Z") + ".zip"
 	fw, err := mw.CreateFormFile("file", archiveName)
 	if err != nil {
-		return fmt.Errorf("buddy push: form file: %w", err)
+		return 0, fmt.Errorf("buddy push: form file: %w", err)
 	}
 	if _, err := io.CopyN(fw, tmp, fi.Size()); err != nil {
-		return fmt.Errorf("buddy push: copy: %w", err)
+		return 0, fmt.Errorf("buddy push: copy: %w", err)
 	}
 	mw.Close()
 
 	endpoint := strings.TrimRight(peerBaseURL, "/") + "/api/v1/backup/buddy/receive"
 	if !strings.HasPrefix(endpoint, "https://") {
-		return fmt.Errorf("buddy push: peer URL must use HTTPS")
+		return 0, fmt.Errorf("buddy push: peer URL must use HTTPS")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &body)
 	if err != nil {
-		return fmt.Errorf("buddy push: request: %w", err)
+		return 0, fmt.Errorf("buddy push: request: %w", err)
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+peerToken)
 
 	resp, err := buddyHTTPClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("buddy push: http: %w", err)
+		return 0, fmt.Errorf("buddy push: http: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("buddy push: peer returned HTTP %d", resp.StatusCode)
+		return 0, fmt.Errorf("buddy push: peer returned HTTP %d", resp.StatusCode)
 	}
 
-	log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Msg("buddy: archive pushed")
-	return nil
+	log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Int64("bytes", fi.Size()).Msg("buddy: archive pushed")
+	return fi.Size(), nil
 }
 
 // Receive stores an archive pushed from a peer under the receiving user's directory.

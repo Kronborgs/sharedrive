@@ -532,12 +532,16 @@ func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.buddy.Push(ctx, u.ID, req.Token, folderIDs, peerURL, peerUserID, peerToken); err != nil {
+	pushSize, err := h.buddy.Push(ctx, u.ID, req.Token, folderIDs, peerURL, peerUserID, peerToken)
+	if err != nil {
 		log.Error().Err(err).Str("user_id", u.ID.String()).Msg("buddy push")
 		httputil.RespondError(w, http.StatusBadGateway, "buddy push failed: "+err.Error())
 		return
 	}
 	h.passwords.TouchLastUsed(ctx, u.ID)
+	if err := h.buddyCfg.UpdateLastPush(ctx, u.ID, pushSize); err != nil {
+		log.Warn().Err(err).Str("user_id", u.ID.String()).Msg("buddy push: failed to update last push stats")
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

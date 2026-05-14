@@ -213,6 +213,8 @@ export interface BuddyUserConfig {
   peer_url: string
   has_receive_token: boolean
   receive_token_prefix: string
+  last_push_at?: string | null
+  last_push_bytes?: number
 }
 
 export interface GeneratedBuddyReceiveToken {

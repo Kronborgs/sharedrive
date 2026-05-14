@@ -34,6 +34,8 @@ import {
   Clock,
   ToggleLeft,
   ToggleRight,
+  ArrowUpToLine,
+  ArrowDownToLine,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -49,12 +51,14 @@ function FileTreeNode({
   selectedIDs,
   onToggle,
   ancestorIDs,
+  allChecked,
 }: {
   item: FileItem
   depth: number
   selectedIDs: string[]
   onToggle: (id: string) => void
   ancestorIDs: Set<string>
+  allChecked: boolean
 }) {
   const isAncestor = ancestorIDs.has(item.id)
   const [expanded, setExpanded] = useState(isAncestor)
@@ -90,7 +94,7 @@ function FileTreeNode({
         <label className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
           <input
             type="checkbox"
-            checked={selectedIDs.includes(item.id) || isAncestor}
+            checked={allChecked || selectedIDs.includes(item.id) || isAncestor}
             onChange={() => onToggle(item.id)}
             className="accent-brand-600 shrink-0"
           />
@@ -104,7 +108,7 @@ function FileTreeNode({
         loadingChildren
           ? <p className="text-xs text-zinc-400 py-0.5" style={{ paddingLeft: `${(depth + 1) * 14 + 20}px` }}>Loading…</p>
           : (children ?? []).map(c => (
-              <FileTreeNode key={c.id} item={c} depth={depth + 1} selectedIDs={selectedIDs} onToggle={onToggle} ancestorIDs={ancestorIDs} />
+              <FileTreeNode key={c.id} item={c} depth={depth + 1} selectedIDs={selectedIDs} onToggle={onToggle} ancestorIDs={ancestorIDs} allChecked={allChecked} />
             ))
       )}
     </div>
@@ -157,7 +161,11 @@ function FolderPicker({
   const totalChecked = selectedIDs.length + resolvedAncestors.size
 
   const toggle = (id: string) => {
-    if (selectedIDs.includes(id)) {
+    if (allChecked) {
+      // Switching from "all" to explicit: select all root items except the clicked one
+      const rootIds = items.map(i => i.id)
+      onChange(rootIds.filter(x => x !== id))
+    } else if (selectedIDs.includes(id)) {
       onChange(selectedIDs.filter(x => x !== id))
     } else {
       onChange([...selectedIDs, id])
@@ -199,6 +207,7 @@ function FolderPicker({
                   selectedIDs={selectedIDs}
                   onToggle={toggle}
                   ancestorIDs={resolvedAncestors}
+                  allChecked={allChecked}
                 />
               ))}
             </div>
@@ -845,7 +854,46 @@ function BackupPage() {
           </div>
         ) : (
           <div className="space-y-8">
-            {/* ── Buddy backup ─────────────────────────────────────────── */}
+            {/* ── Storage balance overview ─────────────────────────────── */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* What I store for buddy */}
+              <div className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-4 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-slate-400">
+                  <ArrowDownToLine size={13} className="text-brand-500" />
+                  You store for buddy
+                </div>
+                {buddyConfig?.has_receive_token && buddyReceived && buddyReceived.length > 0 ? (
+                  <>
+                    <p className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
+                      {formatBytes(buddyReceived.reduce((s, a) => s + a.size_bytes, 0))}
+                    </p>
+                    <p className="text-xs text-zinc-400">{buddyReceived.length} archive{buddyReceived.length !== 1 ? 's' : ''}</p>
+                  </>
+                ) : (
+                  <p className="text-sm text-zinc-400 dark:text-slate-500">No archives received</p>
+                )}
+              </div>
+
+              {/* What I have pushed to buddy */}
+              <div className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-4 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-slate-400">
+                  <ArrowUpToLine size={13} className="text-brand-500" />
+                  Buddy stores for you
+                </div>
+                {buddyConfig?.peer_configured && buddyConfig.last_push_at ? (
+                  <>
+                    <p className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
+                      {formatBytes(buddyConfig.last_push_bytes ?? 0)}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      Last push {new Date(buddyConfig.last_push_at).toLocaleDateString()}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-zinc-400 dark:text-slate-500">Not pushed yet</p>
+                )}
+              </div>
+            </div>
             <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-5">
               <div className="flex items-center gap-2">
                 <Server size={16} className="text-brand-500" />
@@ -942,6 +990,15 @@ function BackupPage() {
                 <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">Push to peer</p>
                 <p className="text-xs text-zinc-500 dark:text-slate-400">Enter the receive info your buddy gave you.</p>
 
+                {/* Token explanation box */}
+                <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 px-3 py-2.5 space-y-0.5">
+                  <p className="text-xs font-medium text-blue-700 dark:text-blue-400">Hvad er "Backup token"?</p>
+                  <p className="text-xs text-blue-600 dark:text-blue-500">
+                    Det er din <strong>personlige krypteringsnøgle</strong> fra fanen "Backup Token" — ikke det token du tastede ved opsætning af peer-forbindelsen.
+                    Det peer-token du tastede tidligere er gemt og bruges automatisk til at autentificere. Din backup-nøgle bruges til at kryptere selve arkivet.
+                  </p>
+                </div>
+
                 {buddyConfig?.peer_configured ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] px-3 py-2">
@@ -955,25 +1012,56 @@ function BackupPage() {
                         <Trash2 size={10} /> Clear
                       </button>
                     </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="password"
-                        value={buddyToken}
-                        onChange={e => { setBuddyToken(e.target.value); saveToken(e.target.value) }}
-                        placeholder="Your backup token"
-                        className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                      />
-                      <button
-                        onClick={handleBuddyPush}
-                        disabled={!buddyToken.trim() || buddyPushing}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
-                      >
-                        {buddyPushing
-                          ? <><RefreshCw size={14} className="animate-spin" /> Pushing…</>
-                          : <><Server size={14} /> Push</>}
-                      </button>
-                    </div>
-                    <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
+
+                    {/* When token is available, show a single prominent push button */}
+                    {buddyToken.trim() ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-500">
+                          <Check size={12} />
+                          Krypteringsnøgle klar — klikker du "Push backup now" krypteres og sendes arkivet til din buddy
+                        </div>
+                        <button
+                          onClick={handleBuddyPush}
+                          disabled={buddyPushing}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+                        >
+                          {buddyPushing
+                            ? <><RefreshCw size={15} className="animate-spin" /> Pushing to buddy…</>
+                            : <><ArrowUpToLine size={15} /> Push backup now</>}
+                        </button>
+                        <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
+                        <button
+                          type="button"
+                          onClick={() => setBuddyToken('')}
+                          className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 transition-colors"
+                        >
+                          Brug en anden nøgle
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="password"
+                            value={buddyToken}
+                            onChange={e => { setBuddyToken(e.target.value); saveToken(e.target.value) }}
+                            placeholder="Din backup-krypteringsnøgle (fra Backup Token fanen)"
+                            className="flex-1 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-3 py-2 text-zinc-900 dark:text-slate-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                          />
+                          <button
+                            onClick={handleBuddyPush}
+                            disabled={!buddyToken.trim() || buddyPushing}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+                          >
+                            {buddyPushing
+                              ? <><RefreshCw size={14} className="animate-spin" /> Pushing…</>
+                              : <><ArrowUpToLine size={14} /> Push</>}
+                          </button>
+                        </div>
+                        <p className="text-xs text-zinc-400">Find din nøgle under <button type="button" onClick={() => setActiveTab('token')} className="underline hover:text-zinc-600 dark:hover:text-slate-300">Backup Token</button> fanen.</p>
+                        <FolderPicker selectedIDs={buddyFolderIDs} onChange={setBuddyFolderIDs} />
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1025,7 +1113,12 @@ function BackupPage() {
               {!buddyConfig?.has_receive_token ? (
                 <p className="text-xs text-zinc-400 dark:text-slate-500">Generate a receive token above to allow your buddy to push archives here.</p>
               ) : buddyReceived && buddyReceived.length > 0 ? (
-                <div className="space-y-1">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-slate-400 pb-1 border-b border-zinc-100 dark:border-[#2d3148]">
+                    <span>{buddyReceived.length} archive{buddyReceived.length !== 1 ? 's' : ''}</span>
+                    <span className="font-medium">{formatBytes(buddyReceived.reduce((s, a) => s + a.size_bytes, 0))} total</span>
+                  </div>
+                  <div className="space-y-1">
                   {buddyReceived.map(a => (
                     <div
                       key={a.filename}
@@ -1051,6 +1144,7 @@ function BackupPage() {
                       </button>
                     </div>
                   ))}
+                  </div>
                 </div>
               ) : (
                 <p className="text-xs text-zinc-400">No archives received yet.</p>

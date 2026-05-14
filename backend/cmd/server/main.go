@@ -96,6 +96,14 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to initialise auth handler")
 	}
 
+	// Resolve backup wrap key — uses BACKUP_WRAP_KEY env if set, otherwise
+	// falls back to the auto-generated key stored in system_settings.
+	wrapKey, err := db.ResolveWrapKey(ctx, pool, cfg.BackupWrapKey)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to resolve backup wrap key")
+	}
+	cfg.BackupWrapKey = wrapKey
+
 	srv := server.New(cfg, pool, rdb, authHandler, auditSvc, Version, BuildDate)
 	if err := srv.Start(ctx); err != nil {
 		log.Fatal().Err(err).Msg("server error")

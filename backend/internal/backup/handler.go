@@ -45,10 +45,12 @@ type Handler struct {
 }
 
 // NewHandler creates a backup Handler.
-func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot string, auditSvc audit.Logger, limiter *ratelimit.Limiter) *Handler {
+// backupsRoot is the tertiary/3-2-1 storage path (BACKUPS_ROOT — may be empty).
+// buddyRoot is the path for buddy-received archives (always set; uses /data/backups by default).
+func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot, buddyRoot string, auditSvc audit.Logger, limiter *ratelimit.Limiter) *Handler {
 	svc := NewService(db, storage)
 	tert := NewTertiaryService(backupsRoot, svc)
-	buddySvc := NewBuddyService(backupsRoot, svc)
+	buddySvc := NewBuddyService(buddyRoot, svc)
 	buddyCfgSvc := NewBuddyConfigService(db, wrapKey)
 	autoSvc := NewAutoBackupService(db, wrapKey, tert, buddySvc, buddyCfgSvc, auditSvc)
 	tm := NewTunnelManager()

@@ -98,7 +98,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		sseHandler:     admin.NewSSEHandler(db),
 		supportHandler: admin.NewSupportAccessHandler(db),
 		appPwdHandler:  webdav.NewAppPasswordHandler(db),
-		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, backupsRoot(cfg.BackupsRoot), auditSvc, ratelimit.New(rdb)),
+		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, backupsRoot(cfg.BackupsRoot), buddyStorageRoot(cfg.BackupsRoot, cfg.FilesRoot), auditSvc, ratelimit.New(rdb)),
 		ooHandler:      onlyoffice.NewHandler(db, storage, cfg.AppBaseURL, rdb),
 		auditSvc:       auditSvc,
 		ioTracker:      ioTracker,
@@ -948,8 +948,9 @@ func (s *Server) notImplemented(w http.ResponseWriter) {
 	respondError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "This endpoint is not yet implemented.")
 }
 
-// backupsRoot returns the backups root path only if the directory is actually
-// mounted and accessible; otherwise returns "" to disable tertiary/buddy storage.
+// backupsRoot returns the tertiary backup root path (for 3-2-1 / external-drive backups)
+// only if the directory is actually mounted and accessible; otherwise returns "" to
+// disable tertiary storage.
 // If BACKUPS_ROOT is not configured, /mnt/backup is tried as a convention —
 // this is the container path used in the Unraid template Path config.
 func backupsRoot(configured string) string {
@@ -964,5 +965,35 @@ func backupsRoot(configured string) string {
 			return p
 		}
 	}
+	return ""
+}
+
+// buddyStorageRoot returns the path used to store buddy-received archives.
+// It is independent of the tertiary BACKUPS_ROOT so that buddy backup works
+// even when no external drive is configured for 3-2-1 backups.
+// Priority: BACKUPS_ROOT (if set and accessible) → /data/backups (always mounted
+// in the standard Docker setup) → a "buddy" sub-dir next to FILES_ROOT.
+func buddyStorageRoot(backupsRootCfg, filesRoot string) string {
+	// If the user explicitly set BACKUPS_ROOT and it is accessible, honour it
+	// so that buddy archives land on the same volume as tertiary backups.
+	if backupsRootCfg != "" {
+		if info, err := os.Stat(backupsRootCfg); err == nil && info.IsDir() {
+			return backupsRootCfg
+		}
+	}
+	// Standard Docker container path — always mounted via the backups volume.
+	if info, err := os.Stat("/data/backups"); err == nil && info.IsDir() {
+		log.Info().Str("path", "/data/backups").Msg("buddy storage root: using /data/backups")
+		return "/data/backups"
+	}
+	// Last resort: a sibling directory of FILES_ROOT.
+	if filesRoot != "" {
+		p := filepath.Join(filepath.Dir(filesRoot), "buddy")
+		if err := os.MkdirAll(p, 0750); err == nil {
+			log.Info().Str("path", p).Msg("buddy storage root: using files sibling")
+			return p
+		}
+	}
+	log.Warn().Msg("buddy storage root: no writable path found — buddy backup disabled")
 	return ""
 }

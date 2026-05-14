@@ -390,7 +390,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
                 onChange={e => setGroupId(e.target.value)}
                 className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
-                {t('share.selectGroup')}
+                <option value="">Select a groupÔÇª</option>
                 {groups?.map(g => (
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))}

@@ -30,6 +30,12 @@ var buddyHTTPClient = &http.Client{
 	},
 }
 
+// ErrPeerStorageUnavailable is returned when the peer responds with 503,
+// meaning it does not have BACKUPS_ROOT configured. This is a configuration
+// issue on the peer, not a transient error — callers should not record it as
+// a persistent failure.
+var ErrPeerStorageUnavailable = fmt.Errorf("buddy push: peer har ikke backup-lager konfigureret")
+
 // BuddyServerInfo is returned by GET /api/v1/backup/buddy/server-info on a peer.
 type BuddyServerInfo struct {
 	DirectUploadURL string `json:"direct_upload_url"` // empty if not configured
@@ -163,7 +169,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 				msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 				detail := strings.TrimSpace(string(msg))
 				if resp.StatusCode == http.StatusServiceUnavailable {
-					return 0, fmt.Errorf("buddy push: modtager-serveren har ikke backup-lager konfigureret (sæt BACKUPS_ROOT på peer-instansen)")
+					return 0, ErrPeerStorageUnavailable
 				}
 				if detail == "" {
 					detail = "no details from peer"
@@ -202,7 +208,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 			detail = "no details from peer"
 		}
 		if resp.StatusCode == http.StatusServiceUnavailable {
-			return 0, fmt.Errorf("buddy push: modtager-serveren har ikke backup-lager konfigureret (sæt BACKUPS_ROOT på peer-instansen)")
+			return 0, ErrPeerStorageUnavailable
 		}
 		return 0, fmt.Errorf("buddy push: peer returnerede HTTP %d: %s", resp.StatusCode, detail)
 	}
@@ -215,7 +221,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 // receiverUserID is the UUID of the local user who owns the receive token.
 func (s *BuddyService) Receive(ctx context.Context, receiverUserID uuid.UUID, r io.Reader) (*BuddyArchive, error) {
 	if s.root == "" {
-		return nil, fmt.Errorf("buddy receive: BACKUPS_ROOT not configured on this instance")
+		return nil, fmt.Errorf("buddy receive: backup storage not available on this instance")
 	}
 	dir, err := s.buddyDir(receiverUserID)
 	if err != nil {

@@ -328,7 +328,7 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 type blockedIPEntry struct {
 	IP           string `json:"ip"`
 	Tier         string `json:"tier"`
-	TTLSeconds   *int64 `json:"ttl_seconds"`    // null = manual (no TTL)
+	TTLSeconds   *int64 `json:"ttl_seconds"`   // null = manual (no TTL)
 	AttemptCount int64  `json:"attempt_count"` // total recorded failures
 }
 

@@ -201,7 +201,7 @@ function FileRow({
             <button
               onClick={e => { e.stopPropagation(); onQuickShare(item) }}
               className="p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-              title={t('fileview.shareTitle')}
+              title="Share…"
             >
               <UserPlus size={14} />
             </button>
@@ -210,7 +210,7 @@ function FileRow({
             ref={moreRef}
             onClick={e => { e.stopPropagation(); onContextMenu(item, moreRef.current!.getBoundingClientRect().left, moreRef.current!.getBoundingClientRect().bottom) }}
             className="p-1 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-            title={t('fileview.moreOptions')}
+            title="More options"
           >
             <MoreVertical size={14} />
           </button>

@@ -37,6 +37,7 @@ type Handler struct {
 	limiter    *ratelimit.Limiter
 
 	tertiaryEnabled bool   // true when backupsRoot volume is mounted
+	buddyEnabled    bool   // true when buddyRoot is resolvable (independent of tertiaryEnabled)
 	backupsRoot     string // BACKUPS_ROOT path for disk stats
 
 	// Reverse tunnel support — lets a public instance push to CGNAT peers.
@@ -67,6 +68,7 @@ func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot, 
 		auditSvc:        auditSvc,
 		limiter:         limiter,
 		tertiaryEnabled: backupsRoot != "",
+		buddyEnabled:    buddyRoot != "",
 		backupsRoot:     backupsRoot,
 		tunnelMgr:       tm,
 		tunnelClient:    NewTunnelClient(""),
@@ -705,6 +707,11 @@ func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
 		pushSize, pushErr := h.buddy.Push(bgCtx, userID, req.Token, folderIDs, peerURL, peerUserID, peerToken)
 		if pushErr != nil {
 			log.Error().Err(pushErr).Str("user_id", userID.String()).Msg("buddy push (async)")
+			if pushErr == ErrPeerStorageUnavailable {
+				// Peer has no BACKUPS_ROOT — not a transient failure; just clear in-progress.
+				_ = h.buddyCfg.SetPushInProgress(bgCtx, userID, false, "")
+				return
+			}
 			if err := h.buddyCfg.SetPushInProgress(bgCtx, userID, false, pushErr.Error()); err != nil {
 				log.Warn().Err(err).Str("user_id", userID.String()).Msg("buddy push: failed to record error")
 			}
@@ -720,9 +727,9 @@ func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
 // BuddyReceive accepts an archive pushed from a peer. Authentication is per-user:
 // the bearer token is the receive token the local user generated and shared with their buddy.
 func (h *Handler) BuddyReceive(w http.ResponseWriter, r *http.Request) {
-	// Storage must be configured on this instance to receive and persist archives.
-	if !h.tertiaryEnabled {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "backup storage not configured on this server — set BACKUPS_ROOT to receive buddy archives")
+	// Buddy storage must be available on this instance to receive and persist archives.
+	if !h.buddyEnabled {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "buddy backup-lager ikke tilgængeligt på denne server")
 		return
 	}
 
@@ -957,6 +964,11 @@ func (h *Handler) ListPushedArchives(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		// Peer has no BACKUPS_ROOT configured — no archives stored there.
+		httputil.Respond(w, http.StatusOK, []BuddyArchive{})
+		return
+	}
 	if resp.StatusCode != http.StatusOK {
 		httputil.RespondError(w, resp.StatusCode, "peer returned error")
 		return

@@ -280,7 +280,7 @@ export function WebDAVDialog({ onClose }: Props) {
                     <button
                       onClick={() => revoke.mutate(p.id)}
                       className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                      title={t('webdav.revoke')}
+                      title="Tilbagekald"
                     >
                       <Trash2 size={13} />
                     </button>

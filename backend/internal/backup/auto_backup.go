@@ -349,6 +349,11 @@ func (s *AutoBackupService) RunBuddyForUser(ctx context.Context, userID uuid.UUI
 
 	pushSize, pushErr := s.buddy.Push(ctx, userID, rawToken, folderUUIDs, peerURL, peerUserID, peerToken)
 	if pushErr != nil {
+		if pushErr == ErrPeerStorageUnavailable {
+			// Peer has no BACKUPS_ROOT — not a transient failure; clear in-progress silently.
+			_ = s.buddyCfg.SetPushInProgress(ctx, userID, false, "")
+			return false, pushErr
+		}
 		_ = s.buddyCfg.RecordPushFailure(ctx, userID, pushErr.Error())
 		return false, fmt.Errorf("auto buddy push: %w", pushErr)
 	}

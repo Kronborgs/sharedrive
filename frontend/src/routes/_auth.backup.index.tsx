@@ -321,6 +321,7 @@ function BackupPage() {
   const [newReceiveToken, setNewReceiveToken] = useState<string | null>(null)
   const [receiveTokenCopied, setReceiveTokenCopied] = useState(false)
   const [peerURLInput, setPeerURLInput] = useState('')
+  const [quotaGB, setQuotaGB] = useState<string>('')
 
   // Restore token from sessionStorage on mount (sessionStorage clears on tab close,
   // reducing XSS exposure compared to localStorage for this sensitive value)
@@ -403,6 +404,13 @@ function BackupPage() {
     enabled: buddyConfig?.has_receive_token ?? false,
   })
 
+  // Sync quotaGB input when buddyConfig loads
+  useEffect(() => {
+    if (buddyConfig?.receive_quota_bytes != null) {
+      setQuotaGB(String(Math.round(buddyConfig.receive_quota_bytes / 1073741824)))
+    }
+  }, [buddyConfig?.receive_quota_bytes])
+
   // ── mutations ─────────────────────────────────────────────────────────────
 
   const generateMutation = useMutation({
@@ -441,6 +449,10 @@ function BackupPage() {
     mutationFn: (filename: string) => api.delete(`/api/v1/backup/buddy/received/${encodeURIComponent(filename)}`),
     onSuccess: () => { void refetchBuddyReceived(); toast.success(t('backup.archiveDeleted')) },
     onError: () => toast.error(t('backup.archiveDeleteFailed')),
+  })
+
+  const setQuotaMutation = useMutation({
+    mutationFn: (bytes: number | null) => api.put('/api/v1/backup/buddy/quota', { quota_bytes: bytes }),
   })
 
   const saveAutoConfigMutation = useMutation({
@@ -1205,6 +1217,65 @@ function BackupPage() {
                     </div>
                   </div>
                 )}
+
+                {/* ── Fair-trade quota ─────────────────────────────────── */}
+                <div className="space-y-2 border-t border-zinc-100 dark:border-[#2d3148] pt-3">
+                  <p className="text-xs font-semibold text-zinc-700 dark:text-slate-300">{t('backup.quotaTitle')}</p>
+                  <p className="text-xs text-zinc-500 dark:text-slate-400">{t('backup.quotaDesc')}</p>
+
+                  {/* Usage indicators */}
+                  <div className="space-y-1.5">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-slate-400">
+                        <span>{t('backup.quotaUsage')}</span>
+                        <span>
+                          {formatBytes((buddyReceived ?? []).reduce((s, a) => s + a.size_bytes, 0))}
+                          {buddyConfig?.receive_quota_bytes != null && ` / ${formatBytes(buddyConfig.receive_quota_bytes)}`}
+                        </span>
+                      </div>
+                      {buddyConfig?.receive_quota_bytes != null && (
+                        <div className="w-full bg-zinc-100 dark:bg-[#2d3148] rounded-full h-1.5">
+                          <div
+                            className="bg-brand-500 h-1.5 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, ((buddyReceived ?? []).reduce((s, a) => s + a.size_bytes, 0) / buddyConfig.receive_quota_bytes) * 100)}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-slate-400">
+                      <span>{t('backup.peerUsage')}</span>
+                      <span>{formatBytes(buddyConfig?.peer_stored_bytes ?? 0)}</span>
+                    </div>
+                  </div>
+
+                  {/* Quota input */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={quotaGB}
+                      onChange={e => setQuotaGB(e.target.value)}
+                      placeholder={t('backup.quotaUnlimited')}
+                      className="w-28 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                    <span className="text-xs text-zinc-500">GB</span>
+                    <button
+                      onClick={() => {
+                        const bytes = quotaGB.trim() ? Math.round(parseFloat(quotaGB) * 1073741824) : null
+                        setQuotaMutation.mutate(bytes, {
+                          onSuccess: () => { toast.success(t('backup.quotaSaved')); void refetchBuddyConfig() },
+                          onError: () => toast.error(t('backup.quotaSaveFailed')),
+                        })
+                      }}
+                      disabled={setQuotaMutation.isPending}
+                      className="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+                    >
+                      {t('backup.quotaSave')}
+                    </button>
+                  </div>
+                  <p className="text-xs text-zinc-400 italic">{t('backup.fairTrade')}</p>
+                </div>
               </div>
 
               {/* ── Push to peer ────────────────────────────────────────── */}

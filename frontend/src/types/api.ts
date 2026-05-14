@@ -226,6 +226,9 @@ export interface BuddyUserConfig {
   // Push failure / notification
   push_failed_since?: string | null
   notify_on_failure?: boolean
+  // Fair-trade quota
+  receive_quota_bytes?: number | null  // null = unlimited
+  peer_stored_bytes?: number           // bytes this user has stored at peer
 }
 
 export interface BuddyServerInfo {
@@ -253,6 +256,7 @@ export interface BuddyArchive {
   filename: string
   size_bytes: number
   received_at: string
+  total_stored_bytes?: number  // only present in receive response
 }
 
 export interface AutoBackupConfig {

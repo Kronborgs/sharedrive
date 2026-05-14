@@ -512,6 +512,35 @@ func (h *Handler) RevokeBuddyReceiveToken(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ── PUT /api/v1/backup/buddy/quota ────────────────────────────────────────────
+// Set (or clear) the max bytes this user allows their buddy to store here.
+// Body: {"quota_bytes": 53687091200}  — or {"quota_bytes": null} to remove the cap.
+
+func (h *Handler) SetBuddyQuota(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req struct {
+		QuotaBytes *int64 `json:"quota_bytes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.QuotaBytes != nil && *req.QuotaBytes < 0 {
+		httputil.RespondError(w, http.StatusBadRequest, "quota_bytes must be >= 0")
+		return
+	}
+	if err := h.buddyCfg.SetReceiveQuota(ctx, u.ID, req.QuotaBytes); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ── GET /api/v1/backup/buddy/server-info (public, no auth) ───────────────────
 // Returns this server's preferred upload URL and tunnel capability.
 
@@ -704,7 +733,7 @@ func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		bgCtx := context.Background()
 		userID := u.ID
-		pushSize, pushErr := h.buddy.Push(bgCtx, userID, req.Token, folderIDs, peerURL, peerUserID, peerToken)
+		result, pushErr := h.buddy.Push(bgCtx, userID, req.Token, folderIDs, peerURL, peerUserID, peerToken)
 		if pushErr != nil {
 			log.Error().Err(pushErr).Str("user_id", userID.String()).Msg("buddy push (async)")
 			if pushErr == ErrPeerStorageUnavailable {
@@ -718,7 +747,7 @@ func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.passwords.TouchLastUsed(bgCtx, userID)
-		if err := h.buddyCfg.UpdateLastPush(bgCtx, userID, pushSize); err != nil {
+		if err := h.buddyCfg.UpdateLastPush(bgCtx, userID, result.ArchiveBytes, result.PeerTotalBytes); err != nil {
 			log.Warn().Err(err).Str("user_id", userID.String()).Msg("buddy push: failed to update last push stats")
 		}
 	}()
@@ -775,12 +804,35 @@ func (h *Handler) BuddyReceive(w http.ResponseWriter, r *http.Request) {
 	}
 	defer archiveFile.Close()
 
+	// ── Quota check (fair-trade) ───────────────────────────────────────────────
+	// If the sender identifies themselves we can enforce the configured quota.
+	// Effective quota = max(configured quota, bytes we have stored at sender's server).
+	if senderIDStr := r.Header.Get("X-Buddy-Sender-User-ID"); senderIDStr != "" {
+		if senderID, parseErr := uuid.Parse(senderIDStr); parseErr == nil {
+			effective, unlimited, _ := h.buddyCfg.GetReceiveQuota(r.Context(), receiverID, senderID)
+			if !unlimited {
+				currentTotal, _ := h.buddy.TotalStoredBytes(receiverID)
+				// Use Content-Length as upper-bound estimate for the incoming archive.
+				incomingEst := r.ContentLength
+				if incomingEst < 0 {
+					incomingEst = 0
+				}
+				if currentTotal+incomingEst > effective {
+					httputil.RespondError(w, http.StatusInsufficientStorage, "modtage-kvote overskredet")
+					return
+				}
+			}
+		}
+	}
+
 	archive, err := h.buddy.Receive(r.Context(), receiverID, archiveFile)
 	if err != nil {
 		log.Error().Err(err).Str("receiver_user_id", receiverID.String()).Msg("buddy receive")
 		httputil.RespondError(w, http.StatusInternalServerError, "receive failed")
 		return
 	}
+	// Include total stored bytes so the pusher can update their peer_stored_bytes.
+	archive.TotalStoredBytes, _ = h.buddy.TotalStoredBytes(receiverID)
 	httputil.Respond(w, http.StatusCreated, archive)
 }
 

@@ -347,7 +347,7 @@ func (s *AutoBackupService) RunBuddyForUser(ctx context.Context, userID uuid.UUI
 	// Mark in-progress so the UI reflects it.
 	_ = s.buddyCfg.SetPushInProgress(ctx, userID, true, "")
 
-	pushSize, pushErr := s.buddy.Push(ctx, userID, rawToken, folderUUIDs, peerURL, peerUserID, peerToken)
+	result, pushErr := s.buddy.Push(ctx, userID, rawToken, folderUUIDs, peerURL, peerUserID, peerToken)
 	if pushErr != nil {
 		if pushErr == ErrPeerStorageUnavailable {
 			// Peer has no BACKUPS_ROOT — not a transient failure; clear in-progress silently.
@@ -358,7 +358,7 @@ func (s *AutoBackupService) RunBuddyForUser(ctx context.Context, userID uuid.UUI
 		return false, fmt.Errorf("auto buddy push: %w", pushErr)
 	}
 
-	_ = s.buddyCfg.UpdateLastPush(ctx, userID, pushSize)
+	_ = s.buddyCfg.UpdateLastPush(ctx, userID, result.ArchiveBytes, result.PeerTotalBytes)
 	_ = s.buddyCfg.ClearPushFailure(ctx, userID)
 	_ = s.buddyCfg.updateAutoPushRun(ctx, userID, currentHash)
 
@@ -369,7 +369,7 @@ func (s *AutoBackupService) RunBuddyForUser(ctx context.Context, userID uuid.UUI
 		})
 	}
 
-	log.Info().Str("user_id", userID.String()).Int64("bytes", pushSize).Msg("auto buddy push: completed")
+	log.Info().Str("user_id", userID.String()).Int64("bytes", result.ArchiveBytes).Msg("auto buddy push: completed")
 	return false, nil
 }
 

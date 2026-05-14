@@ -85,9 +85,16 @@ func (s *BuddyService) SetTunnelManager(tm *TunnelManager) { s.tunnelMgr = tm }
 
 // BuddyArchive describes an archive received from a peer.
 type BuddyArchive struct {
-	Filename   string    `json:"filename"`
-	SizeBytes  int64     `json:"size_bytes"`
-	ReceivedAt time.Time `json:"received_at"`
+	Filename         string    `json:"filename"`
+	SizeBytes        int64     `json:"size_bytes"`
+	ReceivedAt       time.Time `json:"received_at"`
+	TotalStoredBytes int64     `json:"total_stored_bytes,omitempty"` // populated by BuddyReceive handler
+}
+
+// PushResult is returned from BuddyService.Push on success.
+type PushResult struct {
+	ArchiveBytes   int64 // size of the archive we uploaded
+	PeerTotalBytes int64 // total bytes now stored at the peer for us (from peer's response; 0 if unknown)
 }
 
 // buddyDir returns (and creates) the per-user directory for received archives.
@@ -103,12 +110,12 @@ func (s *BuddyService) buddyDir(userID uuid.UUID) (string, error) {
 // peerBaseURL is the peer's base URL; peerUserID is the peer's user UUID;
 // peerToken is the receive token the peer generated for us to authenticate.
 // folderIDs restricts scope; pass nil to include all files.
-// Returns the number of bytes in the pushed archive.
-func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken string, folderIDs []uuid.UUID, peerBaseURL, peerUserID, peerToken string) (int64, error) {
+// Returns a PushResult with archive size and the peer's reported total stored bytes.
+func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken string, folderIDs []uuid.UUID, peerBaseURL, peerUserID, peerToken string) (PushResult, error) {
 	// Export to a temp file first — multipart needs io.ReaderAt/Seeker semantics.
 	tmp, err := os.CreateTemp("", "shdbak-buddy-push-*")
 	if err != nil {
-		return 0, fmt.Errorf("buddy push: create temp: %w", err)
+		return PushResult{}, fmt.Errorf("buddy push: create temp: %w", err)
 	}
 	defer func() {
 		tmp.Close()
@@ -116,15 +123,15 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	}()
 
 	if err := s.backups.Export(ctx, tmp, userID, rawToken, folderIDs); err != nil {
-		return 0, fmt.Errorf("buddy push: export: %w", err)
+		return PushResult{}, fmt.Errorf("buddy push: export: %w", err)
 	}
 
 	fi, err := tmp.Stat()
 	if err != nil {
-		return 0, fmt.Errorf("buddy push: stat: %w", err)
+		return PushResult{}, fmt.Errorf("buddy push: stat: %w", err)
 	}
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return 0, fmt.Errorf("buddy push: seek: %w", err)
+		return PushResult{}, fmt.Errorf("buddy push: seek: %w", err)
 	}
 
 	// Assemble multipart body.
@@ -134,16 +141,25 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	archiveName := time.Now().UTC().Format("20060102T150405Z") + ".zip"
 	fw, err := mw.CreateFormFile("file", archiveName)
 	if err != nil {
-		return 0, fmt.Errorf("buddy push: form file: %w", err)
+		return PushResult{}, fmt.Errorf("buddy push: form file: %w", err)
 	}
 	if _, err := io.CopyN(fw, tmp, fi.Size()); err != nil {
-		return 0, fmt.Errorf("buddy push: copy: %w", err)
+		return PushResult{}, fmt.Errorf("buddy push: copy: %w", err)
 	}
 	mw.Close()
 
 	receiveEndpoint := strings.TrimRight(peerBaseURL, "/") + "/api/v1/backup/buddy/receive"
 	if !strings.HasPrefix(receiveEndpoint, "https://") {
-		return 0, fmt.Errorf("buddy push: peer URL must use HTTPS")
+		return PushResult{}, fmt.Errorf("buddy push: peer URL must use HTTPS")
+	}
+
+	// parseReceiveResponse reads the peer's JSON response to extract total_stored_bytes.
+	parseReceiveResponse := func(r io.Reader) int64 {
+		var resp BuddyArchive
+		if err := json.NewDecoder(io.LimitReader(r, 4096)).Decode(&resp); err == nil {
+			return resp.TotalStoredBytes
+		}
+		return 0
 	}
 
 	// If there is an active reverse tunnel to this peer, push through it.
@@ -156,28 +172,30 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 			uploadEndpoint := "http://tunnel-peer/api/v1/backup/buddy/receive"
 			req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadEndpoint, &body)
 			if err != nil {
-				return 0, fmt.Errorf("buddy push (tunnel): request: %w", err)
+				return PushResult{}, fmt.Errorf("buddy push (tunnel): request: %w", err)
 			}
 			req.Header.Set("Content-Type", mw.FormDataContentType())
 			req.Header.Set("Authorization", "Bearer "+peerToken)
+			req.Header.Set("X-Buddy-Sender-User-ID", userID.String())
 			resp, err := httpClient.Do(req)
 			if err != nil {
-				return 0, fmt.Errorf("buddy push (tunnel): http: %w", err)
+				return PushResult{}, fmt.Errorf("buddy push (tunnel): http: %w", err)
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 				msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 				detail := strings.TrimSpace(string(msg))
 				if resp.StatusCode == http.StatusServiceUnavailable {
-					return 0, ErrPeerStorageUnavailable
+					return PushResult{}, ErrPeerStorageUnavailable
 				}
 				if detail == "" {
 					detail = "no details from peer"
 				}
-				return 0, fmt.Errorf("buddy push (tunnel): peer returnerede HTTP %d: %s", resp.StatusCode, detail)
+				return PushResult{}, fmt.Errorf("buddy push (tunnel): peer returnerede HTTP %d: %s", resp.StatusCode, detail)
 			}
+			peerTotal := parseReceiveResponse(resp.Body)
 			log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Int64("bytes", fi.Size()).Msg("buddy: archive pushed via tunnel")
-			return fi.Size(), nil
+			return PushResult{ArchiveBytes: fi.Size(), PeerTotalBytes: peerTotal}, nil
 		}
 	}
 
@@ -189,14 +207,15 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadEndpoint, &body)
 	if err != nil {
-		return 0, fmt.Errorf("buddy push: request: %w", err)
+		return PushResult{}, fmt.Errorf("buddy push: request: %w", err)
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+peerToken)
+	req.Header.Set("X-Buddy-Sender-User-ID", userID.String())
 
 	resp, err := buddyHTTPClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("buddy push: http: %w", err)
+		return PushResult{}, fmt.Errorf("buddy push: http: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -208,13 +227,14 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 			detail = "no details from peer"
 		}
 		if resp.StatusCode == http.StatusServiceUnavailable {
-			return 0, ErrPeerStorageUnavailable
+			return PushResult{}, ErrPeerStorageUnavailable
 		}
-		return 0, fmt.Errorf("buddy push: peer returnerede HTTP %d: %s", resp.StatusCode, detail)
+		return PushResult{}, fmt.Errorf("buddy push: peer returnerede HTTP %d: %s", resp.StatusCode, detail)
 	}
 
+	peerTotal := parseReceiveResponse(resp.Body)
 	log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Int64("bytes", fi.Size()).Msg("buddy: archive pushed")
-	return fi.Size(), nil
+	return PushResult{ArchiveBytes: fi.Size(), PeerTotalBytes: peerTotal}, nil
 }
 
 // Receive stores an archive pushed from a peer under the receiving user's directory.
@@ -310,6 +330,20 @@ func (s *BuddyService) DownloadReceived(userID uuid.UUID, filename string) (io.R
 		return nil, 0, fmt.Errorf("buddy: stat: %w", err)
 	}
 	return f, fi.Size(), nil
+}
+
+// TotalStoredBytes returns the sum of all received archive sizes for userID.
+// Returns 0 if the buddy directory does not exist yet.
+func (s *BuddyService) TotalStoredBytes(userID uuid.UUID) (int64, error) {
+	archives, err := s.ListReceived(userID)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, a := range archives {
+		total += a.SizeBytes
+	}
+	return total, nil
 }
 
 // DeleteReceived removes the named received archive.

@@ -61,6 +61,10 @@ type BuddyUserStatus struct {
 	// Push failure / notification fields.
 	PushFailedSince *time.Time `json:"push_failed_since,omitempty"`
 	NotifyOnFailure bool       `json:"notify_on_failure"`
+
+	// Fair-trade quota fields.
+	ReceiveQuotaBytes *int64 `json:"receive_quota_bytes"` // null = unlimited
+	PeerStoredBytes   int64  `json:"peer_stored_bytes"`   // bytes this user has stored at peer
 }
 
 // GetStatus returns the current buddy config summary for the user (no secrets exposed).
@@ -75,18 +79,22 @@ func (s *BuddyConfigService) GetStatus(ctx context.Context, userID uuid.UUID) (*
 	var autoPushFolderIDs []string
 	var pushFailedSince *time.Time
 	var notifyOnFailure bool
+	var receiveQuotaBytes *int64
+	var peerStoredBytes int64
 	err := s.db.QueryRow(ctx,
 		`SELECT peer_url, receive_token_hash, receive_token_prefix,
 		        last_push_at, last_push_bytes, push_in_progress, last_push_error,
 		        auto_push_enabled, auto_push_interval_hours, auto_push_on_change,
 		        auto_push_last_run_at, COALESCE(auto_push_folder_ids, '{}'),
-		        push_failed_since, COALESCE(notify_on_failure, TRUE)
+		        push_failed_since, COALESCE(notify_on_failure, TRUE),
+		        receive_quota_bytes, COALESCE(peer_stored_bytes, 0)
 		 FROM user_buddy_configs WHERE user_id = $1`, userID,
 	).Scan(&peerURL, &receiveTokenHash, &receiveTokenPrefix,
 		&lastPushAt, &lastPushBytes, &pushInProgress, &lastPushError,
 		&autoPushEnabled, &autoPushIntervalHours, &autoPushOnChange,
 		&autoPushLastRunAt, &autoPushFolderIDs,
-		&pushFailedSince, &notifyOnFailure)
+		&pushFailedSince, &notifyOnFailure,
+		&receiveQuotaBytes, &peerStoredBytes)
 	if err != nil {
 		// No row yet — return empty status (not an error)
 		return &BuddyUserStatus{
@@ -116,6 +124,8 @@ func (s *BuddyConfigService) GetStatus(ctx context.Context, userID uuid.UUID) (*
 		AutoPushFolderIDs:     autoPushFolderIDs,
 		PushFailedSince:       pushFailedSince,
 		NotifyOnFailure:       notifyOnFailure,
+		ReceiveQuotaBytes:     receiveQuotaBytes,
+		PeerStoredBytes:       peerStoredBytes,
 	}, nil
 }
 
@@ -210,14 +220,68 @@ func (s *BuddyConfigService) SetPushInProgress(ctx context.Context, userID uuid.
 }
 
 // UpdateLastPush records the time and size of the most recent successful push.
-func (s *BuddyConfigService) UpdateLastPush(ctx context.Context, userID uuid.UUID, sizeBytes int64) error {
+// If peerTotalBytes > 0 (returned by an up-to-date peer), also updates peer_stored_bytes.
+func (s *BuddyConfigService) UpdateLastPush(ctx context.Context, userID uuid.UUID, archiveBytes, peerTotalBytes int64) error {
+	if peerTotalBytes > 0 {
+		_, err := s.db.Exec(ctx,
+			`UPDATE user_buddy_configs
+			 SET last_push_at = NOW(), last_push_bytes = $2,
+			     push_in_progress = FALSE, last_push_error = '',
+			     peer_stored_bytes = $3, updated_at = NOW()
+			 WHERE user_id = $1`, userID, archiveBytes, peerTotalBytes,
+		)
+		return err
+	}
+	// peerTotalBytes unknown (old peer without quota support) — preserve existing peer_stored_bytes.
 	_, err := s.db.Exec(ctx,
 		`UPDATE user_buddy_configs
 		 SET last_push_at = NOW(), last_push_bytes = $2,
 		     push_in_progress = FALSE, last_push_error = '', updated_at = NOW()
-		 WHERE user_id = $1`, userID, sizeBytes,
+		 WHERE user_id = $1`, userID, archiveBytes,
 	)
 	return err
+}
+
+// SetReceiveQuota sets (or clears) the max bytes this user allows their buddy to store here.
+// Pass nil to remove the cap (unlimited).
+func (s *BuddyConfigService) SetReceiveQuota(ctx context.Context, userID uuid.UUID, quotaBytes *int64) error {
+	_, err := s.db.Exec(ctx,
+		`INSERT INTO user_buddy_configs (user_id, receive_quota_bytes)
+		 VALUES ($1, $2)
+		 ON CONFLICT (user_id) DO UPDATE
+		   SET receive_quota_bytes = EXCLUDED.receive_quota_bytes,
+		       updated_at          = NOW()`,
+		userID, quotaBytes,
+	)
+	return err
+}
+
+// GetReceiveQuota returns the effective quota (bytes) for a buddy push from senderUserID
+// to receiverUserID's server. The effective quota is max(configured, peer_stored_bytes)
+// to enforce fair-trade: we never give less space than we're using at the sender's server.
+// Returns unlimited=true when no cap is configured.
+func (s *BuddyConfigService) GetReceiveQuota(ctx context.Context, receiverUserID, senderUserID uuid.UUID) (effectiveQuota int64, unlimited bool, err error) {
+	var quota *int64
+	var peerStored int64
+	err = s.db.QueryRow(ctx,
+		`SELECT receive_quota_bytes, COALESCE(peer_stored_bytes, 0)
+		 FROM user_buddy_configs
+		 WHERE user_id = $1 AND peer_user_id = $2`,
+		receiverUserID, senderUserID,
+	).Scan(&quota, &peerStored)
+	if err != nil {
+		// No matching outbound config — treat as unlimited.
+		return 0, true, nil
+	}
+	if quota == nil {
+		return 0, true, nil
+	}
+	// Fair trade: effective = max(configured quota, bytes we're using at sender's server).
+	effective := *quota
+	if peerStored > effective {
+		effective = peerStored
+	}
+	return effective, false, nil
 }
 
 // validatePeerURL verifies that peerURL is a valid HTTPS URL with a hostname.

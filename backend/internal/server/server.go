@@ -428,6 +428,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/backup/buddy/push", s.backupHandler.BuddyPush)
 		r.Put("/api/v1/backup/buddy/auto", s.backupHandler.SetBuddyAutoConfig)
 		r.Put("/api/v1/backup/notify", s.backupHandler.SetBackupNotifyConfig)
+		r.Put("/api/v1/backup/buddy/quota", s.backupHandler.SetBuddyQuota)
 		// Reverse tunnel management (client side — connect this instance to peer's tunnel)
 		r.Post("/api/v1/backup/buddy/tunnel/connect", s.backupHandler.BuddyTunnelConnect)
 		r.Delete("/api/v1/backup/buddy/tunnel/connect", s.backupHandler.BuddyTunnelDisconnect)

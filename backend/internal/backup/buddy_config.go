@@ -88,28 +88,25 @@ func validatePeerURL(raw string) (string, error) {
 	if lower == "localhost" || lower == "127.0.0.1" || lower == "::1" || lower == "[::1]" {
 		return "", fmt.Errorf("peer URL must not point to localhost")
 	}
-	// Resolve the hostname and reject private/link-local ranges to prevent SSRF
-	// against internal services (RFC 1918, link-local, loopback).
-	addrs, err := net.LookupHost(host)
-	if err != nil {
-		// If we cannot resolve, block — prevents DNS-rebinding via unresolvable names.
-		return "", fmt.Errorf("could not resolve peer hostname: %w", err)
-	}
-	privateRanges := []string{
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"192.168.0.0/16",
-		"127.0.0.0/8",
-		"169.254.0.0/16", // link-local / AWS metadata
-		"::1/128",
-		"fc00::/7",  // ULA
-		"fe80::/10", // link-local IPv6
-	}
-	for _, cidr := range privateRanges {
-		_, ipNet, _ := net.ParseCIDR(cidr)
-		for _, addr := range addrs {
-			if ipNet.Contains(net.ParseIP(addr)) {
-				return "", fmt.Errorf("peer URL resolves to a private/reserved address")
+	// Block literal private/reserved IP addresses to prevent SSRF.
+	// We do NOT resolve hostnames — a domain like sharedrive.example.com is
+	// intentionally configured by the user and should be allowed even if it
+	// resolves to a LAN address (Cloudflare Tunnel, split-horizon DNS, etc.).
+	if ip := net.ParseIP(host); ip != nil {
+		privateRanges := []string{
+			"10.0.0.0/8",
+			"172.16.0.0/12",
+			"192.168.0.0/16",
+			"127.0.0.0/8",
+			"169.254.0.0/16",
+			"::1/128",
+			"fc00::/7",
+			"fe80::/10",
+		}
+		for _, cidr := range privateRanges {
+			_, ipNet, _ := net.ParseCIDR(cidr)
+			if ipNet.Contains(ip) {
+				return "", fmt.Errorf("peer URL must not use a private/reserved IP address")
 			}
 		}
 	}

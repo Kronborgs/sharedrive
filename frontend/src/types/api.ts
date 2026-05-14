@@ -217,6 +217,12 @@ export interface BuddyUserConfig {
   last_push_bytes?: number
   push_in_progress?: boolean
   last_push_error?: string
+  // Auto-push schedule
+  auto_push_enabled?: boolean
+  auto_push_interval_hours?: number
+  auto_push_on_change?: boolean
+  auto_push_last_run_at?: string | null
+  auto_push_folder_ids?: string[]
 }
 
 export interface GeneratedBuddyReceiveToken {

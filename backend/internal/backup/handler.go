@@ -43,15 +43,17 @@ type Handler struct {
 func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot string, auditSvc audit.Logger, limiter *ratelimit.Limiter) *Handler {
 	svc := NewService(db, storage)
 	tert := NewTertiaryService(backupsRoot, svc)
+	buddySvc := NewBuddyService(backupsRoot, svc)
+	buddyCfgSvc := NewBuddyConfigService(db, wrapKey)
 	return &Handler{
 		db:              db,
 		passwords:       NewPasswordService(db, wrapKey),
 		backups:         svc,
 		restores:        NewRestoreService(db, storage),
 		tertiary:        tert,
-		buddy:           NewBuddyService(backupsRoot, svc),
-		buddyCfg:        NewBuddyConfigService(db, wrapKey),
-		autoBackup:      NewAutoBackupService(db, wrapKey, tert, auditSvc),
+		buddy:           buddySvc,
+		buddyCfg:        buddyCfgSvc,
+		autoBackup:      NewAutoBackupService(db, wrapKey, tert, buddySvc, buddyCfgSvc, auditSvc),
 		auditSvc:        auditSvc,
 		limiter:         limiter,
 		tertiaryEnabled: backupsRoot != "",
@@ -690,6 +692,43 @@ func (h *Handler) DeleteBuddyReceived(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── PUT /api/v1/backup/buddy/auto ─────────────────────────────────────────────
+
+type buddyAutoConfigRequest struct {
+	Enabled       bool     `json:"enabled"`
+	IntervalHours int      `json:"interval_hours"`
+	OnChange      bool     `json:"on_change"`
+	FolderIDs     []string `json:"folder_ids"`
+}
+
+func (h *Handler) SetBuddyAutoConfig(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req buddyAutoConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if req.IntervalHours < 1 {
+		req.IntervalHours = 24
+	}
+	if err := h.buddyCfg.SetAutoPushConfig(ctx, u.ID, req.Enabled, req.IntervalHours, req.OnChange, req.FolderIDs); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	// Return updated full status so the frontend can update in one round trip.
+	status, err := h.buddyCfg.GetStatus(ctx, u.ID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, status)
 }
 
 // ── GET /api/v1/backup/auto ──────────────────────────────────────────────────

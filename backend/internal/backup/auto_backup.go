@@ -26,19 +26,22 @@ type AutoConfig struct {
 	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
 }
 
-// AutoBackupService manages automatic scheduled backups for the tertiary tier.
+// AutoBackupService manages automatic scheduled backups for the tertiary tier
+// and the buddy push tier.
 // It uses the wrapped_key stored in backup_passwords to recover the raw token
 // at schedule time — the user never needs to re-enter their token.
 type AutoBackupService struct {
 	db       *pgxpool.Pool
 	wrapKey  string
 	tertiary *TertiaryService
+	buddy    *BuddyService
+	buddyCfg *BuddyConfigService
 	auditSvc audit.Logger
 }
 
 // NewAutoBackupService creates an AutoBackupService.
-func NewAutoBackupService(db *pgxpool.Pool, wrapKey string, tertiary *TertiaryService, auditSvc audit.Logger) *AutoBackupService {
-	return &AutoBackupService{db: db, wrapKey: wrapKey, tertiary: tertiary, auditSvc: auditSvc}
+func NewAutoBackupService(db *pgxpool.Pool, wrapKey string, tertiary *TertiaryService, buddy *BuddyService, buddyCfg *BuddyConfigService, auditSvc audit.Logger) *AutoBackupService {
+	return &AutoBackupService{db: db, wrapKey: wrapKey, tertiary: tertiary, buddy: buddy, buddyCfg: buddyCfg, auditSvc: auditSvc}
 }
 
 // Get returns the auto backup config for userID, or a sensible default.
@@ -246,9 +249,82 @@ func (s *AutoBackupService) RunForUser(ctx context.Context, userID uuid.UUID) (s
 	return false, nil
 }
 
+// RunBuddyForUser runs an auto buddy push for userID if the schedule/change
+// condition is met and the file hash has changed since the last push.
+func (s *AutoBackupService) RunBuddyForUser(ctx context.Context, userID uuid.UUID) (skipped bool, err error) {
+	if s.buddy == nil || s.buddyCfg == nil {
+		return true, nil
+	}
+
+	cfg, err := s.buddyCfg.getAutoPushConfig(ctx, userID)
+	if err != nil {
+		return true, nil // no config row yet
+	}
+
+	// ── time check (skip if on_change mode — hash check is enough) ────────────
+	if !cfg.OnChange && cfg.LastRunAt != nil {
+		nextRun := cfg.LastRunAt.Add(time.Duration(cfg.IntervalHours) * time.Hour)
+		if time.Now().UTC().Before(nextRun) {
+			return true, nil // not yet time
+		}
+	}
+
+	// ── parse folder IDs ──────────────────────────────────────────────────────
+	folderUUIDs, err := parseUUIDs(cfg.FolderIDs)
+	if err != nil {
+		return false, fmt.Errorf("auto buddy push: parse folder ids: %w", err)
+	}
+
+	// ── hash check — only push when files have actually changed ───────────────
+	currentHash, err := s.computeFileHash(ctx, userID, folderUUIDs)
+	if err != nil {
+		return false, fmt.Errorf("auto buddy push: compute hash: %w", err)
+	}
+	if currentHash == cfg.LastHash && cfg.LastHash != "" {
+		// No changes; bump last_run_at so interval resets.
+		_ = s.buddyCfg.updateAutoPushRun(ctx, userID, currentHash)
+		return true, nil
+	}
+
+	// ── resolve token ─────────────────────────────────────────────────────────
+	rawToken, err := s.resolveToken(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	// ── get peer config ───────────────────────────────────────────────────────
+	peerURL, peerUserID, peerToken, err := s.buddyCfg.GetPeerConfig(ctx, userID)
+	if err != nil {
+		return false, fmt.Errorf("auto buddy push: peer config: %w", err)
+	}
+
+	// Mark in-progress so the UI reflects it.
+	_ = s.buddyCfg.SetPushInProgress(ctx, userID, true, "")
+
+	pushSize, pushErr := s.buddy.Push(ctx, userID, rawToken, folderUUIDs, peerURL, peerUserID, peerToken)
+	if pushErr != nil {
+		_ = s.buddyCfg.SetPushInProgress(ctx, userID, false, pushErr.Error())
+		return false, fmt.Errorf("auto buddy push: %w", pushErr)
+	}
+
+	_ = s.buddyCfg.UpdateLastPush(ctx, userID, pushSize)
+	_ = s.buddyCfg.updateAutoPushRun(ctx, userID, currentHash)
+
+	if s.auditSvc != nil {
+		s.auditSvc.Log(ctx, audit.Event{
+			Type:    audit.EventBackupRunAuto,
+			ActorID: &userID,
+		})
+	}
+
+	log.Info().Str("user_id", userID.String()).Int64("bytes", pushSize).Msg("auto buddy push: completed")
+	return false, nil
+}
+
 // RunScheduled iterates all users with auto backup enabled and runs their
 // backups. Called by the server scheduler goroutine every 15 minutes.
 func (s *AutoBackupService) RunScheduled(ctx context.Context) {
+	// ── tertiary auto backup ──────────────────────────────────────────────────
 	rows, err := s.db.Query(ctx,
 		`SELECT user_id FROM user_backup_auto_config WHERE enabled = TRUE`)
 	if err != nil {
@@ -272,6 +348,24 @@ func (s *AutoBackupService) RunScheduled(ctx context.Context) {
 			log.Error().Err(err).Str("user_id", uid.String()).Msg("auto backup scheduler")
 		} else if !skipped {
 			log.Info().Str("user_id", uid.String()).Msg("auto backup scheduler: backup completed")
+		}
+	}
+
+	// ── buddy auto push ───────────────────────────────────────────────────────
+	if s.buddyCfg == nil {
+		return
+	}
+	buddyUserIDs, err := s.buddyCfg.GetAutoPushUsers(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("auto buddy push scheduler: query users")
+		return
+	}
+	for _, uid := range buddyUserIDs {
+		skipped, err := s.RunBuddyForUser(ctx, uid)
+		if err != nil {
+			log.Error().Err(err).Str("user_id", uid.String()).Msg("auto buddy push scheduler")
+		} else if !skipped {
+			log.Info().Str("user_id", uid.String()).Msg("auto buddy push scheduler: completed")
 		}
 	}
 }

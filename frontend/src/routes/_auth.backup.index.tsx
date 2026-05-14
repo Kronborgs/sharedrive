@@ -1149,6 +1149,120 @@ function BackupPage() {
               </div>
             </section>
 
+            {/* ── Auto buddy push ──────────────────────────────────────── */}
+            {buddyConfig?.peer_configured && (
+              <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Clock size={16} className="text-brand-500" />
+                  <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Automatisk buddy push</h2>
+                </div>
+                <p className="text-sm text-zinc-500 dark:text-slate-400">
+                  Push automatisk til din buddy på et fast interval — eller straks når dine filer ændres.
+                  Kræver at du har genereret en backup-nøgle (bruges til kryptering).
+                </p>
+                <div className="space-y-3">
+                  {/* Enable toggle */}
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={buddyConfig?.auto_push_enabled ?? false}
+                      onClick={() => {
+                        const next = !(buddyConfig?.auto_push_enabled ?? false)
+                        api.put('/api/v1/backup/buddy/auto', {
+                          enabled: next,
+                          interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
+                          on_change: buddyConfig?.auto_push_on_change ?? false,
+                          folder_ids: buddyConfig?.auto_push_folder_ids ?? [],
+                        }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                      }}
+                      className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-1"
+                      style={{ backgroundColor: buddyConfig?.auto_push_enabled ? 'var(--color-brand-600, #6366f1)' : '#d1d5db' }}
+                    >
+                      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${buddyConfig?.auto_push_enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </button>
+                    <span className="text-sm text-zinc-700 dark:text-slate-300">
+                      {buddyConfig?.auto_push_enabled ? 'Aktiveret' : 'Deaktiveret'}
+                    </span>
+                  </label>
+
+                  {buddyConfig?.auto_push_enabled && (
+                    <div className="space-y-3 pl-2 border-l-2 border-brand-200 dark:border-brand-800">
+                      {/* On-change toggle */}
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={buddyConfig?.auto_push_on_change ?? false}
+                          onChange={e => {
+                            api.put('/api/v1/backup/buddy/auto', {
+                              enabled: true,
+                              interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
+                              on_change: e.target.checked,
+                              folder_ids: buddyConfig?.auto_push_folder_ids ?? [],
+                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                          }}
+                          className="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
+                        />
+                        <div>
+                          <p className="text-sm text-zinc-700 dark:text-slate-300">Push ved filændringer</p>
+                          <p className="text-xs text-zinc-400 dark:text-slate-500">Pusher automatisk inden for ~15 min efter at du har ændret filer (uanset interval)</p>
+                        </div>
+                      </label>
+
+                      {/* Interval selector */}
+                      {!buddyConfig?.auto_push_on_change && (
+                        <div className="flex items-center gap-3">
+                          <label className="text-xs text-zinc-500 dark:text-slate-400 shrink-0">Interval</label>
+                          <select
+                            value={buddyConfig?.auto_push_interval_hours ?? 24}
+                            onChange={e => {
+                              api.put('/api/v1/backup/buddy/auto', {
+                                enabled: true,
+                                interval_hours: Number(e.target.value),
+                                on_change: false,
+                                folder_ids: buddyConfig?.auto_push_folder_ids ?? [],
+                              }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                            }}
+                            className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-2 py-1 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                          >
+                            <option value={1}>Hver time</option>
+                            <option value={6}>Hver 6. time</option>
+                            <option value={12}>Hver 12. time</option>
+                            <option value={24}>Dagligt</option>
+                            <option value={48}>Hver 2. dag</option>
+                            <option value={168}>Ugentligt</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Folder picker */}
+                      <div>
+                        <p className="text-xs text-zinc-500 dark:text-slate-400 mb-1">Mapper (tom = alle filer)</p>
+                        <FolderPicker
+                          selectedIDs={buddyConfig?.auto_push_folder_ids ?? []}
+                          onChange={ids => {
+                            api.put('/api/v1/backup/buddy/auto', {
+                              enabled: true,
+                              interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
+                              on_change: buddyConfig?.auto_push_on_change ?? false,
+                              folder_ids: ids,
+                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error('Kunne ikke gemme'))
+                          }}
+                        />
+                      </div>
+
+                      {/* Last run */}
+                      {buddyConfig?.auto_push_last_run_at && (
+                        <p className="text-xs text-zinc-400 dark:text-slate-500 flex items-center gap-1">
+                          <Clock size={11} /> Sidst kørt {new Date(buddyConfig.auto_push_last_run_at).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
             {/* ── Received buddy archives ──────────────────────────────── */}
             <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-4">
               <div className="flex items-center gap-2">

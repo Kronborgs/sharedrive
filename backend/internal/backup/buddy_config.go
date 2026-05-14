@@ -50,6 +50,13 @@ type BuddyUserStatus struct {
 	LastPushBytes      int64      `json:"last_push_bytes"`
 	PushInProgress     bool       `json:"push_in_progress"`
 	LastPushError      string     `json:"last_push_error,omitempty"`
+
+	// Auto-push schedule fields.
+	AutoPushEnabled       bool       `json:"auto_push_enabled"`
+	AutoPushIntervalHours int        `json:"auto_push_interval_hours"`
+	AutoPushOnChange      bool       `json:"auto_push_on_change"`
+	AutoPushLastRunAt     *time.Time `json:"auto_push_last_run_at,omitempty"`
+	AutoPushFolderIDs     []string   `json:"auto_push_folder_ids"`
 }
 
 // GetStatus returns the current buddy config summary for the user (no secrets exposed).
@@ -58,27 +65,127 @@ func (s *BuddyConfigService) GetStatus(ctx context.Context, userID uuid.UUID) (*
 	var lastPushAt *time.Time
 	var lastPushBytes int64
 	var pushInProgress bool
+	var autoPushEnabled, autoPushOnChange bool
+	var autoPushIntervalHours int
+	var autoPushLastRunAt *time.Time
+	var autoPushFolderIDs []string
 	err := s.db.QueryRow(ctx,
 		`SELECT peer_url, receive_token_hash, receive_token_prefix,
-		        last_push_at, last_push_bytes, push_in_progress, last_push_error
+		        last_push_at, last_push_bytes, push_in_progress, last_push_error,
+		        auto_push_enabled, auto_push_interval_hours, auto_push_on_change,
+		        auto_push_last_run_at, COALESCE(auto_push_folder_ids, '{}')
 		 FROM user_buddy_configs WHERE user_id = $1`, userID,
 	).Scan(&peerURL, &receiveTokenHash, &receiveTokenPrefix,
-		&lastPushAt, &lastPushBytes, &pushInProgress, &lastPushError)
+		&lastPushAt, &lastPushBytes, &pushInProgress, &lastPushError,
+		&autoPushEnabled, &autoPushIntervalHours, &autoPushOnChange,
+		&autoPushLastRunAt, &autoPushFolderIDs)
 	if err != nil {
 		// No row yet — return empty status (not an error)
-		return &BuddyUserStatus{UserID: userID.String()}, nil
+		return &BuddyUserStatus{
+			UserID:                userID.String(),
+			AutoPushIntervalHours: 24,
+			AutoPushFolderIDs:     []string{},
+		}, nil
+	}
+	if autoPushFolderIDs == nil {
+		autoPushFolderIDs = []string{}
 	}
 	return &BuddyUserStatus{
-		UserID:             userID.String(),
-		PeerConfigured:     peerURL != "",
-		PeerURL:            peerURL,
-		HasReceiveToken:    receiveTokenHash != "",
-		ReceiveTokenPrefix: receiveTokenPrefix,
-		LastPushAt:         lastPushAt,
-		LastPushBytes:      lastPushBytes,
-		PushInProgress:     pushInProgress,
-		LastPushError:      lastPushError,
+		UserID:                userID.String(),
+		PeerConfigured:        peerURL != "",
+		PeerURL:               peerURL,
+		HasReceiveToken:       receiveTokenHash != "",
+		ReceiveTokenPrefix:    receiveTokenPrefix,
+		LastPushAt:            lastPushAt,
+		LastPushBytes:         lastPushBytes,
+		PushInProgress:        pushInProgress,
+		LastPushError:         lastPushError,
+		AutoPushEnabled:       autoPushEnabled,
+		AutoPushIntervalHours: autoPushIntervalHours,
+		AutoPushOnChange:      autoPushOnChange,
+		AutoPushLastRunAt:     autoPushLastRunAt,
+		AutoPushFolderIDs:     autoPushFolderIDs,
 	}, nil
+}
+
+// SetAutoPushConfig saves the auto-push schedule settings for a user.
+func (s *BuddyConfigService) SetAutoPushConfig(ctx context.Context, userID uuid.UUID, enabled bool, intervalHours int, onchange bool, folderIDs []string) error {
+	if intervalHours < 1 {
+		intervalHours = 24
+	}
+	if folderIDs == nil {
+		folderIDs = []string{}
+	}
+	_, err := s.db.Exec(ctx,
+		`INSERT INTO user_buddy_configs (user_id, auto_push_enabled, auto_push_interval_hours, auto_push_on_change, auto_push_folder_ids)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (user_id) DO UPDATE
+		   SET auto_push_enabled        = EXCLUDED.auto_push_enabled,
+		       auto_push_interval_hours = EXCLUDED.auto_push_interval_hours,
+		       auto_push_on_change      = EXCLUDED.auto_push_on_change,
+		       auto_push_folder_ids     = EXCLUDED.auto_push_folder_ids,
+		       updated_at               = NOW()`,
+		userID, enabled, intervalHours, onchange, folderIDs,
+	)
+	return err
+}
+
+// GetAutoPushUsers returns all user IDs that have auto-push enabled.
+// Used by the scheduler.
+func (s *BuddyConfigService) GetAutoPushUsers(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT user_id FROM user_buddy_configs
+		 WHERE auto_push_enabled = TRUE AND peer_url != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// GetAutoPushConfig returns just the auto-push scheduling fields for a user.
+// Used internally by the scheduler.
+type autoPushConfig struct {
+	IntervalHours int
+	OnChange      bool
+	LastRunAt     *time.Time
+	LastHash      string
+	FolderIDs     []string
+}
+
+func (s *BuddyConfigService) getAutoPushConfig(ctx context.Context, userID uuid.UUID) (*autoPushConfig, error) {
+	var cfg autoPushConfig
+	err := s.db.QueryRow(ctx,
+		`SELECT auto_push_interval_hours, auto_push_on_change,
+		        auto_push_last_run_at, auto_push_last_hash,
+		        COALESCE(auto_push_folder_ids, '{}')
+		 FROM user_buddy_configs WHERE user_id = $1`, userID,
+	).Scan(&cfg.IntervalHours, &cfg.OnChange, &cfg.LastRunAt, &cfg.LastHash, &cfg.FolderIDs)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.FolderIDs == nil {
+		cfg.FolderIDs = []string{}
+	}
+	return &cfg, nil
+}
+
+// updateAutoPushRun saves the hash and timestamp after a successful auto-push.
+func (s *BuddyConfigService) updateAutoPushRun(ctx context.Context, userID uuid.UUID, hash string) error {
+	_, err := s.db.Exec(ctx,
+		`UPDATE user_buddy_configs
+		 SET auto_push_last_run_at = NOW(), auto_push_last_hash = $2, updated_at = NOW()
+		 WHERE user_id = $1`, userID, hash,
+	)
+	return err
 }
 
 // SetPushInProgress marks the push as started or finished (with optional error).

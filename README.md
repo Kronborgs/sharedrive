@@ -10,6 +10,25 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 
 ## Changelog
 
+### v1.2.0 — 14 May 2026
+
+#### Features
+- **Fair-trade buddy backup quota** — set a maximum amount of space (in GB) your buddy is allowed to store on your server. The system automatically expands the effective quota to match whatever you are currently storing at your buddy's server, ensuring neither side is disadvantaged. Set the quota from the Backup page → "Din modtage-info" section; leave blank for unlimited.
+- **Buddy quota usage bars** — the Backup page now shows two live usage indicators: how much space your buddy is currently using on your server (with a progress bar relative to the configured quota), and how much you are storing at your buddy's server.
+- **Peer storage byte tracking** — each successful push now records the total bytes you have accumulated at the peer's server (`peer_stored_bytes`). This value is used by the fair-trade logic and displayed in the UI.
+- **Receive quota enforcement** — when a buddy push arrives and the sender's allocation is full, the server responds with HTTP 507 Insufficient Storage so the pusher gets an immediate, actionable error rather than a silent failure.
+- **i18n completeness pass** — all remaining hard-coded UI strings in the file manager (`FileViews`), download dialog (`DownloadDialog`), and first-run setup wizard (`setup`) are now routed through the translation system. Full English and Danish support across every page.
+
+#### Bug fixes
+- **Buddy push error banner persisted after fix** — after the `ErrPeerStorageUnavailable` sentinel was introduced, existing database rows still held the old error string, causing a permanent red error banner for affected users. Migration `0043` clears those stale values on startup.
+- **Migration 0043 parse error** — the migration file was missing the required `-- +goose Up` annotation, preventing the container from starting. Fixed.
+
+#### Database migrations
+- **0043** — clears stale `last_push_error` rows that pre-date the peer-storage-unavailable sentinel
+- **0044** — adds `receive_quota_bytes` (nullable, bytes) and `peer_stored_bytes` (bigint) to `user_buddy_configs`
+
+---
+
 ### v1.1.7 — 14 May 2026
 
 #### Security
@@ -164,7 +183,11 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 - **Selective export** — choose exactly which folders/files to include using a tree picker
 - **Tertiary storage** — automatically copies finished backups to a local path (e.g. a USB drive or NAS mount at `/mnt/backup`); configurable retention (number of archives to keep)
 - **Buddy backup** — push encrypted backups to a remote trusted Sharedrive instance over HTTPS; configure the peer URL and per-user token per user
+- **Fair-trade buddy quota** — set a maximum amount of space (in GB) your buddy may store on your server; the effective quota automatically expands to match however much you are storing at your buddy's server, so neither side can be disadvantaged. Leave blank for unlimited.
+- **Buddy usage bars** — live indicators show how much space your buddy is using on your server (relative to quota) and how much you are using at theirs
+- **Receive quota enforcement** — over-quota push attempts are rejected with HTTP 507 Insufficient Storage before the file is written, protecting your disk
 - **Auto-backup schedule** — configurable interval (hourly, daily, weekly); only backs up when the file tree has actually changed (SHA-256 change detection)
+- **Backup failure notifications** — email alert after 24 h of continuous buddy or tertiary backup failure; configurable per user
 - Backup exports include real folder structure and filenames for easy inspection
 - Archives are `.zip` files compatible with 7-Zip and standard tooling
 - Full restore available from Admin → Backup or during first-run wizard

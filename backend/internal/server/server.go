@@ -103,6 +103,8 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		auditSvc:       auditSvc,
 		ioTracker:      ioTracker,
 	}
+	// Wire SMTP mailer into the backup service for push-failure email notifications.
+	s.backupHandler.SetMailer(smtp.New(cfg, db))
 	s.router = s.buildRouter()
 
 	// Start preview-cache cleanup goroutine — purges cached PDFs older than 24 h.
@@ -421,6 +423,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/v1/backup/buddy/receive-token", s.backupHandler.RevokeBuddyReceiveToken)
 		r.Post("/api/v1/backup/buddy/push", s.backupHandler.BuddyPush)
 		r.Put("/api/v1/backup/buddy/auto", s.backupHandler.SetBuddyAutoConfig)
+		r.Put("/api/v1/backup/notify", s.backupHandler.SetBackupNotifyConfig)
 		r.Get("/api/v1/backup/buddy/received", s.backupHandler.ListBuddyReceived)
 		r.Get("/api/v1/backup/buddy/received/{filename}", s.backupHandler.DownloadBuddyReceived)
 		r.Delete("/api/v1/backup/buddy/received/{filename}", s.backupHandler.DeleteBuddyReceived)

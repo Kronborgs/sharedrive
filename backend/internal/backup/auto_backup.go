@@ -18,13 +18,21 @@ import (
 	"github.com/yourname/privatedrive/internal/audit"
 )
 
+// BackupFailureMailer is a small interface so AutoBackupService can send
+// failure notifications without depending on the smtp package directly.
+type BackupFailureMailer interface {
+	SendBackupFailure(ctx context.Context, toEmail, toName, backupType, detail string, failedSince time.Time) error
+}
+
 // AutoConfig holds a user's automatic backup schedule configuration.
 type AutoConfig struct {
-	Enabled       bool       `json:"enabled"`
-	IntervalHours int        `json:"interval_hours"`
-	RetentionDays int        `json:"retention_days"`
-	FolderIDs     []string   `json:"folder_ids"`
-	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
+	Enabled         bool       `json:"enabled"`
+	IntervalHours   int        `json:"interval_hours"`
+	RetentionDays   int        `json:"retention_days"`
+	FolderIDs       []string   `json:"folder_ids"`
+	LastRunAt       *time.Time `json:"last_run_at,omitempty"`
+	AutoFailedSince *time.Time `json:"auto_failed_since,omitempty"`
+	NotifyOnFailure bool       `json:"notify_on_failure"`
 }
 
 // AutoBackupService manages automatic scheduled backups for the tertiary tier
@@ -38,6 +46,7 @@ type AutoBackupService struct {
 	buddy    *BuddyService
 	buddyCfg *BuddyConfigService
 	auditSvc audit.Logger
+	mailer   BackupFailureMailer // may be nil when SMTP not configured
 }
 
 // NewAutoBackupService creates an AutoBackupService.
@@ -45,17 +54,25 @@ func NewAutoBackupService(db *pgxpool.Pool, wrapKey string, tertiary *TertiarySe
 	return &AutoBackupService{db: db, wrapKey: wrapKey, tertiary: tertiary, buddy: buddy, buddyCfg: buddyCfg, auditSvc: auditSvc}
 }
 
+// SetMailer wires up the SMTP mailer for backup-failure notifications.
+// Called from the server after construction.
+func (s *AutoBackupService) SetMailer(m BackupFailureMailer) {
+	s.mailer = m
+}
+
 // Get returns the auto backup config for userID, or a sensible default.
 func (s *AutoBackupService) Get(ctx context.Context, userID uuid.UUID) (*AutoConfig, error) {
 	var cfg AutoConfig
 	var folderIDs []string
 	err := s.db.QueryRow(ctx,
-		`SELECT enabled, interval_hours, retention_days, COALESCE(folder_ids, '{}'), last_run_at
+		`SELECT enabled, interval_hours, retention_days, COALESCE(folder_ids, '{}'), last_run_at,
+		        auto_failed_since, COALESCE(notify_on_failure, TRUE)
 		 FROM user_backup_auto_config WHERE user_id = $1`,
 		userID,
-	).Scan(&cfg.Enabled, &cfg.IntervalHours, &cfg.RetentionDays, &folderIDs, &cfg.LastRunAt)
+	).Scan(&cfg.Enabled, &cfg.IntervalHours, &cfg.RetentionDays, &folderIDs, &cfg.LastRunAt,
+		&cfg.AutoFailedSince, &cfg.NotifyOnFailure)
 	if err == pgx.ErrNoRows {
-		return &AutoConfig{Enabled: false, IntervalHours: 24, RetentionDays: 30, FolderIDs: []string{}}, nil
+		return &AutoConfig{Enabled: false, IntervalHours: 24, RetentionDays: 30, FolderIDs: []string{}, NotifyOnFailure: true}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("auto backup: get: %w", err)
@@ -229,8 +246,13 @@ func (s *AutoBackupService) RunForUser(ctx context.Context, userID uuid.UUID) (s
 	}
 
 	if _, err := s.tertiary.Store(ctx, userID, rawToken, folderUUIDs); err != nil {
+		// Record first-failure timestamp (kept across retries, cleared on success).
+		s.recordTertiaryFailure(ctx, userID, err.Error())
 		return false, fmt.Errorf("auto backup: store: %w", err)
 	}
+
+	// Successful — clear any recorded failure.
+	s.clearTertiaryFailure(ctx, userID)
 
 	// Prune archives older than retention_days.
 	s.tertiary.PruneByAge(userID, cfg.RetentionDays)
@@ -251,6 +273,26 @@ func (s *AutoBackupService) RunForUser(ctx context.Context, userID uuid.UUID) (s
 
 	log.Info().Str("user_id", userID.String()).Msg("auto backup: completed")
 	return false, nil
+}
+
+// recordTertiaryFailure sets auto_failed_since on first failure (COALESCE keeps
+// the original timestamp across consecutive failures).
+func (s *AutoBackupService) recordTertiaryFailure(ctx context.Context, userID uuid.UUID, errMsg string) {
+	_, _ = s.db.Exec(ctx,
+		`UPDATE user_backup_auto_config
+		 SET auto_failed_since = COALESCE(auto_failed_since, NOW()), updated_at = NOW()
+		 WHERE user_id = $1`, userID,
+	)
+	log.Warn().Str("user_id", userID.String()).Str("err", errMsg).Msg("auto backup: failure recorded")
+}
+
+// clearTertiaryFailure clears auto_failed_since after a successful run.
+func (s *AutoBackupService) clearTertiaryFailure(ctx context.Context, userID uuid.UUID) {
+	_, _ = s.db.Exec(ctx,
+		`UPDATE user_backup_auto_config
+		 SET auto_failed_since = NULL, updated_at = NOW()
+		 WHERE user_id = $1`, userID,
+	)
 }
 
 // RunBuddyForUser runs an auto buddy push for userID if the schedule/change
@@ -307,11 +349,12 @@ func (s *AutoBackupService) RunBuddyForUser(ctx context.Context, userID uuid.UUI
 
 	pushSize, pushErr := s.buddy.Push(ctx, userID, rawToken, folderUUIDs, peerURL, peerUserID, peerToken)
 	if pushErr != nil {
-		_ = s.buddyCfg.SetPushInProgress(ctx, userID, false, pushErr.Error())
+		_ = s.buddyCfg.RecordPushFailure(ctx, userID, pushErr.Error())
 		return false, fmt.Errorf("auto buddy push: %w", pushErr)
 	}
 
 	_ = s.buddyCfg.UpdateLastPush(ctx, userID, pushSize)
+	_ = s.buddyCfg.ClearPushFailure(ctx, userID)
 	_ = s.buddyCfg.updateAutoPushRun(ctx, userID, currentHash)
 
 	if s.auditSvc != nil {
@@ -371,5 +414,34 @@ func (s *AutoBackupService) RunScheduled(ctx context.Context) {
 		} else if !skipped {
 			log.Info().Str("user_id", uid.String()).Msg("auto buddy push scheduler: completed")
 		}
+	}
+
+	// ── failure notifications ─────────────────────────────────────────────────
+	// Send email to users whose push has been failing >24h (at most once per 24h).
+	s.sendFailureNotifications(ctx)
+}
+
+// sendFailureNotifications emails users whose backup (buddy or tertiary) has
+// been failing for more than 24h and who have not been notified in the last 24h.
+func (s *AutoBackupService) sendFailureNotifications(ctx context.Context) {
+	if s.mailer == nil || s.buddyCfg == nil {
+		return
+	}
+	candidates, err := s.buddyCfg.GetFailureNotifyCandidates(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("backup failure notify: query candidates")
+		return
+	}
+	for _, c := range candidates {
+		if err := s.mailer.SendBackupFailure(ctx, c.Email, c.Name, c.BackupType, c.Detail, c.FailedSince); err != nil {
+			log.Warn().Err(err).Str("user_id", c.UserID.String()).Msg("backup failure notify: send email")
+			continue
+		}
+		if c.BackupType == "Buddy backup" {
+			_ = s.buddyCfg.MarkBuddyFailureNotified(ctx, c.UserID)
+		} else {
+			_ = s.buddyCfg.MarkTertiaryFailureNotified(ctx, c.UserID)
+		}
+		log.Info().Str("user_id", c.UserID.String()).Str("type", c.BackupType).Msg("backup failure notify: email sent")
 	}
 }

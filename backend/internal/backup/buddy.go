@@ -164,6 +164,9 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 // Receive stores an archive pushed from a peer under the receiving user's directory.
 // receiverUserID is the UUID of the local user who owns the receive token.
 func (s *BuddyService) Receive(ctx context.Context, receiverUserID uuid.UUID, r io.Reader) (*BuddyArchive, error) {
+	if s.root == "" {
+		return nil, fmt.Errorf("buddy receive: BACKUPS_ROOT not configured on this instance")
+	}
 	dir, err := s.buddyDir(receiverUserID)
 	if err != nil {
 		return nil, err

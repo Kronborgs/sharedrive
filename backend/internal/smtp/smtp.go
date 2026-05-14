@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	mail "github.com/wneessen/go-mail"
 	"github.com/jackc/pgx/v5/pgxpool"
+	mail "github.com/wneessen/go-mail"
 
 	"github.com/yourname/privatedrive/internal/config"
 )
@@ -125,6 +125,29 @@ func (m *Mailer) SendShareInvite(_ context.Context, toEmail, sharerName, fileNam
 		sharerName, fileName, inviteLink,
 	)
 	return m.send(toEmail, fmt.Sprintf("%s shared \"%s\" with you on PrivateDrive", sharerName, fileName), body)
+}
+
+// SendBackupFailure notifies a user that one of their automatic backups has been
+// failing for more than 24 hours.
+// backupType is a short human-readable label ("Server backup" or "Buddy backup").
+// detail is extra context (peer URL for buddy, empty for tertiary).
+func (m *Mailer) SendBackupFailure(_ context.Context, toEmail, toName, backupType, detail string, failedSince time.Time) error {
+	hours := int(time.Since(failedSince).Hours())
+	detailLine := ""
+	if detail != "" {
+		detailLine = fmt.Sprintf("Peer server: %s\n", detail)
+	}
+	body := fmt.Sprintf(
+		"Hej %s,\n\n"+
+			"Din Sharedrive %s har fejlet i over %d timer.\n\n"+
+			"%s"+
+			"Fejl siden: %s\n\n"+
+			"Backup vil automatisk forsøge igen ved næste planlagte kørsel.\n"+
+			"Kontroller at serveren er tilgængelig og konfigurationen er korrekt.\n\n"+
+			"Du kan slå denne notifikation fra under Backup-siden.\n",
+		toName, backupType, hours, detailLine, failedSince.Format("02 Jan 2006 15:04 UTC"),
+	)
+	return m.send(toEmail, fmt.Sprintf("%s fejlede — ikke lykkedes i %d timer", backupType, hours), body)
 }
 
 func (m *Mailer) send(to, subject, body string) error {

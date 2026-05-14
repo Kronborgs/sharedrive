@@ -17,6 +17,7 @@ import type {
 import type { FileItem } from '@/types/api'
 import {
   Archive,
+  Bell,
   Copy,
   Check,
   RefreshCw,
@@ -579,7 +580,15 @@ function BackupPage() {
       void refetchBuddyConfig()
       toast.success('Push started — running in the background')
     } catch (e: unknown) {
-      toast.error((e as Error).message ?? 'Buddy push failed')
+      // 403 means the backup token is wrong (stale sessionStorage).
+      // Clear it so the input field reappears and the user can re-enter.
+      if ((e as { status?: number }).status === 403) {
+        setBuddyToken('')
+        sessionStorage.removeItem('sharedrive_backup_token')
+        toast.error('Forkert backup-nøgle — indtast din nøgle fra "Backup Token" fanen igen')
+      } else {
+        toast.error((e as Error).message ?? 'Buddy push failed')
+      }
     } finally {
       setBuddyPushing(false)
     }
@@ -827,7 +836,46 @@ function BackupPage() {
                       Last auto-backup: {new Date(autoConfig.last_run_at).toLocaleString()}
                     </p>
                   )}
+
+                  {/* Tertiary failure banner */}
+                  {autoConfig?.auto_failed_since && (
+                    <div className="flex items-start gap-3 rounded-lg border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/10 px-4 py-3 text-sm">
+                      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-500" />
+                      <div>
+                        <p className="font-medium text-red-700 dark:text-red-400">Server backup fejler</p>
+                        <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">
+                          Fejlet siden {new Date(autoConfig.auto_failed_since).toLocaleString()}. Scheduler prøver automatisk igen.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              </section>
+            )}
+
+            {/* ── Email notifications ────────────────────────────────────── */}
+            {config?.tertiary_enabled && (
+              <section className="rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] p-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Bell size={16} className="text-brand-500" />
+                  <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">Email-notifikationer</h2>
+                </div>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoConfig?.notify_on_failure ?? true}
+                    onChange={e => {
+                      api.put('/api/v1/backup/notify', { enabled: e.target.checked })
+                        .then(() => { void refetchAutoConfig(); void refetchBuddyConfig() })
+                        .catch(() => toast.error('Kunne ikke gemme'))
+                    }}
+                    className="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <div>
+                    <p className="text-sm text-zinc-700 dark:text-slate-300">Email-notifikation ved fejl</p>
+                    <p className="text-xs text-zinc-400 dark:text-slate-500">Modtag en email hvis en automatisk backup fejler i mere end 24 timer (gælder server backup og buddy backup)</p>
+                  </div>
+                </label>
               </section>
             )}
 
@@ -917,6 +965,22 @@ function BackupPage() {
           </div>
         ) : (
           <div className="space-y-8">
+            {/* ── Push failure warning banner ──────────────────────────── */}
+            {buddyConfig?.push_failed_since && (
+              <div className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 px-4 py-3 flex items-start gap-3">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-500" />
+                <div className="space-y-0.5 flex-1">
+                  <p className="text-sm font-medium text-red-700 dark:text-red-400">Buddy push fejler</p>
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    Din buddy-push har ikke virket siden {new Date(buddyConfig.push_failed_since).toLocaleString()}.
+                    Kontroller at peer serveren ({buddyConfig.peer_url || 'ukendt'}) er online.
+                    Backup vil automatisk forsøge igen ved næste kørsel.
+                    {buddyConfig.last_push_error && <> Seneste fejl: <span className="font-mono">{buddyConfig.last_push_error}</span></>}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* ── Storage balance overview ─────────────────────────────── */}
             <div className="grid grid-cols-2 gap-3">
               {/* What I store for buddy */}

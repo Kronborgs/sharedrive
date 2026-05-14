@@ -57,6 +57,10 @@ type BuddyUserStatus struct {
 	AutoPushOnChange      bool       `json:"auto_push_on_change"`
 	AutoPushLastRunAt     *time.Time `json:"auto_push_last_run_at,omitempty"`
 	AutoPushFolderIDs     []string   `json:"auto_push_folder_ids"`
+
+	// Push failure / notification fields.
+	PushFailedSince *time.Time `json:"push_failed_since,omitempty"`
+	NotifyOnFailure bool       `json:"notify_on_failure"`
 }
 
 // GetStatus returns the current buddy config summary for the user (no secrets exposed).
@@ -69,22 +73,27 @@ func (s *BuddyConfigService) GetStatus(ctx context.Context, userID uuid.UUID) (*
 	var autoPushIntervalHours int
 	var autoPushLastRunAt *time.Time
 	var autoPushFolderIDs []string
+	var pushFailedSince *time.Time
+	var notifyOnFailure bool
 	err := s.db.QueryRow(ctx,
 		`SELECT peer_url, receive_token_hash, receive_token_prefix,
 		        last_push_at, last_push_bytes, push_in_progress, last_push_error,
 		        auto_push_enabled, auto_push_interval_hours, auto_push_on_change,
-		        auto_push_last_run_at, COALESCE(auto_push_folder_ids, '{}')
+		        auto_push_last_run_at, COALESCE(auto_push_folder_ids, '{}'),
+		        push_failed_since, COALESCE(notify_on_failure, TRUE)
 		 FROM user_buddy_configs WHERE user_id = $1`, userID,
 	).Scan(&peerURL, &receiveTokenHash, &receiveTokenPrefix,
 		&lastPushAt, &lastPushBytes, &pushInProgress, &lastPushError,
 		&autoPushEnabled, &autoPushIntervalHours, &autoPushOnChange,
-		&autoPushLastRunAt, &autoPushFolderIDs)
+		&autoPushLastRunAt, &autoPushFolderIDs,
+		&pushFailedSince, &notifyOnFailure)
 	if err != nil {
 		// No row yet — return empty status (not an error)
 		return &BuddyUserStatus{
 			UserID:                userID.String(),
 			AutoPushIntervalHours: 24,
 			AutoPushFolderIDs:     []string{},
+			NotifyOnFailure:       true,
 		}, nil
 	}
 	if autoPushFolderIDs == nil {
@@ -105,6 +114,8 @@ func (s *BuddyConfigService) GetStatus(ctx context.Context, userID uuid.UUID) (*
 		AutoPushOnChange:      autoPushOnChange,
 		AutoPushLastRunAt:     autoPushLastRunAt,
 		AutoPushFolderIDs:     autoPushFolderIDs,
+		PushFailedSince:       pushFailedSince,
+		NotifyOnFailure:       notifyOnFailure,
 	}, nil
 }
 
@@ -382,6 +393,129 @@ func encryptBuddyValue(hexKey, plaintext string) (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(gcm.Seal(nonce, nonce, []byte(plaintext), nil)), nil
+}
+
+// RecordPushFailure records that a push attempt just failed.
+// Sets push_failed_since to NOW() only if it is not already set (first failure).
+func (s *BuddyConfigService) RecordPushFailure(ctx context.Context, userID uuid.UUID, pushErr string) error {
+	_, err := s.db.Exec(ctx,
+		`UPDATE user_buddy_configs
+		 SET push_in_progress = FALSE,
+		     last_push_error  = $2,
+		     push_failed_since = COALESCE(push_failed_since, NOW()),
+		     updated_at       = NOW()
+		 WHERE user_id = $1`, userID, pushErr,
+	)
+	return err
+}
+
+// ClearPushFailure marks a push as successful: clears failure timestamp and error.
+func (s *BuddyConfigService) ClearPushFailure(ctx context.Context, userID uuid.UUID) error {
+	_, err := s.db.Exec(ctx,
+		`UPDATE user_buddy_configs
+		 SET push_failed_since = NULL,
+		     last_push_error   = '',
+		     updated_at        = NOW()
+		 WHERE user_id = $1`, userID,
+	)
+	return err
+}
+
+// BackupFailureNotifyCandidate is a user whose automatic backup (buddy push or
+// tertiary server backup) has been failing >24h and who has not been notified
+// in the last 24h.
+type BackupFailureNotifyCandidate struct {
+	UserID      uuid.UUID
+	Email       string
+	Name        string
+	BackupType  string // "Buddy backup" or "Server backup"
+	Detail      string // peer URL for buddy, empty for tertiary
+	FailedSince time.Time
+}
+
+// GetFailureNotifyCandidates returns candidates from BOTH buddy push and tertiary
+// auto-backup that have been failing >24h and whose user has notify_on_failure=TRUE.
+func (s *BuddyConfigService) GetFailureNotifyCandidates(ctx context.Context) ([]BackupFailureNotifyCandidate, error) {
+	rows, err := s.db.Query(ctx,
+		`-- Buddy push failures
+		 SELECT ubc.user_id, u.email, u.name, 'Buddy backup', ubc.peer_url, ubc.push_failed_since
+		 FROM user_buddy_configs ubc
+		 JOIN users u ON u.id = ubc.user_id
+		 WHERE ubc.push_failed_since IS NOT NULL
+		   AND ubc.push_failed_since < NOW() - INTERVAL '24 hours'
+		   AND COALESCE(ubc.notify_on_failure, TRUE) = TRUE
+		   AND (ubc.last_failure_notified_at IS NULL
+		        OR ubc.last_failure_notified_at < NOW() - INTERVAL '24 hours')
+		 UNION ALL
+		 -- Tertiary auto-backup failures
+		 SELECT ubac.user_id, u.email, u.name, 'Server backup', '', ubac.auto_failed_since
+		 FROM user_backup_auto_config ubac
+		 JOIN users u ON u.id = ubac.user_id
+		 WHERE ubac.auto_failed_since IS NOT NULL
+		   AND ubac.auto_failed_since < NOW() - INTERVAL '24 hours'
+		   AND COALESCE(ubac.notify_on_failure, TRUE) = TRUE
+		   AND (ubac.last_failure_notified_at IS NULL
+		        OR ubac.last_failure_notified_at < NOW() - INTERVAL '24 hours')`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BackupFailureNotifyCandidate
+	for rows.Next() {
+		var c BackupFailureNotifyCandidate
+		if err := rows.Scan(&c.UserID, &c.Email, &c.Name, &c.BackupType, &c.Detail, &c.FailedSince); err != nil {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// MarkBuddyFailureNotified records that a buddy failure notification was just sent.
+func (s *BuddyConfigService) MarkBuddyFailureNotified(ctx context.Context, userID uuid.UUID) error {
+	_, err := s.db.Exec(ctx,
+		`UPDATE user_buddy_configs
+		 SET last_failure_notified_at = NOW(), updated_at = NOW()
+		 WHERE user_id = $1`, userID,
+	)
+	return err
+}
+
+// MarkTertiaryFailureNotified records that a tertiary failure notification was just sent.
+func (s *BuddyConfigService) MarkTertiaryFailureNotified(ctx context.Context, userID uuid.UUID) error {
+	_, err := s.db.Exec(ctx,
+		`UPDATE user_backup_auto_config
+		 SET last_failure_notified_at = NOW(), updated_at = NOW()
+		 WHERE user_id = $1`, userID,
+	)
+	return err
+}
+
+// SetNotifyOnFailure updates the notification-on-failure preference for a user
+// across BOTH backup types (buddy + tertiary). Uses upsert so it works even if
+// the user has no rows yet in either table.
+func (s *BuddyConfigService) SetNotifyOnFailure(ctx context.Context, userID uuid.UUID, enabled bool) error {
+	_, err := s.db.Exec(ctx,
+		`INSERT INTO user_buddy_configs (user_id, notify_on_failure)
+		 VALUES ($1, $2)
+		 ON CONFLICT (user_id) DO UPDATE
+		   SET notify_on_failure = EXCLUDED.notify_on_failure,
+		       updated_at        = NOW()`,
+		userID, enabled,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(ctx,
+		`INSERT INTO user_backup_auto_config (user_id, notify_on_failure)
+		 VALUES ($1, $2)
+		 ON CONFLICT (user_id) DO UPDATE
+		   SET notify_on_failure = EXCLUDED.notify_on_failure,
+		       updated_at        = NOW()`,
+		userID, enabled,
+	)
+	return err
 }
 
 func decryptBuddyValue(hexKey, enc string) (string, error) {

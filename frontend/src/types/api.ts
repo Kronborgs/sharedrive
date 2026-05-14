@@ -223,6 +223,9 @@ export interface BuddyUserConfig {
   auto_push_on_change?: boolean
   auto_push_last_run_at?: string | null
   auto_push_folder_ids?: string[]
+  // Push failure / notification
+  push_failed_since?: string | null
+  notify_on_failure?: boolean
 }
 
 export interface GeneratedBuddyReceiveToken {
@@ -248,6 +251,8 @@ export interface AutoBackupConfig {
   retention_days: number
   folder_ids: string[]
   last_run_at?: string | null
+  auto_failed_since?: string | null
+  notify_on_failure?: boolean
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

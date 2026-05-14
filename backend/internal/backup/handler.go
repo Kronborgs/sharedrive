@@ -45,6 +45,7 @@ func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot s
 	tert := NewTertiaryService(backupsRoot, svc)
 	buddySvc := NewBuddyService(backupsRoot, svc)
 	buddyCfgSvc := NewBuddyConfigService(db, wrapKey)
+	autoSvc := NewAutoBackupService(db, wrapKey, tert, buddySvc, buddyCfgSvc, auditSvc)
 	return &Handler{
 		db:              db,
 		passwords:       NewPasswordService(db, wrapKey),
@@ -53,7 +54,7 @@ func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot s
 		tertiary:        tert,
 		buddy:           buddySvc,
 		buddyCfg:        buddyCfgSvc,
-		autoBackup:      NewAutoBackupService(db, wrapKey, tert, buddySvc, buddyCfgSvc, auditSvc),
+		autoBackup:      autoSvc,
 		auditSvc:        auditSvc,
 		limiter:         limiter,
 		tertiaryEnabled: backupsRoot != "",
@@ -582,6 +583,12 @@ func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
 // BuddyReceive accepts an archive pushed from a peer. Authentication is per-user:
 // the bearer token is the receive token the local user generated and shared with their buddy.
 func (h *Handler) BuddyReceive(w http.ResponseWriter, r *http.Request) {
+	// Storage must be configured on this instance to receive and persist archives.
+	if !h.tertiaryEnabled {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "backup storage not configured on this server — set BACKUPS_ROOT to receive buddy archives")
+		return
+	}
+
 	// Rate-limit buddy receive by IP to prevent abuse.
 	if h.limiter != nil {
 		ip := middleware.ClientIP(r)
@@ -790,12 +797,46 @@ func (h *Handler) SetAutoConfig(w http.ResponseWriter, r *http.Request) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+// SetMailer wires up an SMTP mailer for buddy push-failure notifications.
+// Called from server.go after construction.
+func (h *Handler) SetMailer(m BuddyFailureMailer) {
+	if h.autoBackup != nil {
+		h.autoBackup.SetMailer(m)
+	}
+}
+
 // RunScheduled delegates to AutoBackupService.RunScheduled. Called by the
 // server scheduler goroutine every 15 minutes.
 func (h *Handler) RunScheduled(ctx context.Context) {
 	if h.autoBackup != nil {
 		h.autoBackup.RunScheduled(ctx)
 	}
+}
+
+// ── PUT /api/v1/backup/notify ─────────────────────────────────────────────────
+// Sets the email-on-failure preference for ALL backup types (buddy + tertiary).
+
+type backupNotifyRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+func (h *Handler) SetBackupNotifyConfig(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req backupNotifyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.buddyCfg.SetNotifyOnFailure(ctx, u.ID, req.Enabled); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "failed to save notification preference")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // parseUUIDs converts a slice of UUID strings to []uuid.UUID.

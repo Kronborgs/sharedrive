@@ -48,7 +48,7 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 		// Export everything owned by this user.
 		var err error
 		rows, err = s.db.Query(ctx,
-			`SELECT id, parent_id, owner_id, is_folder, name, mime_type,
+			`SELECT id, parent_id, owner_id, is_folder, name, COALESCE(mime_type, ''),
 			        size_bytes, checksum_sha256, deleted_at, created_at, updated_at
 			 FROM files
 			 WHERE owner_id = $1 AND deleted_at IS NULL
@@ -70,7 +70,7 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 			   JOIN subtree s ON f.parent_id = s.id
 			   WHERE f.deleted_at IS NULL
 			 )
-			 SELECT f.id, f.parent_id, f.owner_id, f.is_folder, f.name, f.mime_type,
+			 SELECT f.id, f.parent_id, f.owner_id, f.is_folder, f.name, COALESCE(f.mime_type, ''),
 			        f.size_bytes, f.checksum_sha256, f.deleted_at, f.created_at, f.updated_at
 			 FROM files f
 			 JOIN subtree s ON f.id = s.id

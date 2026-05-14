@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -221,6 +222,9 @@ func (s *AutoBackupService) RunForUser(ctx context.Context, userID uuid.UUID) (s
 	// ── run backup ────────────────────────────────────────────────────────────
 	rawToken, err := s.resolveToken(ctx, userID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return true, nil // user has no backup password — skip silently
+		}
 		return false, err
 	}
 

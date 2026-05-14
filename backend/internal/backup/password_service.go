@@ -132,10 +132,18 @@ func (s *PasswordService) Verify(ctx context.Context, userID uuid.UUID, rawToken
 		userID,
 	).Scan(&hash)
 	if err != nil {
+		log.Warn().Err(err).Str("user_id", userID.String()).Msg("backup: token verify: no active password record")
 		return false
 	}
 	match, err := argon2id.ComparePasswordAndHash(rawToken, hash)
-	return err == nil && match
+	if err != nil {
+		log.Warn().Err(err).Str("user_id", userID.String()).Msg("backup: token verify: argon2id compare error")
+		return false
+	}
+	if !match {
+		log.Warn().Str("user_id", userID.String()).Msg("backup: token verify: token mismatch")
+	}
+	return match
 }
 
 // TouchLastUsed updates last_used_at for the active backup password.

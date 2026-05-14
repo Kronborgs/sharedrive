@@ -194,6 +194,10 @@ func (s *BuddyService) Receive(ctx context.Context, receiverUserID uuid.UUID, r 
 
 // ListReceived returns archives stored for userID (the local receiving user), newest first.
 func (s *BuddyService) ListReceived(userID uuid.UUID) ([]BuddyArchive, error) {
+	if s.root == "" {
+		// BACKUPS_ROOT not configured on this instance — no received archives.
+		return []BuddyArchive{}, nil
+	}
 	dir, err := s.buddyDir(userID)
 	if err != nil {
 		return nil, err

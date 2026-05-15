@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { FolderOpen, X, Upload, Folder, ChevronRight, Home, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -42,17 +42,18 @@ export function ShareTargetDialog({
   )
 
   // Resolve the name of the current folder if we have an id
-  useQuery({
+  const { data: folderCrumbs } = useQuery({
     queryKey: ['share-target-folder-name', currentFolderId],
     queryFn: ({ signal }) =>
       currentFolderId
         ? api.get<FileItem[]>(`/api/v1/files/breadcrumbs?folder_id=${currentFolderId}`, signal)
         : Promise.resolve<FileItem[]>([]),
     enabled: !!currentFolderId,
-    onSuccess: (crumbs: FileItem[]) => {
-      if (crumbs.length > 0) setTargetFolderName(crumbs[crumbs.length - 1].name)
-    },
   })
+  useEffect(() => {
+    if (folderCrumbs && folderCrumbs.length > 0)
+      setTargetFolderName(folderCrumbs[folderCrumbs.length - 1].name)
+  }, [folderCrumbs])
 
   // Folder listing for the picker
   const pickerFolderId = trail[trail.length - 1].id

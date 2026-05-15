@@ -243,7 +243,7 @@ function SentTab() {
                 title={t('shared.goToFolder')}
               >
                 <FolderOpen className="w-3 h-3" />
-                {group.item.parent_id ? t('shared.goToFolder') : t('files.root')}
+                {group.item.parent_id ? t('shared.goToFolder') : t('page.myFiles')}
               </button>
             </div>
             <span className="text-xs text-zinc-400 dark:text-slate-500 shrink-0">
@@ -340,97 +340,5 @@ interface SharedFileItem {
 interface SharedItem {
   share: Share
   item: SharedFileItem
-}
-
-function SharedWithMePage() {
-  const navigate = useNavigate()
-  const { t } = useI18n()
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
-  const [ooItem, setOoItem] = useState<FileItem | null>(null)
-  const [teItem, setTeItem] = useState<FileItem | null>(null)
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['files', 'shared-with-me'],
-    queryFn: ({ signal }) => api.get<SharedItem[]>('/api/v1/files/shared-with-me', signal),
-    staleTime: 0,
-  })
-
-  const { data: systemSettings } = useQuery({
-    queryKey: ['system', 'settings'],
-    queryFn: ({ signal }) => api.get<{ onlyoffice_url?: string }>('/api/v1/system/settings', signal),
-    staleTime: 5 * 60 * 1000,
-  })
-
-  // Convert to FileItem shape that FileList understands
-  const items = (data ?? []).map(s => ({
-    id: s.item.id,
-    parent_id: null,
-    owner_id: s.share.owner_id,
-    is_folder: s.item.is_folder,
-    name: s.item.name,
-    mime_type: s.item.mime_type,
-    size_bytes: s.item.size_bytes,
-    checksum_sha256: null,
-    deleted_at: null,
-    created_at: s.item.created_at,
-    updated_at: s.item.created_at,
-    shared: true,
-    permissions: {
-      can_view: s.share.can_view,
-      can_upload: s.share.can_upload,
-      can_edit: s.share.can_edit,
-      can_delete: s.share.can_delete,
-      can_reshare: s.share.can_reshare,
-      is_owner: false,
-    },
-  }))
-
-  const handleOpen = (item: FileItem) => {
-    if (item.is_folder) void navigate({ to: '/shared-browse', search: { folder: item.id } })
-    else if (systemSettings?.onlyoffice_url && shouldOpenInOnlyOffice(item.name)) {
-      setOoItem(item)
-    } else if (shouldOpenInTextEditor(item.name)) {
-      setTeItem(item)
-    } else {
-      setPreviewItem(item)
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('shared.sharedWithMe')}</h1>
-      {isLoading ? (
-        <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.loading')}</div>
-      ) : items.length === 0 ? (
-        <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.nothingShared')}</div>
-      ) : (
-        <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
-          <FileList
-            items={items}
-            selectedIds={selected}
-            onSelect={(id, add) => setSelected(prev => { const n = new Set(add ? prev : []); n.has(id) ? n.delete(id) : n.add(id); return n })}
-            onOpen={handleOpen}
-            onContextMenu={() => {}}
-          />
-        </div>
-      )}
-      {previewItem && <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />}
-      {ooItem && systemSettings?.onlyoffice_url && (
-        <OnlyOfficeEditor
-          item={ooItem}
-          onlyofficeUrl={systemSettings.onlyoffice_url}
-          backLabel={t('shared.sharedWithMe')}
-          onClose={() => setOoItem(null)}
-        />
-      )}
-      {teItem && (
-        <TextEditor
-          item={teItem}
-          onClose={() => setTeItem(null)}
-        />
-      )}
-    </div>
-  )
 }
 

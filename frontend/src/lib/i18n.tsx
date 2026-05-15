@@ -193,6 +193,8 @@ const translations = {
   'ctx.backup':        { da: 'Tilføj til backup', en: 'Add to backup' },
   'ctx.addToPlaylist': { da: 'Tilføj til playlist', en: 'Add to playlist' },
   'ctx.addToQueue':    { da: 'Tilføj til kø',    en: 'Add to queue' },
+  'ctx.playInPlayer':  { da: 'Afspil i musikafspiller', en: 'Play in music player' },
+  'ctx.addToPlayer':   { da: 'Tilføj til musikafspiller', en: 'Add to music player' },
   'ctx.info':          { da: 'Detaljer',          en: 'Details' },
 
   // ── Language ──────────────────────────────────────────────────────────────

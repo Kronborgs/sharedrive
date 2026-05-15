@@ -26,6 +26,8 @@ export type ContextAction =
   | 'backup'
   | 'playlist'
   | 'addtoqueue'
+  | 'playInPlayer'
+  | 'addToPlayer'
   | 'trash'
   | 'restore'
   | 'delete'
@@ -38,6 +40,7 @@ interface FileContextMenuProps {
   isTrash?: boolean
   allowedActions?: ContextAction[]
   canAddToQueue?: boolean
+  canAddToPlayer?: boolean
   onAction: (action: ContextAction, item: FileItem) => void
   onClose: () => void
 }
@@ -52,9 +55,13 @@ interface MenuItem {
   folderOnly?: boolean
   /** Only render this item when the context target is a non-folder audio file */
   audioOnly?: boolean
+  /** Only render this item when the context target is a .m3u playlist file */
+  m3uOnly?: boolean
+  /** Only render this item when m3uOnly=true AND there is an active player playlist */
+  requiresActivePlayer?: boolean
 }
 
-export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, canAddToQueue = false, onAction, onClose }: FileContextMenuProps) {
+export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, canAddToQueue = false, canAddToPlayer = false, onAction, onClose }: FileContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null)
   const { t } = useI18n()
 
@@ -65,10 +72,12 @@ export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, c
     { action: 'rename',     label: t('ctx.rename'),        icon: <Pencil size={14} /> },
     { action: 'move',       label: t('ctx.move'),          icon: <Scissors size={14} /> },
     { action: 'copy',       label: t('ctx.copy'),          icon: <Copy size={14} />, divider: true },
-    { action: 'backup',     label: t('ctx.backup'),        icon: <Archive size={14} /> },
-    { action: 'playlist',   label: t('ctx.addToPlaylist'), icon: <ListMusic size={14} />, folderOnly: true },
-    { action: 'addtoqueue', label: t('ctx.addToQueue'),    icon: <ListMusic size={14} />, audioOnly: true },
-    { action: 'info',       label: t('ctx.info'),          icon: <Info size={14} />, divider: true },
+    { action: 'backup',       label: t('ctx.backup'),          icon: <Archive size={14} /> },
+    { action: 'playlist',     label: t('ctx.addToPlaylist'),   icon: <ListMusic size={14} />, folderOnly: true },
+    { action: 'addtoqueue',   label: t('ctx.addToQueue'),      icon: <ListMusic size={14} />, audioOnly: true },
+    { action: 'playInPlayer', label: t('ctx.playInPlayer'),    icon: <ListMusic size={14} />, m3uOnly: true },
+    { action: 'addToPlayer',  label: t('ctx.addToPlayer'),     icon: <ListMusic size={14} />, m3uOnly: true, requiresActivePlayer: true },
+    { action: 'info',         label: t('ctx.info'),            icon: <Info size={14} />, divider: true },
     { action: 'trash',      label: t('ctx.trash'),         icon: <Trash2 size={14} />, danger: true },
   ]
 
@@ -99,6 +108,7 @@ export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, c
 
   const AUDIO_EXTS = ['.mp3', '.flac', '.wav', '.aac', '.m4a', '.opus', '.ogg', '.m4b']
   const isAudio = !item.is_folder && AUDIO_EXTS.some(e => item.name.toLowerCase().endsWith(e))
+  const isM3u = !item.is_folder && item.name.toLowerCase().endsWith('.m3u')
 
   const allItems = isTrash ? trashItems : normalItems
   let items = allowedActions ? allItems.filter(mi => allowedActions.includes(mi.action)) : allItems
@@ -106,6 +116,9 @@ export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, c
   items = items.filter(mi => !mi.folderOnly || item.is_folder)
   // Hide audio-only actions for non-audio items, or when no queue is active
   items = items.filter(mi => !mi.audioOnly || (isAudio && canAddToQueue))
+  // Hide m3u-only actions for non-m3u items; hide requiresActivePlayer when no active player
+  items = items.filter(mi => !mi.m3uOnly || isM3u)
+  items = items.filter(mi => !mi.requiresActivePlayer || canAddToPlayer)
 
   return (
     <div

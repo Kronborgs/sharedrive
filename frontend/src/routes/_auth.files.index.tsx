@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { z } from 'zod'
-import { api, createPlaylist } from '@/lib/api'
+import { api, createPlaylist, fetchPlaylistTracks } from '@/lib/api'
 import { usePlaylist } from '@/lib/playlist-context'
 import type { FileItem, BackupPasswordStatus, AutoBackupConfig, BackupConfig } from '@/types/api'
 import { FileList, FileGrid } from '@/components/files/FileViews'
@@ -385,8 +385,37 @@ function FilesPage() {
         })()
         break
       }
+      case 'playInPlayer': {
+        if (item.is_folder) break
+        const displayName = item.name.replace(/\.m3u$/i, '')
+        setPlaylist(item.id, displayName)
+        toast.success(`Indlæser "${displayName}"`)
+        break
+      }
+      case 'addToPlayer': {
+        if (item.is_folder) break
+        void (async () => {
+          try {
+            const m3uTracks = await fetchPlaylistTracks(item.id)
+            const trackIds = m3uTracks.map(tr => tr.id)
+            if (trackIds.length === 0) {
+              toast.info('M3U filen indeholder ingen tilgængelige numre')
+              return
+            }
+            const result = await addTracks(trackIds)
+            if (result.added > 0) {
+              toast.success(`${result.added} ${result.added === 1 ? 'nummer' : 'numre'} tilføjet til musikafspilleren`)
+            } else {
+              toast.info(`Alle numre er allerede i afspilleren eller den er fuld (max ${playlistMaxTracks})`)
+            }
+          } catch {
+            toast.error('Kunne ikke læse playlisten')
+          }
+        })()
+        break
+      }
     }
-  }, [handleOpen, trash, navigate, qc, doCreateFolderPlaylist, addTracks, activePlaylistId])
+  }, [handleOpen, trash, navigate, qc, doCreateFolderPlaylist, addTracks, activePlaylistId, setPlaylist, playlistMaxTracks])
 
   const items = files ?? []
   const sorted = [...items.filter(f => f.is_folder), ...items.filter(f => !f.is_folder)]
@@ -833,7 +862,7 @@ function FilesPage() {
         </div>
       </div>
 
-      {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < playlistMaxTracks} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
+      {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < playlistMaxTracks} canAddToPlayer={!!activePlaylistId} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
       {previewItem && (
         <PreviewModal

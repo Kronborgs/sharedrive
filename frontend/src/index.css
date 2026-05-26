@@ -1,9 +1,43 @@
 @import '@fontsource-variable/inter';
+@import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Class-based dark mode — replaces darkMode: 'class' in tailwind.config.ts */
+@variant dark (&:where(.dark, .dark *));
 
+/* ─── Custom design tokens (replaces tailwind.config.ts theme.extend) ─ */
+@theme {
+  --font-sans: InterVariable, Inter, system-ui, sans-serif;
+
+  /* Brand accent */
+  --color-brand-50:  #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+
+  /* Dark mode surface palette */
+  --color-surface:        #1a1d27;
+  --color-surface-raised: #21253a;
+  --color-surface-border: #2d3148;
+
+  /* Border radius — rounded = 0.5rem (was borderRadius.DEFAULT in v3) */
+  --radius: 0.5rem;
+
+  /* Custom animation */
+  --animate-fade-in: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Base styles ──────────────────────────────────────────────────── */
 @layer base {
   :root {
     --bg:          255 255 255;
@@ -47,16 +81,15 @@
   }
 }
 
-@layer utilities {
-  .text-muted {
-    @apply text-zinc-500 dark:text-slate-400;
-  }
-  .bg-surface {
-    @apply bg-white dark:bg-[#1a1d27];
-  }
-  .border-subtle {
-    @apply border-zinc-200 dark:border-[#2d3148];
-  }
+/* ─── Custom utilities ─────────────────────────────────────────────── */
+@utility text-muted {
+  @apply text-zinc-500 dark:text-slate-400;
+}
+@utility bg-surface {
+  @apply bg-white dark:bg-[#1a1d27];
+}
+@utility border-subtle {
+  @apply border-zinc-200 dark:border-[#2d3148];
 }
 
 /* Retro LED display — scrolling track name ticker */
@@ -64,3 +97,4 @@
   0%,  18% { transform: translateX(0%); }
   82%, 100% { transform: translateX(var(--led-shift, -55%)); }
 }
+

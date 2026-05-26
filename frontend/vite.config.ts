@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import path from 'path'
 
@@ -8,6 +9,7 @@ const appVersion = process.env.APP_VERSION ?? 'dev'
 
 export default defineConfig({
   plugins: [
+    tailwindcss(),
     TanStackRouterVite(),
     react(),
   ],
@@ -49,18 +51,21 @@ export default defineConfig({
     modulePreload: { polyfill: false },
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          router: ['@tanstack/react-router'],
-          query: ['@tanstack/react-query'],
-          radix: [
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-context-menu',
-            '@radix-ui/react-tabs',
-          ],
-          pdf: ['pdfjs-dist'],
-          three: ['three'],
+        // Vite 8 / rolldown requires manualChunks as a function (not an object)
+        manualChunks(id) {
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+            return 'vendor'
+          }
+          if (id.includes('@tanstack/react-router')) return 'router'
+          if (id.includes('@tanstack/react-query'))  return 'query'
+          if (
+            id.includes('@radix-ui/react-dialog') ||
+            id.includes('@radix-ui/react-dropdown-menu') ||
+            id.includes('@radix-ui/react-context-menu') ||
+            id.includes('@radix-ui/react-tabs')
+          ) return 'radix'
+          if (id.includes('node_modules/pdfjs-dist')) return 'pdf'
+          if (id.includes('node_modules/three'))      return 'three'
         },
       },
     },

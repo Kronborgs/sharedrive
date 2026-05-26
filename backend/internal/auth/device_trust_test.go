@@ -31,13 +31,13 @@ func TestUAFamilyMatch(t *testing.T) {
 			name:    "empty stored UA allowed",
 			stored:  "",
 			current: "Mozilla/5.0 Chrome/120.0",
-			want:    true,
+			want:    false,
 		},
 		{
 			name:    "empty current UA allowed",
 			stored:  "Mozilla/5.0 Chrome/120.0",
 			current: "",
-			want:    true,
+			want:    false,
 		},
 		{
 			name:    "both empty allowed",

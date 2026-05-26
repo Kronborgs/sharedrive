@@ -70,7 +70,7 @@ export function PDFRenderer({ url, loadingText = 'Loading PDF…' }: PDFRenderer
       canvas.height = viewport.height
       canvas.width = viewport.width
       const ctx = canvas.getContext('2d')!
-      const task = pdfPage.render({ canvasContext: ctx, viewport })
+      const task = pdfPage.render({ canvasContext: ctx, viewport, canvas })
       renderTaskRef.current = task
       return task.promise
     }).catch(err => {

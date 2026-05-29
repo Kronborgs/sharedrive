@@ -50,6 +50,9 @@
     "tus-js-client": "^4.2.3",
     "zod": "^3.23.8"
   },
+  "overrides": {
+    "dompurify": "^3.4.7"
+  },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/router-devtools": "^1.82.0",

@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1: Build frontend
 # ─────────────────────────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-builder
 ARG VERSION=dev
 
 WORKDIR /fe

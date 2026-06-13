@@ -162,6 +162,12 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 		return buf, mw, nil
 	}
 
+	// setContentLength sets Content-Length on a request so multipart parsers on the
+	// receiving end can allocate correctly — critical when sending through the tunnel.
+	setContentLength := func(req *http.Request, body *bytes.Buffer) {
+		req.ContentLength = int64(body.Len())
+	}
+
 	receiveEndpoint := strings.TrimRight(peerBaseURL, "/") + "/api/v1/backup/buddy/receive"
 	if !strings.HasPrefix(receiveEndpoint, "https://") {
 		return PushResult{}, fmt.Errorf("buddy push: peer URL must use HTTPS")
@@ -195,6 +201,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 			if err != nil {
 				return PushResult{}, fmt.Errorf("buddy push (tunnel): request: %w", err)
 			}
+			setContentLength(req, &body)
 			req.Header.Set("Content-Type", mwb.FormDataContentType())
 			req.Header.Set("Authorization", "Bearer "+peerToken)
 			req.Header.Set("X-Buddy-Sender-User-ID", userID.String())
@@ -235,6 +242,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 					uploadEndpoint := "http://tunnel-peer/api/v1/backup/buddy/receive"
 					req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadEndpoint, &body)
 					if err == nil {
+						setContentLength(req, &body)
 						req.Header.Set("Content-Type", mwb.FormDataContentType())
 						req.Header.Set("Authorization", "Bearer "+peerToken)
 						req.Header.Set("X-Buddy-Sender-User-ID", userID.String())
@@ -282,6 +290,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	if err != nil {
 		return PushResult{}, fmt.Errorf("buddy push: request: %w", err)
 	}
+	setContentLength(req, &body)
 	req.Header.Set("Content-Type", mwb.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+peerToken)
 	req.Header.Set("X-Buddy-Sender-User-ID", userID.String())

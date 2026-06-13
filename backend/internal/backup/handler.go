@@ -790,6 +790,8 @@ func (h *Handler) BuddyReceive(w http.ResponseWriter, r *http.Request) {
 	}
 	token := auth[7:]
 
+	// Buddy receive: up to 10 GiB. The global 4 MiB middleware is bypassed for
+	// this route so we apply our own limit here.
 	const maxBuddySize = 10 << 30
 	r.Body = http.MaxBytesReader(w, r.Body, maxBuddySize)
 	if err := r.ParseMultipartForm(64 << 20); err != nil {

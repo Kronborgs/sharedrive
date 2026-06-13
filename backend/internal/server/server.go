@@ -286,7 +286,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Body != nil &&
 				!strings.HasPrefix(r.URL.Path, "/upload/") &&
-				!(r.URL.Path == "/api/v1/files" && r.Method == http.MethodPost) {
+				!(r.URL.Path == "/api/v1/files" && r.Method == http.MethodPost) &&
+				r.URL.Path != "/api/v1/backup/buddy/receive" {
 				r.Body = http.MaxBytesReader(w, r.Body, 4<<20) // 4 MB
 			}
 			next.ServeHTTP(w, r)

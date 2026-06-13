@@ -921,8 +921,8 @@ func (h *Handler) DeleteBuddyReceived(w http.ResponseWriter, r *http.Request) {
 //   ?receiver_user_id={UUID}
 
 func (h *Handler) ListSenderArchives(w http.ResponseWriter, r *http.Request) {
-	if !h.tertiaryEnabled {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "backup storage not configured on this server")
+	if !h.buddyEnabled {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "buddy backup-lager ikke tilgængeligt på denne server")
 		return
 	}
 	auth := r.Header.Get("Authorization")
@@ -952,8 +952,8 @@ func (h *Handler) ListSenderArchives(w http.ResponseWriter, r *http.Request) {
 // Same token-auth as above. Lets the sender remove one of their archives.
 
 func (h *Handler) DeleteSenderArchive(w http.ResponseWriter, r *http.Request) {
-	if !h.tertiaryEnabled {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "backup storage not configured on this server")
+	if !h.buddyEnabled {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "buddy backup-lager ikke tilgængeligt på denne server")
 		return
 	}
 	auth := r.Header.Get("Authorization")

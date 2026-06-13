@@ -47,6 +47,7 @@ func fetchPeerDirectUploadURL(ctx context.Context, baseURL string) string {
 	infoURL := strings.TrimRight(baseURL, "/") + "/api/v1/backup/buddy/server-info"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, infoURL, nil)
 	if err != nil {
+		log.Warn().Err(err).Str("info_url", infoURL).Msg("buddy: could not build server-info request, using base URL")
 		return baseURL
 	}
 	resp, err := buddyHTTPClient.Do(req)
@@ -54,11 +55,13 @@ func fetchPeerDirectUploadURL(ctx context.Context, baseURL string) string {
 		if resp != nil {
 			resp.Body.Close()
 		}
+		log.Warn().Err(err).Str("info_url", infoURL).Msg("buddy: server-info request failed, using base URL for upload")
 		return baseURL
 	}
 	defer resp.Body.Close()
 	var info BuddyServerInfo
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil || info.DirectUploadURL == "" {
+		log.Info().Str("info_url", infoURL).Msg("buddy: peer has no direct_upload_url set, using base URL for upload")
 		return baseURL
 	}
 	log.Info().Str("base_url", baseURL).Str("upload_url", info.DirectUploadURL).Msg("buddy: using peer direct upload URL")
@@ -248,6 +251,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	// We still validate the base URL above; the upload URL is only used for the actual POST.
 	uploadBase := fetchPeerDirectUploadURL(ctx, peerBaseURL)
 	uploadEndpoint := strings.TrimRight(uploadBase, "/") + "/api/v1/backup/buddy/receive"
+	log.Info().Str("upload_endpoint", uploadEndpoint).Int64("archive_bytes", fi.Size()).Msg("buddy: pushing archive (no tunnel)")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadEndpoint, &body)
 	if err != nil {

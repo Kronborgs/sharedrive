@@ -710,6 +710,17 @@ func (h *Handler) ResetBuddyPushInProgress(w http.ResponseWriter, r *http.Reques
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// BuddyPushProgress returns live progress for the current push (if any).
+func (h *Handler) BuddyPushProgress(w http.ResponseWriter, r *http.Request) {
+u := middleware.UserFromContext(r.Context())
+if u == nil {
+httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+return
+}
+httputil.Respond(w, http.StatusOK, h.buddy.GetPushProgress(u.ID))
+}
+
+
 // ── POST /api/v1/backup/buddy/push ────────────────────────────────────────────
 
 type buddyPushRequest struct {

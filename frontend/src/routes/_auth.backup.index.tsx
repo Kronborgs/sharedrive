@@ -307,6 +307,35 @@ function FolderPicker({
   )
 }
 
+
+// ── PushProgressBar ──────────────────────────────────────────────────────────────
+function PushProgressBar({ progress }: { progress: { total_bytes: number; sent_bytes: number; started_at: string; active: boolean } }) {
+  const { t } = useI18n()
+  const pct = progress.total_bytes > 0 ? Math.min(100, Math.round((progress.sent_bytes / progress.total_bytes) * 100)) : 0
+  const elapsedSec = (Date.now() - new Date(progress.started_at).getTime()) / 1000
+  const speedBps = elapsedSec > 1 ? progress.sent_bytes / elapsedSec : 0
+  const remaining = speedBps > 0 && progress.total_bytes > progress.sent_bytes
+    ? Math.round((progress.total_bytes - progress.sent_bytes) / speedBps)
+    : null
+  const fmtBytes = (b: number) => b >= 1_048_576 ? (b / 1_048_576).toFixed(1) + " MB" : (b / 1024).toFixed(0) + " KB"
+  const fmtTime = (s: number) => s >= 60 ? Math.floor(s / 60) + "m " + (s % 60) + "s" : s + "s"
+
+  return (
+    <div className="space-y-1">
+      <div className="w-full bg-zinc-200 dark:bg-[#2d3148] rounded-full h-1.5">
+        <div
+          className="bg-brand-500 h-1.5 rounded-full transition-all duration-500"
+          style={{ width: pct + "%" }}
+        />
+      </div>
+      <div className="flex justify-between text-xs text-zinc-500 dark:text-slate-400">
+        <span>{fmtBytes(progress.sent_bytes)} / {fmtBytes(progress.total_bytes)} ({pct}%)</span>
+        <span>{speedBps > 0 ? fmtBytes(speedBps) + "/s" : ""}{remaining !== null ? " · " + t("backup.pushETA") + " " + fmtTime(remaining) : ""}</span>
+      </div>
+    </div>
+  )
+}
+
 // ── main page ─────────────────────────────────────────────────────────────────
 
 function BackupPage() {
@@ -334,6 +363,7 @@ function BackupPage() {
   // buddy push state
   const [buddyToken, setBuddyToken] = useState('')
   const [buddyPushing, setBuddyPushing] = useState(false)
+  const [pushStartedAt, setPushStartedAt] = useState<number | null>(null)
 
   // tab state
   const [activeTab, setActiveTab] = useState<'storage' | 'buddy' | 'token'>('storage')
@@ -401,8 +431,17 @@ function BackupPage() {
   const { data: buddyConfig, refetch: refetchBuddyConfig } = useQuery({
     queryKey: ['backup', 'buddy-config'],
     queryFn: ({ signal }) => api.get<BuddyUserConfig>('/api/v1/backup/buddy/config', signal),
-    // Poll every 3 s while a push is in progress so the UI updates when it finishes.
     refetchInterval: (query) => (query.state.data?.push_in_progress ? 3000 : false),
+  })
+
+  const isPushing = buddyPushing || !!buddyConfig?.push_in_progress
+
+  interface PushProgress { total_bytes: number; sent_bytes: number; started_at: string; active: boolean }
+  const { data: pushProgress } = useQuery({
+    queryKey: ['backup', 'push-progress'],
+    queryFn: ({ signal }) => api.get<PushProgress>('/api/v1/backup/buddy/push/progress', signal),
+    enabled: isPushing,
+    refetchInterval: isPushing ? 1000 : false,
   })
 
   const { data: tunnelStatus, refetch: refetchTunnelStatus } = useQuery({
@@ -1343,13 +1382,16 @@ function BackupPage() {
                         </div>
                         <button
                           onClick={handleBuddyPush}
-                          disabled={buddyPushing || buddyConfig?.push_in_progress}
+                          disabled={isPushing}
                           className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
                         >
-                          {(buddyPushing || buddyConfig?.push_in_progress)
+                          {(isPushing)
                             ? <><RefreshCw size={15} className="animate-spin" /> {t('backup.pushingNow')}</>
                             : <><ArrowUpToLine size={15} /> {t('backup.pushNow')}</>}
                         </button>
+                        {isPushing && pushProgress && pushProgress.total_bytes > 0 && (
+                          <PushProgressBar progress={pushProgress} />
+                        )}
                         {buddyConfig?.push_in_progress && !buddyPushing && (
                           <button
                             onClick={async () => {
@@ -1397,10 +1439,10 @@ function BackupPage() {
                           />
                           <button
                             onClick={handleBuddyPush}
-                            disabled={!buddyToken.trim() || buddyPushing || buddyConfig?.push_in_progress}
+                            disabled={!buddyToken.trim() || isPushing}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
                           >
-                            {(buddyPushing || buddyConfig?.push_in_progress)
+                            {(isPushing)
                               ? <><RefreshCw size={14} className="animate-spin" /> {t('backup.pushingNow')}</>
                               : <><ArrowUpToLine size={14} /> Push</>}
                           </button>

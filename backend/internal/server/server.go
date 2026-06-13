@@ -447,6 +447,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/backup/buddy/receive-token", s.backupHandler.GenerateBuddyReceiveToken)
 		r.Delete("/api/v1/backup/buddy/receive-token", s.backupHandler.RevokeBuddyReceiveToken)
 		r.Post("/api/v1/backup/buddy/push", s.backupHandler.BuddyPush)
+		r.Get("/api/v1/backup/buddy/push/progress", s.backupHandler.BuddyPushProgress)
 		r.Delete("/api/v1/backup/buddy/push-in-progress", s.backupHandler.ResetBuddyPushInProgress)
 		r.Put("/api/v1/backup/buddy/auto", s.backupHandler.SetBuddyAutoConfig)
 		r.Put("/api/v1/backup/notify", s.backupHandler.SetBackupNotifyConfig)

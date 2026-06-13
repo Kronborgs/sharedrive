@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,16 +72,48 @@ func fetchPeerDirectUploadURL(ctx context.Context, baseURL string) string {
 // Push: stream an encrypted archive to a peer server over HTTPS.
 // Receive: accept an archive pushed from a peer and store it on disk.
 // Archives pushed to this server are stored under BACKUPS_ROOT/buddy/<senderUserID>/.
+// PushProgress holds live progress for an in-flight push operation.
+type PushProgress struct {
+	TotalBytes int64     `json:"total_bytes"`  // archive size (set after export)
+	SentBytes  int64     `json:"sent_bytes"`   // bytes read by HTTP transport so far
+	StartedAt  time.Time `json:"started_at"`
+	Active     bool      `json:"active"`
+}
+
 type BuddyService struct {
 	root         string
 	backups      *Service
 	tunnelMgr    *TunnelManager // optional — enables tunnel-based push to CGNAT peers
 	tunnelClient *TunnelClient  // optional — enables push via outgoing tunnel (bypasses peer Cloudflare)
+	pushProgress sync.Map       // userID (string) → *pushProgressEntry
+}
+
+type pushProgressEntry struct {
+	totalBytes int64         // set atomically after export
+	sentBytes  int64         // incremented atomically by countingReader
+	startedAt  time.Time
+	active     int32         // 1 = active, 0 = done
 }
 
 // NewBuddyService creates a BuddyService.
 func NewBuddyService(root string, backups *Service) *BuddyService {
 	return &BuddyService{root: root, backups: backups}
+}
+
+// PushProgress returns a snapshot of the current push progress for userID.
+// active=false and zero values are returned if no push is in flight.
+func (s *BuddyService) GetPushProgress(userID uuid.UUID) PushProgress {
+	v, ok := s.pushProgress.Load(userID.String())
+	if !ok {
+		return PushProgress{}
+	}
+	e := v.(*pushProgressEntry)
+	return PushProgress{
+		TotalBytes: atomic.LoadInt64(&e.totalBytes),
+		SentBytes:  atomic.LoadInt64(&e.sentBytes),
+		StartedAt:  e.startedAt,
+		Active:     atomic.LoadInt32(&e.active) == 1,
+	}
 }
 
 // SetTunnelManager wires the reverse-tunnel manager so Push can route through
@@ -147,6 +181,15 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 
 	// streamBody returns an io.Reader that streams a multipart form containing the archive.
 	// It also returns the Content-Type (with boundary) for the multipart form.
+	// Register push progress tracking for this user.
+	progEntry := &pushProgressEntry{startedAt: time.Now()}
+	atomic.StoreInt32(&progEntry.active, 1)
+	atomic.StoreInt64(&progEntry.totalBytes, fi.Size())
+	s.pushProgress.Store(userID.String(), progEntry)
+	defer func() {
+		atomic.StoreInt32(&progEntry.active, 0)
+	}()
+
 	// The archive is read from tmp, which must be seeked to 0 before calling.
 	// No data is buffered in memory — the archive streams directly from the temp file.
 	streamBody := func() (io.ReadCloser, string) {
@@ -162,7 +205,9 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 				pw.CloseWithError(err)
 				return
 			}
-			if _, err := io.Copy(fw, tmp); err != nil {
+			// Wrap tmp in a counting reader so sentBytes stays current.
+			cr := &countingReader{r: tmp, counter: &progEntry.sentBytes}
+			if _, err := io.Copy(fw, cr); err != nil {
 				pw.CloseWithError(err)
 				return
 			}
@@ -389,4 +434,20 @@ func (s *BuddyService) DeleteReceived(userID uuid.UUID, filename string) error {
 		return fmt.Errorf("buddy: delete: %w", err)
 	}
 	return nil
+}
+
+
+// countingReader wraps an io.Reader and atomically increments *counter by the
+// number of bytes read. Used to track upload progress in Push.
+type countingReader struct {
+	r       io.Reader
+	counter *int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	if n > 0 {
+		atomic.AddInt64(c.counter, int64(n))
+	}
+	return n, err
 }

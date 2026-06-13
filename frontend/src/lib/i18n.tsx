@@ -768,6 +768,7 @@ const translations = {
   'backup.archives':          { da: 'arkiver',                        en: 'archives' },
   'backup.pushNow':           { da: 'Push backup nu',                 en: 'Push backup now' },
   'backup.pushingNow':        { da: 'Pusher…',                        en: 'Pushing…' },
+  'backup.pushETA':           { da: 'færdig om ca.',                  en: 'ETA' },
   'backup.resetStuckPush':    { da: 'Nulstil igangværende push',       en: 'Reset stuck push' },
   'backup.autoBackupOff':     { da: 'Auto-backup er slukket',         en: 'Auto backup is off' },
   'backup.buddyPushFailing':  { da: 'Buddy push fejler',              en: 'Buddy push is failing' },

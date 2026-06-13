@@ -288,6 +288,7 @@ function FolderSize({ id }: { id: string }) {
       api.get<{ size_bytes: number; file_count: number }>(`/api/v1/files/${id}/size`, signal),
     staleTime: 60_000,   // re-fetch after 1 min
     gcTime: 120_000,
+    retry: false,
   })
 
   if (!data) return <span className="text-zinc-400">…</span>

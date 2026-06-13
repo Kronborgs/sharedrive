@@ -1055,6 +1055,12 @@ function BackupPage() {
                   <p className="text-xs text-red-600 dark:text-red-400">
                     {t('backup.failingSince', { when: new Date(buddyConfig.push_failed_since).toLocaleString() })}
                   </p>
+                  {buddyConfig.last_push_error && (
+                    <p className="text-xs text-red-600 dark:text-red-400 font-mono mt-1 break-all">{buddyConfig.last_push_error}</p>
+                  )}
+                  {buddyConfig.last_push_error?.includes('413') && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400 mt-1.5">{t('backup.hint413')}</p>
+                  )}
                 </div>
               </div>
             )}
@@ -1118,6 +1124,9 @@ function BackupPage() {
                         <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
                         {t('backup.tunnelActive')}
                       </p>
+                      {!tunnelStatus.peer_connected_here && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{t('backup.tunnelWrongDirection')}</p>
+                      )}
                       <button
                         onClick={() => tunnelDisconnectMutation.mutate()}
                         disabled={tunnelDisconnectMutation.isPending}

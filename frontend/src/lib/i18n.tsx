@@ -743,6 +743,8 @@ const translations = {
   'backup.tunnelPeerConnectedDesc':{ da: 'Din peer har åbnet tunnel hertil', en: 'Your peer has opened a tunnel here' },
   'backup.tunnelInactive':    { da: 'Inaktiv',                        en: 'Inactive' },
   'backup.tunnelActivateCgnat':{ da: 'Aktivér (CGNAT)',               en: 'Activate (CGNAT)' },
+  'backup.tunnelWrongDirection':{ da: 'Udgående tunnel hjælper peer med at pushe til dig — ikke omvendt. For at dit push bypasser Cloudflare skal peer forbinde deres tunnel hertil.', en: 'Outgoing tunnel lets the peer push to you — not the other way. For your push to bypass Cloudflare, the peer must connect their tunnel here.' },
+  'backup.hint413':           { da: 'Arkivet er for stort til Cloudflare (HTTP 413). Løsning: gå til backup.kronborgs.dk, konfigurér sharedrive.kronborgs.dk som peer med dit bruger-ID og modtage-token, og aktivér tunnel derfra.', en: 'The archive is too large for Cloudflare (HTTP 413). Fix: go to the peer server, configure this server as peer using your user ID and receive token, then activate the tunnel from there.' },
   'backup.receivedTitle':     { da: 'Arkiver modtaget fra din buddy', en: 'Archives received from your buddy' },
   'backup.receivedDesc':      { da: 'Arkiver din buddy har sendt hertil. Du kan downloade og gendanne dem.', en: 'Archives your buddy has pushed here. You can download and restore them.' },
   'backup.noReceived':        { da: 'Ingen modtagne arkiver endnu.',  en: 'No archives received yet.' },

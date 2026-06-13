@@ -107,6 +107,11 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 	s.backupHandler.SetMailer(smtp.New(cfg, db))
 	s.router = s.buildRouter()
 
+	// Start buddy CGNAT tunnel auto-reconnect — re-dials the outbound tunnel
+	// every 30 s for any user who has peer_use_tunnel=true, so the tunnel
+	// survives server restarts without manual intervention.
+	s.backupHandler.StartTunnelAutoReconnect(context.Background())
+
 	// Start preview-cache cleanup goroutine — purges cached PDFs older than 24 h.
 	if cfg.PreviewCacheDir != "" {
 		go func() {

@@ -229,6 +229,8 @@ export interface BuddyUserConfig {
   // Fair-trade quota
   receive_quota_bytes?: number | null  // null = unlimited
   peer_stored_bytes?: number           // bytes this user has stored at peer
+  // CGNAT tunnel preference
+  peer_use_tunnel?: boolean            // true = server will auto-reconnect the outbound tunnel
 }
 
 export interface BuddyServerInfo {

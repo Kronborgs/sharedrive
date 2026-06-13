@@ -646,6 +646,11 @@ func (h *Handler) BuddyTunnelConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Persist the preference so the server auto-reconnects after restarts.
+	if err := h.buddyCfg.SetPeerUseTunnel(context.Background(), u.ID, true); err != nil {
+		log.Warn().Err(err).Str("user_id", u.ID.String()).Msg("buddy tunnel: failed to persist use_tunnel=true")
+	}
+
 	httputil.Respond(w, http.StatusOK, map[string]bool{"connected": true})
 }
 
@@ -659,6 +664,10 @@ func (h *Handler) BuddyTunnelDisconnect(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.tunnelClient.Disconnect()
+	// Clear the preference so the server does NOT auto-reconnect after restarts.
+	if err := h.buddyCfg.SetPeerUseTunnel(context.Background(), u.ID, false); err != nil {
+		log.Warn().Err(err).Str("user_id", u.ID.String()).Msg("buddy tunnel: failed to persist use_tunnel=false")
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1221,6 +1230,49 @@ func (h *Handler) SetBackupNotifyConfig(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// StartTunnelAutoReconnect launches a background goroutine that keeps the
+// outbound CGNAT tunnel alive for any user who has peer_use_tunnel = TRUE.
+// It checks the DB once at startup and then every 30 seconds — if the tunnel
+// is not connected it re-dials using the stored (encrypted) peer credentials.
+// Call this once from server initialisation after NewHandler returns.
+func (h *Handler) StartTunnelAutoReconnect(ctx context.Context) {
+	go func() {
+		reconnect := func() {
+			cfg, err := h.buddyCfg.GetTunnelEnabledUser(ctx)
+			if err != nil {
+				log.Warn().Err(err).Msg("buddy tunnel auto-reconnect: DB lookup failed")
+				return
+			}
+			if cfg == nil {
+				return // no user wants a tunnel
+			}
+			if h.tunnelClient.IsConnected() {
+				return // already connected
+			}
+			log.Info().Str("user_id", cfg.UserID.String()).Str("peer", cfg.PeerURL).
+				Msg("buddy tunnel: auto-reconnecting (peer_use_tunnel=true)")
+			if err := h.tunnelClient.Connect(ctx, cfg.PeerURL, cfg.PeerToken, cfg.PeerUserID); err != nil {
+				log.Warn().Err(err).Str("user_id", cfg.UserID.String()).
+					Msg("buddy tunnel: auto-reconnect failed — will retry in 30s")
+			}
+		}
+
+		// Attempt immediately on startup.
+		reconnect()
+
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				reconnect()
+			}
+		}
+	}()
 }
 
 // parseUUIDs converts a slice of UUID strings to []uuid.UUID.

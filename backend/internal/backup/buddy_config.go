@@ -65,6 +65,10 @@ type BuddyUserStatus struct {
 	// Fair-trade quota fields.
 	ReceiveQuotaBytes *int64 `json:"receive_quota_bytes"` // null = unlimited
 	PeerStoredBytes   int64  `json:"peer_stored_bytes"`   // bytes this user has stored at peer
+
+	// CGNAT tunnel preference — true when this user has enabled the reverse tunnel.
+	// The server uses this to automatically re-connect the tunnel after restarts.
+	PeerUseTunnel bool `json:"peer_use_tunnel"`
 }
 
 // GetStatus returns the current buddy config summary for the user (no secrets exposed).
@@ -81,20 +85,22 @@ func (s *BuddyConfigService) GetStatus(ctx context.Context, userID uuid.UUID) (*
 	var notifyOnFailure bool
 	var receiveQuotaBytes *int64
 	var peerStoredBytes int64
+	var peerUseTunnel bool
 	err := s.db.QueryRow(ctx,
 		`SELECT peer_url, receive_token_hash, receive_token_prefix,
 		        last_push_at, last_push_bytes, push_in_progress, last_push_error,
 		        auto_push_enabled, auto_push_interval_hours, auto_push_on_change,
 		        auto_push_last_run_at, COALESCE(auto_push_folder_ids, '{}'),
 		        push_failed_since, COALESCE(notify_on_failure, TRUE),
-		        receive_quota_bytes, COALESCE(peer_stored_bytes, 0)
+		        receive_quota_bytes, COALESCE(peer_stored_bytes, 0),
+		        COALESCE(peer_use_tunnel, FALSE)
 		 FROM user_buddy_configs WHERE user_id = $1`, userID,
 	).Scan(&peerURL, &receiveTokenHash, &receiveTokenPrefix,
 		&lastPushAt, &lastPushBytes, &pushInProgress, &lastPushError,
 		&autoPushEnabled, &autoPushIntervalHours, &autoPushOnChange,
 		&autoPushLastRunAt, &autoPushFolderIDs,
 		&pushFailedSince, &notifyOnFailure,
-		&receiveQuotaBytes, &peerStoredBytes)
+		&receiveQuotaBytes, &peerStoredBytes, &peerUseTunnel)
 	if err != nil {
 		// No row yet — return empty status (not an error)
 		return &BuddyUserStatus{
@@ -126,6 +132,7 @@ func (s *BuddyConfigService) GetStatus(ctx context.Context, userID uuid.UUID) (*
 		NotifyOnFailure:       notifyOnFailure,
 		ReceiveQuotaBytes:     receiveQuotaBytes,
 		PeerStoredBytes:       peerStoredBytes,
+		PeerUseTunnel:         peerUseTunnel,
 	}, nil
 }
 
@@ -328,6 +335,52 @@ func validatePeerURL(raw string) (string, error) {
 		}
 	}
 	return u.String(), nil
+}
+
+// SetPeerUseTunnel persists the user's CGNAT tunnel preference.
+// When enabled=true the server will automatically reconnect the outbound tunnel
+// to the peer after restarts or disconnects.
+func (s *BuddyConfigService) SetPeerUseTunnel(ctx context.Context, userID uuid.UUID, enabled bool) error {
+	_, err := s.db.Exec(ctx,
+		`INSERT INTO user_buddy_configs (user_id, peer_use_tunnel)
+		 VALUES ($1, $2)
+		 ON CONFLICT (user_id) DO UPDATE
+		   SET peer_use_tunnel = EXCLUDED.peer_use_tunnel,
+		       updated_at      = NOW()`,
+		userID, enabled,
+	)
+	return err
+}
+
+// tunnelAutoConfig is the minimal peer config needed to reconnect an outbound tunnel.
+type tunnelAutoConfig struct {
+	UserID    uuid.UUID
+	PeerURL   string
+	PeerToken string // raw (decrypted)
+	PeerUserID string
+}
+
+// GetTunnelEnabledUser returns the peer config for the (at most one) user who
+// has peer_use_tunnel = TRUE and a fully-configured peer. Returns nil, nil when
+// no such user exists.
+func (s *BuddyConfigService) GetTunnelEnabledUser(ctx context.Context) (*tunnelAutoConfig, error) {
+	var cfg tunnelAutoConfig
+	var encToken string
+	err := s.db.QueryRow(ctx,
+		`SELECT user_id, peer_url, peer_user_id, peer_token_enc
+		 FROM user_buddy_configs
+		 WHERE peer_use_tunnel = TRUE AND peer_url != '' AND peer_token_enc != ''
+		 LIMIT 1`,
+	).Scan(&cfg.UserID, &cfg.PeerURL, &cfg.PeerUserID, &encToken)
+	if err != nil {
+		return nil, nil // no row or error → no tunnel needed
+	}
+	raw, err := decryptBuddyValue(s.wrapKey, encToken)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt peer token for tunnel auto-reconnect: %w", err)
+	}
+	cfg.PeerToken = raw
+	return &cfg, nil
 }
 
 // SetPeerConfig stores (encrypted) the peer URL, peer user ID, and peer receive token.

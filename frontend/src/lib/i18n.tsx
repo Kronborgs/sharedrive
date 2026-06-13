@@ -768,6 +768,7 @@ const translations = {
   'backup.archives':          { da: 'arkiver',                        en: 'archives' },
   'backup.pushNow':           { da: 'Push backup nu',                 en: 'Push backup now' },
   'backup.pushingNow':        { da: 'Pusher…',                        en: 'Pushing…' },
+  'backup.resetStuckPush':    { da: 'Nulstil igangværende push',       en: 'Reset stuck push' },
   'backup.autoBackupOff':     { da: 'Auto-backup er slukket',         en: 'Auto backup is off' },
   'backup.buddyPushFailing':  { da: 'Buddy push fejler',              en: 'Buddy push is failing' },
   'backup.buddyDesc':         { da: 'Push krypterede arkiver til en peer-server for off-site redundans.', en: 'Push encrypted archives to a peer Sharedrive server for off-site redundancy.' },

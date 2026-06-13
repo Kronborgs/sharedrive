@@ -693,6 +693,23 @@ func (h *Handler) BuddyTunnelStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ── DELETE /api/v1/backup/buddy/push-in-progress ─────────────────────────────
+// Resets a stuck push_in_progress flag (e.g. after a server crash mid-push).
+
+func (h *Handler) ResetBuddyPushInProgress(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u := middleware.UserFromContext(ctx)
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err := h.buddyCfg.SetPushInProgress(ctx, u.ID, false, ""); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, "reset failed")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // ── POST /api/v1/backup/buddy/push ────────────────────────────────────────────
 
 type buddyPushRequest struct {

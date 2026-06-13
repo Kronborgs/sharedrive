@@ -196,6 +196,17 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		}
 	}()
 
+	// At startup: clear any push_in_progress flags that were left set by a crash
+	// or interrupted goroutine. Without this the push button stays disabled forever.
+	go func() {
+		ctx := context.Background()
+		if tag, err := db.Exec(ctx, `UPDATE user_buddy_configs SET push_in_progress = FALSE WHERE push_in_progress = TRUE`); err != nil {
+			log.Warn().Err(err).Msg("startup buddy push_in_progress reset failed")
+		} else if tag.RowsAffected() > 0 {
+			log.Info().Int64("rows", tag.RowsAffected()).Msg("startup: reset stuck buddy push_in_progress flags")
+		}
+	}()
+
 	// At startup: scrub orphaned blobs from disk (UUIDs on disk with no DB record).
 	go func() {
 		result, err := admin.RunStorageScrub(context.Background(), db, cfg.FilesRoot)
@@ -436,6 +447,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/backup/buddy/receive-token", s.backupHandler.GenerateBuddyReceiveToken)
 		r.Delete("/api/v1/backup/buddy/receive-token", s.backupHandler.RevokeBuddyReceiveToken)
 		r.Post("/api/v1/backup/buddy/push", s.backupHandler.BuddyPush)
+		r.Delete("/api/v1/backup/buddy/push-in-progress", s.backupHandler.ResetBuddyPushInProgress)
 		r.Put("/api/v1/backup/buddy/auto", s.backupHandler.SetBuddyAutoConfig)
 		r.Put("/api/v1/backup/notify", s.backupHandler.SetBackupNotifyConfig)
 		r.Put("/api/v1/backup/buddy/quota", s.backupHandler.SetBuddyQuota)

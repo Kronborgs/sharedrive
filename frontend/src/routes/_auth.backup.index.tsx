@@ -1350,6 +1350,17 @@ function BackupPage() {
                             ? <><RefreshCw size={15} className="animate-spin" /> {t('backup.pushingNow')}</>
                             : <><ArrowUpToLine size={15} /> {t('backup.pushNow')}</>}
                         </button>
+                        {buddyConfig?.push_in_progress && !buddyPushing && (
+                          <button
+                            onClick={async () => {
+                              await api.delete('/api/v1/backup/buddy/push-in-progress')
+                              void refetchBuddyConfig()
+                            }}
+                            className="w-full text-xs text-zinc-500 dark:text-slate-400 underline hover:text-zinc-700 dark:hover:text-slate-200"
+                          >
+                            {t('backup.resetStuckPush')}
+                          </button>
+                        )}
                         {buddyConfig?.last_push_error && (
                           <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
                             <AlertTriangle size={12} /> {buddyConfig.last_push_error}

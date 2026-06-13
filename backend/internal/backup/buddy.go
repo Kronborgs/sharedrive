@@ -69,9 +69,10 @@ func fetchPeerDirectUploadURL(ctx context.Context, baseURL string) string {
 // Receive: accept an archive pushed from a peer and store it on disk.
 // Archives pushed to this server are stored under BACKUPS_ROOT/buddy/<senderUserID>/.
 type BuddyService struct {
-	root      string
-	backups   *Service
-	tunnelMgr *TunnelManager // optional — enables tunnel-based push to CGNAT peers
+	root         string
+	backups      *Service
+	tunnelMgr    *TunnelManager // optional — enables tunnel-based push to CGNAT peers
+	tunnelClient *TunnelClient  // optional — enables push via outgoing tunnel (bypasses peer Cloudflare)
 }
 
 // NewBuddyService creates a BuddyService.
@@ -82,6 +83,12 @@ func NewBuddyService(root string, backups *Service) *BuddyService {
 // SetTunnelManager wires the reverse-tunnel manager so Push can route through
 // an active tunnel when the peer is behind CGNAT.
 func (s *BuddyService) SetTunnelManager(tm *TunnelManager) { s.tunnelMgr = tm }
+
+// SetTunnelClient wires the outgoing tunnel client so Push can route through
+// the existing outgoing WebSocket connection when the peer sits behind Cloudflare.
+// yamux supports bidirectional stream opening: the peer's TunnelManager will
+// accept the stream and proxy it to the peer's local HTTP server.
+func (s *BuddyService) SetTunnelClient(tc *TunnelClient) { s.tunnelClient = tc }
 
 // BuddyArchive describes an archive received from a peer.
 type BuddyArchive struct {
@@ -195,6 +202,43 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 			}
 			peerTotal := parseReceiveResponse(resp.Body)
 			log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Int64("bytes", fi.Size()).Msg("buddy: archive pushed via tunnel")
+			return PushResult{ArchiveBytes: fi.Size(), PeerTotalBytes: peerTotal}, nil
+		}
+	}
+
+	// If there is an active outgoing tunnel (this instance connected to peer),
+	// push through it — yamux is bidirectional so the peer's TunnelManager
+	// accepts the stream and proxies it to the peer's local HTTP, bypassing
+	// any Cloudflare upload limits on the peer side.
+	if s.tunnelClient != nil {
+		if tr := s.tunnelClient.HTTPTransport(); tr != nil {
+			httpClient = &http.Client{Transport: tr, Timeout: 10 * time.Minute}
+			uploadEndpoint := "http://tunnel-peer/api/v1/backup/buddy/receive"
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadEndpoint, &body)
+			if err != nil {
+				return PushResult{}, fmt.Errorf("buddy push (outgoing tunnel): request: %w", err)
+			}
+			req.Header.Set("Content-Type", mw.FormDataContentType())
+			req.Header.Set("Authorization", "Bearer "+peerToken)
+			req.Header.Set("X-Buddy-Sender-User-ID", userID.String())
+			resp, err := httpClient.Do(req)
+			if err != nil {
+				return PushResult{}, fmt.Errorf("buddy push (outgoing tunnel): http: %w", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+				msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+				detail := strings.TrimSpace(string(msg))
+				if resp.StatusCode == http.StatusServiceUnavailable {
+					return PushResult{}, ErrPeerStorageUnavailable
+				}
+				if detail == "" {
+					detail = "no details from peer"
+				}
+				return PushResult{}, fmt.Errorf("buddy push (outgoing tunnel): peer returnerede HTTP %d: %s", resp.StatusCode, detail)
+			}
+			peerTotal := parseReceiveResponse(resp.Body)
+			log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Int64("bytes", fi.Size()).Msg("buddy: archive pushed via outgoing tunnel")
 			return PushResult{ArchiveBytes: fi.Size(), PeerTotalBytes: peerTotal}, nil
 		}
 	}

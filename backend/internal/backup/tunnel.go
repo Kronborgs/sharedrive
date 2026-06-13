@@ -42,13 +42,14 @@ import (
 // TunnelManager stores active yamux sessions from CGNAT peers.
 // Keyed by the LOCAL user ID on this instance whose buddy the peer represents.
 type TunnelManager struct {
-	mu       sync.Mutex
-	sessions map[uuid.UUID]*yamux.Session
+	mu        sync.Mutex
+	sessions  map[uuid.UUID]*yamux.Session
+	localAddr string // proxy target for streams opened by the remote peer
 }
 
 // NewTunnelManager creates an empty TunnelManager.
 func NewTunnelManager() *TunnelManager {
-	return &TunnelManager{sessions: make(map[uuid.UUID]*yamux.Session)}
+	return &TunnelManager{sessions: make(map[uuid.UUID]*yamux.Session), localAddr: "127.0.0.1:8080"}
 }
 
 // Register stores a yamux CLIENT session over the given net.Conn.
@@ -78,6 +79,20 @@ func (tm *TunnelManager) Register(localUserID uuid.UUID, conn net.Conn) (<-chan 
 
 	log.Info().Str("user_id", localUserID.String()).Msg("buddy tunnel: peer connected")
 
+	// Accept streams opened BY the remote peer (yamux is bidirectional) and
+	// proxy them to this instance's local HTTP server.  This lets the remote
+	// peer push backup archives through the tunnel even though it is the
+	// yamux SERVER side.
+	go func() {
+		for {
+			stream, err := sess.Accept()
+			if err != nil {
+				return // session closed
+			}
+			go tm.proxyStream(stream)
+		}
+	}()
+
 	// Watch for session close.
 	go func() {
 		<-sess.CloseChan()
@@ -91,6 +106,21 @@ func (tm *TunnelManager) Register(localUserID uuid.UUID, conn net.Conn) (<-chan 
 	}()
 
 	return done, nil
+}
+
+// proxyStream bridges one yamux stream bidirectionally to this instance's HTTP.
+func (tm *TunnelManager) proxyStream(stream net.Conn) {
+	defer stream.Close()
+	local, err := net.DialTimeout("tcp", tm.localAddr, 5*time.Second)
+	if err != nil {
+		log.Warn().Err(err).Str("addr", tm.localAddr).Msg("buddy tunnel (mgr): proxy dial local failed")
+		return
+	}
+	defer local.Close()
+	done := make(chan struct{}, 2)
+	go func() { io.Copy(local, stream); done <- struct{}{} }()  //nolint:errcheck
+	go func() { io.Copy(stream, local); done <- struct{}{} }()  //nolint:errcheck
+	<-done
 }
 
 // IsConnected returns true when there is an active tunnel for localUserID.
@@ -128,6 +158,7 @@ type TunnelClient struct {
 	mu        sync.Mutex
 	connected bool
 	cancel    context.CancelFunc
+	sess      *yamux.Session // active session; nil when disconnected
 }
 
 // NewTunnelClient creates a TunnelClient that will proxy streams to localAddr.
@@ -184,6 +215,7 @@ func (tc *TunnelClient) Connect(ctx context.Context, peerURL, receiveToken, rece
 	}
 	tc.connected = true
 	tc.cancel = cancel
+	tc.sess = sess
 	tc.mu.Unlock()
 
 	log.Info().Str("peer", peerURL).Msg("buddy tunnel: connected to peer")
@@ -209,6 +241,26 @@ func (tc *TunnelClient) IsConnected() bool {
 	return tc.connected
 }
 
+// HTTPTransport returns an *http.Transport that opens each connection through
+// the active outgoing yamux session (as the yamux server side, which can also
+// call Open()).  Returns nil when no tunnel is active.
+// Use this to push a backup archive TO the peer through the existing outgoing
+// tunnel, bypassing Cloudflare upload limits on the peer side.
+func (tc *TunnelClient) HTTPTransport() *http.Transport {
+	tc.mu.Lock()
+	sess := tc.sess
+	tc.mu.Unlock()
+	if sess == nil || sess.IsClosed() {
+		return nil
+	}
+	return &http.Transport{
+		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+			return sess.Open()
+		},
+		DisableCompression: true, // archive is already compressed+encrypted
+	}
+}
+
 // serve loops accepting yamux streams from A and proxying each to the local HTTP.
 func (tc *TunnelClient) serve(sess *yamux.Session, cancel context.CancelFunc) {
 	defer func() {
@@ -216,6 +268,7 @@ func (tc *TunnelClient) serve(sess *yamux.Session, cancel context.CancelFunc) {
 		cancel()
 		tc.mu.Lock()
 		tc.connected = false
+		tc.sess = nil
 		tc.mu.Unlock()
 		log.Info().Msg("buddy tunnel: disconnected from peer")
 	}()

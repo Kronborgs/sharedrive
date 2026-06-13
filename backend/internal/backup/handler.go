@@ -55,7 +55,9 @@ func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot, 
 	buddyCfgSvc := NewBuddyConfigService(db, wrapKey)
 	autoSvc := NewAutoBackupService(db, wrapKey, tert, buddySvc, buddyCfgSvc, auditSvc)
 	tm := NewTunnelManager()
+	tc := NewTunnelClient("")
 	buddySvc.SetTunnelManager(tm)
+	buddySvc.SetTunnelClient(tc)
 	return &Handler{
 		db:              db,
 		passwords:       NewPasswordService(db, wrapKey),
@@ -71,7 +73,7 @@ func NewHandler(db *pgxpool.Pool, storage *files.Storage, wrapKey, backupsRoot, 
 		buddyEnabled:    buddyRoot != "",
 		backupsRoot:     backupsRoot,
 		tunnelMgr:       tm,
-		tunnelClient:    NewTunnelClient(""),
+		tunnelClient:    tc,
 	}
 }
 

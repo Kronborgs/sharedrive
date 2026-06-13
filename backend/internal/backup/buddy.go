@@ -149,7 +149,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	// It also returns the Content-Type (with boundary) for the multipart form.
 	// The archive is read from tmp, which must be seeked to 0 before calling.
 	// No data is buffered in memory — the archive streams directly from the temp file.
-	streamBody := func() (io.Reader, string) {
+	streamBody := func() (io.ReadCloser, string) {
 		pr, pw := io.Pipe()
 		mw := multipart.NewWriter(pw)
 		go func() {
@@ -188,6 +188,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 			return 0, fmt.Errorf("seek: %w", err)
 		}
 		body, contentType := streamBody()
+		defer body.Close()
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, body)
 		if err != nil {
 			return 0, fmt.Errorf("request: %w", err)
@@ -219,6 +220,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	// WebSocket (peer→us) so no Cloudflare upload limit on the peer side.
 	if s.tunnelMgr != nil {
 		if tr := s.tunnelMgr.HTTPTransport(userID); tr != nil {
+			log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Int64("archive_bytes", fi.Size()).Msg("buddy: pushing via incoming tunnel")
 			client := &http.Client{Transport: tr, Timeout: 30 * time.Minute}
 			peerTotal, err := doPush(client, "http://tunnel-peer/api/v1/backup/buddy/receive")
 			if err != nil {
@@ -235,6 +237,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	// a direct push to a Cloudflare-protected peer will just hit the 100 MB limit.
 	if s.tunnelClient != nil {
 		if tr := s.tunnelClient.HTTPTransport(); tr != nil {
+			log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Int64("archive_bytes", fi.Size()).Msg("buddy: pushing via outgoing tunnel")
 			client := &http.Client{Transport: tr, Timeout: 30 * time.Minute}
 			peerTotal, err := doPush(client, "http://tunnel-peer/api/v1/backup/buddy/receive")
 			if err != nil {
@@ -249,6 +252,7 @@ func (s *BuddyService) Push(ctx context.Context, userID uuid.UUID, rawToken stri
 	// ── 3. Direct HTTPS push ──────────────────────────────────────────────────────
 	// Used when no tunnel is active. Bypasses Cloudflare if the peer has a direct
 	// upload URL configured (peer.direct_upload_url).
+	log.Info().Str("user_id", userID.String()).Str("peer", peerBaseURL).Int64("archive_bytes", fi.Size()).Msg("buddy: pushing via direct HTTPS (no tunnel active)")
 	uploadBase := fetchPeerDirectUploadURL(ctx, peerBaseURL)
 	uploadEndpoint := strings.TrimRight(uploadBase, "/") + "/api/v1/backup/buddy/receive"
 	if !strings.HasPrefix(uploadBase, "https://") && !strings.HasPrefix(uploadBase, "http://") {

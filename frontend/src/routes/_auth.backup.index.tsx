@@ -56,17 +56,23 @@ function FileTreeNode({
   onToggle,
   ancestorIDs,
   allChecked,
+  nearestSelectedAncestorID,
 }: {
   item: FileItem
   depth: number
   selectedIDs: string[]
-  onToggle: (id: string) => void
+  onToggle: (id: string, nearestAncestorID?: string) => void
   ancestorIDs: Set<string>
   allChecked: boolean
+  nearestSelectedAncestorID?: string
 }) {
   const { t } = useI18n()
   const isAncestor = ancestorIDs.has(item.id)
-  const isChecked = allChecked || selectedIDs.includes(item.id)
+  // isExplicit: this item is directly in selectedIDs (or allChecked covers everything)
+  const isExplicit = allChecked || selectedIDs.includes(item.id)
+  // inheritedSelected: an ancestor is explicitly selected, so this item is included implicitly
+  const inheritedSelected = !isExplicit && !!nearestSelectedAncestorID
+  const isChecked = isExplicit || inheritedSelected
   const isIndeterminate = !isChecked && isAncestor
   // Auto-expand when a descendant is selected or allChecked
   const [expanded, setExpanded] = useState(isAncestor || allChecked)
@@ -81,6 +87,10 @@ function FileTreeNode({
       api.get<FileItem[]>(`/api/v1/files?parent_id=${item.id}`, signal),
     enabled: item.is_folder && expanded,
   })
+
+  // When this item is explicitly selected, its children inherit from it.
+  // Otherwise propagate the ancestor's ID downward.
+  const ancestorIDForChildren = isExplicit ? item.id : nearestSelectedAncestorID
 
   return (
     <div>
@@ -107,8 +117,10 @@ function FileTreeNode({
         )}
         <label className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
           <span className={`flex items-center justify-center w-4 h-4 rounded shrink-0 border transition-colors ${
-            isChecked
+            isExplicit
               ? 'bg-brand-600 border-brand-600'
+              : inheritedSelected
+              ? 'bg-brand-400 border-brand-400'
               : isIndeterminate
               ? 'bg-brand-400/30 border-brand-400'
               : 'border-zinc-300 dark:border-[#4a5070] bg-white dark:bg-[#1a1d27]'
@@ -127,7 +139,7 @@ function FileTreeNode({
           <input
             type="checkbox"
             checked={isChecked}
-            onChange={() => onToggle(item.id)}
+            onChange={() => onToggle(item.id, inheritedSelected ? nearestSelectedAncestorID : undefined)}
             className="sr-only"
           />
           {item.is_folder
@@ -142,7 +154,7 @@ function FileTreeNode({
         loadingChildren
           ? <p className="text-xs text-zinc-400 py-0.5" style={{ paddingLeft: `${(depth + 1) * 14 + 20}px` }}>{t('backup.pickerLoading')}</p>
           : (children ?? []).map(c => (
-              <FileTreeNode key={c.id} item={c} depth={depth + 1} selectedIDs={selectedIDs} onToggle={onToggle} ancestorIDs={ancestorIDs} allChecked={allChecked} />
+              <FileTreeNode key={c.id} item={c} depth={depth + 1} selectedIDs={selectedIDs} onToggle={onToggle} ancestorIDs={ancestorIDs} allChecked={allChecked} nearestSelectedAncestorID={ancestorIDForChildren} />
             ))
       )}
     </div>
@@ -194,6 +206,7 @@ function FolderPicker({
     enabled: selectedIDs.length > 0,
   })
 
+  const qc = useQueryClient()
   const resolvedAncestors = ancestorIDs ?? new Set<string>()
   const items = rootItems ?? []
   // allChecked = true when in "all files" mode (no explicit selection)
@@ -210,8 +223,16 @@ function FolderPicker({
     }
   }
 
-  const toggle = (id: string) => {
-    if (allChecked) {
+  const toggle = (id: string, nearestAncestorID?: string) => {
+    if (nearestAncestorID) {
+      // User clicked on an item that is included via a selected ancestor.
+      // Split the ancestor: replace it with all its loaded children except
+      // the clicked item so the user can exclude that specific subfolder.
+      const ancestorChildren = qc.getQueryData<FileItem[]>(['files', nearestAncestorID, 'picker-children']) ?? []
+      const siblingIDs = ancestorChildren.map(c => c.id).filter(cid => cid !== id)
+      setManualMode(true)
+      onChange([...selectedIDs.filter(x => x !== nearestAncestorID), ...siblingIDs])
+    } else if (allChecked) {
       // Clicked an item while in all-files mode → enter manual mode with only that item
       setManualMode(true)
       onChange([id])
@@ -263,7 +284,7 @@ function FolderPicker({
             <p className="text-xs text-zinc-400 pt-1">{t('backup.pickerLoading')}</p>
           )}
           {!pickerLoading && items.length > 0 && (
-            <div className="border-t border-zinc-200 dark:border-[#2d3148] pt-1.5">
+            <div className="border-t border-zinc-200 dark:border-[#2d3148] pt-1.5 max-h-72 overflow-y-auto">
               {items.map(item => (
                 <FileTreeNode
                   key={item.id}

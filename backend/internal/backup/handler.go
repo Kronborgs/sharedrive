@@ -793,6 +793,11 @@ func (h *Handler) BuddyReceive(w http.ResponseWriter, r *http.Request) {
 	const maxBuddySize = 10 << 30
 	r.Body = http.MaxBytesReader(w, r.Body, maxBuddySize)
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		log.Error().Err(err).
+			Str("content_type", r.Header.Get("Content-Type")).
+			Str("content_length", r.Header.Get("Content-Length")).
+			Int64("req_content_length", r.ContentLength).
+			Msg("buddy receive: ParseMultipartForm failed")
 		httputil.RespondError(w, http.StatusBadRequest, "invalid multipart form")
 		return
 	}

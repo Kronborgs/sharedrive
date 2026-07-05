@@ -48,6 +48,25 @@ const settingsSchema = z.object({
 type FormValues = z.infer<typeof settingsSchema>
 
 type Tab = 'general' | 'smtp' | 'onlyoffice' | 'texteditor' | 'player'
+type SMTPProviderId = 'gmail' | 'microsoft365' | 'outlook' | 'yahoo' | 'zoho' | 'custom'
+
+const SMTP_PROVIDER_PRESETS: Record<Exclude<SMTPProviderId, 'custom'>, { host: string; port: number; tls: boolean }> = {
+  gmail: { host: 'smtp.gmail.com', port: 587, tls: true },
+  microsoft365: { host: 'smtp.office365.com', port: 587, tls: true },
+  outlook: { host: 'smtp-mail.outlook.com', port: 587, tls: true },
+  yahoo: { host: 'smtp.mail.yahoo.com', port: 587, tls: true },
+  zoho: { host: 'smtp.zoho.com', port: 587, tls: true },
+}
+
+function resolveSMTPProvider(host: string, port: number, tls: boolean): SMTPProviderId {
+  const normalizedHost = (host ?? '').trim().toLowerCase()
+  for (const [provider, preset] of Object.entries(SMTP_PROVIDER_PRESETS) as Array<[Exclude<SMTPProviderId, 'custom'>, { host: string; port: number; tls: boolean }]>) {
+    if (normalizedHost === preset.host && port === preset.port && tls === preset.tls) {
+      return provider
+    }
+  }
+  return 'custom'
+}
 
 function GB(n: number) { return n / (1024 * 1024 * 1024) }
 function toGB(g: number) { return Math.round(g * 1024 * 1024 * 1024) }
@@ -64,7 +83,7 @@ function SettingsPage() {
     queryFn: ({ signal }) => api.get<SystemSettings>('/api/v1/admin/settings', signal),
   })
 
-  const { register, handleSubmit, formState: { errors, isDirty } } = useForm<FormValues>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(settingsSchema),
     values: data
       ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '', playlist_max_tracks: data.playlist_max_tracks ?? 200 }
@@ -143,6 +162,19 @@ function SettingsPage() {
     return <div className="p-8 text-center text-sm text-muted">{t('settings.loading')}</div>
   }
 
+  const smtpHost = watch('smtp_host')
+  const smtpPort = watch('smtp_port')
+  const smtpTls = watch('smtp_tls')
+  const selectedSMTPProvider = resolveSMTPProvider(smtpHost, smtpPort, smtpTls)
+
+  const onSMTPProviderChange = (provider: SMTPProviderId) => {
+    if (provider === 'custom') return
+    const preset = SMTP_PROVIDER_PRESETS[provider]
+    setValue('smtp_host', preset.host, { shouldDirty: true })
+    setValue('smtp_port', preset.port, { shouldDirty: true })
+    setValue('smtp_tls', preset.tls, { shouldDirty: true })
+  }
+
   const tabs: { id: Tab; label: string }[] = [
     { id: 'general',    label: t('settings.tabGeneral') },
     { id: 'smtp',       label: t('settings.tabSmtp') },
@@ -204,6 +236,20 @@ function SettingsPage() {
       {tab === 'smtp' && (
         <form onSubmit={handleSubmit(values => save.mutate(values))} className="space-y-5">
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-4">
+            <Field label={t('settings.smtpProvider')}>
+              <select
+                value={selectedSMTPProvider}
+                onChange={e => onSMTPProviderChange(e.target.value as SMTPProviderId)}
+                className={inputClass}
+              >
+                <option value="gmail">{t('settings.smtpProviderGmail')}</option>
+                <option value="microsoft365">{t('settings.smtpProviderMicrosoft365')}</option>
+                <option value="outlook">{t('settings.smtpProviderOutlook')}</option>
+                <option value="yahoo">{t('settings.smtpProviderYahoo')}</option>
+                <option value="zoho">{t('settings.smtpProviderZoho')}</option>
+                <option value="custom">{t('settings.smtpProviderCustom')}</option>
+              </select>
+            </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('settings.smtpHost')} error={errors.smtp_host?.message}>
                 <input {...register('smtp_host')} placeholder="smtp.example.com" className={inputClass} />
@@ -222,6 +268,15 @@ function SettingsPage() {
               <input type="email" {...register('smtp_from_address')} placeholder="noreply@example.com" className={inputClass} />
             </Field>
             <Toggle label={t('settings.useTls')} description={t('settings.useTlsDesc')} name="smtp_tls" register={register} />
+            {selectedSMTPProvider !== 'custom' && (
+              <p className="text-xs text-zinc-500 dark:text-slate-400">
+                {t('settings.smtpPresetHint', {
+                  host: SMTP_PROVIDER_PRESETS[selectedSMTPProvider].host,
+                  port: SMTP_PROVIDER_PRESETS[selectedSMTPProvider].port,
+                  mode: SMTP_PROVIDER_PRESETS[selectedSMTPProvider].tls ? 'STARTTLS' : 'None',
+                })}
+              </p>
+            )}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <input type="email" value={testRecipient} onChange={e => { setTestRecipient(e.target.value); setSmtpResult(null) }} placeholder={t('settings.testRecipientPlaceholder')} className={`${inputClass} flex-1`} />

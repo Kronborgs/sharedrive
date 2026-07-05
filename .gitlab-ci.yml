@@ -1,0 +1,77 @@
+stages:
+  - test
+  - build
+
+variables:
+  GO_VERSION: "1.25.0"
+  NODE_VERSION: "22"
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+default:
+  interruptible: true
+
+backend:test:
+  stage: test
+  image: golang:${GO_VERSION}
+  cache:
+    key:
+      files:
+        - backend/go.sum
+    paths:
+      - .cache/go-build
+      - go/pkg/mod
+  variables:
+    GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+    GOMODCACHE: $CI_PROJECT_DIR/go/pkg/mod
+  before_script:
+    - cd backend
+  script:
+    - go test ./... -timeout 60s
+
+backend:build:
+  stage: build
+  image: golang:${GO_VERSION}
+  cache:
+    key:
+      files:
+        - backend/go.sum
+    paths:
+      - .cache/go-build
+      - go/pkg/mod
+  variables:
+    GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+    GOMODCACHE: $CI_PROJECT_DIR/go/pkg/mod
+    CGO_ENABLED: "0"
+  before_script:
+    - cd backend
+  script:
+    - mkdir -p bin
+    - go build -o bin/server ./cmd/server
+  artifacts:
+    paths:
+      - backend/bin/server
+    expire_in: 7 days
+
+frontend:build:
+  stage: build
+  image: node:${NODE_VERSION}
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - frontend/node_modules/
+  before_script:
+    - cd frontend
+    - npm install
+  script:
+    - npm run type-check
+    - npm run build
+  artifacts:
+    paths:
+      - frontend/dist/
+    expire_in: 7 days

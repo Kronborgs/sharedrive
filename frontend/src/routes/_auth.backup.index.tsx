@@ -363,7 +363,6 @@ function BackupPage() {
   // buddy push state
   const [buddyToken, setBuddyToken] = useState('')
   const [buddyPushing, setBuddyPushing] = useState(false)
-  const [pushStartedAt, setPushStartedAt] = useState<number | null>(null)
 
   // tab state
   const [activeTab, setActiveTab] = useState<'storage' | 'buddy' | 'token'>('storage')

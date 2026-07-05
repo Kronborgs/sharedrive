@@ -23,3 +23,8 @@ if (Test-Path $versionFile) {
 $newVersion = "$date-build-$($n.ToString('000'))"
 Set-Content -Path $versionFile -Value $newVersion -NoNewline
 Write-Host "Version bumped to: $newVersion"
+
+$changelogScript = Join-Path $PSScriptRoot "generate-changelog.ps1"
+if (Test-Path $changelogScript) {
+    & $changelogScript | Out-Null
+}

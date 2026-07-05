@@ -49,6 +49,9 @@ const translations = {
   'action.restore':    { da: 'Gendan',           en: 'Restore' },
   'action.clearSelection': { da: 'Ryd valg',     en: 'Clear selection' },
   'action.moreActions':{ da: 'Flere handlinger', en: 'More actions' },
+  'buildInfo.title':   { da: 'Build-info og changelog', en: 'Build info and changelog' },
+  'buildInfo.versionBuilt': { da: 'Version {version} - bygget {date}', en: 'Version {version} - built {date}' },
+  'buildInfo.empty':   { da: 'Ingen commits fundet endnu.', en: 'No commits found yet.' },
 
   // ── File types (new document dropdown) ────────────────────────────────────
   'doc.word':          { da: 'Word (.docx)',      en: 'Word (.docx)' },

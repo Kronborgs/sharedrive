@@ -20,3 +20,7 @@ fi
 NEW_VERSION="${DATE}-build-$(printf '%03d' ${NEXT_N})"
 echo "$NEW_VERSION" > "$CURRENT_FILE"
 echo "Version bumped to: $NEW_VERSION"
+
+if [ -f "$(dirname "$0")/generate-changelog.sh" ]; then
+  bash "$(dirname "$0")/generate-changelog.sh" >/dev/null || true
+fi

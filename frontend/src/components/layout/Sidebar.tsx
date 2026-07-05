@@ -1,4 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import {
   Files,
   Share2,
@@ -32,6 +33,7 @@ import { AddMusicDialog } from '@/components/files/AddMusicDialog'
 import { Dial, RetroButton, LedDisplay, CassetteIcon } from '@/components/files/Dial'
 import { usePlaylist } from '@/lib/playlist-context'
 import { APP_VERSION } from '@/version'
+import { CHANGELOG_ENTRIES } from '@/changelog.generated'
 
 interface NavItem {
   to: string
@@ -92,6 +94,19 @@ function fmt(s: number) {
   return `${m}:${sec.toString().padStart(2, '0')}`
 }
 
+function formatBuildDate(raw?: string) {
+  if (!raw) return 'unknown'
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return raw
+  return new Intl.DateTimeFormat('da-DK', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d)
+}
+
 export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose?: () => void }) {
   const { user, setUser } = useAuth()
   const qc = useQueryClient()
@@ -100,6 +115,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showWebDAV, setShowWebDAV] = useState(false)
   const [showTOTP, setShowTOTP] = useState(false)
+  const [showBuildInfo, setShowBuildInfo] = useState(false)
   const [playerExpanded, setPlayerExpanded] = useState(true)
   const [mobilePlayerOpen, setMobilePlayerOpen] = useState(false)
   const [showAddMusic, setShowAddMusic] = useState(false)
@@ -132,6 +148,12 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
     setPlaylist,
     playlistMaxTracks,
   } = usePlaylist()
+
+  const { data: versionInfo } = useQuery({
+    queryKey: ['system', 'version'],
+    queryFn: ({ signal }) => api.get<{ version: string; build_date: string }>('/api/v1/system/version', signal),
+    staleTime: 60_000,
+  })
 
   // Handle adding music: when there's an active playlist just add tracks,
   // otherwise create a new playlist inline and set it as active.
@@ -451,6 +473,13 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                 {locale === 'da' ? 'English' : 'Dansk'}
               </button>
               <button
+                onClick={() => { setShowUserMenu(false); setShowBuildInfo(true) }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+              >
+                <ScrollText size={14} className="text-zinc-400" />
+                {t('buildInfo.title')}
+              </button>
+              <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
               >
@@ -477,6 +506,51 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
             onClose={() => setShowAddMusic(false)}
             onAdd={fileIds => { void handleAddMusic(fileIds) }}
           />
+        )}
+
+        {showBuildInfo && (
+          <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-3" onClick={() => setShowBuildInfo(false)}>
+            <div
+              className="w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-2xl bg-white dark:bg-[#151826] border border-zinc-200 dark:border-[#2d3148] shadow-xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148] flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('buildInfo.title')}</h3>
+                  <p className="text-xs text-zinc-500 dark:text-slate-400 mt-0.5">
+                    {t('buildInfo.versionBuilt', {
+                      version: versionInfo?.version ?? APP_VERSION,
+                      date: formatBuildDate(versionInfo?.build_date),
+                    })}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowBuildInfo(false)}
+                  className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200"
+                  aria-label={t('action.close')}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="max-h-[70vh] overflow-y-auto divide-y divide-zinc-100 dark:divide-[#2d3148]">
+                {CHANGELOG_ENTRIES.length === 0 && (
+                  <p className="px-4 py-3 text-sm text-zinc-500 dark:text-slate-400">{t('buildInfo.empty')}</p>
+                )}
+                {CHANGELOG_ENTRIES.map((entry) => (
+                  <div key={`${entry.hash}-${entry.date}-${entry.message}`} className="px-4 py-3 space-y-1">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="px-2 py-0.5 rounded-md bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400 font-mono">
+                        {entry.hash}
+                      </span>
+                      <span className="text-zinc-500 dark:text-slate-400">{entry.date}</span>
+                    </div>
+                    <p className="text-sm text-zinc-900 dark:text-slate-100">{entry.message}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
       </aside>
 

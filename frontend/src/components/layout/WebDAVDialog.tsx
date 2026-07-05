@@ -66,6 +66,11 @@ export function WebDAVDialog({ onClose }: Props) {
   // Linux davfs2 mount
   const linuxMount = `sudo mount -t davfs ${davUrl} /mnt/sharedrive`
   const linuxFstab = `${davUrl} /mnt/sharedrive davfs _netdev,noauto,user 0 0`
+  const linuxSecrets = `${davUrl}  ${user?.email ?? 'din@email.dk'}  DIT-APP-PASSWORD`
+  const linuxPerms = `sudo chmod 600 /etc/davfs2/secrets`
+  const linuxMkdir = `sudo mkdir -p /mnt/sharedrive`
+  const linuxMountTest = `sudo mount -a`
+  const macAutoScript = `echo "#!/bin/zsh\nosascript -e 'tell application \"Finder\" to mount volume \"${davUrl}\"'" > ~/mount-sharedrive-webdav.sh && chmod +x ~/mount-sharedrive-webdav.sh`
   const windowsRegCmd = `Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters" -Name FileSizeLimitInBytes -Value 0xFFFFFFFF; net stop webclient; net start webclient`
 
   const { data: passwords } = useQuery({
@@ -203,6 +208,16 @@ export function WebDAVDialog({ onClose }: Props) {
                 <li>Indsæt URL'en ovenfor og klik <strong>Opret forbindelse</strong></li>
                 <li>Log ind med din <strong>email</strong> og en <strong>app password</strong> nedenfor</li>
               </ol>
+
+              <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3 space-y-2">
+                <p className="text-[11px] font-semibold text-zinc-700 dark:text-slate-300">{t('webdav.macAutoTitle')}</p>
+                <ol className="text-[11px] text-zinc-600 dark:text-slate-400 space-y-1 list-decimal list-inside">
+                  <li>{t('webdav.macAutoStep1')}</li>
+                  <li>{t('webdav.macAutoStep2')}</li>
+                  <li>{t('webdav.macAutoStep3')}</li>
+                </ol>
+                <CodeRow label={t('webdav.macAutoCmdLabel')} value={macAutoScript} copyKey="macauto" copied={copied} onCopy={copy} />
+              </div>
             </div>
           )}
 
@@ -212,12 +227,13 @@ export function WebDAVDialog({ onClose }: Props) {
               <CodeRow label="WebDAV URL" value={davUrl} copyKey="linurl" copied={copied} onCopy={copy} />
               <p className="text-[11px] text-zinc-500 dark:text-slate-500">Installer <code className="font-mono">davfs2</code> og mount engangsmount:</p>
               <CodeRow label={t('webdav.linMountLabel')} value={linuxMount} copyKey="linmnt" copied={copied} onCopy={copy} />
+              <CodeRow label={t('webdav.linMkdirLabel')} value={linuxMkdir} copyKey="linmkdir" copied={copied} onCopy={copy} />
               <p className="text-[11px] text-zinc-500 dark:text-slate-500">Eller tilføj til <code className="font-mono">/etc/fstab</code> for automatisk mount ved boot:</p>
               <CodeRow label="/etc/fstab entry" value={linuxFstab} copyKey="linfstab" copied={copied} onCopy={copy} />
-              <p className="text-[11px] text-zinc-500 dark:text-slate-500">
-                Gem legitimationsoplysninger i <code className="font-mono">/etc/davfs2/secrets</code>:<br />
-                <code className="font-mono">{davUrl}  din@email.dk  dit-app-password</code>
-              </p>
+              <p className="text-[11px] text-zinc-500 dark:text-slate-500">{t('webdav.linSecretsWhere')}</p>
+              <CodeRow label="/etc/davfs2/secrets" value={linuxSecrets} copyKey="linsec" copied={copied} onCopy={copy} />
+              <CodeRow label={t('webdav.linPermsLabel')} value={linuxPerms} copyKey="linperm" copied={copied} onCopy={copy} />
+              <CodeRow label={t('webdav.linMountTestLabel')} value={linuxMountTest} copyKey="lintest" copied={copied} onCopy={copy} />
             </div>
           )}
 
@@ -239,6 +255,12 @@ export function WebDAVDialog({ onClose }: Props) {
               </button>
             </div>
           )}
+
+          {/* Create new app password */}
+          <div className="rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 p-3 space-y-1">
+            <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">{t('webdav.noExpiryTitle')}</p>
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-400">{t('webdav.noExpiryDesc')}</p>
+          </div>
 
           {/* Create new app password */}
           <div className="space-y-1.5">
@@ -280,7 +302,7 @@ export function WebDAVDialog({ onClose }: Props) {
                     <button
                       onClick={() => revoke.mutate(p.id)}
                       className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                      title="Tilbagekald"
+                      title={t('webdav.revoke')}
                     >
                       <Trash2 size={13} />
                     </button>

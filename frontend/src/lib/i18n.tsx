@@ -921,6 +921,17 @@ const translations = {
   'webdav.psWarningTitle':    { da: 'Brug normal PowerShell — ikke administrator', en: 'Use regular PowerShell — not administrator' },
   'webdav.psCmdLabel':        { da: 'PowerShell-kommando (erstat APP-PASSWORD)', en: 'PowerShell command (replace APP-PASSWORD)' },
   'webdav.linMountLabel':     { da: 'Mount-kommando',                 en: 'Mount command' },
+  'webdav.linMkdirLabel':     { da: 'Opret mount-mappe',              en: 'Create mount folder' },
+  'webdav.linSecretsWhere':   { da: 'Gem login-oplysninger i /etc/davfs2/secrets (URL, email, app-adgangskode):', en: 'Save credentials in /etc/davfs2/secrets (URL, email, app password):' },
+  'webdav.linPermsLabel':     { da: 'Sæt sikre filrettigheder',        en: 'Set secure file permissions' },
+  'webdav.linMountTestLabel': { da: 'Test auto-mount konfiguration',   en: 'Test auto-mount configuration' },
+  'webdav.macAutoTitle':      { da: 'Automatisk mount ved login (macOS)', en: 'Automatic mount at login (macOS)' },
+  'webdav.macAutoStep1':      { da: 'Forbind først manuelt én gang i Finder og vælg at gemme i Nøglering.', en: 'Connect manually once in Finder and choose to save in Keychain.' },
+  'webdav.macAutoStep2':      { da: 'Kør kommandoen nedenfor i Terminal for at oprette et login-script.', en: 'Run the command below in Terminal to create a login script.' },
+  'webdav.macAutoStep3':      { da: 'Tilføj scriptet som Login Item i Systemindstillinger → Generelt → Login-emner.', en: 'Add the script as a Login Item in System Settings → General → Login Items.' },
+  'webdav.macAutoCmdLabel':   { da: 'Opret login-script',              en: 'Create login script' },
+  'webdav.noExpiryTitle':     { da: 'App-adgangskoder udløber ikke automatisk', en: 'App passwords do not expire automatically' },
+  'webdav.noExpiryDesc':      { da: 'De virker, indtil du selv tilbagekalder/sletter dem i listen nedenfor. Brug én kode pr. enhed for nem kontrol.', en: 'They stay valid until you revoke/delete them in the list below. Use one password per device for easier control.' },
 
   // ── TOTP setup dialog ─────────────────────────────────────────────────────
   'totp.setupTitle':          { da: 'Opsæt to-faktor-godkendelse',    en: 'Set up two-factor authentication' },

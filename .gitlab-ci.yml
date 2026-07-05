@@ -1,6 +1,7 @@
 stages:
   - test
   - build
+  - publish
 
 variables:
   GO_VERSION: "1.25.0"
@@ -75,3 +76,14 @@ frontend:build:
     paths:
       - frontend/dist/
     expire_in: 7 days
+
+docker:publish:
+  stage: publish
+  image: docker:27
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - docker build --pull -t "$CI_REGISTRY_IMAGE:latest" -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"

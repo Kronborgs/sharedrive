@@ -58,19 +58,27 @@ export function WebDAVDialog({ onClose }: Props) {
 
   const davBase = settings?.direct_upload_url?.trim().replace(/\/+$/, '') || window.location.origin
   const davUrl = `${davBase}/dav/${user?.id ?? ''}`
+  const macDavUrl = (() => {
+    if (davUrl.startsWith('https://')) return davUrl.replace(/^https:\/\//, 'davs://')
+    if (davUrl.startsWith('http://')) return davUrl.replace(/^http:\/\//, 'dav://')
+    return davUrl
+  })()
 
   // Windows UNC path: \\hostname@SSL@443\dav\userid
   const hostname = (() => { try { return new URL(davBase).hostname } catch { return davBase.replace(/^https?:\/\//, '') } })()
   const windowsUnc = `\\\\${hostname}@SSL@443\\dav\\${user?.id ?? ''}`
 
   // Linux davfs2 mount
-  const linuxMount = `sudo mount -t davfs ${davUrl} /mnt/sharedrive`
-  const linuxFstab = `${davUrl} /mnt/sharedrive davfs _netdev,noauto,user 0 0`
+  const linuxMountPoint = '/home/din-bruger/WebDAV/sharedrive'
+  const linuxMount = `sudo mount -t davfs ${davUrl} ${linuxMountPoint}`
+  const linuxFstab = `${davUrl} ${linuxMountPoint} davfs rw,user,_netdev,noauto,x-systemd.automount,uid=1000,gid=1000,file_mode=0664,dir_mode=0775 0 0`
   const linuxSecrets = `${davUrl}  ${user?.email ?? 'din@email.dk'}  DIT-APP-PASSWORD`
   const linuxPerms = `sudo chmod 600 /etc/davfs2/secrets`
-  const linuxMkdir = `sudo mkdir -p /mnt/sharedrive`
+  const linuxMkdir = `mkdir -p ~/WebDAV/sharedrive`
   const linuxMountTest = `sudo mount -a`
-  const macAutoScript = `echo "#!/bin/zsh\nosascript -e 'tell application \"Finder\" to mount volume \"${davUrl}\"'" > ~/mount-sharedrive-webdav.sh && chmod +x ~/mount-sharedrive-webdav.sh`
+  const linuxUidCmd = `id -u`
+  const linuxGidCmd = `id -g`
+  const macAutoScript = `echo "#!/bin/zsh\nosascript -e 'tell application \"Finder\" to mount volume \"${macDavUrl}\"'" > ~/mount-sharedrive-webdav.sh && chmod +x ~/mount-sharedrive-webdav.sh`
   const windowsRegCmd = `Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters" -Name FileSizeLimitInBytes -Value 0xFFFFFFFF; net stop webclient; net start webclient`
 
   const { data: passwords } = useQuery({
@@ -202,7 +210,7 @@ export function WebDAVDialog({ onClose }: Props) {
           {/* ── macOS ── */}
           {tab === 'macos' && (
             <div className="space-y-3">
-              <CodeRow label="URL" value={davUrl} copyKey="macurl" copied={copied} onCopy={copy} />
+              <CodeRow label="URL" value={macDavUrl} copyKey="macurl" copied={copied} onCopy={copy} />
               <ol className="text-[11px] text-zinc-600 dark:text-slate-400 space-y-1 list-decimal list-inside">
                 <li>Finder → <strong>Gå</strong> → <strong>Opret forbindelse til server…</strong> (⌘K)</li>
                 <li>Indsæt URL'en ovenfor og klik <strong>Opret forbindelse</strong></li>
@@ -233,6 +241,9 @@ export function WebDAVDialog({ onClose }: Props) {
               <p className="text-[11px] text-zinc-500 dark:text-slate-500">{t('webdav.linSecretsWhere')}</p>
               <CodeRow label="/etc/davfs2/secrets" value={linuxSecrets} copyKey="linsec" copied={copied} onCopy={copy} />
               <CodeRow label={t('webdav.linPermsLabel')} value={linuxPerms} copyKey="linperm" copied={copied} onCopy={copy} />
+              <p className="text-[11px] text-zinc-500 dark:text-slate-500">{t('webdav.linUidGidHelp')}</p>
+              <CodeRow label={t('webdav.linUidCmdLabel')} value={linuxUidCmd} copyKey="linuid" copied={copied} onCopy={copy} />
+              <CodeRow label={t('webdav.linGidCmdLabel')} value={linuxGidCmd} copyKey="lingid" copied={copied} onCopy={copy} />
               <CodeRow label={t('webdav.linMountTestLabel')} value={linuxMountTest} copyKey="lintest" copied={copied} onCopy={copy} />
             </div>
           )}

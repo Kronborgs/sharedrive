@@ -22,6 +22,7 @@ import { useShareTarget } from '@/hooks/useShareTarget'
 import { useI18n } from '@/lib/i18n'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, FolderUp, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive, FilePlus } from 'lucide-react'
 import { toast } from 'sonner'
+import type { UploadRequest } from '@/components/files/UploadZone'
 
 const searchSchema = z.object({
   folder: z.string().optional(),
@@ -42,6 +43,11 @@ interface ContextMenuState {
   item: FileItem
   x: number
   y: number
+}
+
+interface UploadConflictPair {
+  incoming: File
+  existing: FileItem
 }
 
 // ─── Playlist helpers ─────────────────────────────────────────────────────────
@@ -85,6 +91,11 @@ function FilesPage() {
     audioFiles: FileItem[]
     existingM3u: FileItem | null
   } | null>(null)
+  const [uploadConflictOpen, setUploadConflictOpen] = useState(false)
+  const [uploadConflictQueue, setUploadConflictQueue] = useState<UploadConflictPair[]>([])
+  const [uploadConflictResolved, setUploadConflictResolved] = useState<UploadRequest[]>([])
+  const [uploadConflictApplyAll, setUploadConflictApplyAll] = useState(false)
+  const [uploadConflictTargetFolderId, setUploadConflictTargetFolderId] = useState<string | null>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
   const { uploads, startUpload, startFolderUpload, dismiss, directUpload } = useUploader(folderId)
@@ -418,6 +429,97 @@ function FilesPage() {
   }, [handleOpen, trash, navigate, qc, doCreateFolderPlaylist, addTracks, activePlaylistId, setPlaylist, playlistMaxTracks])
 
   const items = files ?? []
+
+  const compareUpdatedLabel = useCallback((incoming: File, existing: FileItem) => {
+    const existingTs = Date.parse(existing.updated_at)
+    if (Number.isNaN(existingTs) || !incoming.lastModified) return t('upload.conflictUnknownTime')
+    if (incoming.lastModified > existingTs) return t('upload.conflictIncomingNewer')
+    if (incoming.lastModified < existingTs) return t('upload.conflictIncomingOlder')
+    return t('upload.conflictSameTime')
+  }, [t])
+
+  const beginUploadWithConflictCheck = useCallback((incomingFiles: File[], targetFolderId?: string | null) => {
+    if (incomingFiles.length === 0) return
+
+    void (async () => {
+      const effectiveTargetFolderId = targetFolderId ?? folderId
+      let targetItems = files ?? []
+      if (effectiveTargetFolderId !== folderId) {
+        try {
+          targetItems = await api.get<FileItem[]>(`/api/v1/files?parent_id=${effectiveTargetFolderId ?? ''}`)
+        } catch {
+          targetItems = []
+        }
+      }
+
+      const existingByName = new Map<string, FileItem>()
+      for (const it of targetItems) {
+        if (!it.is_folder) existingByName.set(it.name, it)
+      }
+
+      const conflicts: UploadConflictPair[] = []
+      const immediate: UploadRequest[] = []
+      for (const incoming of incomingFiles) {
+        const existing = existingByName.get(incoming.name)
+        if (existing) conflicts.push({ incoming, existing })
+        else immediate.push({ file: incoming, overwrite: false })
+      }
+
+      if (conflicts.length === 0) {
+        startUpload(immediate, effectiveTargetFolderId)
+        return
+      }
+
+      setUploadConflictResolved(immediate)
+      setUploadConflictQueue(conflicts)
+      setUploadConflictApplyAll(false)
+      setUploadConflictTargetFolderId(effectiveTargetFolderId)
+      setUploadConflictOpen(true)
+    })()
+  }, [files, folderId, startUpload])
+
+  const closeUploadConflictDialog = useCallback(() => {
+    setUploadConflictOpen(false)
+    setUploadConflictQueue([])
+    setUploadConflictResolved([])
+    setUploadConflictApplyAll(false)
+    setUploadConflictTargetFolderId(null)
+  }, [])
+
+  const resolveUploadConflict = useCallback((choice: 'overwrite' | 'skip') => {
+    if (uploadConflictQueue.length === 0) {
+      closeUploadConflictDialog()
+      return
+    }
+
+    const [current, ...rest] = uploadConflictQueue
+    const nextResolved = choice === 'overwrite'
+      ? [...uploadConflictResolved, { file: current.incoming, overwrite: true }]
+      : uploadConflictResolved
+
+    let nextQueue = rest
+    if (uploadConflictApplyAll) {
+      for (const pair of rest) {
+        if (choice === 'overwrite') {
+          nextResolved.push({ file: pair.incoming, overwrite: true })
+        }
+      }
+      nextQueue = []
+    }
+
+    if (nextQueue.length > 0) {
+      setUploadConflictQueue(nextQueue)
+      setUploadConflictResolved(nextResolved)
+      return
+    }
+
+    closeUploadConflictDialog()
+    if (nextResolved.length === 0) {
+      toast.info(t('upload.allConflictsSkipped'))
+    } else {
+      startUpload(nextResolved, uploadConflictTargetFolderId ?? folderId)
+    }
+  }, [uploadConflictQueue, uploadConflictResolved, uploadConflictApplyAll, closeUploadConflictDialog, startUpload, uploadConflictTargetFolderId, folderId, t])
   const sorted = [...items.filter(f => f.is_folder), ...items.filter(f => !f.is_folder)]
 
   const currentFolderItem: FileItem | null = folderId && breadcrumbs?.length
@@ -523,7 +625,7 @@ function FilesPage() {
   }, [selected, folderId, qc, setPlaylist, t])
 
   return (
-    <DropZone folderId={folderId} onUploadStart={startUpload}>
+    <DropZone folderId={folderId} onUploadStart={files => beginUploadWithConflictCheck(files)}>
       <div className="flex flex-col flex-1 min-h-0">
         {/* Toolbar */}
         <div className="sticky top-0 z-10 shrink-0 bg-zinc-50 dark:bg-[#0f1117]">
@@ -661,7 +763,7 @@ function FilesPage() {
                 <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium cursor-pointer transition-colors">
                   <Upload size={12} />
                   <span className="hidden sm:inline">{t('action.upload')}</span>
-                  <input type="file" multiple className="sr-only" onChange={e => e.target.files && startUpload(Array.from(e.target.files))} />
+                  <input type="file" multiple className="sr-only" onChange={e => e.target.files && beginUploadWithConflictCheck(Array.from(e.target.files))} />
                 </label>
 
                 {/* Upload folder — desktop only */}
@@ -982,9 +1084,61 @@ function FilesPage() {
         <ShareTargetDialog
           files={shareTargetFiles}
           currentFolderId={folderId}
-          onUpload={(files, targetFolderId) => startUpload(files, targetFolderId)}
+          onUpload={(files, targetFolderId) => beginUploadWithConflictCheck(files, targetFolderId)}
           onClose={clearShareTarget}
         />
+      )}
+
+      {uploadConflictOpen && uploadConflictQueue.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeUploadConflictDialog}>
+          <div
+            className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-[min(90vw,28rem)] space-y-4 shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('upload.conflictTitle')}</h3>
+              <p className="text-sm text-muted mt-1">{t('upload.conflictSubtitle')}</p>
+            </div>
+            <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3">
+              <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 break-all">{uploadConflictQueue[0].incoming.name}</p>
+              <p className="text-xs text-zinc-500 dark:text-slate-400 mt-1">
+                {compareUpdatedLabel(uploadConflictQueue[0].incoming, uploadConflictQueue[0].existing)}
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-slate-400 mt-1">
+                {t('upload.conflictExistingUpdated', {
+                  date: new Date(uploadConflictQueue[0].existing.updated_at).toLocaleString(),
+                })}
+              </p>
+            </div>
+            {uploadConflictQueue.length > 1 && (
+              <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  className="rounded border-zinc-300 dark:border-zinc-600"
+                  checked={uploadConflictApplyAll}
+                  onChange={e => setUploadConflictApplyAll(e.target.checked)}
+                />
+                {t('upload.conflictApplyToAll', { count: String(uploadConflictQueue.length) })}
+              </label>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => resolveUploadConflict('skip')}
+                className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300"
+              >
+                {t('upload.conflictSkip')}
+              </button>
+              <button
+                type="button"
+                onClick={() => resolveUploadConflict('overwrite')}
+                className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
+              >
+                {t('upload.conflictOverwrite')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {renameId && (

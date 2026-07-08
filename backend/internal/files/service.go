@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 )
@@ -29,6 +31,22 @@ type File struct {
 	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+// UploadConflictError is returned when a file/folder with the same name already
+// exists in the destination folder.
+type UploadConflictError struct {
+	Existing *File
+}
+
+func (e *UploadConflictError) Error() string {
+	if e == nil || e.Existing == nil {
+		return "upload conflict"
+	}
+	if e.Existing.IsFolder {
+		return "a folder with this name already exists"
+	}
+	return "a file with this name already exists"
 }
 
 // nullableString is used to scan nullable TEXT columns into a plain string.
@@ -426,6 +444,88 @@ func splitFileNameExt(name string) (base, ext string) {
 	return name, ""
 }
 
+// FindNameConflict returns the newest non-deleted item in the target folder
+// that has the same name. It returns nil when no conflict exists.
+func (s *Service) FindNameConflict(ctx context.Context, name, folderIDStr string) (*File, error) {
+	var parentID *uuid.UUID
+	if folderIDStr != "" {
+		id, err := uuid.Parse(folderIDStr)
+		if err == nil {
+			parentID = &id
+		}
+	}
+	row := s.db.QueryRow(ctx,
+		`SELECT `+fileCols+` FROM files
+		 WHERE parent_id IS NOT DISTINCT FROM $1
+		   AND name = $2
+		   AND deleted_at IS NULL
+		 ORDER BY updated_at DESC
+		 LIMIT 1`,
+		parentID, name,
+	)
+	f, err := scanFile(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("files.FindNameConflict: %w", err)
+	}
+	return f, nil
+}
+
+func (s *Service) overwriteExistingFile(ctx context.Context, existing *File, mimeType string, r io.Reader, contentLength int64) (*File, error) {
+	if existing == nil {
+		return nil, fmt.Errorf("files.overwriteExistingFile: missing existing file")
+	}
+	if existing.IsFolder {
+		return nil, &UploadConflictError{Existing: existing}
+	}
+
+	oldSize := existing.SizeBytes
+	if contentLength > oldSize {
+		if err := s.quota.Check(ctx, existing.OwnerID.String(), contentLength-oldSize); err != nil {
+			return nil, err
+		}
+	}
+
+	hash := sha256.New()
+	n, err := s.storage.Write(existing.ID.String(), io.TeeReader(r, hash))
+	if err != nil {
+		return nil, fmt.Errorf("files.overwriteExistingFile: storage write: %w", err)
+	}
+	shaHex := hex.EncodeToString(hash.Sum(nil))
+
+	if contentLength <= 0 && n > oldSize {
+		if err := s.quota.Check(ctx, existing.OwnerID.String(), n-oldSize); err != nil {
+			return nil, err
+		}
+	}
+
+	storagePath := s.storage.Path(existing.ID.String())
+	f, err := scanFile(s.db.QueryRow(ctx,
+		`UPDATE files
+		 SET mime_type = $1,
+		     size_bytes = $2,
+		     storage_path = $3,
+		     checksum_sha256 = $4,
+		     updated_at = now()
+		 WHERE id = $5::uuid
+		 RETURNING `+fileCols,
+		mimeType, n, storagePath, shaHex, existing.ID,
+	))
+	if err != nil {
+		return nil, fmt.Errorf("files.overwriteExistingFile: db update: %w", err)
+	}
+
+	if delta := n - oldSize; delta != 0 {
+		if err := s.quota.Add(ctx, existing.OwnerID.String(), delta); err != nil {
+			log.Warn().Err(err).Str("file_id", existing.ID.String()).Msg("files.overwriteExistingFile: quota update")
+		}
+	}
+
+	return f, nil
+}
+
 // GetFolderSize computes the recursive total size and file count of a folder.
 // The caller must have access to the folder (ownership or share grant).
 func (s *Service) GetFolderSize(ctx context.Context, id, userID string) (sizeBytes int64, fileCount int64, err error) {
@@ -525,7 +625,7 @@ func (s *Service) Search(ctx context.Context, userID, query string, limit int) (
 
 // Upload streams r to storage with SHA-256 hashing, enforces quota, and
 // inserts a file record. Pass contentLength=0 if Content-Length is unknown.
-func (s *Service) Upload(ctx context.Context, ownerID, name, mimeType, folderIDStr string, r io.Reader, contentLength int64) (*File, error) {
+func (s *Service) Upload(ctx context.Context, ownerID, name, mimeType, folderIDStr string, overwrite bool, r io.Reader, contentLength int64) (*File, error) {
 	var parentID *uuid.UUID
 	if folderIDStr != "" {
 		if id, err := uuid.Parse(folderIDStr); err == nil {
@@ -536,6 +636,15 @@ func (s *Service) Upload(ctx context.Context, ownerID, name, mimeType, folderIDS
 	// Authorize write into the target folder
 	if err := s.AuthorizeParentWrite(ctx, ownerID, parentID); err != nil {
 		return nil, fmt.Errorf("files.Upload: %w", err)
+	}
+
+	if conflict, err := s.FindNameConflict(ctx, name, folderIDStr); err != nil {
+		return nil, err
+	} else if conflict != nil {
+		if !overwrite || conflict.IsFolder {
+			return nil, &UploadConflictError{Existing: conflict}
+		}
+		return s.overwriteExistingFile(ctx, conflict, mimeType, r, contentLength)
 	}
 
 	// Pre-check quota when content length is known upfront
@@ -637,6 +746,7 @@ func (s *Service) GetEffectiveMaxUpload(ctx context.Context, userID, role, folde
 func (s *Service) FinalizeTusUpload(
 	ctx context.Context,
 	tempPath, ownerID, name, mimeType, folderIDStr string,
+	overwrite bool,
 	size int64,
 ) (*File, error) {
 	// Always remove tus temp files when this function returns.
@@ -657,17 +767,26 @@ func (s *Service) FinalizeTusUpload(
 		return nil, fmt.Errorf("files.FinalizeTusUpload: %w", err)
 	}
 
-	if size > 0 {
-		if err := s.quota.Check(ctx, ownerID, size); err != nil {
-			return nil, err
-		}
-	}
-
 	src, err := os.Open(tempPath)
 	if err != nil {
 		return nil, fmt.Errorf("files.FinalizeTusUpload: open: %w", err)
 	}
 	defer src.Close()
+
+	if conflict, err := s.FindNameConflict(ctx, name, folderIDStr); err != nil {
+		return nil, err
+	} else if conflict != nil {
+		if !overwrite || conflict.IsFolder {
+			return nil, &UploadConflictError{Existing: conflict}
+		}
+		return s.overwriteExistingFile(ctx, conflict, mimeType, src, size)
+	}
+
+	if size > 0 {
+		if err := s.quota.Check(ctx, ownerID, size); err != nil {
+			return nil, err
+		}
+	}
 
 	fileID := uuid.New()
 	hash := sha256.New()

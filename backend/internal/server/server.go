@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -855,9 +856,31 @@ func (s *Server) tusHandler() http.Handler {
 			if actor == nil {
 				return tusd.HTTPResponse{StatusCode: http.StatusUnauthorized}, tusd.FileInfoChanges{}, nil
 			}
+			meta := hook.Upload.MetaData
+			overwrite := strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "1") || strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "true")
+			var conflict *files.File
+			if name := strings.TrimSpace(meta["filename"]); name != "" {
+				if found, err := s.fileSvc.FindNameConflict(ctx, name, meta["folder_id"]); err != nil {
+					log.Error().Err(err).Msg("tusHandler: precreate conflict lookup")
+					return tusd.HTTPResponse{StatusCode: http.StatusInternalServerError}, tusd.FileInfoChanges{}, nil
+				} else if found != nil {
+					conflict = found
+					if conflict.IsFolder || !overwrite {
+						msg := "a file with this name already exists"
+						if conflict.IsFolder {
+							msg = "a folder with this name already exists"
+						}
+						return tusd.HTTPResponse{
+							StatusCode: http.StatusConflict,
+							Body:       `{"error":"` + msg + `"}`,
+							Header:     tusd.HTTPHeader{"Content-Type": "application/json"},
+						}, tusd.FileInfoChanges{}, nil
+					}
+				}
+			}
 			if hook.Upload.Size > 0 {
 				// Enforce per-user (or folder-owner for guests) max upload size
-				maxBytes := s.fileSvc.GetEffectiveMaxUpload(ctx, actor.ID.String(), actor.Role, hook.Upload.MetaData["folder_id"])
+				maxBytes := s.fileSvc.GetEffectiveMaxUpload(ctx, actor.ID.String(), actor.Role, meta["folder_id"])
 				if hook.Upload.Size > maxBytes {
 					return tusd.HTTPResponse{
 						StatusCode: http.StatusRequestEntityTooLarge,
@@ -865,12 +888,14 @@ func (s *Server) tusHandler() http.Handler {
 						Header:     tusd.HTTPHeader{"Content-Type": "application/json"},
 					}, tusd.FileInfoChanges{}, nil
 				}
-				if err := s.fileSvc.CheckQuota(ctx, actor.ID.String(), hook.Upload.Size); err != nil {
-					return tusd.HTTPResponse{
-						StatusCode: http.StatusUnprocessableEntity,
-						Body:       `{"error":"` + err.Error() + `"}`,
-						Header:     tusd.HTTPHeader{"Content-Type": "application/json"},
-					}, tusd.FileInfoChanges{}, nil
+				if !overwrite || conflict == nil {
+					if err := s.fileSvc.CheckQuota(ctx, actor.ID.String(), hook.Upload.Size); err != nil {
+						return tusd.HTTPResponse{
+							StatusCode: http.StatusUnprocessableEntity,
+							Body:       `{"error":"` + err.Error() + `"}`,
+							Header:     tusd.HTTPHeader{"Content-Type": "application/json"},
+						}, tusd.FileInfoChanges{}, nil
+					}
 				}
 			}
 			return tusd.HTTPResponse{}, tusd.FileInfoChanges{}, nil
@@ -891,14 +916,19 @@ func (s *Server) tusHandler() http.Handler {
 				mimeType = "application/octet-stream"
 			}
 			folderID := meta["folder_id"]
+			overwrite := strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "1") || strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "true")
 			tempPath := filepath.Join(s.cfg.TusUploadDir, hook.Upload.ID)
 
-			f, err := s.fileSvc.FinalizeTusUpload(ctx, tempPath, actor.ID.String(), name, mimeType, folderID, hook.Upload.Size)
+			f, err := s.fileSvc.FinalizeTusUpload(ctx, tempPath, actor.ID.String(), name, mimeType, folderID, overwrite, hook.Upload.Size)
 			if err != nil {
 				log.Error().Err(err).Str("upload_id", hook.Upload.ID).Msg("tusHandler: finalize")
 				code := http.StatusInternalServerError
 				if strings.HasPrefix(err.Error(), "quota:") {
 					code = http.StatusUnprocessableEntity
+				}
+				var conflictErr *files.UploadConflictError
+				if errors.As(err, &conflictErr) {
+					code = http.StatusConflict
 				}
 				return tusd.HTTPResponse{
 					StatusCode: code,

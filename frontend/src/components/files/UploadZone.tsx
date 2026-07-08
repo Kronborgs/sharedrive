@@ -49,6 +49,7 @@ export function DropZone({ folderId: _folderId, onUploadStart, children }: DropZ
 export interface UploadEntry {
   id: string
   file: File
+  overwrite?: boolean
   progress: number
   status: 'queued' | 'uploading' | 'done' | 'error' | 'paused'
   error?: string
@@ -190,6 +191,11 @@ const SPEED_WINDOW = 10
 
 interface SpeedSample { time: number; bytes: number }
 
+export interface UploadRequest {
+  file: File
+  overwrite?: boolean
+}
+
 export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   const qc = useQueryClient()
   const [uploads, setUploads] = useState<UploadEntry[]>([])
@@ -244,7 +250,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     })
   }
 
-  const startUpload = useCallback((files: File[], targetFolderId?: string | null) => {
+  const startUpload = useCallback((files: Array<File | UploadRequest>, targetFolderId?: string | null) => {
     // Determine TUS endpoint: prefer direct_upload_url (bypasses Cloudflare) if set
     const directBase = settings?.direct_upload_url?.trim().replace(/\/+$/, '')
     const tusEndpoint = directBase ? `${directBase}/upload/` : '/upload/'
@@ -254,9 +260,15 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     // Allow caller to override the target folder (e.g. when coming from share target)
     const effectiveFolderId = targetFolderId !== undefined ? targetFolderId : folderId
 
-    const entries: UploadEntry[] = files.map(file => ({
+    const normalized: UploadRequest[] = files.map(item => {
+      if (item instanceof File) return { file: item, overwrite: false }
+      return { file: item.file, overwrite: !!item.overwrite }
+    })
+
+    const entries: UploadEntry[] = normalized.map(({ file, overwrite }) => ({
       id: crypto.randomUUID(),
       file,
+      overwrite,
       progress: 0,
       status: 'queued' as const,
     }))
@@ -297,6 +309,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
             filename: entry.file.name,
             filetype: entry.file.type || 'application/octet-stream',
             folder_id: effectiveFolderId ?? '',
+            overwrite: entry.overwrite ? '1' : '0',
           },
           onError: (error) => {
             let msg = 'Upload failed'

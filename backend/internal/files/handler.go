@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif" // register GIF decoder
@@ -500,11 +501,17 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
+	overwrite := strings.EqualFold(strings.TrimSpace(r.FormValue("overwrite")), "1") || strings.EqualFold(strings.TrimSpace(r.FormValue("overwrite")), "true")
 
-	f, err := h.svc.Upload(r.Context(), actor.ID.String(), header.Filename, mimeType, folderID, fileData, header.Size)
+	f, err := h.svc.Upload(r.Context(), actor.ID.String(), header.Filename, mimeType, folderID, overwrite, fileData, header.Size)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "quota:") {
 			httputil.RespondError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		var conflictErr *UploadConflictError
+		if errors.As(err, &conflictErr) {
+			httputil.RespondError(w, http.StatusConflict, err.Error())
 			return
 		}
 		log.Error().Err(err).Msg("files.Upload")
@@ -1264,7 +1271,7 @@ func (h *Handler) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
 	fileName := now.Format("2006-01-02 15:04") + ".m3u"
 
 	content := sb.String()
-	f, err := h.svc.Upload(ctx, actor.ID.String(), fileName, "audio/mpegurl", playlistFolderID, strings.NewReader(content), int64(len(content)))
+	f, err := h.svc.Upload(ctx, actor.ID.String(), fileName, "audio/mpegurl", playlistFolderID, false, strings.NewReader(content), int64(len(content)))
 	if err != nil {
 		log.Error().Err(err).Msg("files.CreatePlaylist")
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to save playlist")

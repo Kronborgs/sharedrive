@@ -303,6 +303,17 @@ const translations = {
   'upload.direct':          { da: 'Direkte',                          en: 'Direct' },
   'upload.directNote':      { da: 'Uploader direkte til serveren — bypasser Cloudflare for maksimal hastighed.', en: 'Uploading directly to the server — bypasses Cloudflare for maximum speed.' },
   'upload.cloudflareNote':  { da: 'Filer uploades via Cloudflare i 50 MB dele. Hastighed varierer — det er normalt at progressbaren "staller" kortvarigt mellem dele.', en: 'Files are uploaded via Cloudflare in 50 MB chunks. Speed may vary — it is normal for the progress bar to briefly stall between chunks.' },
+  'upload.conflictTitle':   { da: 'Fil med samme navn findes',        en: 'A file with this name already exists' },
+  'upload.conflictSubtitle':{ da: 'Vælg om den eksisterende fil skal overskrives eller springes over.', en: 'Choose whether to overwrite the existing file or skip it.' },
+  'upload.conflictIncomingNewer': { da: 'Den nye fil er nyere end den eksisterende.', en: 'The new file is newer than the existing one.' },
+  'upload.conflictIncomingOlder': { da: 'Den nye fil er ældre end den eksisterende.', en: 'The new file is older than the existing one.' },
+  'upload.conflictSameTime': { da: 'Filerne har samme ændringstidspunkt.', en: 'The files have the same modified time.' },
+  'upload.conflictUnknownTime': { da: 'Kunne ikke sammenligne filernes tidspunkter.', en: 'Could not compare file timestamps.' },
+  'upload.conflictExistingUpdated': { da: 'Eksisterende fil opdateret: {date}', en: 'Existing file updated: {date}' },
+  'upload.conflictApplyToAll': { da: 'Anvend dette valg på alle {count} konflikter', en: 'Apply this choice to all {count} conflicts' },
+  'upload.conflictSkip':    { da: 'Spring over',                       en: 'Skip' },
+  'upload.conflictOverwrite': { da: 'Overskriv',                       en: 'Overwrite' },
+  'upload.allConflictsSkipped': { da: 'Alle konflikt-filer blev sprunget over.', en: 'All conflicting files were skipped.' },
 
   // ── Login / auth flow ─────────────────────────────────────────────────────
   'login.signIn':             { da: 'Log ind på din konto',           en: 'Sign in to your account' },

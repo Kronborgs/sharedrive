@@ -5,10 +5,20 @@ FROM golang:1.23-alpine
 RUN apk add --no-cache git curl && \
     go install github.com/air-verse/air@latest
 
+RUN addgroup -S app && adduser -S -G app -u 10001 app
+
 WORKDIR /src
 
 COPY go.mod go.sum ./
 RUN go mod download
+
+RUN mkdir -p /tmp/go/pkg/mod /tmp/.cache/go-build && \
+    chown -R app:app /src /tmp/go /tmp/.cache
+
+ENV GOMODCACHE=/tmp/go/pkg/mod
+ENV GOCACHE=/tmp/.cache/go-build
+
+USER app
 
 # Air config is at backend/.air.toml
 CMD ["air", "-c", ".air.toml"]

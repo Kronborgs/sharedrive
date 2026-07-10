@@ -63,6 +63,22 @@ interface PlaylistContextValue {
 const STORAGE_KEY = 'sharedrive_playlist'
 type Cached = { id: string; name: string; index: number; vol: number; shuffle: boolean }
 
+function secureRandomInt(maxExclusive: number): number {
+  if (maxExclusive <= 0) return 0
+  if (!globalThis.crypto?.getRandomValues) return 0
+
+  // Rejection sampling keeps index distribution uniform.
+  const maxUint32 = 0x100000000
+  const limit = Math.floor(maxUint32 / maxExclusive) * maxExclusive
+  const buf = new Uint32Array(1)
+
+  do {
+    globalThis.crypto.getRandomValues(buf)
+  } while (buf[0] >= limit)
+
+  return buf[0] % maxExclusive
+}
+
 function loadCache(): Cached | null {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Cached } catch { return null }
 }
@@ -174,7 +190,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       if (shuffleRef.current) {
         if (len <= 1) { setIsPlaying(false); return }
         const i = currentIndexRef.current
-        let next = Math.floor(Math.random() * (len - 1))
+        let next = secureRandomInt(len - 1)
         if (next >= i) next += 1
         prevIndexRef.current = -1
         setCurrentIndex(next)
@@ -291,7 +307,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       const len = tracksRef.current.length
       if (shuffleRef.current) {
         if (len <= 1) return i
-        let n = Math.floor(Math.random() * (len - 1))
+        let n = secureRandomInt(len - 1)
         if (n >= i) n += 1
         prevIndexRef.current = -1
         return n

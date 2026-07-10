@@ -135,7 +135,7 @@ function BlockedIPsPage() {
           <input
             value={newCIDR}
             onChange={e => setNewCIDR(e.target.value)}
-            placeholder="192.168.1.0/24"
+            placeholder={t('blocked.cidrPlaceholder')}
             className="flex-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
           <input

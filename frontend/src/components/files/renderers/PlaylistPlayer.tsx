@@ -250,7 +250,7 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
               onClick={() => {
                 if (shuffle && tracks && tracks.length > 1) {
                   setCurrentIndex(i => {
-                    let next = Math.floor(Math.random() * (tracks.length - 1))
+                    let next = secureRandomInt(tracks.length - 1)
                     if (next >= i) next += 1
                     return next
                   })

@@ -61,7 +61,7 @@ function secureRandomInt(maxExclusive: number): number {
   if (!globalThis.crypto?.getRandomValues) return 0
 
   // Rejection sampling keeps distribution uniform.
-  const maxUint32 = 0x1_0000_0000
+  const maxUint32 = 0x100000000
   const limit = Math.floor(maxUint32 / maxExclusive) * maxExclusive
   const buf = new Uint32Array(1)
 

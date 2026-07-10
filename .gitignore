@@ -20,6 +20,7 @@ frontend/.vite/
 .env
 .env.local
 *.env.local
+.scannerwork
 
 # Docker override (local dev)
 docker-compose.override.yml

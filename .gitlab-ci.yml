@@ -1,5 +1,6 @@
 stages:
   - test
+  - sonar
   - build
   - publish
 
@@ -31,7 +32,27 @@ backend:test:
   before_script:
     - cd backend
   script:
-    - go test ./... -timeout 60s
+    - go test ./... -timeout 60s -coverprofile=coverage.out
+  artifacts:
+    paths:
+      - backend/coverage.out
+    expire_in: 1 day
+
+sonar:scan:
+  stage: sonar
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  needs:
+    - job: backend:test
+      artifacts: true
+  variables:
+    GIT_DEPTH: "0"
+  script:
+    - sonar-scanner -Dsonar.token=$SONAR_TOKEN
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 backend:build:
   stage: build

@@ -15,6 +15,22 @@ interface PlaylistPlayerProps {
   fileId: string
 }
 
+function secureRandomInt(maxExclusive: number): number {
+  if (maxExclusive <= 0) return 0
+  if (!globalThis.crypto?.getRandomValues) return 0
+
+  // Rejection sampling avoids modulo bias for uniform index selection.
+  const maxUint32 = 0x1_0000_0000
+  const limit = Math.floor(maxUint32 / maxExclusive) * maxExclusive
+  const buf = new Uint32Array(1)
+
+  do {
+    globalThis.crypto.getRandomValues(buf)
+  } while (buf[0] >= limit)
+
+  return buf[0] % maxExclusive
+}
+
 export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
   const { data: tracks, isLoading, isError } = useQuery({
     queryKey: ['playlist-tracks', fileId],
@@ -61,7 +77,7 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
           return
         }
         setCurrentIndex(i => {
-          let next = Math.floor(Math.random() * (tracks.length - 1))
+          let next = secureRandomInt(tracks.length - 1)
           if (next >= i) next += 1
           return next
         })

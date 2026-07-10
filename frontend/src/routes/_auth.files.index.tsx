@@ -56,10 +56,26 @@ const AUDIO_EXTENSIONS = ['.mp3', '.flac', '.wav', '.aac', '.m4a', '.opus', '.og
 const isAudioFile = (f: FileItem) =>
   !f.is_folder && AUDIO_EXTENSIONS.some(ext => f.name.toLowerCase().endsWith(ext))
 
+function secureRandomInt(maxExclusive: number): number {
+  if (maxExclusive <= 0) return 0
+  if (!globalThis.crypto?.getRandomValues) return 0
+
+  // Rejection sampling keeps distribution uniform.
+  const maxUint32 = 0x1_0000_0000
+  const limit = Math.floor(maxUint32 / maxExclusive) * maxExclusive
+  const buf = new Uint32Array(1)
+
+  do {
+    globalThis.crypto.getRandomValues(buf)
+  } while (buf[0] >= limit)
+
+  return buf[0] % maxExclusive
+}
+
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr]
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
+    const j = secureRandomInt(i + 1)
     ;[a[i], a[j]] = [a[j], a[i]]
   }
   return a

@@ -246,10 +246,11 @@ export function FileGrid({ items, selectedIds, onSelect, onOpen, onContextMenu }
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 p-1">
       {items.map(item => (
-        <div
+        <button
+          type="button"
           key={item.id}
           className={cn(
-            'group flex flex-col items-center gap-1.5 p-3 rounded-xl cursor-pointer select-none transition-colors',
+            'group w-full flex flex-col items-center gap-1.5 p-3 rounded-xl cursor-pointer select-none transition-colors bg-transparent border-0',
             selectedIds.has(item.id)
               ? 'bg-brand-50 dark:bg-brand-900/20 ring-2 ring-brand-400'
               : 'hover:bg-zinc-100 dark:hover:bg-[#2d3148]',
@@ -259,6 +260,13 @@ export function FileGrid({ items, selectedIds, onSelect, onOpen, onContextMenu }
             else onSelect(item.id, e.metaKey || e.ctrlKey)
           }}
           onDoubleClick={() => { if (!item.is_folder) onOpen(item) }}
+          onKeyDown={e => {
+            if (item.is_folder) return
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              onOpen(item)
+            }
+          }}
           onContextMenu={e => { e.preventDefault(); onContextMenu(item, e.clientX, e.clientY) }}
         >
           <FileThumbnail item={item} size={48} />
@@ -271,7 +279,7 @@ export function FileGrid({ items, selectedIds, onSelect, onOpen, onContextMenu }
           {item.is_folder && (
             <span className="text-[10px] text-muted"><FolderSize id={item.id} /></span>
           )}
-        </div>
+        </button>
       ))}
     </div>
   )

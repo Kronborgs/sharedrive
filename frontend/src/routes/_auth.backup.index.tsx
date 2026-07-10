@@ -186,7 +186,7 @@ function FolderPicker({
 
   /* compute ancestor folder IDs so we can auto-expand & visually check parents */
   const { data: ancestorIDs } = useQuery({
-    queryKey: ['files', 'ancestors', selectedIDs.slice().sort().join(',')],
+    queryKey: ['files', 'ancestors', selectedIDs.slice().sort((a, b) => a.localeCompare(b)).join(',')],
     queryFn: async ({ signal }) => {
       const results = await Promise.all(
         selectedIDs.map(id =>

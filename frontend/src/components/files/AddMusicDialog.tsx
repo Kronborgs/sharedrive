@@ -82,7 +82,12 @@ export function AddMusicDialog({ onClose, onAdd }: Props) {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <button
+        type="button"
+        aria-label="Close dialog"
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+      />
 
       {/* Dialog */}
       <div className="relative z-10 bg-white dark:bg-[#1a1d27] rounded-2xl shadow-2xl border border-zinc-200 dark:border-[#2d3148] w-full max-w-md mx-4 flex flex-col max-h-[80vh]">

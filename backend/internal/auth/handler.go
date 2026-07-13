@@ -28,12 +28,16 @@ import (
 )
 
 const (
-	sessionCookieName = "pd_session"
-	deviceCookieName  = "pd_device"
-	pendingTOTPKey    = "pending_totp:"
-	pendingTOTPTTL    = 10 * time.Minute
-	uploadTokenKey    = "upload_token:"
-	uploadTokenTTL    = 5 * time.Minute // short-lived, single-use
+	sessionCookieName   = "pd_session"
+	deviceCookieName    = "pd_device"
+	pendingTOTPKey      = "pending_totp:"
+	pendingTOTPTTL      = 10 * time.Minute
+	uploadTokenKey      = "upload_token:"
+	uploadTokenTTL      = 5 * time.Minute // short-lived, single-use
+	errInternal         = "internal error"
+	errTooManyRequests  = "too many requests"
+	errInvalidRequest   = "invalid request"
+	errPasswordTooShort = "password must be at least 12 characters"
 )
 
 // reUploadToken matches the 64-character lowercase hex tokens issued by IssueUploadToken.
@@ -116,7 +120,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Check lockout first
 	if locked, ttl, err := h.lockout.IsLocked(ctx, ip); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	} else if locked {
 		httputil.RespondError(w, http.StatusTooManyRequests, fmt.Sprintf("IP is locked out for %s", ttl.Round(time.Minute)))
@@ -129,13 +133,13 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Msg("rate limiter error")
 	}
 	if !allowed {
-		httputil.RespondError(w, http.StatusTooManyRequests, "too many requests")
+		httputil.RespondError(w, http.StatusTooManyRequests, errTooManyRequests)
 		return
 	}
 
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
@@ -173,7 +177,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		resetToken, tokenErr := h.passwordReset.GenerateResetToken(ctx, u.ID.String())
 		if tokenErr != nil {
 			log.Error().Err(tokenErr).Msg("login: generate forced reset token")
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 			return
 		}
 		http.SetCookie(w, &http.Cookie{
@@ -206,7 +210,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		// Store pending state in Redis for TOTP step
 		pendingToken, storeErr := h.storePendingTOTP(ctx, u.ID.String(), req.TrustDevice)
 		if storeErr != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 			return
 		}
 		h.auditSvc.Log(ctx, audit.Event{
@@ -246,13 +250,13 @@ func (h *Handler) TOTPVerify(w http.ResponseWriter, r *http.Request) {
 	// Rate-limit TOTP verify by IP to prevent brute-force on leaked pending tokens.
 	allowed, _, _, rlErr := h.limiter.Allow(ctx, KeyIPTOTPVerify, ip, 10, 60*time.Second)
 	if rlErr != nil || !allowed {
-		httputil.RespondError(w, http.StatusTooManyRequests, "too many requests")
+		httputil.RespondError(w, http.StatusTooManyRequests, errTooManyRequests)
 		return
 	}
 
 	var req totpVerifyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 
@@ -385,13 +389,13 @@ func (h *Handler) PasswordResetRequest(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Msg("rate limiter error (password reset)")
 	}
 	if !allowed {
-		httputil.RespondError(w, http.StatusTooManyRequests, "too many requests")
+		httputil.RespondError(w, http.StatusTooManyRequests, errTooManyRequests)
 		return
 	}
 
 	var req passwordResetRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 	_ = h.passwordReset.Request(ctx, strings.ToLower(strings.TrimSpace(req.Email)), h.cfg.BaseURL)
@@ -407,16 +411,16 @@ type passwordResetConfirmBody struct {
 func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 	var req passwordResetConfirmBody
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 	if len(req.NewPassword) < 12 {
-		httputil.RespondError(w, http.StatusBadRequest, "password must be at least 12 characters")
+		httputil.RespondError(w, http.StatusBadRequest, errPasswordTooShort)
 		return
 	}
 	hash, err := argon2id.CreateHash(req.NewPassword, argon2id.DefaultParams)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	if err := h.passwordReset.Confirm(r.Context(), req.Token, hash); err != nil {
@@ -488,18 +492,18 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Msg("rate limiter error (invite accept)")
 	}
 	if !allowed {
-		httputil.RespondError(w, http.StatusTooManyRequests, "too many requests")
+		httputil.RespondError(w, http.StatusTooManyRequests, errTooManyRequests)
 		return
 	}
 
 	var req acceptInviteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 	req.Token = chi.URLParam(r, "token")
 	if len(req.Password) < 12 {
-		httputil.RespondError(w, http.StatusBadRequest, "password must be at least 12 characters")
+		httputil.RespondError(w, http.StatusBadRequest, errPasswordTooShort)
 		return
 	}
 
@@ -519,7 +523,7 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 	pwHash, err := argon2id.CreateHash(req.Password, argon2id.DefaultParams)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 
@@ -552,7 +556,7 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err := tx.Commit(ctx); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 
@@ -598,7 +602,7 @@ func (h *Handler) createSessionAndCookie(ctx context.Context, w http.ResponseWri
 	raw, _, err := CreateSession(ctx, h.db, userID, ip, r.UserAgent(), h.cfg.SessionIdleTimeout)
 	if err != nil {
 		log.Error().Err(err).Msg("create session")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	// Update last login timestamp (best-effort, non-blocking).
@@ -662,7 +666,7 @@ func (h *Handler) HandleIssueUploadToken(w http.ResponseWriter, r *http.Request)
 	token, err := h.IssueUploadToken(r.Context(), actor.ID.String(), body.FolderID)
 	if err != nil {
 		log.Error().Err(err).Msg("issue upload token")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, map[string]string{"token": token})
@@ -778,7 +782,7 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 	var req updateMeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 	if req.Password != nil {
@@ -792,17 +796,17 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(*req.Password) < 12 {
-			httputil.RespondError(w, http.StatusBadRequest, "password must be at least 12 characters")
+			httputil.RespondError(w, http.StatusBadRequest, errPasswordTooShort)
 			return
 		}
 		newHash, err := argon2id.CreateHash(*req.Password, argon2id.DefaultParams)
 		if err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 			return
 		}
 		_, err = h.db.Exec(ctx, `UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, newHash, u.ID)
 		if err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 			return
 		}
 		// Revoke all OTHER sessions — keep only the current one so the user
@@ -825,7 +829,7 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	if req.DisplayName != nil {
 		_, err := h.db.Exec(ctx, `UPDATE users SET display_name = $1, updated_at = now() WHERE id = $2`, *req.DisplayName, u.ID)
 		if err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 			return
 		}
 	}
@@ -833,7 +837,7 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		newEmail := strings.ToLower(strings.TrimSpace(*req.Email))
 		_, err := h.db.Exec(ctx, `UPDATE users SET email = $1, updated_at = now() WHERE id = $2`, newEmail, u.ID)
 		if err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 			return
 		}
 	}
@@ -877,13 +881,13 @@ func (h *Handler) TOTPSetup(w http.ResponseWriter, r *http.Request) {
 
 	secret, uri, err := h.totpSvc.BeginEnroll(u.Email)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	// Store the pending secret server-side so the confirm step doesn't trust
 	// a client-supplied secret.
 	if err := h.rdb.Set(ctx, redisKey, secret, 10*time.Minute).Err(); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	log.Debug().Str("user_id", u.ID.String()).Int("secret_len", len(secret)).Msg("totp: setup secret stored in Redis")
@@ -907,7 +911,7 @@ func (h *Handler) TOTPConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	var req totpConfirmRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 	redisKey := "totp_pending:" + u.ID.String()
@@ -926,7 +930,7 @@ func (h *Handler) TOTPConfirm(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(err.Error(), "invalid code") {
 			httputil.RespondError(w, http.StatusBadRequest, "invalid TOTP code")
 		} else {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		}
 		return
 	}
@@ -975,7 +979,7 @@ func (h *Handler) SavePlaylistState(w http.ResponseWriter, r *http.Request) {
 	_, err = h.db.Exec(r.Context(),
 		`UPDATE users SET playlist_state = $1 WHERE id = $2`, body, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
@@ -989,7 +993,7 @@ func (h *Handler) TOTPDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.totpSvc.Disable(ctx, u.ID.String()); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	h.auditSvc.Log(ctx, audit.Event{
@@ -1025,7 +1029,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		u.ID,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	defer rows.Close()
@@ -1042,7 +1046,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		var tokenHash string
 		// We need token_hash to detect current session — select it too
 		if err := rows.Scan(&s.ID, &s.IPAddress, &s.UserAgent, &s.CreatedAt, &s.ExpiresAt); err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 			return
 		}
 		_ = tokenHash
@@ -1050,7 +1054,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		sessions = append(sessions, s)
 	}
 	if err := rows.Err(); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, sessions)

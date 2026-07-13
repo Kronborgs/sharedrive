@@ -62,7 +62,7 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	rows, err := h.db.Query(ctx, `SELECT key, value FROM system_settings`)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	defer rows.Close()
@@ -122,7 +122,7 @@ func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(ctx,
 		`SELECT key, value FROM system_settings WHERE key IN ('direct_upload_url','onlyoffice_url','playlist_max_tracks')`)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	defer rows.Close()
@@ -169,7 +169,7 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req updateSettingsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 
@@ -261,7 +261,7 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 	// Read SMTP settings from DB
 	rows, err := h.db.Query(ctx, `SELECT key, value FROM system_settings WHERE key LIKE 'smtp_%'`)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	defer rows.Close()
@@ -333,6 +333,9 @@ type blockedIPEntry struct {
 }
 
 const lockoutKeyPrefix = "lockout:"
+const lockoutFailuresSuffix = "failures:"
+const errInternal = "internal error"
+const errInvalidRequest = "invalid request"
 
 // ListBlockedIPs lists IPs currently locked out (TTL-based entries in Redis).
 func (h *Handler) ListBlockedIPs(w http.ResponseWriter, r *http.Request) {
@@ -343,12 +346,12 @@ func (h *Handler) ListBlockedIPs(w http.ResponseWriter, r *http.Request) {
 	for {
 		keys, next, err := h.rdb.Scan(ctx, cursor, lockoutKeyPrefix+"*", 100).Result()
 		if err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 			return
 		}
 		for _, key := range keys {
 			// Skip failure counters — only include active lockout entries.
-			if strings.HasPrefix(key, lockoutKeyPrefix+"failures:") {
+			if strings.HasPrefix(key, lockoutKeyPrefix+lockoutFailuresSuffix) {
 				continue
 			}
 			ip := strings.TrimPrefix(key, lockoutKeyPrefix)
@@ -373,7 +376,7 @@ func (h *Handler) ListBlockedIPs(w http.ResponseWriter, r *http.Request) {
 			}
 			// Fetch failure counter for this IP
 			var attemptCount int64
-			if n, err2 := h.rdb.Get(ctx, lockoutKeyPrefix+"failures:"+ip).Int64(); err2 == nil {
+			if n, err2 := h.rdb.Get(ctx, lockoutKeyPrefix+lockoutFailuresSuffix+ip).Int64(); err2 == nil {
 				attemptCount = n
 			}
 			out = append(out, blockedIPEntry{IP: ip, Tier: tier, TTLSeconds: ttlSeconds, AttemptCount: attemptCount})
@@ -395,7 +398,7 @@ func (h *Handler) UnblockIP(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	h.rdb.Del(ctx, lockoutKeyPrefix+ip)
-	h.rdb.Del(ctx, lockoutKeyPrefix+"failures:"+ip)
+	h.rdb.Del(ctx, lockoutKeyPrefix+lockoutFailuresSuffix+ip)
 	// Also clear the rate limiter sliding-window counter so login is immediately allowed
 	h.rdb.Del(ctx, "rl:ip_login:"+ip)
 	// Also remove any DB-side manual block
@@ -420,7 +423,7 @@ func (h *Handler) ListWhitelist(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(ctx,
 		`SELECT id, ip_cidr, description, created_at FROM ip_whitelist ORDER BY created_at DESC`)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	defer rows.Close()
@@ -566,7 +569,7 @@ func (h *Handler) AuditLogs(w http.ResponseWriter, r *http.Request) {
 		paginatedArgs...,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	defer rows.Close()
@@ -617,7 +620,7 @@ func (h *Handler) UserActivity(w http.ResponseWriter, r *http.Request) {
 		actor.ID, fileEvents,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	defer rows.Close()
@@ -709,7 +712,7 @@ func (h *Handler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(ctx,
 		`SELECT id, name, description, color, created_at FROM groups ORDER BY name ASC`)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	defer rows.Close()
@@ -771,7 +774,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var req updateGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 	if req.Name != nil {
@@ -782,13 +785,13 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Description != nil {
 		if _, err := h.db.Exec(ctx, `UPDATE groups SET description = $1 WHERE id = $2`, *req.Description, id); err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 			return
 		}
 	}
 	if req.Color != nil {
 		if _, err := h.db.Exec(ctx, `UPDATE groups SET color = $1 WHERE id = $2`, *req.Color, id); err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 			return
 		}
 	}
@@ -818,7 +821,7 @@ func (h *Handler) ListGroupMembers(w http.ResponseWriter, r *http.Request) {
 		groupID,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	defer rows.Close()
@@ -853,7 +856,7 @@ func (h *Handler) AddGroupMember(w http.ResponseWriter, r *http.Request) {
 		groupID, req.UserID,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
@@ -880,7 +883,7 @@ func (h *Handler) ListTags(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	rows, err := h.db.Query(ctx, `SELECT id, name, color, created_at FROM tags ORDER BY name ASC`)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	defer rows.Close()
@@ -940,7 +943,7 @@ func (h *Handler) UpdateTag(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var req updateTagRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 	if req.Name != nil {
@@ -1129,7 +1132,7 @@ func (h *Handler) IOStats(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(ctx,
 		`SELECT id::text, email, display_name FROM users WHERE id = ANY($1::uuid[])`, ids)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	defer rows.Close()

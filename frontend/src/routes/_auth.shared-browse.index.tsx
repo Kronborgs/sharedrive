@@ -447,15 +447,10 @@ function SharedBrowsePage() {
       <UploadProgress uploads={uploads} onDismiss={dismiss} directUpload={directUpload} />
 
       {uploadConflictOpen && uploadConflictQueue.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <button
-            type="button"
-            aria-label="Close conflict dialog"
-            className="absolute inset-0 bg-black/50"
-            onClick={closeUploadConflictDialog}
-          />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeUploadConflictDialog}>
           <div
-            className="relative z-10 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-[min(90vw,28rem)] space-y-4 shadow-xl"
+            className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-[min(90vw,28rem)] space-y-4 shadow-xl"
+            onClick={e => e.stopPropagation()}
           >
             <div>
               <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('upload.conflictTitle')}</h3>

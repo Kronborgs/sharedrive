@@ -38,6 +38,7 @@ func NewLockout(rdb *redis.Client, db *pgxpool.Pool, tiers []LockoutTier) *Locko
 }
 
 const lockoutKeyPrefix = "lockout:"
+const lockoutFailuresSuffix = "failures:"
 
 // IsLocked returns true if the IP is currently locked out.
 func (l *Lockout) IsLocked(ctx context.Context, ip string) (bool, time.Duration, error) {
@@ -63,7 +64,7 @@ func (l *Lockout) IsLocked(ctx context.Context, ip string) (bool, time.Duration,
 // RecordFailure increments the failure counter for an IP and applies a lockout
 // if a tier threshold is met. Returns (locked bool, lockoutDuration, error).
 func (l *Lockout) RecordFailure(ctx context.Context, ip string) (bool, time.Duration, error) {
-	key := lockoutKeyPrefix + "failures:" + ip
+	key := lockoutKeyPrefix + lockoutFailuresSuffix + ip
 
 	// Atomic increment with 24h expiry (reset window)
 	count, err := l.rdb.Incr(ctx, key).Result()
@@ -86,7 +87,7 @@ func (l *Lockout) RecordFailure(ctx context.Context, ip string) (bool, time.Dura
 
 // ClearFailures resets the failure counter for an IP (called on successful login).
 func (l *Lockout) ClearFailures(ctx context.Context, ip string) error {
-	return l.rdb.Del(ctx, lockoutKeyPrefix+"failures:"+ip).Err()
+	return l.rdb.Del(ctx, lockoutKeyPrefix+lockoutFailuresSuffix+ip).Err()
 }
 
 // ManualBlock writes a permanent block to the ip_whitelist/blocked_ips table.
@@ -107,7 +108,7 @@ func (l *Lockout) ManualBlock(ctx context.Context, ip string, adminUserID string
 // Unblock removes a temporary or manual block.
 func (l *Lockout) Unblock(ctx context.Context, ip string) error {
 	l.rdb.Del(ctx, lockoutKeyPrefix+ip)
-	l.rdb.Del(ctx, lockoutKeyPrefix+"failures:"+ip)
+	l.rdb.Del(ctx, lockoutKeyPrefix+lockoutFailuresSuffix+ip)
 	_, err := l.db.Exec(ctx,
 		`DELETE FROM ip_whitelist WHERE ip_cidr = $1 AND description = 'Manually blocked by admin'`,
 		ip+"/32",

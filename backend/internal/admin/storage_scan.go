@@ -41,6 +41,9 @@ type storageScanResult struct {
 	DurationMs   int64         `json:"duration_ms"`
 }
 
+const errIDsArrayRequired = "ids array required"
+const errTooManyIDs = "too many ids"
+
 // StorageScan handles POST /api/v1/admin/storage/scan
 //
 // Two-pass check for every non-text binary file:
@@ -174,11 +177,11 @@ func (h *Handler) StoragePurgeCorrupt(w http.ResponseWriter, r *http.Request) {
 		IDs []string `json:"ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
-		httputil.RespondError(w, http.StatusBadRequest, "ids array required")
+		httputil.RespondError(w, http.StatusBadRequest, errIDsArrayRequired)
 		return
 	}
 	if len(req.IDs) > 10000 {
-		httputil.RespondError(w, http.StatusBadRequest, "too many ids")
+		httputil.RespondError(w, http.StatusBadRequest, errTooManyIDs)
 		return
 	}
 
@@ -418,11 +421,11 @@ func (h *Handler) StoragePurgeOrphans(w http.ResponseWriter, r *http.Request) {
 		IDs []string `json:"ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
-		httputil.RespondError(w, http.StatusBadRequest, "ids array required")
+		httputil.RespondError(w, http.StatusBadRequest, errIDsArrayRequired)
 		return
 	}
 	if len(req.IDs) > 10000 {
-		httputil.RespondError(w, http.StatusBadRequest, "too many ids")
+		httputil.RespondError(w, http.StatusBadRequest, errTooManyIDs)
 		return
 	}
 
@@ -466,11 +469,11 @@ func (h *Handler) StorageRestoreOrphans(w http.ResponseWriter, r *http.Request) 
 		IDs []string `json:"ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
-		httputil.RespondError(w, http.StatusBadRequest, "ids array required")
+		httputil.RespondError(w, http.StatusBadRequest, errIDsArrayRequired)
 		return
 	}
 	if len(req.IDs) > 10000 {
-		httputil.RespondError(w, http.StatusBadRequest, "too many ids")
+		httputil.RespondError(w, http.StatusBadRequest, errTooManyIDs)
 		return
 	}
 

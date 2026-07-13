@@ -15,11 +15,20 @@ import { DownloadDialog } from '@/components/files/DownloadDialog'
 import { FolderPickerDialog } from '@/components/files/FolderPickerDialog'
 import { ShareTargetDialog } from '@/components/files/ShareTargetDialog'
 import { ShareTargetHint } from '@/components/files/ShareTargetHint'
+import { UploadConflictDialog, UploadGlobalDuplicateDialog } from '@/components/files/UploadDuplicateDialogs'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { TextEditor } from '@/components/files/TextEditor'
 import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import { useShareTarget } from '@/hooks/useShareTarget'
 import { useI18n } from '@/lib/i18n'
+import {
+  createDuplicateUploadQueue,
+  fetchDuplicateHitsByName,
+  partitionUploadRequests,
+  renameUploadRequest,
+  type DuplicateUploadEntry,
+  type UploadConflictPair,
+} from '@/lib/upload-duplicates'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, FolderUp, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive, FilePlus } from 'lucide-react'
 import { toast } from 'sonner'
 import type { UploadRequest } from '@/components/files/UploadZone'
@@ -43,92 +52,6 @@ interface ContextMenuState {
   item: FileItem
   x: number
   y: number
-}
-
-interface UploadConflictPair {
-  incoming: File
-  existing: NameDuplicateHit
-}
-
-interface NameDuplicateHit {
-  id: string
-  parent_id: string | null
-  owner_id: string
-  is_folder: boolean
-  name: string
-  updated_at: string
-  full_path: string
-}
-
-interface DuplicateUploadEntry {
-  id: string
-  incoming: UploadRequest
-  matches: NameDuplicateHit[]
-}
-
-async function fetchDuplicateHitsByName(names: string[]): Promise<Map<string, NameDuplicateHit[]>> {
-  const pairs = await Promise.all(names.map(async name => {
-    try {
-      const hits = await api.get<NameDuplicateHit[]>(`/api/v1/files/duplicates?name=${encodeURIComponent(name)}`)
-      return [name, hits] as const
-    } catch {
-      return [name, [] as NameDuplicateHit[]] as const
-    }
-  }))
-  return new Map(pairs)
-}
-
-function partitionUploadRequests(
-  requests: UploadRequest[],
-  duplicateHitsByName: Map<string, NameDuplicateHit[]>,
-  targetFolderId: string | null,
-): {
-  conflicts: UploadConflictPair[]
-  immediate: UploadRequest[]
-  globalDuplicates: Array<{ incoming: UploadRequest; matches: NameDuplicateHit[] }>
-} {
-  const conflicts: UploadConflictPair[] = []
-  const immediate: UploadRequest[] = []
-  const globalDuplicates: Array<{ incoming: UploadRequest; matches: NameDuplicateHit[] }> = []
-
-  for (const request of requests) {
-    const matches = duplicateHitsByName.get(request.file.name) ?? []
-    const sameFolderMatch = matches.find(match => match.parent_id === targetFolderId)
-    if (sameFolderMatch && !request.overwrite) {
-      conflicts.push({ incoming: request.file, existing: sameFolderMatch })
-      continue
-    }
-
-    const otherMatches = matches.filter(match => match.parent_id !== targetFolderId)
-    if (otherMatches.length > 0) {
-      globalDuplicates.push({ incoming: request, matches: otherMatches })
-      continue
-    }
-
-    immediate.push(request)
-  }
-
-  return { conflicts, immediate, globalDuplicates }
-}
-
-function createDuplicateUploadQueue(entries: Array<{ incoming: UploadRequest; matches: NameDuplicateHit[] }>): DuplicateUploadEntry[] {
-  return entries.map(entry => ({
-    id: crypto.randomUUID(),
-    incoming: entry.incoming,
-    matches: entry.matches,
-  }))
-}
-
-function renameUploadRequest(request: UploadRequest, newName: string): UploadRequest {
-  const trimmedName = newName.trim()
-  if (!trimmedName || trimmedName === request.file.name) return request
-  return {
-    ...request,
-    file: new File([request.file], trimmedName, {
-      type: request.file.type,
-      lastModified: request.file.lastModified,
-    }),
-  }
 }
 
 // ─── Playlist helpers ─────────────────────────────────────────────────────────
@@ -1254,109 +1177,26 @@ function FilesPage() {
         />
       )}
 
-      {uploadConflictOpen && uploadConflictQueue.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <button
-            type="button"
-            aria-label="Close conflict dialog"
-            className="absolute inset-0 bg-black/50"
-            onClick={closeUploadConflictDialog}
-          />
-          <div
-            className="relative z-10 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-[min(90vw,28rem)] space-y-4 shadow-xl"
-          >
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('upload.conflictTitle')}</h3>
-              <p className="text-sm text-muted mt-1">{t('upload.conflictSubtitle')}</p>
-            </div>
-            <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3">
-              <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 break-all">{uploadConflictQueue[0].incoming.name}</p>
-              <p className="text-xs text-zinc-500 dark:text-slate-400 mt-1">
-                {compareUpdatedLabel(uploadConflictQueue[0].incoming, uploadConflictQueue[0].existing)}
-              </p>
-              <p className="text-xs text-zinc-500 dark:text-slate-400 mt-1">
-                {t('upload.conflictExistingUpdated', {
-                  date: new Date(uploadConflictQueue[0].existing.updated_at).toLocaleString(),
-                })}
-              </p>
-            </div>
-            {uploadConflictQueue.length > 1 && (
-              <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-slate-300">
-                <input
-                  type="checkbox"
-                  className="rounded border-zinc-300 dark:border-zinc-600"
-                  checked={uploadConflictApplyAll}
-                  onChange={e => setUploadConflictApplyAll(e.target.checked)}
-                />
-                {t('upload.conflictApplyToAll', { count: String(uploadConflictQueue.length) })}
-              </label>
-            )}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => resolveUploadConflict('skip')}
-                className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300"
-              >
-                {t('upload.conflictSkip')}
-              </button>
-              <button
-                type="button"
-                onClick={() => resolveUploadConflict('overwrite')}
-                className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
-              >
-                {t('upload.conflictOverwrite')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <UploadConflictDialog
+        open={uploadConflictOpen}
+        queue={uploadConflictQueue}
+        applyAll={uploadConflictApplyAll}
+        onApplyAllChange={setUploadConflictApplyAll}
+        onClose={closeUploadConflictDialog}
+        onResolve={resolveUploadConflict}
+        compareUpdatedLabel={compareUpdatedLabel}
+        t={t}
+      />
 
-      {uploadDuplicateOpen && uploadDuplicateQueue.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <button
-            type="button"
-            aria-label="Close duplicate dialog"
-            className="absolute inset-0 bg-black/50"
-            onClick={closeUploadDuplicateDialog}
-          />
-          <div className="relative z-10 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-[min(90vw,34rem)] space-y-4 shadow-xl">
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('upload.globalDuplicateTitle')}</h3>
-              <p className="text-sm text-muted mt-1">{t('upload.globalDuplicateSubtitle')}</p>
-            </div>
-            <div className="max-h-56 overflow-y-auto space-y-3">
-              {uploadDuplicateQueue.map(({ id, incoming, matches }) => (
-                <div key={id} className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3 space-y-2">
-                  <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 break-all">{incoming.file.name}</p>
-                  <label className="block space-y-1">
-                    <span className="text-xs font-medium text-zinc-500 dark:text-slate-400">{t('upload.globalDuplicateRename')}</span>
-                    <input
-                      type="text"
-                      value={uploadDuplicateRenames[id] ?? incoming.file.name}
-                      onChange={e => setUploadDuplicateRenames(prev => ({ ...prev, [id]: e.target.value }))}
-                      className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    />
-                  </label>
-                  <p className="text-xs text-zinc-500 dark:text-slate-400">{t('upload.globalDuplicateLocations')}</p>
-                  <ul className="space-y-1 text-xs text-zinc-600 dark:text-slate-400">
-                    {matches.map(match => (
-                      <li key={match.id} className="break-all">{match.full_path}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={closeUploadDuplicateDialog} className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300">
-                {t('upload.globalDuplicateCancel')}
-              </button>
-              <button type="button" onClick={confirmUploadDuplicate} className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium">
-                {t('upload.globalDuplicateContinue')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <UploadGlobalDuplicateDialog
+        open={uploadDuplicateOpen}
+        queue={uploadDuplicateQueue}
+        renames={uploadDuplicateRenames}
+        onRename={(id, value) => setUploadDuplicateRenames(prev => ({ ...prev, [id]: value }))}
+        onClose={closeUploadDuplicateDialog}
+        onConfirm={confirmUploadDuplicate}
+        t={t}
+      />
 
       {renameId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

@@ -37,7 +37,7 @@ Når testene er kørt, kan du scanne repoet fra roden af workspace. Hvis `sonar-
 ### Lokal SonarScanner CLI
 
 ```powershell
-$env:SONAR_TOKEN = "din-token-her"
+$env:SONAR_TOKEN = "indset din token her"
 sonar-scanner
 ```
 

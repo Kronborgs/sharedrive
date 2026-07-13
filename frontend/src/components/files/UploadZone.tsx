@@ -261,17 +261,16 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     })
   }
 
-  const startUpload = useCallback((files: Array<File | UploadRequest>, targetFolderId?: string | null) => {
+  const startUpload = useCallback((files: Array<File | UploadRequest>, targetFolderId: string | null = folderId) => {
     // Determine TUS endpoint: prefer direct_upload_url (bypasses Cloudflare) if set
-    const directBase = settings?.direct_upload_url?.trim()
-      ? trimTrailingSlashes(settings.direct_upload_url.trim())
-      : undefined
+    const directUploadUrl = settings?.direct_upload_url?.trim() ?? undefined
+    const directBase = directUploadUrl && trimTrailingSlashes(directUploadUrl)
     const tusEndpoint = directBase ? `${directBase}/upload/` : '/upload/'
     // No chunking when uploading directly (no Cloudflare 100 MB limit).
     // When going through Cloudflare, keep 50 MB chunks to stay under their limit.
     const chunkSize = directBase ? Infinity : TUS_CHUNK_SIZE
     // Allow caller to override the target folder (e.g. when coming from share target)
-    const effectiveFolderId = targetFolderId !== undefined ? targetFolderId : folderId
+    const effectiveFolderId = targetFolderId
 
     const normalized: UploadRequest[] = files.map(item => {
       if (item instanceof File) return { file: item, overwrite: false }
@@ -436,7 +435,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     // Create each folder on the server in order.
     for (const folderPath of sortedPaths) {
       const parts = folderPath.split('/')
-      const name = parts[parts.length - 1]
+      const name = parts.at(-1) ?? ''
       const parentPath = parts.slice(0, -1).join('/')
       const parentId = folderIdMap.get(parentPath) ?? folderId
       try {

@@ -261,7 +261,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     setProgress(0)
     setDuration(0)
     if (shouldAutoPlay) {
-      void audio.play().catch(() => setIsPlaying(false))
+	  audio.play().catch(() => setIsPlaying(false))
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, tracks])
@@ -274,12 +274,12 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       const p = { id: activePlaylistId, name: activePlaylistName ?? '', index: currentIndex, vol: volume, shuffle }
       saveCache(p)
       saveTimerRef.current = setTimeout(() => {
-        void savePersistedPlaylistState(p).catch(() => { /* ignore */ })
+  		savePersistedPlaylistState(p).catch(() => { /* ignore */ })
       }, 2000)
     } else {
       saveCache(null)
       saveTimerRef.current = setTimeout(() => {
-        void savePersistedPlaylistState(null).catch(() => { /* ignore */ })
+  		savePersistedPlaylistState(null).catch(() => { /* ignore */ })
       }, 500)
     }
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
@@ -296,7 +296,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   const togglePlay = useCallback(() => {
     const audio = audioRef.current!
     if (audio.paused) {
-      void audio.play().catch(() => setIsPlaying(false))
+	  audio.play().catch(() => setIsPlaying(false))
     } else {
       audio.pause()
     }

@@ -40,6 +40,21 @@ function trimTrailingSlashes(input: string): string {
   return out
 }
 
+type ShareTabLabelKey = 'share.tabLink' | 'share.tabGroup' | 'share.tabWebdav' | 'share.tabUser'
+
+function getShareTabLabel(tabType: ShareTargetType, t: (key: ShareTabLabelKey) => string): string {
+  switch (tabType) {
+    case 'link':
+      return t('share.tabLink')
+    case 'group':
+      return t('share.tabGroup')
+    case 'webdav':
+      return t('share.tabWebdav')
+    default:
+      return t('share.tabUser')
+  }
+}
+
 function buildShareCreateBody(params: {
   itemId: string
   perms: SharePermissions
@@ -394,7 +409,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
                   : 'border-transparent text-muted hover:text-zinc-700 dark:hover:text-slate-300'
               }`}
             >
-              {tabType === 'link' ? t('share.tabLink') : tabType === 'group' ? t('share.tabGroup') : tabType === 'webdav' ? t('share.tabWebdav') : t('share.tabUser')}
+              {getShareTabLabel(tabType, t)}
             </button>
           ))}
         </div>

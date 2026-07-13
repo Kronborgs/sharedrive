@@ -175,29 +175,61 @@ function SharedBrowsePage() {
   const beginUploadWithConflictCheck = useCallback((incomingFiles: File[]) => {
     if (incomingFiles.length === 0) return
 
-    const existingByName = new Map<string, FileItem>()
-    for (const it of items) {
-      if (!it.is_folder) existingByName.set(it.name, it)
-    }
+    void (async () => {
+      let currentItems = items
+      try {
+        const fresh = await api.get<ChildrenResponse>(`/api/v1/files/shared/${folderId}/children`)
+        currentItems = (fresh.items ?? []).map(c => ({
+          id: c.id,
+          parent_id: folderId,
+          owner_id: fresh.owner_id,
+          is_folder: c.is_folder,
+          name: c.name,
+          mime_type: c.mime_type,
+          size_bytes: c.size_bytes,
+          checksum_sha256: null,
+          deleted_at: null,
+          created_at: '',
+          updated_at: '',
+          shared: true,
+          permissions: {
+            can_view: fresh.can_view,
+            can_upload: fresh.can_upload,
+            can_edit: fresh.can_edit,
+            can_delete: fresh.can_delete,
+            can_reshare: fresh.can_reshare,
+            is_owner: false,
+          },
+        }))
+      } catch {
+        // Fall back to cached data if refresh fails.
+        currentItems = items
+      }
 
-    const conflicts: UploadConflictPair[] = []
-    const immediate: UploadRequest[] = []
-    for (const incoming of incomingFiles) {
-      const existing = existingByName.get(incoming.name)
-      if (existing) conflicts.push({ incoming, existing })
-      else immediate.push({ file: incoming, overwrite: false })
-    }
+      const existingByName = new Map<string, FileItem>()
+      for (const it of currentItems) {
+        if (!it.is_folder) existingByName.set(it.name, it)
+      }
 
-    if (conflicts.length === 0) {
-      startUpload(immediate)
-      return
-    }
+      const conflicts: UploadConflictPair[] = []
+      const immediate: UploadRequest[] = []
+      for (const incoming of incomingFiles) {
+        const existing = existingByName.get(incoming.name)
+        if (existing) conflicts.push({ incoming, existing })
+        else immediate.push({ file: incoming, overwrite: false })
+      }
 
-    setUploadConflictResolved(immediate)
-    setUploadConflictQueue(conflicts)
-    setUploadConflictApplyAll(false)
-    setUploadConflictOpen(true)
-  }, [items, startUpload])
+      if (conflicts.length === 0) {
+        startUpload(immediate)
+        return
+      }
+
+      setUploadConflictResolved(immediate)
+      setUploadConflictQueue(conflicts)
+      setUploadConflictApplyAll(false)
+      setUploadConflictOpen(true)
+    })()
+  }, [folderId, items, startUpload])
 
   const closeUploadConflictDialog = useCallback(() => {
     setUploadConflictOpen(false)
@@ -391,19 +423,7 @@ function SharedBrowsePage() {
         </div>
 
         {/* Content */}
-        <div
-          className="flex-1 overflow-y-auto px-1"
-          role="button"
-          tabIndex={0}
-          onClick={() => { setSelected(new Set()); setContextMenu(null) }}
-          onKeyDown={e => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              setSelected(new Set())
-              setContextMenu(null)
-            }
-          }}
-        >
+        <div className="flex-1 overflow-y-auto px-1">
           {isLoading ? (
             <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.loading')}</div>
           ) : (
@@ -447,10 +467,15 @@ function SharedBrowsePage() {
       <UploadProgress uploads={uploads} onDismiss={dismiss} directUpload={directUpload} />
 
       {uploadConflictOpen && uploadConflictQueue.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeUploadConflictDialog}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <button
+            type="button"
+            aria-label="Close conflict dialog"
+            className="absolute inset-0 bg-black/50"
+            onClick={closeUploadConflictDialog}
+          />
           <div
-            className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-[min(90vw,28rem)] space-y-4 shadow-xl"
-            onClick={e => e.stopPropagation()}
+            className="relative z-10 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-[min(90vw,28rem)] space-y-4 shadow-xl"
           >
             <div>
               <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('upload.conflictTitle')}</h3>

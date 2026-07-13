@@ -40,6 +40,46 @@ function trimTrailingSlashes(input: string): string {
   return out
 }
 
+function buildShareCreateBody(params: {
+  itemId: string
+  perms: SharePermissions
+  hasExpiry: boolean
+  expiry: string
+  tab: ShareTargetType
+  email: string
+  groupId: string
+}): Record<string, unknown> {
+  const expiresAt = params.hasExpiry && params.expiry
+    ? new Date(params.expiry).toISOString()
+    : null
+
+  const body: Record<string, unknown> = {
+    resource_id: params.itemId,
+    can_view: params.perms.can_view,
+    can_upload: params.perms.can_upload,
+    can_edit: params.perms.can_edit,
+    can_delete: params.perms.can_delete,
+    can_reshare: params.perms.can_reshare,
+    expires_at: expiresAt,
+  }
+
+  switch (params.tab) {
+    case 'user':
+      body.grantee_type = 'user'
+      body.grantee_email = params.email
+      break
+    case 'group':
+      body.grantee_type = 'group'
+      body.grantee_id = params.groupId
+      break
+    default:
+      body.grantee_type = 'link'
+      break
+  }
+
+  return body
+}
+
 function PermCheckboxes({
   perms,
   onChange,
@@ -311,32 +351,15 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   })
 
   const handleCreate = () => {
-    let expiresAt: string | null = null
-    if (hasExpiry && expiry) {
-      expiresAt = new Date(expiry).toISOString()
-    }
-
-    const body: Record<string, unknown> = {
-      resource_id: item.id,
-      can_view: perms.can_view,
-      can_upload: perms.can_upload,
-      can_edit: perms.can_edit,
-      can_delete: perms.can_delete,
-      can_reshare: perms.can_reshare,
-      expires_at: expiresAt,
-    }
-
-    if (tab === 'user') {
-      body.grantee_type = 'user'
-      body.grantee_email = email
-    } else if (tab === 'group') {
-      body.grantee_type = 'group'
-      body.grantee_id = groupId
-    } else {
-      body.grantee_type = 'link'
-    }
-
-    createShare.mutate(body)
+    createShare.mutate(buildShareCreateBody({
+      itemId: item.id,
+      perms,
+      hasExpiry,
+      expiry,
+      tab,
+      email,
+      groupId,
+    }))
   }
 
   const copyLink = (token: string) => {

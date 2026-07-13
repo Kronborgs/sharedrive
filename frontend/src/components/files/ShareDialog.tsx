@@ -7,6 +7,7 @@ import { formatDate } from '@/lib/utils'
 import { X, Check, Link, Trash2, UserPlus, ChevronDown, ChevronUp, Copy, HardDrive, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 interface ShareDialogProps {
   item: FileItem
@@ -309,7 +310,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   const davFileUrl = `${davBase}/dav/${davOwnerID}/${folderPath}${encodeURIComponent(item.name)}`
 
   const copyDav = (text: string, key: string) => {
-    void navigator.clipboard.writeText(text)
+    ignorePromise(navigator.clipboard.writeText(text))
     setDavCopied(key)
     setTimeout(() => setDavCopied(null), 2000)
   }
@@ -341,7 +342,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
         resource_id: item.id,
       }),
     onSuccess: (data) => {
-      void qc.invalidateQueries({ queryKey: ['app-passwords', 'resource', item.id] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['app-passwords', 'resource', item.id] }))
       setDavRevealed(data)
       setDavPwdName('')
     },
@@ -350,15 +351,15 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
 
   const davRevokePwd = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/me/app-passwords/${id}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['app-passwords', 'resource', item.id] }),
+    onSuccess: () => ignorePromise(qc.invalidateQueries({ queryKey: ['app-passwords', 'resource', item.id] })),
     onError: () => toast.error(t('share.appPwdDeleteFailed')),
   })
 
   const createShare = useMutation({
     mutationFn: (body: object) => api.post<Share>(`/api/v1/shares`, body),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['shares', item.id] })
-      void qc.invalidateQueries({ queryKey: ['files'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['shares', item.id] }))
+      ignorePromise(qc.invalidateQueries({ queryKey: ['files'] }))
       setEmail('')
       toast.success(t('share.created'))
     },
@@ -375,8 +376,8 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   const revokeShare = useMutation({
     mutationFn: (shareId: string) => api.delete(`/api/v1/shares/${shareId}`),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['shares', item.id] })
-      void qc.invalidateQueries({ queryKey: ['files'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['shares', item.id] }))
+      ignorePromise(qc.invalidateQueries({ queryKey: ['files'] }))
     },
     onError: () => toast.error(t('share.revokeFailed')),
   })
@@ -385,7 +386,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
     mutationFn: ({ id, body }: { id: string; body: object }) =>
       api.patch(`/api/v1/shares/${id}`, body),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['shares', item.id] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['shares', item.id] }))
       toast.success(t('share.updated'))
     },
     onError: () => toast.error(t('share.updateFailed')),
@@ -404,7 +405,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   }
 
   const copyLink = (token: string) => {
-    void navigator.clipboard.writeText(`${window.location.origin}/shared/${token}`)
+    ignorePromise(navigator.clipboard.writeText(`${window.location.origin}/shared/${token}`))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

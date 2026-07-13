@@ -6,6 +6,7 @@ import type { AuditLog, PaginatedResponse } from '@/types/api'
 import { formatRelative, formatDate } from '@/lib/utils'
 import { z } from 'zod'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 const searchSchema = z.object({
   page: z.number().catch(1),
@@ -119,9 +120,9 @@ export function AuditLogsPage() {
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
-  const setPage = (p: number) => void navigate({ search: prev => ({ ...prev, page: p }) })
-  const setEvent = (e: string) => void navigate({ search: prev => ({ ...prev, event: e, page: 1 }) })
-  const setUser = (u: string) => void navigate({ search: prev => ({ ...prev, user: u, page: 1 }) })
+  const setPage = (p: number) => ignorePromise(navigate({ search: prev => ({ ...prev, page: p }) }))
+  const setEvent = (e: string) => ignorePromise(navigate({ search: prev => ({ ...prev, event: e, page: 1 }) }))
+  const setUser = (u: string) => ignorePromise(navigate({ search: prev => ({ ...prev, user: u, page: 1 }) }))
 
   return (
     <div className="space-y-4">

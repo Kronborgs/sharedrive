@@ -22,6 +22,7 @@ import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types
 import { useShareTarget } from '@/hooks/useShareTarget'
 import { useUploadDuplicateWorkflow } from '@/hooks/useUploadDuplicateWorkflow'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, FolderUp, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive, FilePlus } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -147,22 +148,24 @@ function FilesPage() {
 
   const { data: files, isLoading } = useQuery({
     queryKey: ['files', folderId],
-    queryFn: ({ signal }) =>
-      api.get<FileItem[]>(`/api/v1/files?${folderId ? `parent_id=${folderId}` : ''}`, signal),
+    queryFn: ({ signal }) => {
+      const query = folderId ? `parent_id=${folderId}` : ''
+      return api.get<FileItem[]>(`/api/v1/files?${query}`, signal)
+    },
   })
 
   const rename = useMutation({
     mutationFn: (body: { id: string; name: string }) =>
       api.patch(`/api/v1/files/${body.id}`, { name: body.name }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['files', folderId] }); setRenameId(null) },
+    onSuccess: () => { ignorePromise(qc.invalidateQueries({ queryKey: ['files', folderId] })); setRenameId(null) },
     onError: () => toast.error(t('misc.renameFailed')),
   })
 
   const trash = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/files/${id}`),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['files', folderId] })
-      void qc.invalidateQueries({ queryKey: ['me'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['files', folderId] }))
+      ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
     },
     onError: () => toast.error(t('misc.trashFailed')),
   })
@@ -181,8 +184,8 @@ function FilesPage() {
     mutationFn: ({ id, destFolderId }: { id: string; destFolderId: string | null }) =>
       api.patch(`/api/v1/files/${id}`, { parent_id: destFolderId ?? '' }),
     onSuccess: (_, { destFolderId }) => {
-      void qc.invalidateQueries({ queryKey: ['files', folderId] })
-      if (destFolderId) void qc.invalidateQueries({ queryKey: ['files', destFolderId] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['files', folderId] }))
+      if (destFolderId) ignorePromise(qc.invalidateQueries({ queryKey: ['files', destFolderId] }))
       setMoveItem(null)
       toast.success(t('toast.moved'))
     },
@@ -194,8 +197,8 @@ function FilesPage() {
       api.post<FileItem>(`/api/v1/files/${id}/copy`, destFolderId ? { destination_folder_id: destFolderId } : {}),
     onSuccess: (_newFile, { destFolderId }) => {
       // Refresh the destination folder (or current folder if same)
-      void qc.invalidateQueries({ queryKey: ['files', destFolderId ?? folderId] })
-      void qc.invalidateQueries({ queryKey: ['me'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['files', destFolderId ?? folderId] }))
+      ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
       setDuplicateItem(null)
       toast.success(t('toast.duplicated'))
     },
@@ -210,11 +213,11 @@ function FilesPage() {
         parent_id: folderId ?? null,
       }),
     onSuccess: (result) => {
-      void qc.invalidateQueries({ queryKey: ['files', folderId] })
-      void qc.invalidateQueries({ queryKey: ['me'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['files', folderId] }))
+      ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
       setNewDocOpen(false)
       // Open the new document immediately in OO
-      void navigate({ to: '/files', search: { folder: folderId ?? undefined, oo: result.id } })
+      ignorePromise(navigate({ to: '/files', search: { folder: folderId ?? undefined, oo: result.id } }))
     },
     onError: () => toast.error(t('toast.createDocFailed')),
   })
@@ -226,10 +229,10 @@ function FilesPage() {
         parent_id: folderId ?? null,
       }),
     onSuccess: (result) => {
-      void qc.invalidateQueries({ queryKey: ['files', folderId] })
-      void qc.invalidateQueries({ queryKey: ['me'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['files', folderId] }))
+      ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
       setNewDocOpen(false)
-      void navigate({ to: '/files', search: { folder: folderId ?? undefined, te: result.id } })
+      ignorePromise(navigate({ to: '/files', search: { folder: folderId ?? undefined, te: result.id } }))
     },
     onError: () => toast.error(t('toast.createDocFailed')),
   })
@@ -253,7 +256,7 @@ function FilesPage() {
   }, [previewFileId, files])
 
   useEffect(() => {
-    if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
+    if (user?.role === 'guest') ignorePromise(navigate({ to: '/shares', replace: true }))
   }, [user, navigate])
 
   useEffect(() => {
@@ -276,17 +279,17 @@ function FilesPage() {
 
   const handleOpen = useCallback((item: FileItem) => {
     if (item.is_folder) {
-      void navigate({ to: '/files', search: { folder: item.id } })
+      ignorePromise(navigate({ to: '/files', search: { folder: item.id } }))
       return
     }
     // Open in OnlyOffice if configured and file format is supported
     if (systemSettings?.onlyoffice_url && shouldOpenInOnlyOffice(item.name)) {
-      void navigate({ to: '/files', search: { folder: folderId ?? undefined, oo: item.id } })
+      ignorePromise(navigate({ to: '/files', search: { folder: folderId ?? undefined, oo: item.id } }))
       return
     }
     // Open in text editor if file format is supported
     if (shouldOpenInTextEditor(item.name)) {
-      void navigate({ to: '/files', search: { folder: folderId ?? undefined, te: item.id } })
+      ignorePromise(navigate({ to: '/files', search: { folder: folderId ?? undefined, te: item.id } }))
       return
     }
     setPreviewItem(item)
@@ -310,7 +313,7 @@ function FilesPage() {
 
     try {
       const result = await createPlaylist(null, null, ids) as any
-      void qc.invalidateQueries({ queryKey: ['files', null] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['files', null] }))
       const displayName = result.name?.replace(/\.m3u$/i, '') ?? 'Playliste'
       toast.success(`Playlist oprettet — ${ids.length} ${ids.length === 1 ? 'nummer' : 'numre'}`)
       setFolderPlaylistJob(null)
@@ -348,7 +351,7 @@ function FilesPage() {
             ])
             if (!pwStatus.has_password || !bkConfig.tertiary_enabled) {
               toast.info('Set up backup first')
-              void navigate({ to: '/backup' })
+              ignorePromise(navigate({ to: '/backup' }))
               return
             }
             const targetId = item.is_folder ? item.id : (item.parent_id ?? item.id)
@@ -364,19 +367,19 @@ function FilesPage() {
               retention_days: autoCfg.retention_days || 30,
               folder_ids: newIds,
             })
-            void qc.invalidateQueries({ queryKey: ['backup', 'auto'] })
+            ignorePromise(qc.invalidateQueries({ queryKey: ['backup', 'auto'] }))
             toast.success(`"${item.name}" added to auto backup`)
           } catch (err) {
             console.error('Add to backup failed:', err)
             toast.error(t('toast.moveFailed'))
           }
         }
-        void addToBackup()
+        ignorePromise(addToBackup())
         break
       }
       case 'playlist': {
         if (!item.is_folder) break
-        void (async () => {
+        ignorePromise((async () => {
           try {
             const contents = await api.get<FileItem[]>(`/api/v1/files?parent_id=${item.id}`)
             const audio = contents.filter(isAudioFile)
@@ -403,12 +406,12 @@ function FilesPage() {
           } catch {
             toast.error(t('toast.couldNotReadFolder'))
           }
-        })()
+        })())
         break
       }
       case 'addtoqueue': {
         if (item.is_folder) break
-        void (async () => {
+        ignorePromise((async () => {
           try {
             const result = await addTracks([item.id])
             if (result.added > 0) {
@@ -419,7 +422,7 @@ function FilesPage() {
           } catch {
             toast.error(t('toast.moveFailed'))
           }
-        })()
+        })())
         break
       }
       case 'playInPlayer': {
@@ -431,7 +434,7 @@ function FilesPage() {
       }
       case 'addToPlayer': {
         if (item.is_folder) break
-        void (async () => {
+        ignorePromise((async () => {
           try {
             const m3uTracks = await fetchPlaylistTracks(item.id)
             const trackIds = m3uTracks.map(tr => tr.id)
@@ -448,7 +451,7 @@ function FilesPage() {
           } catch {
             toast.error('Kunne ikke læse playlisten')
           }
-        })()
+        })())
         break
       }
     }
@@ -511,8 +514,8 @@ function FilesPage() {
       try { await api.delete(`/api/v1/files/${id}`) } catch { failed++ }
     }
     if (failed > 0) toast.error(`${failed} element(er) kunne ikke flyttes til papirkurven`)
-    void qc.invalidateQueries({ queryKey: ['files', folderId] })
-    void qc.invalidateQueries({ queryKey: ['me'] })
+    ignorePromise(qc.invalidateQueries({ queryKey: ['files', folderId] }))
+    ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
     setSelected(new Set())
   }, [selected, qc, folderId])
 
@@ -523,8 +526,8 @@ function FilesPage() {
       ids.map(id => api.patch(`/api/v1/files/${id}`, { parent_id: destFolderId ?? '' }))
     )
     const failed = results.filter(r => r.status === 'rejected').length
-    void qc.invalidateQueries({ queryKey: ['files', folderId] })
-    if (destFolderId) void qc.invalidateQueries({ queryKey: ['files', destFolderId] })
+    ignorePromise(qc.invalidateQueries({ queryKey: ['files', folderId] }))
+    if (destFolderId) ignorePromise(qc.invalidateQueries({ queryKey: ['files', destFolderId] }))
     setSelected(new Set())
     if (failed > 0) toast.error(`${failed} element(er) kunne ikke flyttes`)
     else toast.success(`${ids.length} element(er) flyttet`)
@@ -539,7 +542,7 @@ function FilesPage() {
       ])
       if (!pwStatus.has_password || !bkConfig.tertiary_enabled) {
         toast.info('Set up backup first')
-        void navigate({ to: '/backup' })
+        ignorePromise(navigate({ to: '/backup' }))
         return
       }
       const existing: string[] = autoCfg.folder_ids ?? []
@@ -558,7 +561,7 @@ function FilesPage() {
         retention_days: autoCfg.retention_days || 30,
         folder_ids: [...existing, ...uniqueNew],
       })
-      void qc.invalidateQueries({ queryKey: ['backup', 'auto'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['backup', 'auto'] }))
       toast.success(`${uniqueNew.length} mappe(r) tilføjet til auto backup`)
     } catch {
       toast.error(t('toast.moveFailed'))
@@ -570,7 +573,7 @@ function FilesPage() {
       const f = await createPlaylist(null, folderId, [...selected]) as any
       const displayName = f.name?.replace(/\.m3u$/i, '') ?? 'Playliste'
       toast.success(t('misc.playlistCreated'))
-      void qc.invalidateQueries({ queryKey: ['files', folderId] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['files', folderId] }))
       setSelected(new Set())
       setPlaylist(f.id, displayName)
     } catch {
@@ -620,7 +623,7 @@ function FilesPage() {
                   <span className="hidden sm:inline">{t('action.move')}</span>
                 </button>
                 <button
-                  onClick={() => { void handleBulkBackup() }}
+                  onClick={() => { ignorePromise(handleBulkBackup()) }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                   title={t('nav.backup')}
                 >
@@ -635,7 +638,7 @@ function FilesPage() {
                   <span className="hidden sm:inline">Download</span>
                 </button>
                 <button
-                  onClick={() => { void handleCreatePlaylist() }}
+                  onClick={() => { ignorePromise(handleCreatePlaylist()) }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                   title="Opret M3U afspilningsliste fra valgte lydfiler"
                 >
@@ -643,7 +646,7 @@ function FilesPage() {
                   <span className="hidden sm:inline">{t('files.playlist')}</span>
                 </button>
                 <button
-                  onClick={() => { void handleBulkTrash() }}
+                  onClick={() => { ignorePromise(handleBulkTrash()) }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-900/40 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 >
                   <Trash2 size={12} />
@@ -656,7 +659,7 @@ function FilesPage() {
             <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 w-full">
               <nav className="flex items-center gap-1 min-w-0 text-sm sm:flex-1">
                 <button
-                  onClick={() => void navigate({ to: '/files', search: {} })}
+                  onClick={() => ignorePromise(navigate({ to: '/files', search: {} }))}
                   className="flex items-center gap-1 text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors shrink-0"
                 >
                   <Home size={14} />
@@ -666,7 +669,7 @@ function FilesPage() {
                   <span key={bc.id} className="flex items-center gap-1 min-w-0">
                     <ChevronRight size={13} className="text-zinc-300 dark:text-slate-600 shrink-0" />
                     <button
-                      onClick={() => void navigate({ to: '/files', search: { folder: bc.id } })}
+                      onClick={() => ignorePromise(navigate({ to: '/files', search: { folder: bc.id } }))}
                       className="text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors truncate max-w-[140px] sm:max-w-[160px]"
                     >
                       {bc.name}
@@ -700,9 +703,9 @@ function FilesPage() {
                           const parentId = breadcrumbs && breadcrumbs.length > 1
                             ? breadcrumbs[breadcrumbs.length - 2].id
                             : null
-                          void qc.invalidateQueries({ queryKey: ['files', parentId] })
-                          void qc.invalidateQueries({ queryKey: ['me'] })
-                          void navigate({ to: '/files', search: parentId ? { folder: parentId } : {} })
+                          ignorePromise(qc.invalidateQueries({ queryKey: ['files', parentId] }))
+                          ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
+                          ignorePromise(navigate({ to: '/files', search: parentId ? { folder: parentId } : {} }))
                         } catch {
                           toast.error(t('toast.deleteFailed'))
                         }
@@ -891,9 +894,9 @@ function FilesPage() {
                           const parentId = breadcrumbs && breadcrumbs.length > 1
                             ? breadcrumbs[breadcrumbs.length - 2].id
                             : null
-                          void qc.invalidateQueries({ queryKey: ['files', parentId] })
-                          void qc.invalidateQueries({ queryKey: ['me'] })
-                          void navigate({ to: '/files', search: parentId ? { folder: parentId } : {} })
+                          ignorePromise(qc.invalidateQueries({ queryKey: ['files', parentId] }))
+                          ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
+                          ignorePromise(navigate({ to: '/files', search: parentId ? { folder: parentId } : {} }))
                         } catch {
                           toast.error(t('toast.deleteFailed'))
                         }
@@ -938,13 +941,13 @@ function FilesPage() {
               setPreviewItem(next)
             } else {
               setPreviewItem(null)
-              if (previewFileId) void navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined }, replace: true })
+              if (previewFileId) ignorePromise(navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined }, replace: true }))
             }
           }}
           onClose={() => {
             setPreviewItem(null)
             // Clear ?preview= param from URL but keep highlight so the file stays marked
-            if (previewFileId) void navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined }, replace: true })
+            if (previewFileId) ignorePromise(navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined }, replace: true }))
           }}
         />
       )}
@@ -953,13 +956,13 @@ function FilesPage() {
           item={ooItem}
           onlyofficeUrl={systemSettings.onlyoffice_url}
           backLabel={t('page.myFiles')}
-          onClose={() => void navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined } })}
+          onClose={() => ignorePromise(navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined } }))}
         />
       )}
       {teItem && (
         <TextEditor
           item={teItem}
-          onClose={() => void navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined } })}
+          onClose={() => ignorePromise(navigate({ to: '/files', search: { folder: folderId ?? undefined, highlight: highlightFileId ?? undefined } }))}
         />
       )}
       {downloadIds && <DownloadDialog ids={downloadIds} onClose={() => setDownloadIds(null)} />}
@@ -976,7 +979,7 @@ function FilesPage() {
         <FolderPickerDialog
           title={`${t('action.move')} ${selected.size} ${t('files.selected')}`}
           confirmLabel={t('misc.moveHere')}
-          onConfirm={destFolderId => { void handleBulkMove(destFolderId) }}
+          onConfirm={destFolderId => { ignorePromise(handleBulkMove(destFolderId)) }}
           onClose={() => setBulkMoveOpen(false)}
         />
       )}
@@ -1010,23 +1013,23 @@ function FilesPage() {
             </div>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => void doCreateFolderPlaylist(
+                onClick={() => ignorePromise(doCreateFolderPlaylist(
                   folderPlaylistJob.folder,
                   folderPlaylistJob.audioFiles,
                   folderPlaylistJob.existingM3u,
                   'first50',
-                )}
+                ))}
                 className="w-full px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
               >
                 {t('playlist.first50')}
               </button>
               <button
-                onClick={() => void doCreateFolderPlaylist(
+                onClick={() => ignorePromise(doCreateFolderPlaylist(
                   folderPlaylistJob.folder,
                   folderPlaylistJob.audioFiles,
                   folderPlaylistJob.existingM3u,
                   'random50',
-                )}
+                ))}
                 className="w-full px-4 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
               >
                 {t('playlist.random50')}

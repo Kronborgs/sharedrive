@@ -32,7 +32,7 @@ interface NewUserDialogProps {
   onCreated: () => void
 }
 
-function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: NewUserDialogProps) {
+function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: Readonly<NewUserDialogProps>) {
   // Pre-select the default quota; fall back to first preset if 0
   const initial = defaultQuotaBytes > 0 ? defaultQuotaBytes : QUOTA_OPTIONS[0].bytes
   const isPreset = QUOTA_OPTIONS.some(q => q.bytes === initial)
@@ -163,7 +163,7 @@ interface GroupComboboxProps {
   onChange: (ids: string[]) => void
 }
 
-function GroupCombobox({ allGroups, selected, onChange }: GroupComboboxProps) {
+function GroupCombobox({ allGroups, selected, onChange }: Readonly<GroupComboboxProps>) {
   const qc = useQueryClient()
   const [input, setInput]   = useState('')
   const [open, setOpen]     = useState(false)
@@ -277,7 +277,7 @@ function GroupCombobox({ allGroups, selected, onChange }: GroupComboboxProps) {
 const inputCls =
   'w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500'
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
   return (
     <div className="space-y-1">
       <label className="text-xs font-medium text-zinc-500 dark:text-slate-400 uppercase tracking-wide">{label}</label>
@@ -491,7 +491,7 @@ const COLORS = [
   '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899',
 ]
 
-function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+function ColorPicker({ value, onChange }: Readonly<{ value: string; onChange: (c: string) => void }>) {
   return (
     <div className="flex items-center gap-1.5">
       {COLORS.map(c => (
@@ -508,11 +508,11 @@ function GuestsPanel({
   guests,
   isLoading,
   qc,
-}: {
+}: Readonly<{
   guests: GuestUser[]
   isLoading: boolean
   qc: ReturnType<typeof useQueryClient>
-}) {
+}>) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const { t } = useI18n()
 
@@ -657,7 +657,7 @@ function GuestsPanel({
   )
 }
 
-function GroupsPanel({ groups, qc }: { groups: Group[]; qc: ReturnType<typeof useQueryClient> }) {
+function GroupsPanel({ groups, qc }: Readonly<{ groups: Group[]; qc: ReturnType<typeof useQueryClient> }>) {
   const [name, setName]         = useState('')
   const [color, setColor]       = useState(COLORS[0])
   const [editId, setEditId]     = useState<string | null>(null)
@@ -767,7 +767,7 @@ function UserRow({
   onChangeRole,
   isSelf,
   isLastAdmin,
-}: {
+}: Readonly<{
   user: User
   onEdit: (u: User) => void
   onLock: (id: string) => void
@@ -780,7 +780,7 @@ function UserRow({
   onChangeRole: (role: 'user' | 'admin') => void
   isSelf: boolean
   isLastAdmin: boolean
-}) {
+}>) {
   const percent = user.quota_bytes > 0
     ? Math.min(100, (user.quota_used_bytes / user.quota_bytes) * 100)
     : 0
@@ -968,7 +968,7 @@ function formatQuotaForInput(bytes: number): string {
   return `${rounded} ${units[i]}`
 }
 
-function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () => void; onSaved: () => void }) {
+function EditUserDialog({ user, onClose, onSaved }: Readonly<{ user: User; onClose: () => void; onSaved: () => void }>) {
   const [quotaInput, setQuotaInput]     = useState(() => formatQuotaForInput(user.quota_bytes))
   const [uploadInput, setUploadInput]   = useState(() => user.max_upload_bytes != null ? formatQuotaForInput(user.max_upload_bytes) : '')
   const [trashDays, setTrashDays]       = useState<string>(user.trash_retention_days != null ? String(user.trash_retention_days) : '')

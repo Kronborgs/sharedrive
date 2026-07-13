@@ -27,13 +27,16 @@ const (
 	backupHeaderContentType         = "Content-Type"
 	backupHeaderContentDisposition  = "Content-Disposition"
 	backupHeaderCacheControl        = "Cache-Control"
+	backupHeaderContentLength       = "Content-Length"
 	backupHeaderXContentTypeOptions = "X-Content-Type-Options"
 	backupHeaderAuthorization       = "Authorization"
 	backupBearerPrefix              = "Bearer "
 	backupErrInternal               = "internal error"
 	backupErrMissingBearerToken     = "missing bearer token"
-	backupContentTypeZip            = "application/zip"
-	backupCacheControlNoStore       = "private, no-store"
+	backupErrInvalidFilename        = "invalid filename"
+	backupErrInvalidReceiveToken    = "invalid receive token"
+	backupErrPeerNotConfigured      = "peer not configured"
+	backupErrBuddyUnavailable       = "buddy backup-lager ikke tilgængeligt på denne server"
 )
 
 // Handler is the thin HTTP layer for all backup operations.
@@ -155,7 +158,7 @@ func (h *Handler) RevokePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	revoked, err := h.passwords.Revoke(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if !revoked {
@@ -204,9 +207,9 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	// Serve as .zip so 7-Zip, WinZip, etc. recognise the format immediately.
 	// The internal .shdbak extension is kept for on-disk tertiary archives.
 	fname := fmt.Sprintf("sharedrive-backup-%s.zip", now.Format("2006-01-02"))
-	w.Header().Set(backupHeaderContentType, backupContentTypeZip)
+	w.Header().Set(backupHeaderContentType, "application/zip")
 	w.Header().Set(backupHeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s"`, fname))
-	w.Header().Set(backupHeaderCacheControl, backupCacheControlNoStore)
+	w.Header().Set(backupHeaderCacheControl, "private, no-store")
 	w.Header().Set(backupHeaderXContentTypeOptions, "nosniff")
 
 	if err := h.backups.Export(ctx, w, u.ID, req.Token, folderIDs); err != nil {
@@ -260,7 +263,7 @@ func (h *Handler) Restore(w http.ResponseWriter, r *http.Request) {
 
 	tmp, err := os.CreateTemp("", "shdbak-restore-*")
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	defer func() { tmp.Close(); os.Remove(tmp.Name()) }()
@@ -348,7 +351,7 @@ func (h *Handler) ListTertiary(w http.ResponseWriter, r *http.Request) {
 	}
 	archives, err := h.tertiary.List(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	httputil.Respond(w, http.StatusOK, archives)
@@ -372,16 +375,16 @@ func (h *Handler) DownloadTertiary(w http.ResponseWriter, r *http.Request) {
 			httputil.RespondError(w, http.StatusNotFound, "not found")
 			return
 		}
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	defer rc.Close()
 
-	w.Header().Set(backupHeaderContentType, backupContentTypeZip)
-	w.Header().Set(backupHeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
-	w.Header().Set(backupHeaderCacheControl, backupCacheControlNoStore)
-	w.Header().Set(backupHeaderXContentTypeOptions, "nosniff")
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	io.Copy(w, rc) //nolint:errcheck
 }
 
@@ -402,7 +405,7 @@ func (h *Handler) DeleteTertiary(w http.ResponseWriter, r *http.Request) {
 			httputil.RespondError(w, http.StatusBadRequest, "invalid filename")
 			return
 		}
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -421,7 +424,7 @@ func (h *Handler) GetBuddyConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	status, err := h.buddyCfg.GetStatus(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	httputil.Respond(w, http.StatusOK, status)
@@ -480,7 +483,7 @@ func (h *Handler) ClearBuddyPeerConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.buddyCfg.ClearPeerConfig(ctx, u.ID); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -502,7 +505,7 @@ func (h *Handler) GenerateBuddyReceiveToken(w http.ResponseWriter, r *http.Reque
 	}
 	token, err := h.buddyCfg.GenerateReceiveToken(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	httputil.Respond(w, http.StatusCreated, generateReceiveTokenResponse{
@@ -521,7 +524,7 @@ func (h *Handler) RevokeBuddyReceiveToken(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := h.buddyCfg.RevokeReceiveToken(ctx, u.ID); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -550,7 +553,7 @@ func (h *Handler) SetBuddyQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.buddyCfg.SetReceiveQuota(ctx, u.ID, req.QuotaBytes); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -762,7 +765,7 @@ func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
 
 	peerURL, peerUserID, peerToken, err := h.buddyCfg.GetPeerConfig(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "peer not configured")
+		httputil.RespondError(w, http.StatusServiceUnavailable, backupErrPeerNotConfigured)
 		return
 	}
 
@@ -778,13 +781,15 @@ func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
 
 	// Return 202 immediately — the actual push runs in the background.
 	w.WriteHeader(http.StatusAccepted)
+	h.runBuddyPushAsync(u.ID, req.Token, folderIDs, peerURL, peerUserID, peerToken)
+}
 
+func (h *Handler) runBuddyPushAsync(userID uuid.UUID, token string, folderIDs []uuid.UUID, peerURL, peerUserID, peerToken string) {
 	// Background goroutine: push to peer and update stats when done.
 	// Uses a detached context so the push continues after the HTTP request ends.
 	go func() {
 		bgCtx := context.Background()
-		userID := u.ID
-		result, pushErr := h.buddy.Push(bgCtx, userID, req.Token, folderIDs, peerURL, peerUserID, peerToken)
+		result, pushErr := h.buddy.Push(bgCtx, userID, token, folderIDs, peerURL, peerUserID, peerToken)
 		if pushErr != nil {
 			log.Error().Err(pushErr).Str("user_id", userID.String()).Msg("buddy push (async)")
 			if pushErr == ErrPeerStorageUnavailable {
@@ -836,7 +841,7 @@ func (h *Handler) ensureBuddyReceiveEnabled(w http.ResponseWriter) bool {
 	if h.buddyEnabled {
 		return true
 	}
-	httputil.RespondError(w, http.StatusServiceUnavailable, "buddy backup-lager ikke tilgængeligt på denne server")
+	httputil.RespondError(w, http.StatusServiceUnavailable, backupErrBuddyUnavailable)
 	return false
 }
 
@@ -859,7 +864,7 @@ func (h *Handler) prepareBuddyReceive(w http.ResponseWriter, r *http.Request) (u
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
 		log.Error().Err(err).
 			Str(backupHeaderContentType, r.Header.Get(backupHeaderContentType)).
-			Str("content_length", r.Header.Get("Content-Length")).
+			Str("content_length", r.Header.Get(backupHeaderContentLength)).
 			Int64("req_content_length", r.ContentLength).
 			Msg("buddy receive: ParseMultipartForm failed")
 		httputil.RespondError(w, http.StatusBadRequest, "invalid multipart form")
@@ -879,7 +884,7 @@ func (h *Handler) prepareBuddyReceive(w http.ResponseWriter, r *http.Request) (u
 		return uuid.UUID{}, nil, false
 	}
 	if err := h.buddyCfg.ValidateReceiveToken(r.Context(), receiverID, token); err != nil {
-		httputil.RespondError(w, http.StatusUnauthorized, "invalid receive token")
+		httputil.RespondError(w, http.StatusUnauthorized, backupErrInvalidReceiveToken)
 		return uuid.UUID{}, nil, false
 	}
 
@@ -925,7 +930,7 @@ func (h *Handler) ListBuddyReceived(w http.ResponseWriter, r *http.Request) {
 	}
 	archives, err := h.buddy.ListReceived(u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	httputil.Respond(w, http.StatusOK, archives)
@@ -941,20 +946,20 @@ func (h *Handler) DownloadBuddyReceived(w http.ResponseWriter, r *http.Request) 
 	filename := chi.URLParam(r, "filename")
 	rc, size, err := h.buddy.DownloadReceived(u.ID, filename)
 	if err != nil {
-		if os.IsNotExist(err) || strings.Contains(err.Error(), "invalid filename") {
+		if os.IsNotExist(err) || strings.Contains(err.Error(), backupErrInvalidFilename) {
 			httputil.RespondError(w, http.StatusNotFound, "not found")
 			return
 		}
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	defer rc.Close()
 
-	w.Header().Set(backupHeaderContentType, backupContentTypeZip)
-	w.Header().Set(backupHeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
-	w.Header().Set(backupHeaderCacheControl, backupCacheControlNoStore)
-	w.Header().Set(backupHeaderXContentTypeOptions, "nosniff")
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	io.Copy(w, rc) //nolint:errcheck
 }
 
@@ -967,11 +972,11 @@ func (h *Handler) DeleteBuddyReceived(w http.ResponseWriter, r *http.Request) {
 	}
 	filename := chi.URLParam(r, "filename")
 	if err := h.buddy.DeleteReceived(u.ID, filename); err != nil {
-		if strings.Contains(err.Error(), "invalid filename") {
-			httputil.RespondError(w, http.StatusBadRequest, "invalid filename")
+		if strings.Contains(err.Error(), backupErrInvalidFilename) {
+			httputil.RespondError(w, http.StatusBadRequest, backupErrInvalidFilename)
 			return
 		}
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -986,12 +991,12 @@ func (h *Handler) DeleteBuddyReceived(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ListSenderArchives(w http.ResponseWriter, r *http.Request) {
 	if !h.buddyEnabled {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "buddy backup-lager ikke tilgængeligt på denne server")
+		httputil.RespondError(w, http.StatusServiceUnavailable, backupErrBuddyUnavailable)
 		return
 	}
 	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, backupBearerPrefix) {
-		httputil.RespondError(w, http.StatusUnauthorized, backupErrMissingBearerToken)
+	if !strings.HasPrefix(auth, "Bearer ") {
+		httputil.RespondError(w, http.StatusUnauthorized, "missing bearer token")
 		return
 	}
 	token := auth[7:]
@@ -1001,12 +1006,12 @@ func (h *Handler) ListSenderArchives(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.buddyCfg.ValidateReceiveToken(r.Context(), receiverID, token); err != nil {
-		httputil.RespondError(w, http.StatusUnauthorized, "invalid receive token")
+		httputil.RespondError(w, http.StatusUnauthorized, backupErrInvalidReceiveToken)
 		return
 	}
 	archives, err := h.buddy.ListReceived(receiverID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	httputil.Respond(w, http.StatusOK, archives)
@@ -1017,12 +1022,12 @@ func (h *Handler) ListSenderArchives(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteSenderArchive(w http.ResponseWriter, r *http.Request) {
 	if !h.buddyEnabled {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "buddy backup-lager ikke tilgængeligt på denne server")
+		httputil.RespondError(w, http.StatusServiceUnavailable, backupErrBuddyUnavailable)
 		return
 	}
 	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, backupBearerPrefix) {
-		httputil.RespondError(w, http.StatusUnauthorized, backupErrMissingBearerToken)
+	if !strings.HasPrefix(auth, "Bearer ") {
+		httputil.RespondError(w, http.StatusUnauthorized, "missing bearer token")
 		return
 	}
 	token := auth[7:]
@@ -1032,16 +1037,16 @@ func (h *Handler) DeleteSenderArchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.buddyCfg.ValidateReceiveToken(r.Context(), receiverID, token); err != nil {
-		httputil.RespondError(w, http.StatusUnauthorized, "invalid receive token")
+		httputil.RespondError(w, http.StatusUnauthorized, backupErrInvalidReceiveToken)
 		return
 	}
 	filename := chi.URLParam(r, "filename")
 	if err := h.buddy.DeleteReceived(receiverID, filename); err != nil {
-		if strings.Contains(err.Error(), "invalid filename") {
-			httputil.RespondError(w, http.StatusBadRequest, "invalid filename")
+		if strings.Contains(err.Error(), backupErrInvalidFilename) {
+			httputil.RespondError(w, http.StatusBadRequest, backupErrInvalidFilename)
 			return
 		}
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1152,13 +1157,13 @@ func (h *Handler) SetBuddyAutoConfig(w http.ResponseWriter, r *http.Request) {
 		req.IntervalHours = 24
 	}
 	if err := h.buddyCfg.SetAutoPushConfig(ctx, u.ID, req.Enabled, req.IntervalHours, req.OnChange, req.FolderIDs); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	// Return updated full status so the frontend can update in one round trip.
 	status, err := h.buddyCfg.GetStatus(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	httputil.Respond(w, http.StatusOK, status)
@@ -1175,7 +1180,7 @@ func (h *Handler) GetAutoConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, err := h.autoBackup.Get(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	httputil.Respond(w, http.StatusOK, cfg)
@@ -1210,12 +1215,12 @@ func (h *Handler) SetAutoConfig(w http.ResponseWriter, r *http.Request) {
 		req.IntervalHours = 24
 	}
 	if err := h.autoBackup.Set(ctx, u.ID, req.Enabled, req.IntervalHours, req.RetentionDays, req.FolderIDs); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	cfg, err := h.autoBackup.Get(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	httputil.Respond(w, http.StatusOK, cfg)

@@ -17,6 +17,7 @@ import { useUploadDuplicateWorkflow } from '@/hooks/useUploadDuplicateWorkflow'
 import { ChevronRight, Users, Upload, FilePlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 const searchSchema = z.object({
   folder: z.string(),
@@ -96,13 +97,13 @@ function SharedBrowsePage() {
   const rename = useMutation({
     mutationFn: (body: { id: string; name: string }) =>
       api.patch(`/api/v1/files/${body.id}`, { name: body.name }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['shared-browse', folderId] }); setRenameId(null) },
+    onSuccess: () => { ignorePromise(qc.invalidateQueries({ queryKey: ['shared-browse', folderId] })); setRenameId(null) },
     onError: () => toast.error(t('misc.renameFailed')),
   })
 
   const trash = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/files/${id}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['shared-browse', folderId] }),
+    onSuccess: () => ignorePromise(qc.invalidateQueries({ queryKey: ['shared-browse', folderId] })),
     onError: () => toast.error(t('misc.trashFailed')),
   })
 
@@ -131,7 +132,7 @@ function SharedBrowsePage() {
 
   const handleOpen = useCallback((item: FileItem) => {
     if (item.is_folder) {
-      void navigate({ to: '/shared-browse', search: { folder: item.id, root: rootId } })
+      ignorePromise(navigate({ to: '/shared-browse', search: { folder: item.id, root: rootId } }))
       return
     }
     if (systemSettings?.onlyoffice_url && shouldOpenInOnlyOffice(item.name)) {
@@ -178,7 +179,7 @@ function SharedBrowsePage() {
         parent_id: folderId,
       }),
     onSuccess: (result) => {
-      void qc.invalidateQueries({ queryKey: ['shared-browse', folderId] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['shared-browse', folderId] }))
       setNewDocOpen(false)
       const pseudo: FileItem = {
         id: result.id,
@@ -207,7 +208,7 @@ function SharedBrowsePage() {
         parent_id: folderId,
       }),
     onSuccess: (result) => {
-      void qc.invalidateQueries({ queryKey: ['shared-browse', folderId] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['shared-browse', folderId] }))
       setNewDocOpen(false)
       const pseudo: FileItem = {
         id: result.id,
@@ -236,7 +237,7 @@ function SharedBrowsePage() {
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-100 dark:border-[#2d3148] shrink-0">
           <nav className="flex items-center gap-1 flex-1 min-w-0 text-sm">
             <button
-              onClick={() => void navigate({ to: '/shares' })}
+              onClick={() => ignorePromise(navigate({ to: '/shares' }))}
               className="flex items-center gap-1 text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors shrink-0"
             >
               <Users size={14} />
@@ -246,7 +247,7 @@ function SharedBrowsePage() {
               <>
                 <ChevronRight size={13} className="text-zinc-300 dark:text-slate-600 shrink-0" />
                 <button
-                  onClick={() => void navigate({ to: '/shared-browse', search: { folder: rootId } })}
+                  onClick={() => ignorePromise(navigate({ to: '/shared-browse', search: { folder: rootId } }))}
                   className="text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors truncate max-w-[120px]"
                 >
                   …

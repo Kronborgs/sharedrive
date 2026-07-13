@@ -346,6 +346,11 @@ export function RetroButton({
   const r = size / 2
   const [pressed, setPressed] = useState(false)
   const isDown = (active || pressed) && !disabled
+  const rimShadow = isDown
+    ? `inset 3px 3px 8px #0d0f18, inset -2px -2px 6px #2b2f45, 0 0 8px ${color}55`
+    : disabled
+      ? 'none'
+      : '3px 3px 8px #0d0f18, -2px -2px 6px #2b2f45'
 
   return (
     <button
@@ -365,11 +370,7 @@ export function RetroButton({
         className="absolute inset-0 rounded-full transition-all duration-75"
         style={{
           background: isDown ? '#1a1d2e' : '#1c1f2e',
-          boxShadow: isDown
-            ? `inset 3px 3px 8px #0d0f18, inset -2px -2px 6px #2b2f45, 0 0 8px ${color}55`
-            : disabled
-              ? 'none'
-              : '3px 3px 8px #0d0f18, -2px -2px 6px #2b2f45',
+          boxShadow: rimShadow,
         }}
       />
       {/* Inner face */}

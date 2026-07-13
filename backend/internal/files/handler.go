@@ -761,6 +761,11 @@ const (
 	passwordAlphabet     = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
 	passwordLength       = 12
 	customPasswordMaxLen = 128 // prevent oversized payloads being stored in Redis
+	zipContentType       = "application/zip"
+	zipDownloadName      = `attachment; filename="download.zip"`
+	cachePrivateNoStore  = "private, no-store"
+	acceptRangesNone     = "none"
+	errInternal          = "internal error"
 )
 
 // reDownloadToken matches the 64-character lowercase hex tokens produced by randomToken.
@@ -927,29 +932,12 @@ func (h *Handler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="download.zip"`)
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("Accept-Ranges", "none")
+	setZipDownloadHeaders(w)
 
 	zw := zip.NewWriter(w)
 	defer zw.Close()
 
-	for _, raw := range ids {
-		id := strings.TrimSpace(raw)
-		if _, err := uuid.Parse(id); err != nil {
-			continue
-		}
-		f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
-		if err != nil || f == nil {
-			continue
-		}
-		if f.IsFolder {
-			h.streamFolderIntoZip(ctx, zw, id, actor.ID.String())
-			continue
-		}
-		h.streamFileIntoZip(zw, id, f.Name)
-	}
+	h.streamIDsIntoZip(ctx, zw, ids, actor.ID.String())
 }
 
 // downloadZipByToken redeems a prepare-download Redis token and streams a
@@ -968,7 +956,7 @@ func (h *Handler) downloadZipByToken(w http.ResponseWriter, r *http.Request, ctx
 
 	var payload downloadTokenPayload
 	if err := json.Unmarshal([]byte(data), &payload); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 
@@ -982,49 +970,69 @@ func (h *Handler) downloadZipByToken(w http.ResponseWriter, r *http.Request, ctx
 		Metadata:      map[string]any{"file_count": len(payload.IDs), "password_protected": payload.Password != ""},
 	})
 
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="download.zip"`)
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("Accept-Ranges", "none")
+	setZipDownloadHeaders(w)
 
 	if payload.Password != "" {
 		// AES-256 encrypted ZIP (yeka/zip)
 		yzw := yzip.NewWriter(w)
 		defer yzw.Close()
-		for _, raw := range payload.IDs {
-			id := strings.TrimSpace(raw)
-			if _, err := uuid.Parse(id); err != nil {
-				continue
-			}
-			f, err := h.svc.GetAccessible(ctx, id, userID)
-			if err != nil || f == nil {
-				continue
-			}
-			if f.IsFolder {
-				h.streamFolderIntoEncryptedZip(ctx, yzw, id, userID, payload.Password)
-				continue
-			}
-			h.streamFileIntoEncryptedZip(yzw, id, f.Name, payload.Password)
-		}
+		h.streamIDsIntoEncryptedZip(ctx, yzw, payload.IDs, userID, payload.Password)
 	} else {
 		// Plain ZIP
 		zw := zip.NewWriter(w)
 		defer zw.Close()
-		for _, raw := range payload.IDs {
-			id := strings.TrimSpace(raw)
-			if _, err := uuid.Parse(id); err != nil {
-				continue
-			}
-			f, err := h.svc.GetAccessible(ctx, id, userID)
-			if err != nil || f == nil {
-				continue
-			}
-			if f.IsFolder {
-				h.streamFolderIntoZip(ctx, zw, id, userID)
-				continue
-			}
-			h.streamFileIntoZip(zw, id, f.Name)
+		h.streamIDsIntoZip(ctx, zw, payload.IDs, userID)
+	}
+}
+
+func setZipDownloadHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", zipContentType)
+	w.Header().Set("Content-Disposition", zipDownloadName)
+	w.Header().Set("Cache-Control", cachePrivateNoStore)
+	w.Header().Set("Accept-Ranges", acceptRangesNone)
+}
+
+func parseValidID(raw string) (string, bool) {
+	id := strings.TrimSpace(raw)
+	if _, err := uuid.Parse(id); err != nil {
+		return "", false
+	}
+	return id, true
+}
+
+func (h *Handler) streamIDsIntoZip(ctx context.Context, zw *zip.Writer, ids []string, userID string) {
+	for _, raw := range ids {
+		id, ok := parseValidID(raw)
+		if !ok {
+			continue
 		}
+		f, err := h.svc.GetAccessible(ctx, id, userID)
+		if err != nil || f == nil {
+			continue
+		}
+		if f.IsFolder {
+			h.streamFolderIntoZip(ctx, zw, id, userID)
+			continue
+		}
+		h.streamFileIntoZip(zw, id, f.Name)
+	}
+}
+
+func (h *Handler) streamIDsIntoEncryptedZip(ctx context.Context, yzw *yzip.Writer, ids []string, userID, password string) {
+	for _, raw := range ids {
+		id, ok := parseValidID(raw)
+		if !ok {
+			continue
+		}
+		f, err := h.svc.GetAccessible(ctx, id, userID)
+		if err != nil || f == nil {
+			continue
+		}
+		if f.IsFolder {
+			h.streamFolderIntoEncryptedZip(ctx, yzw, id, userID, password)
+			continue
+		}
+		h.streamFileIntoEncryptedZip(yzw, id, f.Name, password)
 	}
 }
 

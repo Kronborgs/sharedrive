@@ -11,6 +11,7 @@ import { TextEditor } from '@/components/files/TextEditor'
 import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import type { FileItem } from '@/types/api'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 import { Folder, File, Eye, Upload, Pencil, Trash2, Share2, Link, Users, Clock, X, FolderOpen } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -137,7 +138,7 @@ function ReceivedTab() {
   }))
 
   const handleOpen = (item: FileItem) => {
-    if (item.is_folder) void navigate({ to: '/shared-browse', search: { folder: item.id } })
+    if (item.is_folder) ignorePromise(navigate({ to: '/shared-browse', search: { folder: item.id } }))
     else if (systemSettings?.onlyoffice_url && shouldOpenInOnlyOffice(item.name)) {
       setOoItem(item)
     } else if (shouldOpenInTextEditor(item.name)) {
@@ -196,7 +197,7 @@ function SentTab() {
   const revoke = useMutation({
     mutationFn: (shareId: string) => api.delete(`/api/v1/shares/${shareId}`),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['files', 'my-shares'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['files', 'my-shares'] }))
       toast.success(t('shared.revokeShare'))
     },
   })
@@ -204,7 +205,7 @@ function SentTab() {
   const updatePerm = useMutation({
     mutationFn: ({ shareId, field, value }: { shareId: string; field: PermField; value: boolean }) =>
       api.patch(`/api/v1/shares/${shareId}`, { [field]: value }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['files', 'my-shares'] }),
+    onSuccess: () => ignorePromise(qc.invalidateQueries({ queryKey: ['files', 'my-shares'] })),
   })
 
   const handleRevoke = (shareId: string) => {
@@ -238,7 +239,7 @@ function SentTab() {
               <span className="font-medium text-sm text-zinc-900 dark:text-slate-100">{group.item.name}</span>
               {/* Path / navigate to parent folder */}
               <button
-                onClick={() => void navigate({ to: '/files', search: group.item.parent_id ? { folder: group.item.parent_id } : {} })}
+                onClick={() => ignorePromise(navigate({ to: '/files', search: group.item.parent_id ? { folder: group.item.parent_id } : {} }))}
                 className="flex items-center gap-1 text-xs text-zinc-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors mt-0.5"
                 title={t('shared.goToFolder')}
               >

@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import type { BlockedIP, IPWhitelistEntry } from '@/types/api'
 import { formatDate } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 export const Route = createFileRoute('/_auth/admin/blocked-ips/')({
   component: BlockedIPsPage,
@@ -27,12 +28,12 @@ function BlockedIPsPage() {
   const unblock = useMutation({
     mutationFn: (ip: string) =>
       api.delete(`/api/v1/admin/blocked-ips/${encodeURIComponent(ip)}`),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['admin', 'blocked-ips'] }) },
+    onSuccess: () => { ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'blocked-ips'] })) },
   })
 
   const removeWhitelist = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/admin/ip-whitelist/${id}`),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['admin', 'ip-whitelist'] }) },
+    onSuccess: () => { ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'ip-whitelist'] })) },
   })
 
   const [newCIDR, setNewCIDR] = useState('')
@@ -41,7 +42,7 @@ function BlockedIPsPage() {
   const addWhitelist = useMutation({
     mutationFn: () => api.post('/api/v1/admin/ip-whitelist', { ip_cidr: newCIDR, description: newDesc }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['admin', 'ip-whitelist'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'ip-whitelist'] }))
       setNewCIDR('')
       setNewDesc('')
     },

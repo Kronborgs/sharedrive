@@ -67,6 +67,17 @@ export function ShareTargetDialog({
     enabled: folderPickerOpen,
   })
   const folders = (pickerItems ?? []).filter(f => f.is_folder)
+  const folderBrowserEmptyState = pickerLoading
+    ? (
+        <div className="flex items-center justify-center py-4">
+          <Loader2 size={14} className="animate-spin text-zinc-400" />
+        </div>
+      )
+    : folders.length === 0
+    ? (
+        <p className="text-[11px] text-zinc-400 dark:text-slate-500 text-center py-3">Ingen under-mapper</p>
+      )
+    : null
 
   function selectFolder(id: string | null, name: string) {
     setTargetFolderId(id)
@@ -101,8 +112,8 @@ export function ShareTargetDialog({
 
         {/* Incoming files list */}
         <ul className="px-4 py-2 max-h-36 overflow-y-auto border-b border-zinc-100 dark:border-[#2d3148] divide-y divide-zinc-50 dark:divide-[#2d3148]/60">
-          {files.map((f, i) => (
-            <li key={i} className="flex items-center gap-2 py-1.5">
+          {files.map(f => (
+            <li key={f.name} className="flex items-center gap-2 py-1.5">
               <span className="flex-1 text-xs text-zinc-800 dark:text-slate-200 truncate">{f.name}</span>
               <span className="text-[10px] text-zinc-400 dark:text-slate-500 shrink-0">{formatBytes(f.size)}</span>
             </li>
@@ -129,7 +140,7 @@ export function ShareTargetDialog({
               {/* Breadcrumb nav */}
               <div className="flex items-center gap-0.5 px-2 py-1.5 bg-zinc-50 dark:bg-[#0f1117] border-b border-zinc-100 dark:border-[#2d3148] overflow-x-auto">
                 {trail.map((entry, idx) => (
-                  <span key={idx} className="flex items-center gap-0.5 shrink-0">
+                  <span key={entry.id ?? entry.name} className="flex items-center gap-0.5 shrink-0">
                     {idx > 0 && <ChevronRight size={11} className="text-zinc-300 dark:text-slate-600" />}
                     <button
                       onClick={() => setTrail(prev => prev.slice(0, idx + 1))}
@@ -153,25 +164,17 @@ export function ShareTargetDialog({
 
               {/* Sub-folders */}
               <div className="max-h-36 overflow-y-auto">
-                {pickerLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 size={14} className="animate-spin text-zinc-400" />
-                  </div>
-                ) : folders.length === 0 ? (
-                  <p className="text-[11px] text-zinc-400 dark:text-slate-500 text-center py-3">Ingen under-mapper</p>
-                ) : (
-                  folders.map(f => (
-                    <button
-                      key={f.id}
-                      onClick={() => setTrail(prev => [...prev, { id: f.id, name: f.name }])}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors border-b border-zinc-50 dark:border-[#2d3148]/40 last:border-0"
-                    >
-                      <Folder size={13} className="text-amber-500 shrink-0" />
-                      <span className="flex-1 truncate text-left">{f.name}</span>
-                      <ChevronRight size={12} className="text-zinc-300 dark:text-slate-600 shrink-0" />
-                    </button>
-                  ))
-                )}
+                {folderBrowserEmptyState ?? folders.map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => setTrail(prev => [...prev, { id: f.id, name: f.name }])}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors border-b border-zinc-50 dark:border-[#2d3148]/40 last:border-0"
+                  >
+                    <Folder size={13} className="text-amber-500 shrink-0" />
+                    <span className="flex-1 truncate text-left">{f.name}</span>
+                    <ChevronRight size={12} className="text-zinc-300 dark:text-slate-600 shrink-0" />
+                  </button>
+                ))}
               </div>
             </div>
           )}

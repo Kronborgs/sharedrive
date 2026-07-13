@@ -10,6 +10,7 @@ import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { TextEditor } from '@/components/files/TextEditor'
 import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 const searchSchema = z.object({
   token: z.string().catch(''),
@@ -61,7 +62,7 @@ function SharedPage() {
         payload,
       ),
     onSuccess: (newFile) => {
-      void qc.invalidateQueries({ queryKey: ['shared', token] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['shared', token] }))
       setNewDocOpen(false)
       // build a minimal FileItem and open in OO
       if (data && systemSettings?.onlyoffice_url) {
@@ -92,7 +93,7 @@ function SharedPage() {
         payload,
       ),
     onSuccess: (newFile) => {
-      void qc.invalidateQueries({ queryKey: ['shared', token] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['shared', token] }))
       setNewDocOpen(false)
       if (data) {
         const pseudo: FileItem = {

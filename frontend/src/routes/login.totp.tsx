@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { api, ApiClientError } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 const searchSchema = z.object({
   pending_token: z.string(),
@@ -45,7 +46,7 @@ export default function TOTPPage() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    void onSubmitCode(code)
+    ignorePromise(onSubmitCode(code))
   }
 
   return (
@@ -92,7 +93,7 @@ export default function TOTPPage() {
                 setCode(val)
                 if (val.length === 6) {
                   // auto-submit so the code doesn't expire while user reaches for button
-                  void onSubmitCode(val)
+                  ignorePromise(onSubmitCode(val))
                 }
               }}
               autoComplete="one-time-code"

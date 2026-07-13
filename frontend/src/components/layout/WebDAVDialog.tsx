@@ -8,6 +8,7 @@ import { X, Copy, Check, Trash2, Plus, HardDrive, Monitor, Apple, Terminal } fro
 import { toast } from 'sonner'
 import { formatDate } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 interface Props {
   onClose: () => void
@@ -98,7 +99,7 @@ export function WebDAVDialog({ onClose }: Props) {
     mutationFn: (name: string) =>
       api.post<CreatedAppPassword>('/api/v1/me/app-passwords', { name, scope: 'webdav' }),
     onSuccess: (data) => {
-      void qc.invalidateQueries({ queryKey: ['app-passwords'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['app-passwords'] }))
       setRevealed(data)
       setNewName('')
     },
@@ -107,12 +108,12 @@ export function WebDAVDialog({ onClose }: Props) {
 
   const revoke = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/me/app-passwords/${id}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['app-passwords'] }),
+    onSuccess: () => ignorePromise(qc.invalidateQueries({ queryKey: ['app-passwords'] })),
     onError: () => toast.error(t('webdav.revokeFailed')),
   })
 
   const copy = (text: string, key: string) => {
-    void navigator.clipboard.writeText(text)
+    ignorePromise(navigator.clipboard.writeText(text))
     setCopied(key)
     setTimeout(() => setCopied(null), 2000)
   }

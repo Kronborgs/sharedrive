@@ -6,6 +6,7 @@ import { formatBytes, formatDate } from '@/lib/utils'
 import { Download, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 interface BackupMeta {
   filename: string
@@ -45,7 +46,7 @@ function BackupPage() {
       }),
     onSuccess: () => {
       toast.success(t('adminBackup.downloaded'))
-      void qc.invalidateQueries({ queryKey: ['admin', 'backups'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'backups'] }))
     },
     onError: () => toast.error(t('adminBackup.failed')),
   })
@@ -54,7 +55,7 @@ function BackupPage() {
     mutationFn: (filename: string) => api.delete(`/api/v1/admin/backup/${encodeURIComponent(filename)}`),
     onSuccess: () => {
       toast.success(t('adminBackup.deleted'))
-      void qc.invalidateQueries({ queryKey: ['admin', 'backups'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'backups'] }))
     },
     onError: () => toast.error(t('adminBackup.deleteFailed')),
   })

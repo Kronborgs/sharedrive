@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import type { Tag } from '@/types/api'
 import { Pencil, Trash2, Plus } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 export const Route = createFileRoute('/_auth/admin/tags/')({
   component: TagsPage,
@@ -33,7 +34,7 @@ function TagsPage() {
   const create = useMutation({
     mutationFn: () => api.post<Tag>('/api/v1/admin/tags', { name, color }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['admin', 'tags'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'tags'] }))
       setName('')
       setColor(PRESET_COLORS[0])
     },
@@ -41,12 +42,12 @@ function TagsPage() {
 
   const update = useMutation({
     mutationFn: () => api.patch(`/api/v1/admin/tags/${editId}`, { name: editName, color: editColor }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['admin', 'tags'] }); setEditId(null) },
+    onSuccess: () => { ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'tags'] })); setEditId(null) },
   })
 
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/admin/tags/${id}`),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['admin', 'tags'] }) },
+    onSuccess: () => { ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'tags'] })) },
   })
 
   return (

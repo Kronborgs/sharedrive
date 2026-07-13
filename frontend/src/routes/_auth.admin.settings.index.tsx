@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { useState } from 'react'
 import { ONLYOFFICE_GROUPS, TEXT_EDITOR_GROUPS } from '@/lib/file-types'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 export const Route = createFileRoute('/_auth/admin/settings/')({
   component: SettingsPage,
@@ -125,8 +126,8 @@ function SettingsPage() {
     onSuccess: () => {
       toast.success(t('settings.saved'))
       setSmtpPassword('')
-      void qc.invalidateQueries({ queryKey: ['admin', 'settings'] })
-      void qc.invalidateQueries({ queryKey: ['system', 'settings'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'settings'] }))
+      ignorePromise(qc.invalidateQueries({ queryKey: ['system', 'settings'] }))
     },
     onError: () => toast.error(t('settings.saveFailed')),
   })
@@ -150,7 +151,7 @@ function SettingsPage() {
       await api.patch('/api/v1/admin/settings', body)
       toast.success(t('settings.ooSaved'))
       setOoSecret('')
-      void qc.invalidateQueries({ queryKey: ['admin', 'settings'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'settings'] }))
     } catch {
       toast.error(t('settings.ooSaveFailed'))
     } finally {
@@ -347,7 +348,7 @@ function SettingsPage() {
             </div>
           </section>
           <div className="flex justify-end">
-            <button type="button" onClick={() => { void saveOnlyOffice() }} disabled={ooSaving} className="px-5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+            <button type="button" onClick={() => { ignorePromise(saveOnlyOffice()) }} disabled={ooSaving} className="px-5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
               {ooSaving ? t('settings.saving') : t('settings.saveOo')}
             </button>
           </div>

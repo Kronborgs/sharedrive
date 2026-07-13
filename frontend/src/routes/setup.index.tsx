@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { Check, CheckCircle2, ChevronRight, Mail, Upload, XCircle } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 export const Route = createFileRoute('/setup/')({
   component: SetupPage,
@@ -71,7 +72,7 @@ function SetupPage() {
         throw new Error(data.error ?? 'Restore failed')
       }
       toast.success(t('setup.restoreComplete'))
-      setTimeout(() => void navigate({ to: '/login' }), 1200)
+      setTimeout(() => ignorePromise(navigate({ to: '/login' })), 1200)
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t('setup.restoreFailed'))
     } finally {
@@ -98,7 +99,7 @@ function SetupPage() {
         },
       })
       toast.success(t('setup.setupComplete'))
-      setTimeout(() => void navigate({ to: '/login' }), 1200)
+      setTimeout(() => ignorePromise(navigate({ to: '/login' })), 1200)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t('setup.setupFailed')
       toast.error(msg)
@@ -120,15 +121,8 @@ function SetupPage() {
         <div className="flex items-center justify-center gap-2 mb-6">
           {STEPS.map((_label, i) => (
             <div key={i} className="flex items-center gap-2">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                i < step
-                  ? 'bg-brand-600 text-white'
-                  : i === step
-                  ? 'bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 ring-2 ring-brand-400'
-                  : 'bg-zinc-200 dark:bg-[#2d3148] text-zinc-400'
-              }`}>
-                {i < step ? <Check size={12} /> : i + 1}
-              </div>
+              <StepIndicator index={i} currentStep={step} />
+              <StepGlyph index={i} currentStep={step} />
               {i < STEPS.length - 1 && <ChevronRight size={12} className="text-zinc-300 dark:text-slate-600" />}
             </div>
           ))}
@@ -150,6 +144,26 @@ function SetupPage() {
       </div>
     </div>
   )
+}
+
+function StepIndicator({ index, currentStep }: { index: number; currentStep: number }) {
+  let className = 'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors '
+  if (index < currentStep) {
+    className += 'bg-brand-600 text-white'
+  } else if (index === currentStep) {
+    className += 'bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 ring-2 ring-brand-400'
+  } else {
+    className += 'bg-zinc-200 dark:bg-[#2d3148] text-zinc-400'
+  }
+
+  return <div className={className} />
+}
+
+function StepGlyph({ index, currentStep }: { index: number; currentStep: number }) {
+  if (index < currentStep) {
+    return <Check size={12} />
+  }
+  return <>{index + 1}</>
 }
 
 // ─── Step 1: Site name ───────────────────────────────────────────

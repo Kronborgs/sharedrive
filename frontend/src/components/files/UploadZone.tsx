@@ -115,48 +115,7 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgr
                 </button>
               )}
             </div>
-            {u.status === 'error' ? (
-              <p className="text-xs text-red-500">{u.error ?? t('upload.failed')}</p>
-            ) : u.status === 'paused' ? (
-              <>
-                <div className="h-1 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden mb-1">
-                  <div
-                    className="h-full bg-amber-500 transition-all duration-200"
-                    style={{ width: `${u.progress}%` }}
-                  />
-                </div>
-                <p className="text-[10px] text-amber-500 dark:text-amber-400">
-                  {t('upload.paused')}
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="h-1 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden mb-1">
-                  <div
-                    className="h-full bg-brand-500 transition-all duration-200"
-                    style={{ width: `${u.progress}%` }}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-zinc-400 dark:text-slate-500">
-                    {u.bytesUploaded != null ? formatBytes(u.bytesUploaded) : '0 B'}
-                    {' / '}
-                    {formatBytes(u.file.size)}
-                  </span>
-                  <span className="text-[10px] text-zinc-400 dark:text-slate-500">
-                    {u.speed != null && u.speed > 0 ? formatSpeed(u.speed) : ''}
-                    {u.speed != null && u.speed > 0 && u.eta != null && u.eta > 0 ? ' · ' : ''}
-                    {u.eta != null && u.eta > 0 && u.speed != null && u.speed > 0 ? formatEta(u.eta) : ''}
-                  </span>
-                </div>
-                {/* Show a note while chunk boundary is being committed (speed drops to 0) */}
-                {u.speed === 0 && u.progress > 0 && u.progress < 100 && (
-                  <p className="text-[10px] text-amber-500 dark:text-amber-400 mt-0.5">
-                    {t('upload.saving')}
-                  </p>
-                )}
-              </>
-            )}
+            {renderUploadStatus(u, t)}
           </li>
         ))}
       </ul>
@@ -175,6 +134,59 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgr
   )
 }
 
+function renderUploadStatus(u: UploadEntry, t: ReturnType<typeof useI18n>['t']) {
+  if (u.status === 'error') {
+    return (
+              <p className="text-xs text-red-500">{u.error ?? t('upload.failed')}</p>
+    )
+  }
+
+  if (u.status === 'paused') {
+    return (
+      <>
+        <div className="h-1 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden mb-1">
+          <div
+            className="h-full bg-amber-500 transition-all duration-200"
+            style={{ width: `${u.progress}%` }}
+          />
+        </div>
+        <p className="text-[10px] text-amber-500 dark:text-amber-400">
+          {t('upload.paused')}
+        </p>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <div className="h-1 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden mb-1">
+        <div
+          className="h-full bg-brand-500 transition-all duration-200"
+          style={{ width: `${u.progress}%` }}
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-zinc-400 dark:text-slate-500">
+          {u.bytesUploaded != null ? formatBytes(u.bytesUploaded) : '0 B'}
+          {' / '}
+          {formatBytes(u.file.size)}
+        </span>
+        <span className="text-[10px] text-zinc-400 dark:text-slate-500">
+          {u.speed != null && u.speed > 0 ? formatSpeed(u.speed) : ''}
+          {u.speed != null && u.speed > 0 && u.eta != null && u.eta > 0 ? ' · ' : ''}
+          {u.eta != null && u.eta > 0 && u.speed != null && u.speed > 0 ? formatEta(u.eta) : ''}
+        </span>
+      </div>
+      {/* Show a note while chunk boundary is being committed (speed drops to 0) */}
+      {u.speed === 0 && u.progress > 0 && u.progress < 100 && (
+        <p className="text-[10px] text-amber-500 dark:text-amber-400 mt-0.5">
+          {t('upload.saving')}
+        </p>
+      )}
+    </>
+  )
+}
+
 // --- Upload hook ---
 
 import { useCallback, useEffect } from 'react'
@@ -182,6 +194,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as tus from 'tus-js-client'
 import { api } from '@/lib/api'
 import type { FileItem } from '@/types/api'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 // Chunk size: 50 MB — safely below Cloudflare's 100 MB per-request limit.
 const TUS_CHUNK_SIZE = 50 * 1024 * 1024
@@ -369,8 +382,8 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
             speedSamples.current.delete(entry.id)
             tusUploads.current.delete(entry.id)
             update(entry.id, { status: 'done', progress: 100 })
-            void qc.invalidateQueries({ queryKey: queryKey ?? ['files', effectiveFolderId] })
-            void qc.invalidateQueries({ queryKey: ['me'] })
+            ignorePromise(qc.invalidateQueries({ queryKey: queryKey ?? ['files', effectiveFolderId] }))
+            ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
             setTimeout(() => {
               setUploads(prev => {
                 const next = prev.filter(u => u.id !== entry.id)
@@ -391,7 +404,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       }
     }
 
-    void startEntries()
+    ignorePromise(startEntries())
   }, [folderId, qc, settings])
 
   const dismiss = useCallback((id: string) => {
@@ -477,7 +490,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       startUpload(filesForFolder, key === '' ? folderId : key)
     }
 
-    void qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] })
+    ignorePromise(qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] }))
   }, [folderId, qc, startUpload, queryKey, prepareFolderUpload])
 
   return { uploads, startUpload, startFolderUpload, prepareFolderUpload, dismiss, directUpload: !!(settings?.direct_upload_url?.trim()) }

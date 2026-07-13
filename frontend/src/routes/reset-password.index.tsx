@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 const searchSchema = z.object({
   token: z.string().catch(''),
@@ -93,7 +94,7 @@ function ResetPasswordPage() {
         new_password: values.password,
       })
       toast.success(t('reset.passwordUpdated'))
-      setTimeout(() => void navigate({ to: '/login' }), 1500)
+      setTimeout(() => ignorePromise(navigate({ to: '/login' })), 1500)
     } catch {
       toast.error(t('reset.invalidLink'))
     }

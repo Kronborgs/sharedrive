@@ -7,6 +7,7 @@ import { useI18n } from '@/lib/i18n'
 import type { FileItem, User } from '@/types/api'
 import { formatBytes } from '@/lib/utils'
 import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 export function Header({ user, onMenuToggle }: { user?: User; onMenuToggle?: () => void }) {
   const [isDark, setIsDark] = useState(false)
@@ -70,14 +71,14 @@ export function Header({ user, onMenuToggle }: { user?: User; onMenuToggle?: () 
     setQuery('')
     const folder = item.parent_id ?? undefined
     if (item.is_folder) {
-      void navigate({ to: '/files', search: { folder: item.id } })
+      ignorePromise(navigate({ to: '/files', search: { folder: item.id } }))
     } else if (shouldOpenInOnlyOffice(item.name)) {
-      void navigate({ to: '/files', search: { folder, oo: item.id, highlight: item.id } })
+      ignorePromise(navigate({ to: '/files', search: { folder, oo: item.id, highlight: item.id } }))
     } else if (shouldOpenInTextEditor(item.name)) {
-      void navigate({ to: '/files', search: { folder, te: item.id, highlight: item.id } })
+      ignorePromise(navigate({ to: '/files', search: { folder, te: item.id, highlight: item.id } }))
     } else {
       // Images, video, PDF etc — navigate to folder, scroll/highlight the row, open preview
-      void navigate({ to: '/files', search: { folder, preview: item.id, highlight: item.id } })
+      ignorePromise(navigate({ to: '/files', search: { folder, preview: item.id, highlight: item.id } }))
     }
   }, [navigate])
 

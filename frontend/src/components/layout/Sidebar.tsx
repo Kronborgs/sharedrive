@@ -34,6 +34,7 @@ import { Dial, RetroButton, LedDisplay, CassetteIcon } from '@/components/files/
 import { usePlaylist } from '@/lib/playlist-context'
 import { APP_VERSION } from '@/version'
 import { CHANGELOG_ENTRIES } from '@/changelog.generated'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 interface NavItem {
   to: string
@@ -176,7 +177,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
       await api.post('/api/v1/auth/logout', {})
     } finally {
       setUser(null)
-      void qc.clear()
+      qc.clear()
       window.location.href = '/login'
     }
   }
@@ -359,7 +360,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                           </span>
                         </button>
                         <button
-                          onClick={() => { void removeTrack(track.id) }}
+                          onClick={() => { ignorePromise(removeTrack(track.id)) }}
                           className="shrink-0 p-0.5 text-zinc-200 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
                           title={t('player.removeTrack')}
                         >
@@ -505,13 +506,13 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
           <TOTPSetupDialog
             isEnabled={!!user?.totp_enabled}
             onClose={() => setShowTOTP(false)}
-            onChanged={() => { void qc.invalidateQueries({ queryKey: ['me'] }) }}
+            onChanged={() => { ignorePromise(qc.invalidateQueries({ queryKey: ['me'] })) }}
           />
         )}
         {showAddMusic && (
           <AddMusicDialog
             onClose={() => setShowAddMusic(false)}
-            onAdd={fileIds => { void handleAddMusic(fileIds) }}
+            onAdd={fileIds => { ignorePromise(handleAddMusic(fileIds)) }}
           />
         )}
 
@@ -686,7 +687,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                       </span>
                     </button>
                     <button
-                      onClick={() => { void removeTrack(track.id) }}
+                      onClick={() => { ignorePromise(removeTrack(track.id)) }}
                       className="p-1.5 text-zinc-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                     >
                       <X size={16} />

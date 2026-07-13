@@ -57,7 +57,7 @@ function FileTreeNode({
   ancestorIDs,
   allChecked,
   nearestSelectedAncestorID,
-}: {
+}: Readonly<{
   item: FileItem
   depth: number
   selectedIDs: string[]
@@ -65,7 +65,7 @@ function FileTreeNode({
   ancestorIDs: Set<string>
   allChecked: boolean
   nearestSelectedAncestorID?: string
-}) {
+}>) {
   const { t } = useI18n()
   const isAncestor = ancestorIDs.has(item.id)
   // isExplicit: this item is directly in selectedIDs (or allChecked covers everything)
@@ -74,6 +74,8 @@ function FileTreeNode({
   const inheritedSelected = !isExplicit && !!nearestSelectedAncestorID
   const isChecked = isExplicit || inheritedSelected
   const isIndeterminate = !isChecked && isAncestor
+  const rowClassName = getFileTreeRowClass(isChecked, isIndeterminate)
+  const labelClassName = getFileTreeLabelClass(isExplicit, inheritedSelected, isIndeterminate)
   // Auto-expand when a descendant is selected or allChecked
   const [expanded, setExpanded] = useState(isAncestor || allChecked)
 
@@ -95,13 +97,7 @@ function FileTreeNode({
   return (
     <div>
       <div
-        className={`flex items-center gap-1 py-1 rounded-md px-1 transition-colors ${
-          isChecked
-            ? 'bg-brand-50 dark:bg-brand-900/20'
-            : isIndeterminate
-            ? 'bg-brand-50/40 dark:bg-brand-900/10'
-            : 'hover:bg-zinc-100 dark:hover:bg-[#2d3148]/50'
-        }`}
+        className={`flex items-center gap-1 py-1 rounded-md px-1 transition-colors ${rowClassName}`}
         style={{ paddingLeft: `${depth * 14 + 4}px` }}
       >
         {item.is_folder ? (
@@ -116,15 +112,7 @@ function FileTreeNode({
           <span className="w-4 shrink-0" />
         )}
         <label className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
-          <span className={`flex items-center justify-center w-4 h-4 rounded shrink-0 border transition-colors ${
-            isExplicit
-              ? 'bg-brand-600 border-brand-600'
-              : inheritedSelected
-              ? 'bg-brand-400 border-brand-400'
-              : isIndeterminate
-              ? 'bg-brand-400/30 border-brand-400'
-              : 'border-zinc-300 dark:border-[#4a5070] bg-white dark:bg-[#1a1d27]'
-          }`}>
+          <span className={`flex items-center justify-center w-4 h-4 rounded shrink-0 border transition-colors ${labelClassName}`}>
             {isChecked && (
               <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
                 <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -166,10 +154,10 @@ function FileTreeNode({
 function FolderPicker({
   selectedIDs,
   onChange,
-}: {
+}: Readonly<{
   selectedIDs: string[]
   onChange: (ids: string[]) => void
-}) {
+}>) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   // manualMode=true means the user has explicitly unchecked "All files"
@@ -309,7 +297,7 @@ function FolderPicker({
 
 
 // ── PushProgressBar ──────────────────────────────────────────────────────────────
-function PushProgressBar({ progress }: { progress: { total_bytes: number; sent_bytes: number; started_at: string; active: boolean } }) {
+function PushProgressBar({ progress }: Readonly<{ progress: { total_bytes: number; sent_bytes: number; started_at: string; active: boolean } }>) {
   const { t } = useI18n()
   const pct = progress.total_bytes > 0 ? Math.min(100, Math.round((progress.sent_bytes / progress.total_bytes) * 100)) : 0
   const elapsedSec = (Date.now() - new Date(progress.started_at).getTime()) / 1000
@@ -735,26 +723,14 @@ function BackupPage() {
         <button
           type="button"
           onClick={() => hasToken && setActiveTab('storage')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'storage'
-              ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-              : !hasToken
-                ? 'border-transparent text-zinc-300 dark:text-slate-600 cursor-not-allowed'
-                : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 cursor-pointer'
-          }`}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${getBackupTabClass(activeTab === 'storage', hasToken)}`}
         >
           <HardDrive size={14} /> {t('backup.tabStorage')}
         </button>
         <button
           type="button"
           onClick={() => hasToken && setActiveTab('buddy')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'buddy'
-              ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-              : !hasToken
-                ? 'border-transparent text-zinc-300 dark:text-slate-600 cursor-not-allowed'
-                : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 cursor-pointer'
-          }`}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${getBackupTabClass(activeTab === 'buddy', hasToken)}`}
         >
           <Server size={14} /> {t('backup.tabBuddy')}
         </button>
@@ -1808,4 +1784,23 @@ function BackupPage() {
       )}
     </div>
   )
+}
+
+function getFileTreeRowClass(isChecked: boolean, isIndeterminate: boolean): string {
+  if (isChecked) return 'bg-brand-50 dark:bg-brand-900/20'
+  if (isIndeterminate) return 'bg-brand-50/40 dark:bg-brand-900/10'
+  return 'hover:bg-zinc-100 dark:hover:bg-[#2d3148]/50'
+}
+
+function getFileTreeLabelClass(isExplicit: boolean, inheritedSelected: boolean, isIndeterminate: boolean): string {
+  if (isExplicit) return 'bg-brand-600 border-brand-600'
+  if (inheritedSelected) return 'bg-brand-400 border-brand-400'
+  if (isIndeterminate) return 'bg-brand-400/30 border-brand-400'
+  return 'border-zinc-300 dark:border-[#4a5070] bg-white dark:bg-[#1a1d27]'
+}
+
+function getBackupTabClass(isActive: boolean, hasToken: boolean): string {
+  if (isActive) return 'border-brand-500 text-brand-600 dark:text-brand-400'
+  if (!hasToken) return 'border-transparent text-zinc-300 dark:text-slate-600 cursor-not-allowed'
+  return 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 cursor-pointer'
 }

@@ -1056,37 +1056,18 @@ func (h *Handler) ListPushedArchives(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	cfg, err := h.buddyCfg.GetStatus(ctx, u.ID)
-	if err != nil || !cfg.PeerConfigured {
-		httputil.RespondError(w, http.StatusBadRequest, "peer not configured")
+	peerURL, peerUserID, peerToken, ok := h.getConfiguredBuddyPeer(ctx, w, u.ID)
+	if !ok {
 		return
 	}
-	peerURL, peerUserID, peerToken, err := h.buddyCfg.GetPeerConfig(ctx, u.ID)
+	peerPath := "/api/v1/backup/buddy/sender-archives?receiver_user_id=" + peerUserID
+	httpClient, endpoint := h.buddyPeerClientAndEndpoint(u.ID, peerURL, peerPath)
+
+	req, err := h.newBuddyPeerRequest(ctx, http.MethodGet, endpoint, peerToken)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
-
-	endpoint := strings.TrimRight(peerURL, "/") +
-		"/api/v1/backup/buddy/sender-archives?receiver_user_id=" + peerUserID
-
-	var httpClient *http.Client
-	if h.tunnelMgr != nil {
-		if tr := h.tunnelMgr.HTTPTransport(u.ID); tr != nil {
-			httpClient = &http.Client{Transport: tr, Timeout: 30 * time.Second}
-			endpoint = "http://tunnel-peer/api/v1/backup/buddy/sender-archives?receiver_user_id=" + peerUserID
-		}
-	}
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 30 * time.Second}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+peerToken)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -1117,38 +1098,19 @@ func (h *Handler) DeletePushedArchive(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	cfg, err := h.buddyCfg.GetStatus(ctx, u.ID)
-	if err != nil || !cfg.PeerConfigured {
-		httputil.RespondError(w, http.StatusBadRequest, "peer not configured")
-		return
-	}
-	peerURL2, peerUserID2, peerToken2, err := h.buddyCfg.GetPeerConfig(ctx, u.ID)
-	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+	peerURL, peerUserID, peerToken, ok := h.getConfiguredBuddyPeer(ctx, w, u.ID)
+	if !ok {
 		return
 	}
 	filename := chi.URLParam(r, "filename")
+	peerPath := "/api/v1/backup/buddy/sender-archives/" + filename + "?receiver_user_id=" + peerUserID
+	httpClient, endpoint := h.buddyPeerClientAndEndpoint(u.ID, peerURL, peerPath)
 
-	endpoint := strings.TrimRight(peerURL2, "/") +
-		"/api/v1/backup/buddy/sender-archives/" + filename + "?receiver_user_id=" + peerUserID2
-
-	var httpClient *http.Client
-	if h.tunnelMgr != nil {
-		if tr := h.tunnelMgr.HTTPTransport(u.ID); tr != nil {
-			httpClient = &http.Client{Transport: tr, Timeout: 30 * time.Second}
-			endpoint = "http://tunnel-peer/api/v1/backup/buddy/sender-archives/" + filename + "?receiver_user_id=" + peerUserID2
-		}
-	}
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 30 * time.Second}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	req, err := h.newBuddyPeerRequest(ctx, http.MethodDelete, endpoint, peerToken)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
-	req.Header.Set("Authorization", "Bearer "+peerToken2)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -1273,6 +1235,41 @@ func (h *Handler) RunScheduled(ctx context.Context) {
 	if h.autoBackup != nil {
 		h.autoBackup.RunScheduled(ctx)
 	}
+}
+
+func (h *Handler) getConfiguredBuddyPeer(ctx context.Context, w http.ResponseWriter, userID uuid.UUID) (string, string, string, bool) {
+	cfg, err := h.buddyCfg.GetStatus(ctx, userID)
+	if err != nil || !cfg.PeerConfigured {
+		httputil.RespondError(w, http.StatusBadRequest, "peer not configured")
+		return "", "", "", false
+	}
+	peerURL, peerUserID, peerToken, err := h.buddyCfg.GetPeerConfig(ctx, userID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
+		return "", "", "", false
+	}
+	return peerURL, peerUserID, peerToken, true
+}
+
+func (h *Handler) buddyPeerClientAndEndpoint(userID uuid.UUID, peerURL, peerPath string) (*http.Client, string) {
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	endpoint := strings.TrimRight(peerURL, "/") + peerPath
+	if h.tunnelMgr != nil {
+		if tr := h.tunnelMgr.HTTPTransport(userID); tr != nil {
+			httpClient = &http.Client{Transport: tr, Timeout: 30 * time.Second}
+			endpoint = "http://tunnel-peer" + peerPath
+		}
+	}
+	return httpClient, endpoint
+}
+
+func (h *Handler) newBuddyPeerRequest(ctx context.Context, method, endpoint, token string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set(backupHeaderAuthorization, backupBearerPrefix+token)
+	return req, nil
 }
 
 // ── PUT /api/v1/backup/notify ─────────────────────────────────────────────────

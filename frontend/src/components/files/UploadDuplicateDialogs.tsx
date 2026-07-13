@@ -20,7 +20,7 @@ export function UploadConflictDialog({
   onResolve,
   compareUpdatedLabel,
   t,
-}: UploadConflictDialogProps) {
+}: Readonly<UploadConflictDialogProps>) {
   if (!open || queue.length === 0) return null
 
   const current = queue[0]
@@ -99,7 +99,7 @@ export function UploadGlobalDuplicateDialog({
   onClose,
   onConfirm,
   t,
-}: UploadGlobalDuplicateDialogProps) {
+}: Readonly<UploadGlobalDuplicateDialogProps>) {
   if (!open || queue.length === 0) return null
 
   return (

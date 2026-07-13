@@ -20,18 +20,10 @@ import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { TextEditor } from '@/components/files/TextEditor'
 import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import { useShareTarget } from '@/hooks/useShareTarget'
+import { useUploadDuplicateWorkflow } from '@/hooks/useUploadDuplicateWorkflow'
 import { useI18n } from '@/lib/i18n'
-import {
-  createDuplicateUploadQueue,
-  fetchDuplicateHitsByName,
-  partitionUploadRequests,
-  renameUploadRequest,
-  type DuplicateUploadEntry,
-  type UploadConflictPair,
-} from '@/lib/upload-duplicates'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, FolderUp, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive, FilePlus } from 'lucide-react'
 import { toast } from 'sonner'
-import type { UploadRequest } from '@/components/files/UploadZone'
 
 const searchSchema = z.object({
   folder: z.string().optional(),
@@ -111,19 +103,30 @@ function FilesPage() {
     audioFiles: FileItem[]
     existingM3u: FileItem | null
   } | null>(null)
-  const [uploadConflictOpen, setUploadConflictOpen] = useState(false)
-  const [uploadConflictQueue, setUploadConflictQueue] = useState<UploadConflictPair[]>([])
-  const [uploadConflictResolved, setUploadConflictResolved] = useState<UploadRequest[]>([])
-  const [uploadConflictApplyAll, setUploadConflictApplyAll] = useState(false)
-  const [uploadConflictTargetFolderId, setUploadConflictTargetFolderId] = useState<string | null>(null)
-  const [uploadDuplicateOpen, setUploadDuplicateOpen] = useState(false)
-  const [uploadDuplicateQueue, setUploadDuplicateQueue] = useState<DuplicateUploadEntry[]>([])
-  const [uploadDuplicatePending, setUploadDuplicatePending] = useState<UploadRequest[]>([])
-  const [uploadDuplicateTargetFolderId, setUploadDuplicateTargetFolderId] = useState<string | null>(null)
-  const [uploadDuplicateRenames, setUploadDuplicateRenames] = useState<Record<string, string>>({})
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
   const { uploads, startUpload, prepareFolderUpload, dismiss, directUpload } = useUploader(folderId)
+
+  const {
+    uploadConflictOpen,
+    uploadConflictQueue,
+    uploadConflictApplyAll,
+    uploadDuplicateOpen,
+    uploadDuplicateQueue,
+    uploadDuplicateRenames,
+    compareUpdatedLabel,
+    beginUploadWithConflictCheck,
+    setUploadConflictApplyAll,
+    closeUploadConflictDialog,
+    resolveUploadConflict,
+    setUploadDuplicateRenames,
+    closeUploadDuplicateDialog,
+    confirmUploadDuplicate,
+  } = useUploadDuplicateWorkflow({
+    folderId,
+    startUpload,
+    t,
+  })
 
   // Handle files received via Android Web Share Target
   const { pendingFiles: shareTargetFiles, clearPending: clearShareTarget } = useShareTarget(!!user)
@@ -453,74 +456,6 @@ function FilesPage() {
 
   const items = files ?? []
 
-  const compareUpdatedLabel = useCallback((incoming: File, existing: { updated_at: string }) => {
-    const existingTs = Date.parse(existing.updated_at)
-    if (Number.isNaN(existingTs) || !incoming.lastModified) return t('upload.conflictUnknownTime')
-    if (incoming.lastModified > existingTs) return t('upload.conflictIncomingNewer')
-    if (incoming.lastModified < existingTs) return t('upload.conflictIncomingOlder')
-    return t('upload.conflictSameTime')
-  }, [t])
-
-  async function checkGlobalDuplicates(requests: UploadRequest[], targetFolderId: string | null) {
-    if (requests.length === 0) {
-      startUpload([], targetFolderId)
-      return
-    }
-
-    const duplicateHitsByName = await fetchDuplicateHitsByName([...new Set(requests.map(request => request.file.name))])
-    const partitioned = partitionUploadRequests(requests, duplicateHitsByName, targetFolderId)
-
-    if (partitioned.conflicts.length > 0) {
-      setUploadConflictResolved(partitioned.immediate)
-      setUploadConflictQueue(partitioned.conflicts)
-      setUploadConflictApplyAll(false)
-      setUploadConflictTargetFolderId(targetFolderId)
-      setUploadConflictOpen(true)
-      return
-    }
-
-    if (partitioned.globalDuplicates.length > 0) {
-      const queue = createDuplicateUploadQueue(partitioned.globalDuplicates)
-      setUploadDuplicateQueue(queue)
-      setUploadDuplicateRenames(Object.fromEntries(queue.map(entry => [entry.id, entry.incoming.file.name])))
-      setUploadDuplicatePending(partitioned.immediate)
-      setUploadDuplicateTargetFolderId(targetFolderId)
-      setUploadDuplicateOpen(true)
-      return
-    }
-
-    startUpload(partitioned.immediate, targetFolderId)
-  }
-
-  async function beginUploadWithConflictCheck(incomingFiles: File[], targetFolderId?: string | null) {
-    if (incomingFiles.length === 0) return
-
-    const effectiveTargetFolderId = targetFolderId ?? folderId
-    const requests = incomingFiles.map(file => ({ file, overwrite: false }))
-    const duplicateHitsByName = await fetchDuplicateHitsByName([...new Set(incomingFiles.map(file => file.name))])
-    const partitioned = partitionUploadRequests(requests, duplicateHitsByName, effectiveTargetFolderId)
-
-    if (partitioned.conflicts.length > 0) {
-      setUploadConflictResolved(partitioned.immediate)
-      setUploadConflictQueue(partitioned.conflicts)
-      setUploadConflictApplyAll(false)
-      setUploadConflictTargetFolderId(effectiveTargetFolderId)
-      setUploadConflictOpen(true)
-      return
-    }
-
-    if (partitioned.globalDuplicates.length > 0) {
-      const queue = createDuplicateUploadQueue(partitioned.globalDuplicates)
-      setUploadDuplicateQueue(queue)
-      setUploadDuplicateRenames(Object.fromEntries(queue.map(entry => [entry.id, entry.incoming.file.name])))
-      setUploadDuplicatePending(partitioned.immediate)
-      setUploadDuplicateTargetFolderId(effectiveTargetFolderId)
-      setUploadDuplicateOpen(true)
-      return
-    }
-
-    startUpload(partitioned.immediate, effectiveTargetFolderId)
-  }
 
   const beginFolderUploadWithConflictCheck = useCallback(async (fileList: FileList) => {
     const prepared = await prepareFolderUpload(fileList)
@@ -539,66 +474,6 @@ function FilesPage() {
     }
   }, [beginUploadWithConflictCheck, folderId, prepareFolderUpload])
 
-  const closeUploadConflictDialog = useCallback(() => {
-    setUploadConflictOpen(false)
-    setUploadConflictQueue([])
-    setUploadConflictResolved([])
-    setUploadConflictApplyAll(false)
-    setUploadConflictTargetFolderId(null)
-  }, [])
-
-  const resolveUploadConflict = useCallback((choice: 'overwrite' | 'skip') => {
-    if (uploadConflictQueue.length === 0) {
-      closeUploadConflictDialog()
-      return
-    }
-
-    const [current, ...rest] = uploadConflictQueue
-    const nextResolved = choice === 'overwrite'
-      ? [...uploadConflictResolved, { file: current.incoming, overwrite: true }]
-      : uploadConflictResolved
-
-    let nextQueue = rest
-    if (uploadConflictApplyAll) {
-      for (const pair of rest) {
-        if (choice === 'overwrite') {
-          nextResolved.push({ file: pair.incoming, overwrite: true })
-        }
-      }
-      nextQueue = []
-    }
-
-    if (nextQueue.length > 0) {
-      setUploadConflictQueue(nextQueue)
-      setUploadConflictResolved(nextResolved)
-      return
-    }
-
-    closeUploadConflictDialog()
-    if (nextResolved.length === 0) {
-      toast.info(t('upload.allConflictsSkipped'))
-    } else {
-      checkGlobalDuplicates(nextResolved, uploadConflictTargetFolderId ?? folderId)
-    }
-  }, [uploadConflictQueue, uploadConflictResolved, uploadConflictApplyAll, checkGlobalDuplicates, closeUploadConflictDialog, folderId, t, uploadConflictTargetFolderId])
-
-  const closeUploadDuplicateDialog = useCallback(() => {
-    setUploadDuplicateOpen(false)
-    setUploadDuplicateQueue([])
-    setUploadDuplicatePending([])
-    setUploadDuplicateTargetFolderId(null)
-    setUploadDuplicateRenames({})
-  }, [])
-
-  const confirmUploadDuplicate = useCallback(() => {
-    const renamedQueue = uploadDuplicateQueue.map(entry => {
-      const nextName = uploadDuplicateRenames[entry.id] ?? entry.incoming.file.name
-      return renameUploadRequest(entry.incoming, nextName)
-    })
-    const targetFolder = uploadDuplicateTargetFolderId ?? folderId
-    closeUploadDuplicateDialog()
-    startUpload([...uploadDuplicatePending, ...renamedQueue], targetFolder)
-  }, [closeUploadDuplicateDialog, folderId, startUpload, uploadDuplicatePending, uploadDuplicateQueue, uploadDuplicateRenames, uploadDuplicateTargetFolderId])
   const sorted = [...items.filter(f => f.is_folder), ...items.filter(f => !f.is_folder)]
 
   const currentFolderItem: FileItem | null = folderId && breadcrumbs?.length

@@ -76,10 +76,15 @@ export function ShareTargetDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <button
+        type="button"
+        aria-label="Close dialog"
+        className="absolute inset-0 bg-black/60"
+        onClick={onClose}
+      />
       <div
-        className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-t-2xl sm:rounded-xl w-full sm:w-96 max-h-[90vh] flex flex-col shadow-xl"
-        onClick={e => e.stopPropagation()}
+        className="relative z-10 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-t-2xl sm:rounded-xl w-full sm:w-96 max-h-[90vh] flex flex-col shadow-xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3.5 border-b border-zinc-100 dark:border-[#2d3148]">

@@ -253,8 +253,6 @@ function FilesPage() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  if (user?.role === 'guest') return null
-
   const handleSelect = useCallback((id: string, additive: boolean) => {
     setSelected(prev => {
       const next = new Set(additive ? prev : [])
@@ -640,6 +638,8 @@ function FilesPage() {
     }
   }, [selected, folderId, qc, setPlaylist, t])
 
+  if (user?.role === 'guest') return null
+
   return (
     <DropZone folderId={folderId} onUploadStart={files => beginUploadWithConflictCheck(files)}>
       <div className="flex flex-col flex-1 min-h-0">
@@ -870,7 +870,9 @@ function FilesPage() {
         {mobileActionsOpen && (
           <>
             {/* Backdrop */}
-            <div
+            <button
+              type="button"
+              aria-label={t('action.close')}
               className="fixed inset-0 z-40 bg-black/40 sm:hidden"
               onClick={() => setMobileActionsOpen(false)}
             />
@@ -969,7 +971,19 @@ function FilesPage() {
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-1" onClick={() => { setSelected(new Set()); setContextMenu(null) }}>
+        <div
+          className="flex-1 overflow-y-auto px-1"
+          role="button"
+          tabIndex={0}
+          onClick={() => { setSelected(new Set()); setContextMenu(null) }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setSelected(new Set())
+              setContextMenu(null)
+            }
+          }}
+        >
           {isLoading ? (
             <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.loading')}</div>
           ) : view === 'list' ? (
@@ -1048,10 +1062,15 @@ function FilesPage() {
         />
       )}
       {folderPlaylistJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setFolderPlaylistJob(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <button
+            type="button"
+            aria-label="Close playlist dialog"
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setFolderPlaylistJob(null)}
+          />
           <div
-            className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-80 space-y-4 shadow-xl"
-            onClick={e => e.stopPropagation()}
+            className="relative z-10 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-80 space-y-4 shadow-xl"
           >
             <div>
               <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100 mb-1">{t('playlist.addToPlaylist')}</h3>
@@ -1106,10 +1125,15 @@ function FilesPage() {
       )}
 
       {uploadConflictOpen && uploadConflictQueue.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeUploadConflictDialog}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <button
+            type="button"
+            aria-label="Close conflict dialog"
+            className="absolute inset-0 bg-black/50"
+            onClick={closeUploadConflictDialog}
+          />
           <div
-            className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-[min(90vw,28rem)] space-y-4 shadow-xl"
-            onClick={e => e.stopPropagation()}
+            className="relative z-10 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-[min(90vw,28rem)] space-y-4 shadow-xl"
           >
             <div>
               <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('upload.conflictTitle')}</h3>

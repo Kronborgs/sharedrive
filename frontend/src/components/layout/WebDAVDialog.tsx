@@ -15,6 +15,12 @@ interface Props {
 
 type Tab = 'windows' | 'macos' | 'linux'
 
+function trimTrailingSlashes(input: string): string {
+  let out = input
+  while (out.endsWith('/')) out = out.slice(0, -1)
+  return out
+}
+
 function CopyButton({ text, copyKey, copied, onCopy }: { text: string; copyKey: string; copied: string | null; onCopy: (t: string, k: string) => void }) {
   const { t } = useI18n()
   return (
@@ -56,7 +62,9 @@ export function WebDAVDialog({ onClose }: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const davBase = settings?.direct_upload_url?.trim().replace(/\/+$/, '') || window.location.origin
+  const davBase = settings?.direct_upload_url?.trim()
+    ? trimTrailingSlashes(settings.direct_upload_url.trim())
+    : window.location.origin
   const davUrl = `${davBase}/dav/${user?.id ?? ''}`
   const macDavUrl = (() => {
     if (davUrl.startsWith('https://')) return davUrl.replace(/^https:\/\//, 'davs://')

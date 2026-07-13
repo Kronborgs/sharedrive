@@ -23,7 +23,6 @@ function TrashPage() {
   useEffect(() => {
     if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
   }, [user])
-  if (user?.role === 'guest') return null
   const qc = useQueryClient()
   const { t } = useI18n()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -94,6 +93,8 @@ function TrashPage() {
 
   const items = data ?? []
   const selectedArr = Array.from(selected)
+
+  if (user?.role === 'guest') return null
 
   return (
     <div className="space-y-4">

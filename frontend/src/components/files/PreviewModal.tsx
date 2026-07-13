@@ -125,16 +125,15 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
     return () => window.removeEventListener('keydown', handler)
   }, [onClose, goPrev, goNext])
 
-  const handleBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onClose()
-  }, [onClose])
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-      onClick={handleBackdrop}
-    >
-      <div className="relative flex flex-col bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-2xl w-[90vw] max-w-5xl h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <button
+        type="button"
+        aria-label="Close preview"
+        className="absolute inset-0 bg-black/70"
+        onClick={onClose}
+      />
+      <div className="relative z-10 flex flex-col bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-2xl w-[90vw] max-w-5xl h-[85vh]">
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148] shrink-0">
           {/* Prev / Next — fixed-width group so the filename never shifts */}

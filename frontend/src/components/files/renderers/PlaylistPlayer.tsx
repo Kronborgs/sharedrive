@@ -114,7 +114,7 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
     }
   }
 
-  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seek = (e: React.MouseEvent<HTMLButtonElement>) => {
     const audio = audioRef.current
     if (!audio || !duration) return
     const rect = e.currentTarget.getBoundingClientRect()
@@ -123,7 +123,7 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
   }
 
   const fmt = (s: number) => {
-    if (!isFinite(s)) return '0:00'
+    if (!Number.isFinite(s)) return '0:00'
     const m = Math.floor(s / 60)
     const sec = Math.floor(s % 60)
     return `${m}:${sec.toString().padStart(2, '0')}`
@@ -203,15 +203,17 @@ export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
         </p>
 
         {/* Progress bar */}
-        <div
+        <button
+          type="button"
+          aria-label="Seek playback"
           className="w-full h-1.5 bg-zinc-700 rounded-full cursor-pointer mb-3"
           onClick={seek}
         >
-          <div
-            className="h-full bg-brand-500 rounded-full transition-all"
+          <span
+            className="block h-full bg-brand-500 rounded-full transition-all"
             style={{ width: duration ? `${(progress / duration) * 100}%` : '0%' }}
           />
-        </div>
+        </button>
 
         <div className="flex items-center justify-between gap-3">
           <span className="text-[10px] text-zinc-500 tabular-nums w-8">{fmt(progress)}</span>

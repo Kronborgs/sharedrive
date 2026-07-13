@@ -189,6 +189,12 @@ const TUS_CHUNK_SIZE = 50 * 1024 * 1024
 // Rolling window for speed calculation: keep last N samples over ~10 s
 const SPEED_WINDOW = 10
 
+function trimTrailingSlashes(input: string): string {
+  let out = input
+  while (out.endsWith('/')) out = out.slice(0, -1)
+  return out
+}
+
 interface SpeedSample { time: number; bytes: number }
 
 export interface UploadRequest {
@@ -252,7 +258,9 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
 
   const startUpload = useCallback((files: Array<File | UploadRequest>, targetFolderId?: string | null) => {
     // Determine TUS endpoint: prefer direct_upload_url (bypasses Cloudflare) if set
-    const directBase = settings?.direct_upload_url?.trim().replace(/\/+$/, '')
+    const directBase = settings?.direct_upload_url?.trim()
+      ? trimTrailingSlashes(settings.direct_upload_url.trim())
+      : undefined
     const tusEndpoint = directBase ? `${directBase}/upload/` : '/upload/'
     // No chunking when uploading directly (no Cloudflare 100 MB limit).
     // When going through Cloudflare, keep 50 MB chunks to stay under their limit.

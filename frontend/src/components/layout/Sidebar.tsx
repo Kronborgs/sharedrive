@@ -88,7 +88,7 @@ function NavLink({ item }: { item: NavItem }) {
 }
 
 function fmt(s: number) {
-  if (!isFinite(s) || s < 0) return '0:00'
+  if (!Number.isFinite(s) || s < 0) return '0:00'
   const m = Math.floor(s / 60)
   const sec = Math.floor(s % 60)
   return `${m}:${sec.toString().padStart(2, '0')}`
@@ -186,7 +186,7 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
   const pct = quota > 0 ? Math.min(100, (used / quota) * 100) : 0
   const currentTrack = tracks[currentIndex]
 
-  const handleSeekClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleSeekClick = (e: React.MouseEvent<HTMLElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
     seek((e.clientX - rect.left) / rect.width)
   }
@@ -195,7 +195,12 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
     <>
       {/* Mobile overlay */}
       {isOpen && (
-        <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={onClose} />
+        <button
+          type="button"
+          aria-label={t('action.close')}
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={onClose}
+        />
       )}
       <aside className={[
         'flex flex-col w-60 shrink-0 bg-white dark:bg-[#1a1d27] border-r border-zinc-200 dark:border-[#2d3148] h-screen',
@@ -295,15 +300,17 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
               </div>
 
               {/* Row 3: progress bar */}
-              <div
+              <button
+                type="button"
+                aria-label="Seek playback"
                 className="w-full h-1 bg-zinc-200 dark:bg-[#2d3148] rounded-full cursor-pointer"
                 onClick={handleSeekClick}
               >
-                <div
-                  className="h-full bg-brand-500 rounded-full"
+                <span
+                  className="block h-full bg-brand-500 rounded-full"
                   style={{ width: duration ? `${(progress / duration) * 100}%` : '0%' }}
                 />
-              </div>
+              </button>
               <div className="flex justify-between mt-0.5">
                 <span className="text-[9px] text-zinc-400 tabular-nums">{fmt(progress)}</span>
                 <span className="text-[9px] text-zinc-400 tabular-nums">{fmt(duration)}</span>
@@ -509,10 +516,15 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
         )}
 
         {showBuildInfo && (
-          <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-3" onClick={() => setShowBuildInfo(false)}>
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-3">
+            <button
+              type="button"
+              aria-label={t('action.close')}
+              className="absolute inset-0 bg-black/60"
+              onClick={() => setShowBuildInfo(false)}
+            />
             <div
-              className="w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-2xl bg-white dark:bg-[#151826] border border-zinc-200 dark:border-[#2d3148] shadow-xl"
-              onClick={e => e.stopPropagation()}
+              className="relative z-10 w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-2xl bg-white dark:bg-[#151826] border border-zinc-200 dark:border-[#2d3148] shadow-xl"
             >
               <div className="px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148] flex items-start justify-between gap-3">
                 <div>
@@ -559,7 +571,9 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
         <>
           {/* Expanded sheet backdrop */}
           {mobilePlayerOpen && (
-            <div
+            <button
+              type="button"
+              aria-label={t('action.close')}
               className="md:hidden fixed inset-0 z-[55] bg-black/60"
               onClick={() => setMobilePlayerOpen(false)}
             />
@@ -590,15 +604,17 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
                 <p className="text-sm font-semibold text-zinc-900 dark:text-slate-100 truncate mb-3">
                   {currentTrack?.name ?? '—'}
                 </p>
-                <div
+                <button
+                  type="button"
+                  aria-label="Seek playback"
                   className="w-full h-1.5 bg-zinc-200 dark:bg-[#2d3148] rounded-full cursor-pointer mb-1"
                   onClick={handleSeekClick}
                 >
-                  <div
-                    className="h-full bg-brand-500 rounded-full"
+                  <span
+                    className="block h-full bg-brand-500 rounded-full"
                     style={{ width: duration ? `${(progress / duration) * 100}%` : '0%' }}
                   />
-                </div>
+                </button>
                 <div className="flex justify-between mb-4">
                   <span className="text-[10px] text-zinc-400 tabular-nums">{fmt(progress)}</span>
                   <span className="text-[10px] text-zinc-400 tabular-nums">{fmt(duration)}</span>
@@ -687,15 +703,17 @@ export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose
             style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
           >
             {/* Progress strip */}
-            <div
+            <button
+              type="button"
+              aria-label="Seek playback"
               className="h-0.5 bg-zinc-200 dark:bg-[#2d3148] cursor-pointer"
               onClick={handleSeekClick}
             >
-              <div
-                className="h-full bg-brand-500"
+              <span
+                className="block h-full bg-brand-500"
                 style={{ width: duration ? `${(progress / duration) * 100}%` : '0%' }}
               />
-            </div>
+            </button>
             <div className="flex items-center gap-1.5 px-3 py-2">
               {/* Track info — tap to expand */}
               <button

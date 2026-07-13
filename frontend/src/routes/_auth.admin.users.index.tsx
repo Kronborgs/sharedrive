@@ -949,7 +949,7 @@ function UserRow({
 function parseQuotaInput(s: string): number | null {
   const m = s.trim().match(/^([0-9]*\.?[0-9]+)\s*(KB|MB|GB|TB|PB|B)?$/i)
   if (!m) return null
-  const n = parseFloat(m[1])
+  const n = Number.parseFloat(m[1])
   const unit = (m[2] ?? 'B').toUpperCase()
   const multipliers: Record<string, number> = {
     B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4, PB: 1024 ** 5,
@@ -964,7 +964,7 @@ function formatQuotaForInput(bytes: number): string {
   let i = 0
   let v = bytes
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
-  const rounded = parseFloat(v.toFixed(2))
+  const rounded = Number.parseFloat(v.toFixed(2))
   return `${rounded} ${units[i]}`
 }
 
@@ -996,7 +996,7 @@ function EditUserDialog({ user, onClose, onSaved }: { user: User; onClose: () =>
     mutationFn: () => api.patch(`/api/v1/admin/users/${user.id}`, {
       quota_bytes: quotaBytes,
       max_upload_bytes: uploadBytes,
-      trash_retention_days: trashDays !== '' ? parseInt(trashDays, 10) : null,
+      trash_retention_days: trashDays !== '' ? Number.parseInt(trashDays, 10) : null,
     }),
     onSuccess: () => { onSaved(); onClose() },
     onError: () => toast.error(t('users.saveFailed')),

@@ -34,6 +34,12 @@ function defaultExpiry(): string {
 
 const PERM_KEYS = (Object.keys(DEFAULT_PERMS).filter(k => k !== 'is_owner') as (keyof SharePermissions)[])
 
+function trimTrailingSlashes(input: string): string {
+  let out = input
+  while (out.endsWith('/')) out = out.slice(0, -1)
+  return out
+}
+
 function PermCheckboxes({
   perms,
   onChange,
@@ -210,7 +216,9 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const davBase = systemSettings?.direct_upload_url?.trim().replace(/\/+$/, '') || window.location.origin
+  const davBase = systemSettings?.direct_upload_url?.trim()
+    ? trimTrailingSlashes(systemSettings.direct_upload_url.trim())
+    : window.location.origin
 
   // Fetch breadcrumbs for the file's parent folder to build the full WebDAV path
   const { data: breadcrumbs } = useQuery({

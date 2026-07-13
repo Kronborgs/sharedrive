@@ -979,8 +979,9 @@ function BackupPage() {
                   <Bell size={16} className="text-brand-500" />
                   <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.notificationsTitle')}</h2>
                 </div>
-                <label className="flex items-center gap-3 cursor-pointer">
+                <div className="flex items-center gap-3">
                   <input
+                    id="backup-notify-on-failure"
                     type="checkbox"
                     checked={autoConfig?.notify_on_failure ?? true}
                     onChange={e => {
@@ -990,11 +991,11 @@ function BackupPage() {
                     }}
                     className="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
                   />
-                  <div>
+                  <label htmlFor="backup-notify-on-failure" className="cursor-pointer">
                     <p className="text-sm text-zinc-700 dark:text-slate-300">{t('backup.notifyOnFailure')}</p>
                     <p className="text-xs text-zinc-400 dark:text-slate-500">{t('backup.notifyOnFailureDesc')}</p>
-                  </div>
-                </label>
+                  </label>
+                </div>
               </section>
             )}
 
@@ -1330,7 +1331,7 @@ function BackupPage() {
                     <span className="text-xs text-zinc-500">GB</span>
                     <button
                       onClick={() => {
-                        const bytes = quotaGB.trim() ? Math.round(parseFloat(quotaGB) * 1073741824) : null
+                        const bytes = quotaGB.trim() ? Math.round(Number.parseFloat(quotaGB) * 1073741824) : null
                         setQuotaMutation.mutate(bytes, {
                           onSuccess: () => { toast.success(t('backup.quotaSaved')); void refetchBuddyConfig() },
                           onError: () => toast.error(t('backup.quotaSaveFailed')),
@@ -1515,7 +1516,7 @@ function BackupPage() {
                 </p>
                 <div className="space-y-3">
                   {/* Enable toggle */}
-                  <label className="flex items-center gap-3 cursor-pointer">
+                  <div className="flex items-center gap-3">
                     <button
                       type="button"
                       role="switch"
@@ -1537,13 +1538,14 @@ function BackupPage() {
                     <span className="text-sm text-zinc-700 dark:text-slate-300">
                       {buddyConfig?.auto_push_enabled ? t('backup.enabled') : t('backup.disabled')}
                     </span>
-                  </label>
+                  </div>
 
                   {buddyConfig?.auto_push_enabled && (
                     <div className="space-y-3 pl-2 border-l-2 border-brand-200 dark:border-brand-800">
                       {/* On-change toggle */}
-                      <label className="flex items-center gap-3 cursor-pointer">
+                      <div className="flex items-center gap-3">
                         <input
+                          id="backup-buddy-push-on-change"
                           type="checkbox"
                           checked={buddyConfig?.auto_push_on_change ?? false}
                           onChange={e => {
@@ -1556,11 +1558,11 @@ function BackupPage() {
                           }}
                           className="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
                         />
-                        <div>
+                        <label htmlFor="backup-buddy-push-on-change" className="cursor-pointer">
                           <p className="text-sm text-zinc-700 dark:text-slate-300">{t('backup.pushOnChange')}</p>
                           <p className="text-xs text-zinc-400 dark:text-slate-500">{t('backup.pushOnChangeDesc')}</p>
-                        </div>
-                      </label>
+                        </label>
+                      </div>
 
                       {/* Interval selector */}
                       {!buddyConfig?.auto_push_on_change && (

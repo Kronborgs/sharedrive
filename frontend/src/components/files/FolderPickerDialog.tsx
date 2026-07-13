@@ -51,10 +51,15 @@ export function FolderPickerDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <button
+        type="button"
+        aria-label="Close dialog"
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+      />
       <div
-        className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl w-80 max-h-[480px] flex flex-col shadow-xl"
-        onClick={e => e.stopPropagation()}
+        className="relative z-10 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl w-80 max-h-[480px] flex flex-col shadow-xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148]">

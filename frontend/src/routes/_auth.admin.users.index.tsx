@@ -13,7 +13,7 @@ export const Route = createFileRoute('/_auth/admin/users/')({
   component: AdminUsersPage,
 })
 
-// ─── Preset quota options ─────────────────────────────────────────────────────
+// Preset quota options
 const QUOTA_OPTIONS = [
   { label: '10 GB',  bytes: 10_737_418_240 },
   { label: '50 GB',  bytes: 53_687_091_200 },
@@ -22,7 +22,7 @@ const QUOTA_OPTIONS = [
   { label: '1 TB',   bytes: 1_099_511_627_776 },
 ]
 
-// ─── New User Dialog ──────────────────────────────────────────────────────────
+// New User Dialog
 const CUSTOM_SENTINEL = -1
 
 interface NewUserDialogProps {
@@ -156,7 +156,7 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: Readon
   )
 }
 
-// ─── Group combobox: search existing + create new inline ─────────────────────
+// ÔöÇÔöÇÔöÇ Group combobox: search existing + create new inline ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
 interface GroupComboboxProps {
   allGroups: Group[]
   selected: string[]
@@ -210,7 +210,7 @@ function GroupCombobox({ allGroups, selected, onChange }: Readonly<GroupCombobox
       setInput('')
       setOpen(false)
     } catch {
-      // ignore — group panel can handle errors later
+      // ignore ÔÇö group panel can handle errors later
     } finally {
       setBusy(false)
     }
@@ -286,7 +286,7 @@ function Field({ label, children }: Readonly<{ label: string; children: React.Re
   )
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ÔöÇÔöÇÔöÇ Main page ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
 function AdminUsersPage() {
   const qc = useQueryClient()
   const { user: me } = useAuth()
@@ -485,7 +485,7 @@ function AdminUsersPage() {
   )
 }
 
-// ─── Groups panel (embedded in users page) ───────────────────────────────────
+// ÔöÇÔöÇÔöÇ Groups panel (embedded in users page) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
 const COLORS = [
   '#6b7280', '#ef4444', '#f97316', '#eab308',
   '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899',
@@ -503,7 +503,7 @@ function ColorPicker({ value, onChange }: Readonly<{ value: string; onChange: (c
   )
 }
 
-// ─── Guests panel ─────────────────────────────────────────────────────────────
+// ÔöÇÔöÇÔöÇ Guests panel ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
 function GuestsPanel({
   guests,
   isLoading,
@@ -544,11 +544,14 @@ function GuestsPanel({
 
   return (
     <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
-      {isLoading ? (
-        <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.loading')}</div>
-      ) : guests.length === 0 ? (
-        <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.noGuests')}</div>
-      ) : (
+      {(() => {
+        if (isLoading) {
+          return <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.loading')}</div>
+        }
+        if (guests.length === 0) {
+          return <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.noGuests')}</div>
+        }
+        return (
         <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
           {guests.map(guest => {
             const isExpanded = expanded.has(guest.id)
@@ -586,10 +589,10 @@ function GuestsPanel({
                     </div>
                     <p className="text-xs text-muted truncate">{guest.email}</p>
                     <p className="text-xs text-zinc-400 mt-0.5">
-                      {t('users.invitedBy')} {guest.invited_by_name ?? '—'} · {formatDate(guest.created_at)}
+                      {t('users.invitedBy')} {guest.invited_by_name ?? 'ÔÇö'} ┬À {formatDate(guest.created_at)}
                       {guest.last_login_at
-                        ? ` · ${t('users.lastLoginAt')} ${formatDate(guest.last_login_at)}`
-                        : ` · ${t('users.neverLoggedIn')}`
+                        ? ` ┬À ${t('users.lastLoginAt')} ${formatDate(guest.last_login_at)}`
+                        : ` ┬À ${t('users.neverLoggedIn')}`
                       }
                     </p>
                   </div>
@@ -652,7 +655,8 @@ function GuestsPanel({
             )
           })}
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
@@ -820,7 +824,7 @@ function UserRow({
         </div>
       </td>
       <td className="px-4 py-3 text-xs text-muted">
-        {user.last_login_at ? formatDate(user.last_login_at) : '—'}
+        {user.last_login_at ? formatDate(user.last_login_at) : 'ÔÇö'}
       </td>
       <td className="px-4 py-3">
         <span className={`inline-flex items-center gap-1 text-xs ${
@@ -831,44 +835,52 @@ function UserRow({
         </span>
       </td>
       <td className="px-4 py-3">
-        {user.totp_enabled ? (
-          <button
-            onClick={() => onRevokeTOTP(user.id)}
-            title={t('users.totpActiveRevoke')}
-            className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-          >
-            <ShieldCheck size={13} />
-            {t('users.enabled')}
-          </button>
-        ) : user.force_totp_setup ? (
-          <div className="inline-flex items-center gap-1.5">
-            <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-              <ShieldCheck size={13} />
-              {t('users.required')}
-            </span>
-            <button
-              onClick={() => onUnrequireTOTP(user.id)}
-              title={t('users.cancelTotpReq')}
-              className="text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors leading-none"
-            >
-              ✕
-            </button>
-          </div>
-        ) : (
-          <div className="inline-flex items-center gap-1.5">
-            <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
-              <ShieldOff size={13} />
-              {t('users.off')}
-            </span>
-            <button
-              onClick={() => onRequireTOTP(user.id)}
-              title={t('users.forceTotpSetup')}
-              className="text-xs text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors underline underline-offset-2"
-            >
-              {t('users.force')}
-            </button>
-          </div>
-        )}
+        {(() => {
+          if (user.totp_enabled) {
+            return (
+              <button
+                onClick={() => onRevokeTOTP(user.id)}
+                title={t('users.totpActiveRevoke')}
+                className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+              >
+                <ShieldCheck size={13} />
+                {t('users.enabled')}
+              </button>
+            )
+          }
+          if (user.force_totp_setup) {
+            return (
+              <div className="inline-flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                  <ShieldCheck size={13} />
+                  {t('users.required')}
+                </span>
+                <button
+                  onClick={() => onUnrequireTOTP(user.id)}
+                  title={t('users.cancelTotpReq')}
+                  className="text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+            )
+          }
+          return (
+            <div className="inline-flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
+                <ShieldOff size={13} />
+                {t('users.off')}
+              </span>
+              <button
+                onClick={() => onRequireTOTP(user.id)}
+                title={t('users.forceTotpSetup')}
+                className="text-xs text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors underline underline-offset-2"
+              >
+                {t('users.force')}
+              </button>
+            </div>
+          )
+        })()}
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-1">
@@ -942,10 +954,10 @@ function UserRow({
   )
 }
 
-// ─── Edit User Dialog ─────────────────────────────────────────────────────────
-// ─── Quota input helpers ──────────────────────────────────────────────────────
+// ÔöÇÔöÇÔöÇ Edit User Dialog ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ÔöÇÔöÇÔöÇ Quota input helpers ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
 
-/** Parse a human-readable size string like "1GB", "500 MB", "2.5TB" → bytes, or null on failure. */
+/** Parse a human-readable size string like "1GB", "500 MB", "2.5TB" ÔåÆ bytes, or null on failure. */
 function parseQuotaInput(s: string): number | null {
   const m = s.trim().match(/^([0-9]*\.?[0-9]+)\s*(KB|MB|GB|TB|PB|B)?$/i)
   if (!m) return null

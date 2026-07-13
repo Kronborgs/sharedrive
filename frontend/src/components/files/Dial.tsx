@@ -351,6 +351,7 @@ export function RetroButton({
     : disabled
       ? 'none'
       : '3px 3px 8px #0d0f18, -2px -2px 6px #2b2f45'
+  const iconColor = disabled ? '#3a3d4a' : (isDown ? color : '#8b90a8')
 
   return (
     <button
@@ -390,7 +391,7 @@ export function RetroButton({
       <span
         className="absolute inset-0 flex items-center justify-center transition-all duration-75 pointer-events-none"
         style={{
-          color: disabled ? '#3a3d4a' : isDown ? color : '#8b90a8',
+          color: iconColor,
           filter: isDown && !disabled ? `drop-shadow(0 0 3px ${color})` : 'none',
           transform: isDown ? 'translateY(1px)' : 'none',
         }}

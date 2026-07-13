@@ -235,7 +235,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       // Pause all active uploads
       for (const [id, upload] of tusUploads.current) {
         const entry = uploadsRef.current.find(u => u.id === id)
-        if (entry && entry.status === 'uploading') {
+        if (entry?.status === 'uploading') {
           upload.abort()
           update(id, { status: 'paused', speed: undefined, eta: undefined })
         }
@@ -245,7 +245,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       // Resume all paused uploads
       for (const [id, upload] of tusUploads.current) {
         const entry = uploadsRef.current.find(u => u.id === id)
-        if (entry && entry.status === 'paused') {
+        if (entry?.status === 'paused') {
           update(id, { status: 'uploading' })
           upload.start()
         }

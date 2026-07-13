@@ -301,10 +301,13 @@ function FilesPage() {
     existingM3u: FileItem | null,
     mode: 'all' | 'first50' | 'random50',
   ) => {
-    const ids =
-      mode === 'random50' ? shuffleArray(audioFiles).slice(0, 50).map(f => f.id)
-      : mode === 'first50' ? audioFiles.slice(0, 50).map(f => f.id)
-      : audioFiles.map(f => f.id)
+    let selectedFiles = audioFiles
+    if (mode === 'random50') {
+      selectedFiles = shuffleArray(audioFiles).slice(0, 50)
+    } else if (mode === 'first50') {
+      selectedFiles = audioFiles.slice(0, 50)
+    }
+    const ids = selectedFiles.map(f => f.id)
 
     // Soft-delete any existing .m3u in the folder (moves to trash)
     if (existingM3u) {

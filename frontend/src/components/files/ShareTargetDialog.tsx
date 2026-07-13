@@ -67,17 +67,18 @@ export function ShareTargetDialog({
     enabled: folderPickerOpen,
   })
   const folders = (pickerItems ?? []).filter(f => f.is_folder)
-  const folderBrowserEmptyState = pickerLoading
-    ? (
-        <div className="flex items-center justify-center py-4">
-          <Loader2 size={14} className="animate-spin text-zinc-400" />
-        </div>
-      )
-    : folders.length === 0
-    ? (
-        <p className="text-[11px] text-zinc-400 dark:text-slate-500 text-center py-3">Ingen under-mapper</p>
-      )
-    : null
+  let folderBrowserEmptyState: React.ReactNode = null
+  if (pickerLoading) {
+    folderBrowserEmptyState = (
+      <div className="flex items-center justify-center py-4">
+        <Loader2 size={14} className="animate-spin text-zinc-400" />
+      </div>
+    )
+  } else if (folders.length === 0) {
+    folderBrowserEmptyState = (
+      <p className="text-[11px] text-zinc-400 dark:text-slate-500 text-center py-3">Ingen under-mapper</p>
+    )
+  }
 
   function selectFolder(id: string | null, name: string) {
     setTargetFolderId(id)

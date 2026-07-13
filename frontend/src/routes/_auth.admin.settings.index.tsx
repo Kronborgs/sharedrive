@@ -340,8 +340,8 @@ function SettingsPage() {
               {ONLYOFFICE_GROUPS.map(group => (
                 <div key={group.label}>
                   <p className="font-medium text-zinc-600 dark:text-slate-400 mb-1">{group.label}</p>
-                  {chunkArray([...group.exts], 3).map((row, i) => (
-                    <p key={i}>{row.map(e => e.toUpperCase()).join(', ')}</p>
+                  {chunkArray([...group.exts], 3).map(row => (
+                    <p key={`${group.label}-${row.join('-')}`}>{row.map(e => e.toUpperCase()).join(', ')}</p>
                   ))}
                 </div>
               ))}

@@ -42,6 +42,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 export const Route = createFileRoute('/_auth/backup/')({
   component: BackupPage,
@@ -471,7 +472,7 @@ function BackupPage() {
       setTertiaryToken(data.token)
       setBuddyToken(data.token)
       sessionStorage.setItem('sharedrive_backup_token', data.token)
-      void qc.invalidateQueries({ queryKey: ['backup', 'password'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['backup', 'password'] }))
     },
     onError: () => toast.error(t('backup.tokenPasswordFailed')),
   })
@@ -480,7 +481,7 @@ function BackupPage() {
     mutationFn: () => api.delete('/api/v1/backup/password'),
     onSuccess: () => {
       setNewToken(null)
-      void qc.invalidateQueries({ queryKey: ['backup', 'password'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['backup', 'password'] }))
       toast.success(t('backup.tokenRevoked'))
     },
     onError: () => toast.error(t('backup.tokenRevokeFailed')),
@@ -488,13 +489,13 @@ function BackupPage() {
 
   const deleteTertiaryMutation = useMutation({
     mutationFn: (filename: string) => api.delete(`/api/v1/backup/tertiary/${encodeURIComponent(filename)}`),
-    onSuccess: () => { void refetchTertiary(); toast.success(t('backup.archiveDeleted')) },
+    onSuccess: () => { ignorePromise(refetchTertiary()); toast.success(t('backup.archiveDeleted')) },
     onError: () => toast.error(t('backup.archiveDeleteFailed')),
   })
 
   const deleteBuddyMutation = useMutation({
     mutationFn: (filename: string) => api.delete(`/api/v1/backup/buddy/received/${encodeURIComponent(filename)}`),
-    onSuccess: () => { void refetchBuddyReceived(); toast.success(t('backup.archiveDeleted')) },
+    onSuccess: () => { ignorePromise(refetchBuddyReceived()); toast.success(t('backup.archiveDeleted')) },
     onError: () => toast.error(t('backup.archiveDeleteFailed')),
   })
 
@@ -505,7 +506,7 @@ function BackupPage() {
   const saveAutoConfigMutation = useMutation({
     mutationFn: (body: { enabled: boolean; interval_hours: number; retention_days: number; folder_ids: string[] }) =>
       api.put('/api/v1/backup/auto', body),
-    onSuccess: () => { void refetchAutoConfig(); toast.success(t('backup.autoSaved')) },
+    onSuccess: () => { ignorePromise(refetchAutoConfig()); toast.success(t('backup.autoSaved')) },
     onError: () => toast.error(t('backup.autoSaveFailed')),
   })
 
@@ -514,7 +515,7 @@ function BackupPage() {
     onSuccess: (data) => {
       setNewReceiveToken(data.token)
       setReceiveTokenCopied(false)
-      void refetchBuddyConfig()
+      ignorePromise(refetchBuddyConfig())
     },
     onError: () => toast.error(t('backup.receiveTokenGenFailed')),
   })
@@ -523,7 +524,7 @@ function BackupPage() {
     mutationFn: () => api.delete('/api/v1/backup/buddy/receive-token'),
     onSuccess: () => {
       setNewReceiveToken(null)
-      void refetchBuddyConfig()
+      ignorePromise(refetchBuddyConfig())
       toast.success(t('backup.receiveTokenRevoked'))
     },
     onError: () => toast.error(t('backup.receiveTokenRevokeFailed')),
@@ -536,7 +537,7 @@ function BackupPage() {
       peer_token: peerTokenInput.trim(),
     }),
     onSuccess: () => {
-      void refetchBuddyConfig()
+      ignorePromise(refetchBuddyConfig())
       setPeerURLInput(''); setPeerUserIDInput(''); setPeerTokenInput('')
       toast.success(t('backup.peerSaved'))
     },
@@ -549,7 +550,7 @@ function BackupPage() {
   const clearPeerConfigMutation = useMutation({
     mutationFn: () => api.delete('/api/v1/backup/buddy/config'),
     onSuccess: () => {
-      void refetchBuddyConfig()
+      ignorePromise(refetchBuddyConfig())
       setBuddyToken('')
       toast.success(t('backup.peerCleared'))
     },
@@ -558,19 +559,19 @@ function BackupPage() {
 
   const tunnelConnectMutation = useMutation({
     mutationFn: () => api.post('/api/v1/backup/buddy/tunnel/connect', {}),
-    onSuccess: () => { void refetchTunnelStatus(); toast.success(t('backup.tunnelConnected')) },
+    onSuccess: () => { ignorePromise(refetchTunnelStatus()); toast.success(t('backup.tunnelConnected')) },
     onError: (e: unknown) => toast.error((e as Error).message ?? t('backup.tunnelConnectFailed')),
   })
 
   const tunnelDisconnectMutation = useMutation({
     mutationFn: () => api.delete('/api/v1/backup/buddy/tunnel/connect'),
-    onSuccess: () => { void refetchTunnelStatus(); toast.success(t('backup.tunnelDisconnected')) },
+    onSuccess: () => { ignorePromise(refetchTunnelStatus()); toast.success(t('backup.tunnelDisconnected')) },
     onError: () => toast.error(t('backup.tunnelDisconnectFailed')),
   })
 
   const deletePushedMutation = useMutation({
     mutationFn: (filename: string) => api.delete(`/api/v1/backup/buddy/pushed/${encodeURIComponent(filename)}`),
-    onSuccess: () => { void refetchPushedArchives(); toast.success(t('backup.peerArchiveDeleted')) },
+    onSuccess: () => { ignorePromise(refetchPushedArchives()); toast.success(t('backup.peerArchiveDeleted')) },
     onError: () => toast.error(t('backup.peerArchiveDeleteFailed')),
   })
 
@@ -632,8 +633,8 @@ function BackupPage() {
         `(${formatBytes(r.bytes_restored)})` +
         (r.skipped > 0 ? ` · ${r.skipped} skipped` : '')
       )
-      void qc.invalidateQueries({ queryKey: ['files'] })
-      void qc.invalidateQueries({ queryKey: ['me'] })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['files'] }))
+      ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
       setRestoreFile(null); setRestoreToken('')
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch { toast.error(t('backup.restoreFailed')) }
@@ -648,7 +649,7 @@ function BackupPage() {
         ...(tertiaryFolderIDs.length > 0 && { folder_ids: tertiaryFolderIDs }),
       })
       toast.success(t('backup.archiveSaved'))
-      void refetchTertiary()
+      ignorePromise(refetchTertiary())
     } catch (e: unknown) {
       toast.error((e as Error).message ?? t('backup.archiveSaveFailed'))
     } finally {
@@ -674,7 +675,7 @@ function BackupPage() {
       })
       toast.success(t('backup.pushStarted'))
       // Refetch immediately so polling picks up push_in_progress = true.
-      void refetchBuddyConfig()
+      ignorePromise(refetchBuddyConfig())
       // Also do a short-delay refetch to catch fast failures (e.g. peer 503).
       // If the goroutine fails in < 1s the regular refetch interval never fires.
       setTimeout(() => {
@@ -683,7 +684,7 @@ function BackupPage() {
             toast.error(t('backup.pushFailed') + ': ' + result.data.last_push_error)
           } else if (!result.data?.push_in_progress) {
             // Push succeeded — refresh the list of archives stored at peer
-            void refetchPushedArchives()
+            ignorePromise(refetchPushedArchives())
           }
         }).catch(() => {})
       }, 1500)
@@ -962,7 +963,7 @@ function BackupPage() {
                     checked={autoConfig?.notify_on_failure ?? true}
                     onChange={e => {
                       api.put('/api/v1/backup/notify', { enabled: e.target.checked })
-                        .then(() => { void refetchAutoConfig(); void refetchBuddyConfig() })
+                        .then(() => { ignorePromise(refetchAutoConfig()); ignorePromise(refetchBuddyConfig()) })
                         .catch(() => toast.error(t('backup.savingFailed')))
                     }}
                     className="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
@@ -1193,7 +1194,7 @@ function BackupPage() {
                   <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">{t('backup.serverUrl')}</span>
                   <code className="flex-1 text-xs font-mono bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] rounded px-2 py-1 truncate">{window.location.origin}</code>
                   <button
-                    onClick={() => { void navigator.clipboard.writeText(window.location.origin); toast.success(t('backup.urlCopied')) }}
+                    onClick={() => { ignorePromise(navigator.clipboard.writeText(window.location.origin)); toast.success(t('backup.urlCopied')) }}
                     className="shrink-0 p-1.5 rounded border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     title={t('backup.copyUrl')}
                   >
@@ -1206,7 +1207,7 @@ function BackupPage() {
                   <span className="text-xs text-zinc-500 dark:text-slate-400 w-20 shrink-0">{t('backup.yourUserId')}</span>
                   <code className="flex-1 text-xs font-mono bg-zinc-50 dark:bg-[#0f1117] border border-zinc-200 dark:border-[#2d3148] rounded px-2 py-1 truncate">{buddyConfig?.user_id ?? '…'}</code>
                   <button
-                    onClick={() => { if (buddyConfig?.user_id) { void navigator.clipboard.writeText(buddyConfig.user_id); toast.success(t('backup.userIdCopied')) } }}
+                    onClick={() => { if (buddyConfig?.user_id) { ignorePromise(navigator.clipboard.writeText(buddyConfig.user_id)); toast.success(t('backup.userIdCopied')) } }}
                     className="shrink-0 p-1.5 rounded border border-zinc-200 dark:border-[#2d3148] hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     title={t('backup.copyUserId')}
                   >
@@ -1309,7 +1310,7 @@ function BackupPage() {
                       onClick={() => {
                         const bytes = quotaGB.trim() ? Math.round(Number.parseFloat(quotaGB) * 1073741824) : null
                         setQuotaMutation.mutate(bytes, {
-                          onSuccess: () => { toast.success(t('backup.quotaSaved')); void refetchBuddyConfig() },
+                          onSuccess: () => { toast.success(t('backup.quotaSaved')); ignorePromise(refetchBuddyConfig()) },
                           onError: () => toast.error(t('backup.quotaSaveFailed')),
                         })
                       }}
@@ -1372,7 +1373,7 @@ function BackupPage() {
                           <button
                             onClick={async () => {
                               await api.delete('/api/v1/backup/buddy/push-in-progress')
-                              void refetchBuddyConfig()
+                              ignorePromise(refetchBuddyConfig())
                             }}
                             className="w-full text-xs text-zinc-500 dark:text-slate-400 underline hover:text-zinc-700 dark:hover:text-slate-200"
                           >
@@ -1392,7 +1393,7 @@ function BackupPage() {
                               interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
                               on_change: buddyConfig?.auto_push_on_change ?? false,
                               folder_ids: ids,
-                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
+                            }).then(() => ignorePromise(refetchBuddyConfig())).catch(() => toast.error(t('backup.savingFailed')))
                           }}
                         />
                         <button
@@ -1437,7 +1438,7 @@ function BackupPage() {
                               interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
                               on_change: buddyConfig?.auto_push_on_change ?? false,
                               folder_ids: ids,
-                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
+                            }).then(() => ignorePromise(refetchBuddyConfig())).catch(() => toast.error(t('backup.savingFailed')))
                           }}
                         />
                       </div>
@@ -1504,7 +1505,7 @@ function BackupPage() {
                           interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
                           on_change: buddyConfig?.auto_push_on_change ?? false,
                           folder_ids: buddyConfig?.auto_push_folder_ids ?? [],
-                        }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
+                        }).then(() => ignorePromise(refetchBuddyConfig())).catch(() => toast.error(t('backup.savingFailed')))
                       }}
                       className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-1"
                       style={{ backgroundColor: buddyConfig?.auto_push_enabled ? 'var(--color-brand-600, #6366f1)' : '#d1d5db' }}
@@ -1530,7 +1531,7 @@ function BackupPage() {
                               interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
                               on_change: e.target.checked,
                               folder_ids: buddyConfig?.auto_push_folder_ids ?? [],
-                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
+                            }).then(() => ignorePromise(refetchBuddyConfig())).catch(() => toast.error(t('backup.savingFailed')))
                           }}
                           className="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
                         />
@@ -1552,7 +1553,7 @@ function BackupPage() {
                                 interval_hours: Number(e.target.value),
                                 on_change: false,
                                 folder_ids: buddyConfig?.auto_push_folder_ids ?? [],
-                              }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
+                              }).then(() => ignorePromise(refetchBuddyConfig())).catch(() => toast.error(t('backup.savingFailed')))
                             }}
                             className="text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-transparent px-2 py-1 text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
                           >
@@ -1577,7 +1578,7 @@ function BackupPage() {
                               interval_hours: buddyConfig?.auto_push_interval_hours ?? 24,
                               on_change: buddyConfig?.auto_push_on_change ?? false,
                               folder_ids: ids,
-                            }).then(() => void refetchBuddyConfig()).catch(() => toast.error(t('backup.savingFailed')))
+                            }).then(() => ignorePromise(refetchBuddyConfig())).catch(() => toast.error(t('backup.savingFailed')))
                           }}
                         />
                       </div>
@@ -1603,7 +1604,7 @@ function BackupPage() {
                     <h2 className="font-medium text-zinc-900 dark:text-slate-100 text-sm">{t('backup.pushedTitle')}</h2>
                   </div>
                   <button
-                    onClick={() => void refetchPushedArchives()}
+                    onClick={() => ignorePromise(refetchPushedArchives())}
                     className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-400"
                     title="Opdater liste"
                   >

@@ -424,11 +424,15 @@ function SchedulePanel({ value, onChange, onSave, isSaving, lastRun }: {
 
       {open && (
         <div className="px-3 pb-3 pt-2 space-y-3 border-t border-zinc-100 dark:border-[#2d3148]">
-          {lastRun ? (
-            <p className="text-[11px] text-zinc-400">Last run: {formatRelative(lastRun)}</p>
-          ) : value.enabled ? (
-            <p className="text-[11px] text-zinc-400">Never run yet</p>
-          ) : null}
+          {(() => {
+            if (lastRun) {
+              return <p className="text-[11px] text-zinc-400">Last run: {formatRelative(lastRun)}</p>
+            }
+            if (value.enabled) {
+              return <p className="text-[11px] text-zinc-400">Never run yet</p>
+            }
+            return null
+          })()}
 
           <label className="flex items-center gap-2 cursor-pointer">
             <input

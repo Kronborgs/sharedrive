@@ -10,12 +10,12 @@ interface BreadcrumbEntry {
 }
 
 interface FolderPickerDialogProps {
-  title: string
-  confirmLabel: string
+  readonly title: string
+  readonly confirmLabel: string
   /** ID of the item being moved/copied — excluded from the folder list */
-  excludeId?: string
-  onConfirm: (folderId: string | null) => void
-  onClose: () => void
+  readonly excludeId?: string
+  readonly onConfirm: (folderId: string | null) => void
+  readonly onClose: () => void
 }
 
 export function FolderPickerDialog({
@@ -28,14 +28,11 @@ export function FolderPickerDialog({
   // breadcrumbs trail: [{id: null, name: 'My Files'}, {id: 'uuid', name: 'Docs'}, …]
   const [trail, setTrail] = useState<BreadcrumbEntry[]>([{ id: null, name: 'My Files' }])
   const currentFolderId = trail[trail.length - 1].id
+  const filesEndpoint = currentFolderId === null ? '/api/v1/files' : '/api/v1/files?parent_id=' + currentFolderId
 
   const { data: items, isLoading } = useQuery({
     queryKey: ['folder-picker', currentFolderId],
-    queryFn: ({ signal }) =>
-      api.get<FileItem[]>(
-        `/api/v1/files?${currentFolderId ? `parent_id=${currentFolderId}` : ''}`,
-        signal,
-      ),
+    queryFn: ({ signal }) => api.get<FileItem[]>(filesEndpoint, signal),
   })
 
   const folders = (items ?? []).filter(
@@ -48,6 +45,33 @@ export function FolderPickerDialog({
 
   function navigateTo(index: number) {
     setTrail(prev => prev.slice(0, index + 1))
+  }
+
+  let folderListContent: React.ReactNode
+  if (isLoading) {
+    folderListContent = (
+      <div className="flex items-center justify-center h-20 text-muted">
+        <Loader2 size={16} className="animate-spin" />
+      </div>
+    )
+  } else if (folders.length === 0) {
+    folderListContent = <p className="text-xs text-muted text-center py-6">No folders here</p>
+  } else {
+    folderListContent = (
+      <>
+        {folders.map(folder => (
+          <button
+            key={folder.id}
+            onClick={() => navigateInto(folder)}
+            className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors text-left"
+          >
+            <Folder size={15} className="text-brand-500 shrink-0" />
+            <span className="truncate">{folder.name}</span>
+            <ChevronRight size={13} className="ml-auto text-zinc-300 dark:text-slate-600 shrink-0" />
+          </button>
+        ))}
+      </>
+    )
   }
 
   return (
@@ -75,7 +99,7 @@ export function FolderPickerDialog({
         {/* Breadcrumbs */}
         <div className="flex items-center gap-1 px-4 py-2 border-b border-zinc-100 dark:border-[#2d3148] text-xs text-muted flex-wrap">
           {trail.map((entry, i) => (
-            <span key={i} className="flex items-center gap-1">
+            <span key={trail.slice(0, i + 1).map(p => p.id ?? 'root').join('/')} className="flex items-center gap-1">
               {i > 0 && <ChevronRight size={11} className="text-zinc-300 dark:text-slate-600 shrink-0" />}
               {i === trail.length - 1 ? (
                 <span className="font-medium text-zinc-700 dark:text-slate-200 flex items-center gap-1">
@@ -97,25 +121,7 @@ export function FolderPickerDialog({
 
         {/* Folder list */}
         <div className="flex-1 overflow-y-auto py-1 min-h-[120px]">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-20 text-muted">
-              <Loader2 size={16} className="animate-spin" />
-            </div>
-          ) : folders.length === 0 ? (
-            <p className="text-xs text-muted text-center py-6">No folders here</p>
-          ) : (
-            folders.map(folder => (
-              <button
-                key={folder.id}
-                onClick={() => navigateInto(folder)}
-                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors text-left"
-              >
-                <Folder size={15} className="text-brand-500 shrink-0" />
-                <span className="truncate">{folder.name}</span>
-                <ChevronRight size={13} className="ml-auto text-zinc-300 dark:text-slate-600 shrink-0" />
-              </button>
-            ))
-          )}
+          {folderListContent}
         </div>
 
         {/* Footer */}

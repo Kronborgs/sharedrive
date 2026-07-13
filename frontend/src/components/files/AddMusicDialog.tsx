@@ -24,9 +24,9 @@ interface BreadcrumbEntry { id: string | null; name: string }
 
 interface Props {
   /** Called when the user closes without adding */
-  onClose: () => void
+  readonly onClose: () => void
   /** Called with IDs of selected audio files */
-  onAdd: (fileIds: string[]) => void
+  readonly onAdd: (fileIds: string[]) => void
 }
 
 export function AddMusicDialog({ onClose, onAdd }: Props) {
@@ -34,11 +34,11 @@ export function AddMusicDialog({ onClose, onAdd }: Props) {
   const [folderId, setFolderId] = useState<string | null>(null)
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([{ id: null, name: t('nav.myFiles' as any) }])
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const filesEndpoint = folderId === null ? '/api/v1/files' : '/api/v1/files?parent_id=' + folderId
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['add-music-browse', folderId],
-    queryFn: ({ signal }) =>
-      api.get<FileItem[]>(`/api/v1/files?${folderId ? `parent_id=${folderId}` : ''}`, signal),
+    queryFn: ({ signal }) => api.get<FileItem[]>(filesEndpoint, signal),
     select: (data) => data ?? [],
     staleTime: 30_000,
   })
@@ -108,7 +108,7 @@ export function AddMusicDialog({ onClose, onAdd }: Props) {
         {/* Breadcrumb */}
         <div className="flex items-center gap-1 px-4 py-2 text-xs text-zinc-500 dark:text-slate-400 border-b border-zinc-100 dark:border-[#2d3148] flex-wrap shrink-0">
           {breadcrumbs.map((crumb, idx) => (
-            <span key={idx} className="flex items-center gap-1">
+            <span key={breadcrumbs.slice(0, idx + 1).map(c => `${c.id ?? 'root'}:${c.name}`).join('/')} className="flex items-center gap-1">
               {idx > 0 && <ChevronRight size={10} className="text-zinc-300" />}
               <button
                 onClick={() => navigateTo(idx)}

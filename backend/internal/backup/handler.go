@@ -23,6 +23,17 @@ import (
 	"github.com/yourname/privatedrive/internal/ratelimit"
 )
 
+const (
+	backupHeaderContentType         = "Content-Type"
+	backupHeaderContentDisposition  = "Content-Disposition"
+	backupHeaderCacheControl        = "Cache-Control"
+	backupHeaderXContentTypeOptions = "X-Content-Type-Options"
+	backupHeaderAuthorization       = "Authorization"
+	backupBearerPrefix              = "Bearer "
+	backupErrInternal               = "internal error"
+	backupErrMissingBearerToken     = "missing bearer token"
+)
+
 // Handler is the thin HTTP layer for all backup operations.
 type Handler struct {
 	db         *pgxpool.Pool
@@ -108,7 +119,7 @@ func (h *Handler) GetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	status, err := h.passwords.Status(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, status)
@@ -125,7 +136,7 @@ func (h *Handler) GeneratePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	id, token, err := h.passwords.Generate(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusCreated, generatePasswordResponse{ID: id, Token: token})
@@ -191,10 +202,10 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	// Serve as .zip so 7-Zip, WinZip, etc. recognise the format immediately.
 	// The internal .shdbak extension is kept for on-disk tertiary archives.
 	fname := fmt.Sprintf("sharedrive-backup-%s.zip", now.Format("2006-01-02"))
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, fname))
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set(backupHeaderContentType, "application/zip")
+	w.Header().Set(backupHeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s"`, fname))
+	w.Header().Set(backupHeaderCacheControl, "private, no-store")
+	w.Header().Set(backupHeaderXContentTypeOptions, "nosniff")
 
 	if err := h.backups.Export(ctx, w, u.ID, req.Token, folderIDs); err != nil {
 		log.Error().Err(err).Str("user_id", u.ID.String()).Msg("backup export")
@@ -572,8 +583,8 @@ func (h *Handler) BuddyTunnel(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		httputil.RespondError(w, http.StatusUnauthorized, "missing bearer token")
+	if !strings.HasPrefix(auth, backupBearerPrefix) {
+		httputil.RespondError(w, http.StatusUnauthorized, backupErrMissingBearerToken)
 		return
 	}
 	token := auth[7:]
@@ -712,14 +723,13 @@ func (h *Handler) ResetBuddyPushInProgress(w http.ResponseWriter, r *http.Reques
 
 // BuddyPushProgress returns live progress for the current push (if any).
 func (h *Handler) BuddyPushProgress(w http.ResponseWriter, r *http.Request) {
-u := middleware.UserFromContext(r.Context())
-if u == nil {
-httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
-return
+	u := middleware.UserFromContext(r.Context())
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, h.buddy.GetPushProgress(u.ID))
 }
-httputil.Respond(w, http.StatusOK, h.buddy.GetPushProgress(u.ID))
-}
-
 
 // ── POST /api/v1/backup/buddy/push ────────────────────────────────────────────
 
@@ -795,80 +805,18 @@ func (h *Handler) BuddyPush(w http.ResponseWriter, r *http.Request) {
 // BuddyReceive accepts an archive pushed from a peer. Authentication is per-user:
 // the bearer token is the receive token the local user generated and shared with their buddy.
 func (h *Handler) BuddyReceive(w http.ResponseWriter, r *http.Request) {
-	// Buddy storage must be available on this instance to receive and persist archives.
-	if !h.buddyEnabled {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "buddy backup-lager ikke tilgængeligt på denne server")
+	if !h.ensureBuddyReceiveEnabled(w) || !h.ensureBuddyReceiveRateLimit(w, r) {
 		return
 	}
 
-	// Rate-limit buddy receive by IP to prevent abuse.
-	if h.limiter != nil {
-		ip := middleware.ClientIP(r)
-		allowed, _, _, _ := h.limiter.Allow(r.Context(), "ip_buddy_recv:", ip, 10, 1*time.Hour)
-		if !allowed {
-			httputil.RespondError(w, http.StatusTooManyRequests, "too many requests")
-			return
-		}
-	}
-
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		httputil.RespondError(w, http.StatusUnauthorized, "missing bearer token")
-		return
-	}
-	token := auth[7:]
-
-	// Buddy receive: up to 10 GiB. The global 4 MiB middleware is bypassed for
-	// this route so we apply our own limit here.
-	const maxBuddySize = 10 << 30
-	r.Body = http.MaxBytesReader(w, r.Body, maxBuddySize)
-	if err := r.ParseMultipartForm(64 << 20); err != nil {
-		log.Error().Err(err).
-			Str("content_type", r.Header.Get("Content-Type")).
-			Str("content_length", r.Header.Get("Content-Length")).
-			Int64("req_content_length", r.ContentLength).
-			Msg("buddy receive: ParseMultipartForm failed")
-		httputil.RespondError(w, http.StatusBadRequest, "invalid multipart form")
-		return
-	}
-
-	receiverID, err := uuid.Parse(r.FormValue("receiver_user_id"))
-	if err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid receiver_user_id")
-		return
-	}
-
-	if err := h.buddyCfg.ValidateReceiveToken(r.Context(), receiverID, token); err != nil {
-		httputil.RespondError(w, http.StatusUnauthorized, "invalid receive token")
-		return
-	}
-
-	archiveFile, _, err := r.FormFile("file")
-	if err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "file is required")
+	receiverID, archiveFile, ok := h.prepareBuddyReceive(w, r)
+	if !ok {
 		return
 	}
 	defer archiveFile.Close()
 
-	// ── Quota check (fair-trade) ───────────────────────────────────────────────
-	// If the sender identifies themselves we can enforce the configured quota.
-	// Effective quota = max(configured quota, bytes we have stored at sender's server).
-	if senderIDStr := r.Header.Get("X-Buddy-Sender-User-ID"); senderIDStr != "" {
-		if senderID, parseErr := uuid.Parse(senderIDStr); parseErr == nil {
-			effective, unlimited, _ := h.buddyCfg.GetReceiveQuota(r.Context(), receiverID, senderID)
-			if !unlimited {
-				currentTotal, _ := h.buddy.TotalStoredBytes(receiverID)
-				// Use Content-Length as upper-bound estimate for the incoming archive.
-				incomingEst := r.ContentLength
-				if incomingEst < 0 {
-					incomingEst = 0
-				}
-				if currentTotal+incomingEst > effective {
-					httputil.RespondError(w, http.StatusInsufficientStorage, "modtage-kvote overskredet")
-					return
-				}
-			}
-		}
+	if !h.ensureBuddyReceiveQuota(w, r, receiverID) {
+		return
 	}
 
 	archive, err := h.buddy.Receive(r.Context(), receiverID, archiveFile)
@@ -880,6 +828,90 @@ func (h *Handler) BuddyReceive(w http.ResponseWriter, r *http.Request) {
 	// Include total stored bytes so the pusher can update their peer_stored_bytes.
 	archive.TotalStoredBytes, _ = h.buddy.TotalStoredBytes(receiverID)
 	httputil.Respond(w, http.StatusCreated, archive)
+}
+
+func (h *Handler) ensureBuddyReceiveEnabled(w http.ResponseWriter) bool {
+	if h.buddyEnabled {
+		return true
+	}
+	httputil.RespondError(w, http.StatusServiceUnavailable, "buddy backup-lager ikke tilgængeligt på denne server")
+	return false
+}
+
+func (h *Handler) ensureBuddyReceiveRateLimit(w http.ResponseWriter, r *http.Request) bool {
+	if h.limiter == nil {
+		return true
+	}
+	ip := middleware.ClientIP(r)
+	allowed, _, _, _ := h.limiter.Allow(r.Context(), "ip_buddy_recv:", ip, 10, 1*time.Hour)
+	if allowed {
+		return true
+	}
+	httputil.RespondError(w, http.StatusTooManyRequests, "too many requests")
+	return false
+}
+
+func (h *Handler) prepareBuddyReceive(w http.ResponseWriter, r *http.Request) (uuid.UUID, io.ReadCloser, bool) {
+	const maxBuddySize = 10 << 30
+	r.Body = http.MaxBytesReader(w, r.Body, maxBuddySize)
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		log.Error().Err(err).
+			Str(backupHeaderContentType, r.Header.Get(backupHeaderContentType)).
+			Str("content_length", r.Header.Get("Content-Length")).
+			Int64("req_content_length", r.ContentLength).
+			Msg("buddy receive: ParseMultipartForm failed")
+		httputil.RespondError(w, http.StatusBadRequest, "invalid multipart form")
+		return uuid.UUID{}, nil, false
+	}
+
+	auth := r.Header.Get(backupHeaderAuthorization)
+	if !strings.HasPrefix(auth, backupBearerPrefix) {
+		httputil.RespondError(w, http.StatusUnauthorized, backupErrMissingBearerToken)
+		return uuid.UUID{}, nil, false
+	}
+	token := auth[len(backupBearerPrefix):]
+
+	receiverID, err := uuid.Parse(r.FormValue("receiver_user_id"))
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid receiver_user_id")
+		return uuid.UUID{}, nil, false
+	}
+	if err := h.buddyCfg.ValidateReceiveToken(r.Context(), receiverID, token); err != nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "invalid receive token")
+		return uuid.UUID{}, nil, false
+	}
+
+	archiveFile, _, err := r.FormFile("file")
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "file is required")
+		return uuid.UUID{}, nil, false
+	}
+	return receiverID, archiveFile, true
+}
+
+func (h *Handler) ensureBuddyReceiveQuota(w http.ResponseWriter, r *http.Request, receiverID uuid.UUID) bool {
+	senderIDStr := r.Header.Get("X-Buddy-Sender-User-ID")
+	if senderIDStr == "" {
+		return true
+	}
+	senderID, err := uuid.Parse(senderIDStr)
+	if err != nil {
+		return true
+	}
+	effective, unlimited, _ := h.buddyCfg.GetReceiveQuota(r.Context(), receiverID, senderID)
+	if unlimited {
+		return true
+	}
+	currentTotal, _ := h.buddy.TotalStoredBytes(receiverID)
+	incomingEst := r.ContentLength
+	if incomingEst < 0 {
+		incomingEst = 0
+	}
+	if currentTotal+incomingEst > effective {
+		httputil.RespondError(w, http.StatusInsufficientStorage, "modtage-kvote overskredet")
+		return false
+	}
+	return true
 }
 
 func (h *Handler) ListBuddyReceived(w http.ResponseWriter, r *http.Request) {
@@ -1071,7 +1103,7 @@ func (h *Handler) ListPushedArchives(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, resp.StatusCode, "peer returned error")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(backupHeaderContentType, "application/json")
 	io.Copy(w, resp.Body) //nolint:errcheck
 }
 

@@ -23,13 +23,17 @@ function RecentPage() {
   })
 
   useEffect(() => {
-    if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
+    if (user?.role === 'guest') {
+      navigate({ to: '/shares', replace: true }).catch(() => {})
+    }
   }, [user, navigate])
 
   if (user?.role === 'guest') return null
 
   const handleOpen = (item: FileItem) => {
-    if (item.is_folder) void navigate({ to: '/files', search: { folder: item.id } })
+    if (item.is_folder) {
+      navigate({ to: '/files', search: { folder: item.id } }).catch(() => {})
+    }
     else window.open(`/api/v1/files/${item.id}/download`, '_blank')
   }
 

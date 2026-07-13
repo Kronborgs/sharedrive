@@ -316,6 +316,7 @@ const translations = {
   'upload.allConflictsSkipped': { da: 'Alle konflikt-filer blev sprunget over.', en: 'All conflicting files were skipped.' },
   'upload.globalDuplicateTitle': { da: 'Samme fil findes andre steder', en: 'The same file exists elsewhere' },
   'upload.globalDuplicateSubtitle': { da: 'Denne fil findes allerede i en anden mappe. Vil du stadig uploade en ekstra kopi?', en: 'This file already exists in another folder. Do you still want to upload another copy?' },
+  'upload.globalDuplicateRename': { da: 'Omdøb før upload', en: 'Rename before upload' },
   'upload.globalDuplicateLocations': { da: 'Findes i disse mapper', en: 'Found in these folders' },
   'upload.globalDuplicateContinue': { da: 'Upload alligevel', en: 'Upload anyway' },
   'upload.globalDuplicateCancel': { da: 'Annullér upload', en: 'Cancel upload' },

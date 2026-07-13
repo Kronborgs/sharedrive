@@ -28,6 +28,42 @@ const backupVersion = "1"
 
 const backupFileSuffix = ".json.gz"
 
+type exportStep struct {
+	name  string
+	query string
+	set   func(*backupData, []map[string]any)
+}
+
+var backupExportSteps = []exportStep{
+	{name: "users", query: `SELECT id, email, display_name, password_hash, role, is_active, quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day, webdav_enabled, invited_by, last_login_at, created_at, updated_at FROM users`, set: func(d *backupData, v []map[string]any) { d.Users = v }},
+	{name: "groups", query: `SELECT id, name, description, created_by, created_at FROM groups`, set: func(d *backupData, v []map[string]any) { d.Groups = v }},
+	{name: "group_members", query: `SELECT group_id, user_id, added_at FROM group_members`, set: func(d *backupData, v []map[string]any) { d.GroupMembers = v }},
+	{name: "tags", query: `SELECT id, name, color, created_by, created_at FROM tags`, set: func(d *backupData, v []map[string]any) { d.Tags = v }},
+	{name: "files", query: `SELECT id, parent_id, owner_id, name, is_folder, mime_type, size_bytes, storage_path, checksum_sha256, deleted_at, created_at, updated_at FROM files`, set: func(d *backupData, v []map[string]any) { d.Files = v }},
+	{name: "file_tags", query: `SELECT file_id, tag_id FROM file_tags`, set: func(d *backupData, v []map[string]any) { d.FileTags = v }},
+	{name: "shares", query: `SELECT id, resource_id, owner_id, grantee_type, grantee_id, can_view, can_upload, can_edit, can_delete, can_reshare, created_by, expires_at, revoked_at, created_at FROM shares`, set: func(d *backupData, v []map[string]any) { d.Shares = v }},
+	{name: "totp_credentials", query: `SELECT id, user_id, encrypted_secret, backup_codes, confirmed_at, created_at FROM totp_credentials`, set: func(d *backupData, v []map[string]any) { d.TOTPCreds = v }},
+	{name: "app_passwords", query: `SELECT id, user_id, name, password_hash, scope, last_used_at, revoked_at, created_at FROM app_passwords`, set: func(d *backupData, v []map[string]any) { d.AppPasswords = v }},
+	{name: "system_settings", query: `SELECT key, value, updated_at FROM system_settings`, set: func(d *backupData, v []map[string]any) { d.SystemSettings = v }},
+}
+
+var backupRestoreStatements = []string{
+	`DELETE FROM file_tags`,
+	`DELETE FROM shares`,
+	`DELETE FROM app_passwords`,
+	`DELETE FROM totp_credentials`,
+	`DELETE FROM group_members`,
+	`DELETE FROM tags`,
+	`DELETE FROM files`,
+	`DELETE FROM groups`,
+	`DELETE FROM sessions`,
+	`DELETE FROM device_trust_tokens`,
+	`DELETE FROM password_reset_tokens`,
+	`DELETE FROM invitation_tokens`,
+	`DELETE FROM users`,
+	`DELETE FROM system_settings`,
+}
+
 type backupEnvelope struct {
 	Version   string     `json:"version"`
 	CreatedAt time.Time  `json:"created_at"`
@@ -263,27 +299,8 @@ func (h *Handler) queryRows(ctx context.Context, query string, args ...any) ([]m
 }
 
 func (h *Handler) loadExportData(ctx context.Context) (backupData, error) {
-	type exportStep struct {
-		name  string
-		query string
-		set   func(*backupData, []map[string]any)
-	}
-
-	steps := []exportStep{
-		{"users", `SELECT id, email, display_name, password_hash, role, is_active, quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day, webdav_enabled, invited_by, last_login_at, created_at, updated_at FROM users`, func(d *backupData, v []map[string]any) { d.Users = v }},
-		{"groups", `SELECT id, name, description, created_by, created_at FROM groups`, func(d *backupData, v []map[string]any) { d.Groups = v }},
-		{"group_members", `SELECT group_id, user_id, added_at FROM group_members`, func(d *backupData, v []map[string]any) { d.GroupMembers = v }},
-		{"tags", `SELECT id, name, color, created_by, created_at FROM tags`, func(d *backupData, v []map[string]any) { d.Tags = v }},
-		{"files", `SELECT id, parent_id, owner_id, name, is_folder, mime_type, size_bytes, storage_path, checksum_sha256, deleted_at, created_at, updated_at FROM files`, func(d *backupData, v []map[string]any) { d.Files = v }},
-		{"file_tags", `SELECT file_id, tag_id FROM file_tags`, func(d *backupData, v []map[string]any) { d.FileTags = v }},
-		{"shares", `SELECT id, resource_id, owner_id, grantee_type, grantee_id, can_view, can_upload, can_edit, can_delete, can_reshare, created_by, expires_at, revoked_at, created_at FROM shares`, func(d *backupData, v []map[string]any) { d.Shares = v }},
-		{"totp_credentials", `SELECT id, user_id, encrypted_secret, backup_codes, confirmed_at, created_at FROM totp_credentials`, func(d *backupData, v []map[string]any) { d.TOTPCreds = v }},
-		{"app_passwords", `SELECT id, user_id, name, password_hash, scope, last_used_at, revoked_at, created_at FROM app_passwords`, func(d *backupData, v []map[string]any) { d.AppPasswords = v }},
-		{"system_settings", `SELECT key, value, updated_at FROM system_settings`, func(d *backupData, v []map[string]any) { d.SystemSettings = v }},
-	}
-
 	data := backupData{}
-	for _, step := range steps {
+	for _, step := range backupExportSteps {
 		rows, err := h.queryRows(ctx, step.query)
 		if err != nil {
 			return backupData{}, fmt.Errorf("failed to export %s", step.name)
@@ -345,25 +362,8 @@ func (h *Handler) restoreEnvelopeData(ctx context.Context, env backupEnvelope) e
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	for _, stmt := range []string{
-		`DELETE FROM file_tags`,
-		`DELETE FROM shares`,
-		`DELETE FROM app_passwords`,
-		`DELETE FROM totp_credentials`,
-		`DELETE FROM group_members`,
-		`DELETE FROM tags`,
-		`DELETE FROM files`,
-		`DELETE FROM groups`,
-		`DELETE FROM sessions`,
-		`DELETE FROM device_trust_tokens`,
-		`DELETE FROM password_reset_tokens`,
-		`DELETE FROM invitation_tokens`,
-		`DELETE FROM users`,
-		`DELETE FROM system_settings`,
-	} {
-		if _, err := tx.Exec(ctx, stmt); err != nil {
-			return fmt.Errorf("failed to clear table: %v", err)
-		}
+	if err := clearBackupRestoreTables(ctx, tx); err != nil {
+		return err
 	}
 
 	if err := insertEnvelopeRows(ctx, tx, env.Data); err != nil {
@@ -373,6 +373,15 @@ func (h *Handler) restoreEnvelopeData(ctx context.Context, env backupEnvelope) e
 		return fmt.Errorf("failed to commit restore")
 	}
 
+	return nil
+}
+
+func clearBackupRestoreTables(ctx context.Context, tx pgx.Tx) error {
+	for _, stmt := range backupRestoreStatements {
+		if _, err := tx.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("failed to clear table: %v", err)
+		}
+	}
 	return nil
 }
 

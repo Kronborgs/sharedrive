@@ -76,7 +76,7 @@ function AuthLayoutContent() {
           <TOTPSetupDialog
             isEnabled={false}
             onClose={() => {/* non-dismissible */}}
-            onChanged={() => void refetch()}
+            onChanged={() => { refetch().catch(() => {}) }}
           />
         </div>
       )}

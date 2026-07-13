@@ -54,7 +54,7 @@ interface ContextMenuState {
 
 interface UploadConflictPair {
   incoming: File
-  existing: FileItem
+  existing: NameDuplicateHit
 }
 
 interface NameDuplicateHit {
@@ -65,6 +65,77 @@ interface NameDuplicateHit {
   name: string
   updated_at: string
   full_path: string
+}
+
+interface DuplicateUploadEntry {
+  id: string
+  incoming: UploadRequest
+  matches: NameDuplicateHit[]
+}
+
+async function fetchDuplicateHitsByName(names: string[]): Promise<Map<string, NameDuplicateHit[]>> {
+  const pairs = await Promise.all(names.map(async name => {
+    try {
+      const hits = await api.get<NameDuplicateHit[]>(`/api/v1/files/duplicates?name=${encodeURIComponent(name)}`)
+      return [name, hits] as const
+    } catch {
+      return [name, [] as NameDuplicateHit[]] as const
+    }
+  }))
+  return new Map(pairs)
+}
+
+function partitionUploadRequests(
+  requests: UploadRequest[],
+  duplicateHitsByName: Map<string, NameDuplicateHit[]>,
+  targetFolderId: string | null,
+): {
+  conflicts: UploadConflictPair[]
+  immediate: UploadRequest[]
+  globalDuplicates: Array<{ incoming: UploadRequest; matches: NameDuplicateHit[] }>
+} {
+  const conflicts: UploadConflictPair[] = []
+  const immediate: UploadRequest[] = []
+  const globalDuplicates: Array<{ incoming: UploadRequest; matches: NameDuplicateHit[] }> = []
+
+  for (const request of requests) {
+    const matches = duplicateHitsByName.get(request.file.name) ?? []
+    const sameFolderMatch = matches.find(match => match.parent_id === targetFolderId)
+    if (sameFolderMatch && !request.overwrite) {
+      conflicts.push({ incoming: request.file, existing: sameFolderMatch })
+      continue
+    }
+
+    const otherMatches = matches.filter(match => match.parent_id !== targetFolderId)
+    if (otherMatches.length > 0) {
+      globalDuplicates.push({ incoming: request, matches: otherMatches })
+      continue
+    }
+
+    immediate.push(request)
+  }
+
+  return { conflicts, immediate, globalDuplicates }
+}
+
+function createDuplicateUploadQueue(entries: Array<{ incoming: UploadRequest; matches: NameDuplicateHit[] }>): DuplicateUploadEntry[] {
+  return entries.map(entry => ({
+    id: crypto.randomUUID(),
+    incoming: entry.incoming,
+    matches: entry.matches,
+  }))
+}
+
+function renameUploadRequest(request: UploadRequest, newName: string): UploadRequest {
+  const trimmedName = newName.trim()
+  if (!trimmedName || trimmedName === request.file.name) return request
+  return {
+    ...request,
+    file: new File([request.file], trimmedName, {
+      type: request.file.type,
+      lastModified: request.file.lastModified,
+    }),
+  }
 }
 
 function SharedBrowsePage() {
@@ -85,9 +156,10 @@ function SharedBrowsePage() {
   const [uploadConflictResolved, setUploadConflictResolved] = useState<UploadRequest[]>([])
   const [uploadConflictApplyAll, setUploadConflictApplyAll] = useState(false)
   const [uploadDuplicateOpen, setUploadDuplicateOpen] = useState(false)
-  const [uploadDuplicateQueue, setUploadDuplicateQueue] = useState<Array<{ incoming: UploadRequest; matches: NameDuplicateHit[] }>>([])
+  const [uploadDuplicateQueue, setUploadDuplicateQueue] = useState<DuplicateUploadEntry[]>([])
   const [uploadDuplicatePending, setUploadDuplicatePending] = useState<UploadRequest[]>([])
   const [uploadDuplicateTargetFolderId, setUploadDuplicateTargetFolderId] = useState<string | null>(null)
+  const [uploadDuplicateRenames, setUploadDuplicateRenames] = useState<Record<string, string>>({})
   const { t } = useI18n()
 
   const rootId = root ?? folderId
@@ -178,7 +250,7 @@ function SharedBrowsePage() {
     }
   }, [handleOpen, trash])
 
-  const compareUpdatedLabel = useCallback((incoming: File, existing: FileItem) => {
+  const compareUpdatedLabel = useCallback((incoming: File, existing: { updated_at: string }) => {
     const existingTs = Date.parse(existing.updated_at)
     if (Number.isNaN(existingTs) || !incoming.lastModified) return t('upload.conflictUnknownTime')
     if (incoming.lastModified > existingTs) return t('upload.conflictIncomingNewer')
@@ -186,94 +258,59 @@ function SharedBrowsePage() {
     return t('upload.conflictSameTime')
   }, [t])
 
-  const beginUploadWithConflictCheck = useCallback((incomingFiles: File[]) => {
-    if (incomingFiles.length === 0) return
+  async function checkGlobalDuplicates(requests: UploadRequest[]) {
+    if (requests.length === 0) return
 
-    void (async () => {
-      let currentItems = items
-      try {
-        const fresh = await api.get<ChildrenResponse>(`/api/v1/files/shared/${folderId}/children`)
-        currentItems = (fresh.items ?? []).map(c => ({
-          id: c.id,
-          parent_id: folderId,
-          owner_id: fresh.owner_id,
-          is_folder: c.is_folder,
-          name: c.name,
-          mime_type: c.mime_type,
-          size_bytes: c.size_bytes,
-          checksum_sha256: null,
-          deleted_at: null,
-          created_at: '',
-          updated_at: '',
-          shared: true,
-          permissions: {
-            can_view: fresh.can_view,
-            can_upload: fresh.can_upload,
-            can_edit: fresh.can_edit,
-            can_delete: fresh.can_delete,
-            can_reshare: fresh.can_reshare,
-            is_owner: false,
-          },
-        }))
-      } catch {
-        // Fall back to cached data if refresh fails.
-        currentItems = items
-      }
+    const duplicateHitsByName = await fetchDuplicateHitsByName([...new Set(requests.map(request => request.file.name))])
+    const partitioned = partitionUploadRequests(requests, duplicateHitsByName, folderId)
 
-      const existingByName = new Map<string, FileItem>()
-      for (const it of currentItems) {
-        if (!it.is_folder) existingByName.set(it.name, it)
-      }
-
-      const conflicts: UploadConflictPair[] = []
-      const immediate: UploadRequest[] = []
-      for (const incoming of incomingFiles) {
-        const existing = existingByName.get(incoming.name)
-        if (existing) conflicts.push({ incoming, existing })
-        else immediate.push({ file: incoming, overwrite: false })
-      }
-
-      if (conflicts.length === 0) {
-        void checkGlobalDuplicates(immediate)
-        return
-      }
-
-      setUploadConflictResolved(immediate)
-      setUploadConflictQueue(conflicts)
+    if (partitioned.conflicts.length > 0) {
+      setUploadConflictResolved(partitioned.immediate)
+      setUploadConflictQueue(partitioned.conflicts)
       setUploadConflictApplyAll(false)
       setUploadConflictOpen(true)
-    })()
-  }, [checkGlobalDuplicates, folderId, items, startUpload])
+      return
+    }
 
-  function checkGlobalDuplicates(requests: UploadRequest[]) {
-    void (async () => {
-      if (requests.length === 0) return
-
-      const names = [...new Set(requests.map(req => req.file.name))]
-      const results = await Promise.all(names.map(async name => {
-        try {
-          return [name, await api.get<NameDuplicateHit[]>(`/api/v1/files/duplicates?name=${encodeURIComponent(name)}`)] as const
-        } catch {
-          return [name, [] as NameDuplicateHit[]] as const
-        }
-      }))
-
-      const byName = new Map(results)
-      const queue = requests.flatMap(request => {
-        const matches = byName.get(request.file.name) ?? []
-        return matches.length > 0 ? [{ incoming: request, matches }] : []
-      })
-
-      if (queue.length === 0) {
-        startUpload(requests)
-        return
-      }
-
+    if (partitioned.globalDuplicates.length > 0) {
+      const queue = createDuplicateUploadQueue(partitioned.globalDuplicates)
       setUploadDuplicateQueue(queue)
-      setUploadDuplicatePending(requests)
+      setUploadDuplicateRenames(Object.fromEntries(queue.map(entry => [entry.id, entry.incoming.file.name])))
+      setUploadDuplicatePending(partitioned.immediate)
       setUploadDuplicateTargetFolderId(folderId)
       setUploadDuplicateOpen(true)
-    })()
+      return
+    }
+
+    startUpload(partitioned.immediate)
+  }
+
+  async function beginUploadWithConflictCheck(incomingFiles: File[]) {
+    if (incomingFiles.length === 0) return
+
+    const requests = incomingFiles.map(file => ({ file, overwrite: false }))
+    const duplicateHitsByName = await fetchDuplicateHitsByName([...new Set(incomingFiles.map(file => file.name))])
+    const partitioned = partitionUploadRequests(requests, duplicateHitsByName, folderId)
+
+    if (partitioned.conflicts.length > 0) {
+      setUploadConflictResolved(partitioned.immediate)
+      setUploadConflictQueue(partitioned.conflicts)
+      setUploadConflictApplyAll(false)
+      setUploadConflictOpen(true)
+      return
+    }
+
+    if (partitioned.globalDuplicates.length > 0) {
+      const queue = createDuplicateUploadQueue(partitioned.globalDuplicates)
+      setUploadDuplicateQueue(queue)
+      setUploadDuplicateRenames(Object.fromEntries(queue.map(entry => [entry.id, entry.incoming.file.name])))
+      setUploadDuplicatePending(partitioned.immediate)
+      setUploadDuplicateTargetFolderId(folderId)
+      setUploadDuplicateOpen(true)
+      return
+    }
+
+    startUpload(partitioned.immediate)
   }
 
   const closeUploadConflictDialog = useCallback(() => {
@@ -315,22 +352,26 @@ function SharedBrowsePage() {
       toast.info(t('upload.allConflictsSkipped'))
       return
     }
-    void checkGlobalDuplicates(nextResolved)
-  }, [uploadConflictQueue, uploadConflictResolved, uploadConflictApplyAll, closeUploadConflictDialog, checkGlobalDuplicates, t])
+    checkGlobalDuplicates(nextResolved)
+  }, [uploadConflictQueue, uploadConflictResolved, uploadConflictApplyAll, checkGlobalDuplicates, closeUploadConflictDialog, t])
 
   const closeUploadDuplicateDialog = useCallback(() => {
     setUploadDuplicateOpen(false)
     setUploadDuplicateQueue([])
     setUploadDuplicatePending([])
     setUploadDuplicateTargetFolderId(null)
+    setUploadDuplicateRenames({})
   }, [])
 
   const confirmUploadDuplicate = useCallback(() => {
-    const pending = uploadDuplicatePending
+    const renamedPending = uploadDuplicateQueue.map(entry => {
+      const nextName = uploadDuplicateRenames[entry.id] ?? entry.incoming.file.name
+      return renameUploadRequest(entry.incoming, nextName)
+    })
     const targetFolder = uploadDuplicateTargetFolderId ?? folderId
     closeUploadDuplicateDialog()
-    startUpload(pending, targetFolder)
-  }, [closeUploadDuplicateDialog, folderId, startUpload, uploadDuplicatePending, uploadDuplicateTargetFolderId])
+    startUpload([...uploadDuplicatePending, ...renamedPending], targetFolder)
+  }, [closeUploadDuplicateDialog, folderId, startUpload, uploadDuplicatePending, uploadDuplicateQueue, uploadDuplicateRenames, uploadDuplicateTargetFolderId])
 
   // Compute which context menu actions are available based on share permissions
   const allowedActions: ContextAction[] = ['open', 'download']
@@ -594,9 +635,18 @@ function SharedBrowsePage() {
               <p className="text-sm text-muted mt-1">{t('upload.globalDuplicateSubtitle')}</p>
             </div>
             <div className="max-h-56 overflow-y-auto space-y-3">
-              {uploadDuplicateQueue.map(({ incoming, matches }) => (
-                <div key={incoming.file.name} className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3 space-y-2">
+              {uploadDuplicateQueue.map(({ id, incoming, matches }) => (
+                <div key={id} className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3 space-y-2">
                   <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 break-all">{incoming.file.name}</p>
+                  <label className="block space-y-1">
+                    <span className="text-xs font-medium text-zinc-500 dark:text-slate-400">{t('upload.globalDuplicateRename')}</span>
+                    <input
+                      type="text"
+                      value={uploadDuplicateRenames[id] ?? incoming.file.name}
+                      onChange={e => setUploadDuplicateRenames(prev => ({ ...prev, [id]: e.target.value }))}
+                      className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </label>
                   <p className="text-xs text-zinc-500 dark:text-slate-400">{t('upload.globalDuplicateLocations')}</p>
                   <ul className="space-y-1 text-xs text-zinc-600 dark:text-slate-400">
                     {matches.map(match => (

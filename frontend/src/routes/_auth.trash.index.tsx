@@ -21,7 +21,9 @@ function TrashPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   useEffect(() => {
-    if (user?.role === 'guest') void navigate({ to: '/shares', replace: true })
+    if (user?.role === 'guest') {
+      navigate({ to: '/shares', replace: true }).catch(() => {})
+    }
   }, [user])
   const qc = useQueryClient()
   const { t } = useI18n()
@@ -42,13 +44,17 @@ function TrashPage() {
 
   const restore = useMutation({
     mutationFn: (id: string) => api.post(`/api/v1/files/trash/${id}/restore`, {}),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['files'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['files'] }).catch(() => {})
+    },
     onError: () => toast.error(t('toast.restoreFailed')),
   })
 
   const deletePermanent = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/files/trash/${id}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['files', 'trash'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['files', 'trash'] }).catch(() => {})
+    },
     onError: () => toast.error(t('toast.deleteFailed')),
   })
 
@@ -80,7 +86,9 @@ function TrashPage() {
 
   const emptyTrash = useMutation({
     mutationFn: () => api.delete('/api/v1/files/trash'),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['files', 'trash'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['files', 'trash'] }).catch(() => {})
+    },
     onError: () => toast.error(t('toast.emptyTrashFailed')),
   })
 

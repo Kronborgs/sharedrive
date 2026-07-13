@@ -511,50 +511,68 @@ type auditLogEntry struct {
 	CreatedAt     time.Time              `json:"created_at"`
 }
 
-func (h *Handler) AuditLogs(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	q := r.URL.Query()
+type auditLogQueryParts struct {
+	whereClause string
+	args        []any
+	limitIdx    int
+	offsetIdx   int
+}
+
+func buildAuditLogQueryParts(q map[string][]string) auditLogQueryParts {
 	limit := 100
 	offset := 0
-	if s := q.Get("limit"); s != "" {
+	if s := firstQueryValue(q, "limit"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 && n <= 1000 {
 			limit = n
 		}
 	}
-	if s := q.Get("offset"); s != "" {
+	if s := firstQueryValue(q, "offset"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n >= 0 {
 			offset = n
 		}
 	}
-	eventType := q.Get("event_type")
-	actorEmail := q.Get("actor_email")
 
-	// Build dynamic WHERE clause with parameterized filters.
 	var whereParts []string
-	var filterArgs []any
-	if eventType != "" {
-		filterArgs = append(filterArgs, eventType)
-		whereParts = append(whereParts, fmt.Sprintf("event_type = $%d", len(filterArgs)))
+	var args []any
+	if eventType := firstQueryValue(q, "event_type"); eventType != "" {
+		args = append(args, eventType)
+		whereParts = append(whereParts, fmt.Sprintf("event_type = $%d", len(args)))
 	}
-	if actorEmail != "" {
-		// Escape ILIKE metacharacters to prevent ReDoS-style pattern abuse.
+	if actorEmail := firstQueryValue(q, "actor_email"); actorEmail != "" {
 		safeEmail := strings.ReplaceAll(actorEmail, `\`, `\\`)
 		safeEmail = strings.ReplaceAll(safeEmail, `%`, `\%`)
 		safeEmail = strings.ReplaceAll(safeEmail, `_`, `\_`)
-		filterArgs = append(filterArgs, "%"+safeEmail+"%")
-		whereParts = append(whereParts, fmt.Sprintf("actor_email ILIKE $%d ESCAPE '\\'", len(filterArgs)))
+		args = append(args, "%"+safeEmail+"%")
+		whereParts = append(whereParts, fmt.Sprintf("actor_email ILIKE $%d ESCAPE '\\'", len(args)))
 	}
+
 	whereClause := ""
 	if len(whereParts) > 0 {
 		whereClause = "WHERE " + strings.Join(whereParts, " AND ")
 	}
 
-	var total int
-	_ = h.db.QueryRow(ctx, `SELECT count(*) FROM audit_logs `+whereClause, filterArgs...).Scan(&total)
+	paginatedArgs := append(args, limit, offset)
+	return auditLogQueryParts{
+		whereClause: whereClause,
+		args:        paginatedArgs,
+		limitIdx:    len(paginatedArgs) - 1,
+		offsetIdx:   len(paginatedArgs),
+	}
+}
 
-	paginatedArgs := append(filterArgs, limit, offset)
-	limitIdx := len(paginatedArgs) - 1
-	offsetIdx := len(paginatedArgs)
+func firstQueryValue(q map[string][]string, key string) string {
+	if values, ok := q[key]; ok && len(values) > 0 {
+		return values[0]
+	}
+	return ""
+}
+
+func (h *Handler) AuditLogs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	parts := buildAuditLogQueryParts(r.URL.Query())
+
+	var total int
+	_ = h.db.QueryRow(ctx, `SELECT count(*) FROM audit_logs `+parts.whereClause, parts.args[:len(parts.args)-2]...).Scan(&total)
 	rows, err := h.db.Query(ctx,
 		fmt.Sprintf(
 			`SELECT id, event_type, actor_id::TEXT, actor_email,
@@ -564,9 +582,9 @@ func (h *Handler) AuditLogs(w http.ResponseWriter, r *http.Request) {
 			 %s
 			 ORDER BY created_at DESC
 			 LIMIT $%d OFFSET $%d`,
-			whereClause, limitIdx, offsetIdx,
+			parts.whereClause, parts.limitIdx, parts.offsetIdx,
 		),
-		paginatedArgs...,
+		parts.args...,
 	)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)

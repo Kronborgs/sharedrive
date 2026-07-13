@@ -112,12 +112,9 @@ func (s *Service) AuthorizeParentWrite(ctx context.Context, ownerID string, pare
 	if !isFolder {
 		return fmt.Errorf("parent is not a folder")
 	}
-	// Owner match — allowed
 	if folderOwner == ownerID {
 		return nil
 	}
-	// Check share grants: user has an active share with can_edit on the folder
-	// or any of its ancestors.
 	var hasAccess bool
 	err = s.db.QueryRow(ctx,
 		`WITH RECURSIVE anc AS (
@@ -140,10 +137,10 @@ func (s *Service) AuthorizeParentWrite(ctx context.Context, ownerID string, pare
 		 )`, *parentID, ownerID,
 	).Scan(&hasAccess)
 	if err != nil {
-		return fmt.Errorf("parent folder access check failed")
+		return fmt.Errorf("parent access check failed")
 	}
 	if !hasAccess {
-		return fmt.Errorf("access denied: you do not have write access to this folder")
+		return fmt.Errorf("parent folder not writable")
 	}
 	return nil
 }

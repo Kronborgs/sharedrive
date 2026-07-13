@@ -202,6 +202,11 @@ export interface UploadRequest {
   overwrite?: boolean
 }
 
+export interface PreparedFolderUpload {
+  file: File
+  targetFolderId: string | null
+}
+
 export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   const qc = useQueryClient()
   const [uploads, setUploads] = useState<UploadEntry[]>([])
@@ -404,11 +409,11 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     })
   }, [])
 
-  // Folder upload: create the server folder tree then upload each file into the right folder.
+  // Folder upload: create the server folder tree and return each file with its target folder.
   // Reads webkitRelativePath from each File to reconstruct the hierarchy.
-  const startFolderUpload = useCallback(async (fileList: FileList) => {
+  const prepareFolderUpload = useCallback(async (fileList: FileList): Promise<PreparedFolderUpload[]> => {
     const files = Array.from(fileList) as (File & { webkitRelativePath: string })[]
-    if (files.length === 0) return
+    if (files.length === 0) return []
 
     // Map path string → server folder ID. Empty string = current root.
     const folderIdMap = new Map<string, string>()
@@ -446,15 +451,35 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     }
 
     // Queue each file upload into its correct folder.
+    const prepared: PreparedFolderUpload[] = []
     for (const file of files) {
       const parts = file.webkitRelativePath.split('/')
       const dirPath = parts.slice(0, -1).join('/')
       const targetId = folderIdMap.get(dirPath) ?? folderId
-      startUpload([file], targetId)
+      prepared.push({ file, targetFolderId: targetId })
+    }
+
+    return prepared
+  }, [folderId])
+
+  const startFolderUpload = useCallback(async (fileList: FileList) => {
+    const prepared = await prepareFolderUpload(fileList)
+    if (prepared.length === 0) return
+
+    const grouped = new Map<string, File[]>()
+    for (const entry of prepared) {
+      const key = entry.targetFolderId ?? ''
+      const list = grouped.get(key)
+      if (list) list.push(entry.file)
+      else grouped.set(key, [entry.file])
+    }
+
+    for (const [key, filesForFolder] of grouped) {
+      startUpload(filesForFolder, key === '' ? folderId : key)
     }
 
     void qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] })
-  }, [folderId, qc, startUpload, queryKey])
+  }, [folderId, qc, startUpload, queryKey, prepareFolderUpload])
 
-  return { uploads, startUpload, startFolderUpload, dismiss, directUpload: !!(settings?.direct_upload_url?.trim()) }
+  return { uploads, startUpload, startFolderUpload, prepareFolderUpload, dismiss, directUpload: !!(settings?.direct_upload_url?.trim()) }
 }

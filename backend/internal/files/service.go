@@ -49,6 +49,17 @@ func (e *UploadConflictError) Error() string {
 	return "a file with this name already exists"
 }
 
+// DuplicateHit describes an exact-name match visible to the current user.
+type DuplicateHit struct {
+	ID        uuid.UUID  `json:"id"`
+	ParentID  *uuid.UUID `json:"parent_id,omitempty"`
+	OwnerID   uuid.UUID  `json:"owner_id"`
+	IsFolder  bool       `json:"is_folder"`
+	Name      string     `json:"name"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	FullPath  string     `json:"full_path"`
+}
+
 // nullableString is used to scan nullable TEXT columns into a plain string.
 type nullableString struct{ s *string }
 
@@ -621,6 +632,65 @@ func (s *Service) Search(ctx context.Context, userID, query string, limit int) (
 		files = append(files, f)
 	}
 	return files, rows.Err()
+}
+
+// FindExactNameMatches returns files/folders with an exact name match that are
+// visible to the user, together with their full relative folder path.
+func (s *Service) FindExactNameMatches(ctx context.Context, userID, name string, limit int) ([]DuplicateHit, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+
+	rows, err := s.db.Query(ctx,
+		`WITH RECURSIVE matches AS (
+		   SELECT f.id, f.parent_id, f.owner_id, f.is_folder, f.name, f.updated_at,
+		          f.name AS full_path, 0 AS depth
+		   FROM files f
+		   WHERE f.deleted_at IS NULL
+		     AND f.name = $2
+		     AND (
+		       f.owner_id = $1::uuid
+		       OR EXISTS (
+		         SELECT 1 FROM shares sh
+		         WHERE sh.resource_id = f.id
+		           AND sh.revoked_at IS NULL
+		           AND (sh.expires_at IS NULL OR sh.expires_at > now())
+		           AND (
+		             (sh.grantee_type = 'user'  AND sh.grantee_id = $1::uuid)
+		             OR (sh.grantee_type = 'group' AND sh.grantee_id IN (
+		                  SELECT group_id FROM group_members WHERE user_id = $1::uuid
+		                ))
+		           )
+		       )
+		     )
+		   UNION ALL
+		   SELECT m.id, p.parent_id, p.owner_id, p.is_folder, p.name, p.updated_at,
+		          p.name || '/' || m.full_path, m.depth + 1
+		   FROM matches m
+		   JOIN files p ON p.id = m.parent_id
+		   WHERE p.deleted_at IS NULL
+		 )
+		 SELECT DISTINCT ON (id)
+		   id, parent_id, owner_id, is_folder, name, updated_at, full_path
+		 FROM matches
+		 ORDER BY id, depth DESC
+		 LIMIT $3`,
+		userID, name, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("files.FindExactNameMatches: %w", err)
+	}
+	defer rows.Close()
+
+	var hits []DuplicateHit
+	for rows.Next() {
+		var hit DuplicateHit
+		if err := rows.Scan(&hit.ID, &hit.ParentID, &hit.OwnerID, &hit.IsFolder, &hit.Name, &hit.UpdatedAt, &hit.FullPath); err != nil {
+			return nil, err
+		}
+		hits = append(hits, hit)
+	}
+	return hits, rows.Err()
 }
 
 // Upload streams r to storage with SHA-256 hashing, enforces quota, and

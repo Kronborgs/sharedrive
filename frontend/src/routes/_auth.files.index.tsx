@@ -50,6 +50,16 @@ interface UploadConflictPair {
   existing: FileItem
 }
 
+interface NameDuplicateHit {
+  id: string
+  parent_id: string | null
+  owner_id: string
+  is_folder: boolean
+  name: string
+  updated_at: string
+  full_path: string
+}
+
 // ─── Playlist helpers ─────────────────────────────────────────────────────────
 
 const AUDIO_EXTENSIONS = ['.mp3', '.flac', '.wav', '.aac', '.m4a', '.opus', '.ogg', '.m4b']
@@ -112,9 +122,13 @@ function FilesPage() {
   const [uploadConflictResolved, setUploadConflictResolved] = useState<UploadRequest[]>([])
   const [uploadConflictApplyAll, setUploadConflictApplyAll] = useState(false)
   const [uploadConflictTargetFolderId, setUploadConflictTargetFolderId] = useState<string | null>(null)
+  const [uploadDuplicateOpen, setUploadDuplicateOpen] = useState(false)
+  const [uploadDuplicateQueue, setUploadDuplicateQueue] = useState<Array<{ incoming: UploadRequest; matches: NameDuplicateHit[] }>>([])
+  const [uploadDuplicatePending, setUploadDuplicatePending] = useState<UploadRequest[]>([])
+  const [uploadDuplicateTargetFolderId, setUploadDuplicateTargetFolderId] = useState<string | null>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
-  const { uploads, startUpload, startFolderUpload, dismiss, directUpload } = useUploader(folderId)
+  const { uploads, startUpload, prepareFolderUpload, dismiss, directUpload } = useUploader(folderId)
 
   // Handle files received via Android Web Share Target
   const { pendingFiles: shareTargetFiles, clearPending: clearShareTarget } = useShareTarget(!!user)
@@ -480,7 +494,7 @@ function FilesPage() {
       }
 
       if (conflicts.length === 0) {
-        startUpload(immediate, effectiveTargetFolderId)
+        void checkGlobalDuplicates(immediate, effectiveTargetFolderId)
         return
       }
 
@@ -490,7 +504,58 @@ function FilesPage() {
       setUploadConflictTargetFolderId(effectiveTargetFolderId)
       setUploadConflictOpen(true)
     })()
-  }, [files, folderId, startUpload])
+  }, [files, folderId, startUpload, checkGlobalDuplicates])
+
+  function checkGlobalDuplicates(requests: UploadRequest[], targetFolderId: string | null) {
+    void (async () => {
+      if (requests.length === 0) {
+        startUpload([], targetFolderId)
+        return
+      }
+
+      const names = [...new Set(requests.map(req => req.file.name))]
+      const results = await Promise.all(names.map(async name => {
+        try {
+          return [name, await api.get<NameDuplicateHit[]>(`/api/v1/files/duplicates?name=${encodeURIComponent(name)}`)] as const
+        } catch {
+          return [name, [] as NameDuplicateHit[]] as const
+        }
+      }))
+
+      const byName = new Map(results)
+      const queue = requests.flatMap(request => {
+        const matches = (byName.get(request.file.name) ?? []).filter(match => match.parent_id !== targetFolderId)
+        return matches.length > 0 ? [{ incoming: request, matches }] : []
+      })
+
+      if (queue.length === 0) {
+        startUpload(requests, targetFolderId)
+        return
+      }
+
+      setUploadDuplicateQueue(queue)
+      setUploadDuplicatePending(requests)
+      setUploadDuplicateTargetFolderId(targetFolderId)
+      setUploadDuplicateOpen(true)
+    })()
+  }
+
+  const beginFolderUploadWithConflictCheck = useCallback(async (fileList: FileList) => {
+    const prepared = await prepareFolderUpload(fileList)
+    if (prepared.length === 0) return
+
+    const grouped = new Map<string, File[]>()
+    for (const entry of prepared) {
+      const key = entry.targetFolderId ?? ''
+      const current = grouped.get(key)
+      if (current) current.push(entry.file)
+      else grouped.set(key, [entry.file])
+    }
+
+    for (const [key, filesForFolder] of grouped) {
+      await beginUploadWithConflictCheck(filesForFolder, key === '' ? folderId : key)
+    }
+  }, [beginUploadWithConflictCheck, folderId, prepareFolderUpload])
 
   const closeUploadConflictDialog = useCallback(() => {
     setUploadConflictOpen(false)
@@ -531,9 +596,23 @@ function FilesPage() {
     if (nextResolved.length === 0) {
       toast.info(t('upload.allConflictsSkipped'))
     } else {
-      startUpload(nextResolved, uploadConflictTargetFolderId ?? folderId)
+      void checkGlobalDuplicates(nextResolved, uploadConflictTargetFolderId ?? folderId)
     }
-  }, [uploadConflictQueue, uploadConflictResolved, uploadConflictApplyAll, closeUploadConflictDialog, startUpload, uploadConflictTargetFolderId, folderId, t])
+  }, [uploadConflictQueue, uploadConflictResolved, uploadConflictApplyAll, closeUploadConflictDialog, checkGlobalDuplicates, folderId, t, uploadConflictTargetFolderId])
+
+  const closeUploadDuplicateDialog = useCallback(() => {
+    setUploadDuplicateOpen(false)
+    setUploadDuplicateQueue([])
+    setUploadDuplicatePending([])
+    setUploadDuplicateTargetFolderId(null)
+  }, [])
+
+  const confirmUploadDuplicate = useCallback(() => {
+    const pending = uploadDuplicatePending
+    const targetFolder = uploadDuplicateTargetFolderId ?? folderId
+    closeUploadDuplicateDialog()
+    startUpload(pending, targetFolder)
+  }, [closeUploadDuplicateDialog, folderId, startUpload, uploadDuplicatePending, uploadDuplicateTargetFolderId])
   const sorted = [...items.filter(f => f.is_folder), ...items.filter(f => !f.is_folder)]
 
   const currentFolderItem: FileItem | null = folderId && breadcrumbs?.length
@@ -786,7 +865,7 @@ function FilesPage() {
                 <label className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors cursor-pointer">
                   <FolderUp size={12} />
                   {t('action.uploadFolder')}
-                  <input type="file" className="sr-only" {...({ webkitdirectory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={e => e.target.files && void startFolderUpload(e.target.files)} />
+                  <input type="file" className="sr-only" {...({ webkitdirectory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={e => e.target.files && void beginFolderUploadWithConflictCheck(e.target.files)} />
                 </label>
 
                 {/* New folder — desktop only */}
@@ -1163,6 +1242,44 @@ function FilesPage() {
                 className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
               >
                 {t('upload.conflictOverwrite')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {uploadDuplicateOpen && uploadDuplicateQueue.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <button
+            type="button"
+            aria-label="Close duplicate dialog"
+            className="absolute inset-0 bg-black/50"
+            onClick={closeUploadDuplicateDialog}
+          />
+          <div className="relative z-10 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-5 w-[min(90vw,34rem)] space-y-4 shadow-xl">
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('upload.globalDuplicateTitle')}</h3>
+              <p className="text-sm text-muted mt-1">{t('upload.globalDuplicateSubtitle')}</p>
+            </div>
+            <div className="max-h-56 overflow-y-auto space-y-3">
+              {uploadDuplicateQueue.map(({ incoming, matches }) => (
+                <div key={incoming.file.name} className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3 space-y-2">
+                  <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 break-all">{incoming.file.name}</p>
+                  <p className="text-xs text-zinc-500 dark:text-slate-400">{t('upload.globalDuplicateLocations')}</p>
+                  <ul className="space-y-1 text-xs text-zinc-600 dark:text-slate-400">
+                    {matches.map(match => (
+                      <li key={match.id} className="break-all">{match.full_path}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={closeUploadDuplicateDialog} className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300">
+                {t('upload.globalDuplicateCancel')}
+              </button>
+              <button type="button" onClick={confirmUploadDuplicate} className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium">
+                {t('upload.globalDuplicateContinue')}
               </button>
             </div>
           </div>

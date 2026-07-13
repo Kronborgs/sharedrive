@@ -394,6 +394,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/files/recent", s.filesHandler.Recent)
 		r.Get("/api/v1/files/breadcrumbs", s.filesHandler.Breadcrumbs)
 		r.Get("/api/v1/files/search", s.filesHandler.Search)
+		r.Get("/api/v1/files/duplicates", s.filesHandler.DuplicateMatches)
 		r.Get("/api/v1/files/shared-with-me", s.handleSharedWithMe)
 		r.Get("/api/v1/files/my-shares", s.handleMyShares)
 		r.Get("/api/v1/files/shared/{id}/children", s.sharesHandler.SharedFolderChildren)

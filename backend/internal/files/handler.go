@@ -332,6 +332,24 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, results)
 }
 
+// DuplicateMatches handles GET /api/v1/files/duplicates?name=... — returns
+// exact-name matches visible to the current user across all folders.
+func (h *Handler) DuplicateMatches(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.UserFromContext(r.Context())
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		httputil.Respond(w, http.StatusOK, []DuplicateHit{})
+		return
+	}
+	hits, err := h.svc.FindExactNameMatches(r.Context(), actor.ID.String(), name, 20)
+	if err != nil {
+		log.Error().Err(err).Msg("files.DuplicateMatches")
+		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	httputil.Respond(w, http.StatusOK, hits)
+}
+
 // ListTrash handles GET /api/v1/files/trash
 func (h *Handler) ListTrash(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())

@@ -32,6 +32,8 @@ const (
 	backupBearerPrefix              = "Bearer "
 	backupErrInternal               = "internal error"
 	backupErrMissingBearerToken     = "missing bearer token"
+	backupContentTypeZip            = "application/zip"
+	backupCacheControlNoStore       = "private, no-store"
 )
 
 // Handler is the thin HTTP layer for all backup operations.
@@ -153,7 +155,7 @@ func (h *Handler) RevokePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	revoked, err := h.passwords.Revoke(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	if !revoked {
@@ -202,9 +204,9 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	// Serve as .zip so 7-Zip, WinZip, etc. recognise the format immediately.
 	// The internal .shdbak extension is kept for on-disk tertiary archives.
 	fname := fmt.Sprintf("sharedrive-backup-%s.zip", now.Format("2006-01-02"))
-	w.Header().Set(backupHeaderContentType, "application/zip")
+	w.Header().Set(backupHeaderContentType, backupContentTypeZip)
 	w.Header().Set(backupHeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s"`, fname))
-	w.Header().Set(backupHeaderCacheControl, "private, no-store")
+	w.Header().Set(backupHeaderCacheControl, backupCacheControlNoStore)
 	w.Header().Set(backupHeaderXContentTypeOptions, "nosniff")
 
 	if err := h.backups.Export(ctx, w, u.ID, req.Token, folderIDs); err != nil {
@@ -258,7 +260,7 @@ func (h *Handler) Restore(w http.ResponseWriter, r *http.Request) {
 
 	tmp, err := os.CreateTemp("", "shdbak-restore-*")
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	defer func() { tmp.Close(); os.Remove(tmp.Name()) }()
@@ -346,7 +348,7 @@ func (h *Handler) ListTertiary(w http.ResponseWriter, r *http.Request) {
 	}
 	archives, err := h.tertiary.List(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, archives)
@@ -370,16 +372,16 @@ func (h *Handler) DownloadTertiary(w http.ResponseWriter, r *http.Request) {
 			httputil.RespondError(w, http.StatusNotFound, "not found")
 			return
 		}
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	defer rc.Close()
 
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set(backupHeaderContentType, backupContentTypeZip)
+	w.Header().Set(backupHeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set(backupHeaderCacheControl, backupCacheControlNoStore)
+	w.Header().Set(backupHeaderXContentTypeOptions, "nosniff")
 	io.Copy(w, rc) //nolint:errcheck
 }
 
@@ -400,7 +402,7 @@ func (h *Handler) DeleteTertiary(w http.ResponseWriter, r *http.Request) {
 			httputil.RespondError(w, http.StatusBadRequest, "invalid filename")
 			return
 		}
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -419,7 +421,7 @@ func (h *Handler) GetBuddyConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	status, err := h.buddyCfg.GetStatus(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, status)
@@ -478,7 +480,7 @@ func (h *Handler) ClearBuddyPeerConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.buddyCfg.ClearPeerConfig(ctx, u.ID); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -500,7 +502,7 @@ func (h *Handler) GenerateBuddyReceiveToken(w http.ResponseWriter, r *http.Reque
 	}
 	token, err := h.buddyCfg.GenerateReceiveToken(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusCreated, generateReceiveTokenResponse{
@@ -519,7 +521,7 @@ func (h *Handler) RevokeBuddyReceiveToken(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := h.buddyCfg.RevokeReceiveToken(ctx, u.ID); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -548,7 +550,7 @@ func (h *Handler) SetBuddyQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.buddyCfg.SetReceiveQuota(ctx, u.ID, req.QuotaBytes); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -923,7 +925,7 @@ func (h *Handler) ListBuddyReceived(w http.ResponseWriter, r *http.Request) {
 	}
 	archives, err := h.buddy.ListReceived(u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, archives)
@@ -943,16 +945,16 @@ func (h *Handler) DownloadBuddyReceived(w http.ResponseWriter, r *http.Request) 
 			httputil.RespondError(w, http.StatusNotFound, "not found")
 			return
 		}
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	defer rc.Close()
 
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set(backupHeaderContentType, backupContentTypeZip)
+	w.Header().Set(backupHeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set(backupHeaderCacheControl, backupCacheControlNoStore)
+	w.Header().Set(backupHeaderXContentTypeOptions, "nosniff")
 	io.Copy(w, rc) //nolint:errcheck
 }
 
@@ -969,7 +971,7 @@ func (h *Handler) DeleteBuddyReceived(w http.ResponseWriter, r *http.Request) {
 			httputil.RespondError(w, http.StatusBadRequest, "invalid filename")
 			return
 		}
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -988,8 +990,8 @@ func (h *Handler) ListSenderArchives(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		httputil.RespondError(w, http.StatusUnauthorized, "missing bearer token")
+	if !strings.HasPrefix(auth, backupBearerPrefix) {
+		httputil.RespondError(w, http.StatusUnauthorized, backupErrMissingBearerToken)
 		return
 	}
 	token := auth[7:]
@@ -1004,7 +1006,7 @@ func (h *Handler) ListSenderArchives(w http.ResponseWriter, r *http.Request) {
 	}
 	archives, err := h.buddy.ListReceived(receiverID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, archives)
@@ -1019,8 +1021,8 @@ func (h *Handler) DeleteSenderArchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		httputil.RespondError(w, http.StatusUnauthorized, "missing bearer token")
+	if !strings.HasPrefix(auth, backupBearerPrefix) {
+		httputil.RespondError(w, http.StatusUnauthorized, backupErrMissingBearerToken)
 		return
 	}
 	token := auth[7:]
@@ -1039,7 +1041,7 @@ func (h *Handler) DeleteSenderArchive(w http.ResponseWriter, r *http.Request) {
 			httputil.RespondError(w, http.StatusBadRequest, "invalid filename")
 			return
 		}
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1150,13 +1152,13 @@ func (h *Handler) SetBuddyAutoConfig(w http.ResponseWriter, r *http.Request) {
 		req.IntervalHours = 24
 	}
 	if err := h.buddyCfg.SetAutoPushConfig(ctx, u.ID, req.Enabled, req.IntervalHours, req.OnChange, req.FolderIDs); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	// Return updated full status so the frontend can update in one round trip.
 	status, err := h.buddyCfg.GetStatus(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, status)
@@ -1173,7 +1175,7 @@ func (h *Handler) GetAutoConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, err := h.autoBackup.Get(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, cfg)
@@ -1208,12 +1210,12 @@ func (h *Handler) SetAutoConfig(w http.ResponseWriter, r *http.Request) {
 		req.IntervalHours = 24
 	}
 	if err := h.autoBackup.Set(ctx, u.ID, req.Enabled, req.IntervalHours, req.RetentionDays, req.FolderIDs); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	cfg, err := h.autoBackup.Get(ctx, u.ID)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, backupErrInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, cfg)

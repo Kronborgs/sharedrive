@@ -55,6 +55,29 @@ function getShareTabLabel(tabType: ShareTargetType, t: (key: ShareTabLabelKey) =
   }
 }
 
+function resolveDavBase(directUploadUrl?: string): string {
+  const trimmed = directUploadUrl?.trim()
+  if (!trimmed) return window.location.origin
+  return trimTrailingSlashes(trimmed)
+}
+
+function buildEncodedFolderPath(breadcrumbs?: Array<{ id: string; name: string }>): string {
+  if (!breadcrumbs?.length) return ''
+  return `${breadcrumbs.map(b => encodeURIComponent(b.name)).join('/')}/`
+}
+
+function isCreateShareDisabled(params: {
+  isPending: boolean
+  tab: ShareTargetType
+  email: string
+  groupId: string
+}): boolean {
+  if (params.isPending) return true
+  if (params.tab === 'user') return !params.email
+  if (params.tab === 'group') return !params.groupId
+  return false
+}
+
 function buildShareCreateBody(params: {
   itemId: string
   perms: SharePermissions
@@ -271,9 +294,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const davBase = systemSettings?.direct_upload_url?.trim()
-    ? trimTrailingSlashes(systemSettings.direct_upload_url.trim())
-    : window.location.origin
+  const davBase = resolveDavBase(systemSettings?.direct_upload_url)
 
   // Fetch breadcrumbs for the file's parent folder to build the full WebDAV path
   const { data: breadcrumbs } = useQuery({
@@ -284,9 +305,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   })
 
   const davOwnerID = item.owner_id
-  const folderPath = breadcrumbs && breadcrumbs.length > 0
-    ? breadcrumbs.map(b => encodeURIComponent(b.name)).join('/') + '/'
-    : ''
+  const folderPath = buildEncodedFolderPath(breadcrumbs)
   const davFileUrl = `${davBase}/dav/${davOwnerID}/${folderPath}${encodeURIComponent(item.name)}`
 
   const copyDav = (text: string, key: string) => {
@@ -344,6 +363,13 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
       toast.success(t('share.created'))
     },
     onError: (e: Error) => toast.error(e.message || t('share.createFailed')),
+  })
+
+  const disableCreateShare = isCreateShareDisabled({
+    isPending: createShare.isPending,
+    tab,
+    email,
+    groupId,
   })
 
   const revokeShare = useMutation({
@@ -611,7 +637,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
 
           <button
             onClick={handleCreate}
-            disabled={createShare.isPending || (tab === 'user' && !email) || (tab === 'group' && !groupId)}
+            disabled={disableCreateShare}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
           >
             <UserPlus size={14} />

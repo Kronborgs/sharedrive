@@ -318,32 +318,53 @@ func scanOrphanBlobs(filesRoot string) ([]orphanBlob, error) {
 
 	blobs := make([]orphanBlob, 0)
 	for _, shard := range shards {
-		if !shard.IsDir() || len(shard.Name()) != 2 {
+		if !isOrphanShardDir(shard) {
 			continue
 		}
-		shardPath := filepath.Join(filesRoot, shard.Name())
-		entries, err := os.ReadDir(shardPath)
-		if err != nil {
-			continue
-		}
-		for _, entry := range entries {
-			if entry.IsDir() || len(entry.Name()) != 36 {
-				continue
-			}
-			info, err := entry.Info()
-			if err != nil {
-				continue
-			}
-			blobs = append(blobs, orphanBlob{
-				id:      entry.Name(),
-				relPath: shard.Name() + "/" + entry.Name(),
-				size:    info.Size(),
-				modTime: info.ModTime(),
-			})
-		}
+		blobs = append(blobs, scanOrphanShard(filesRoot, shard)...)
 	}
 
 	return blobs, nil
+}
+
+func isOrphanShardDir(shard os.DirEntry) bool {
+	return shard.IsDir() && len(shard.Name()) == 2
+}
+
+func scanOrphanShard(filesRoot string, shard os.DirEntry) []orphanBlob {
+	entries, err := os.ReadDir(filepath.Join(filesRoot, shard.Name()))
+	if err != nil {
+		return nil
+	}
+
+	blobs := make([]orphanBlob, 0, len(entries))
+	for _, entry := range entries {
+		blob, ok := readOrphanBlob(shard.Name(), entry)
+		if !ok {
+			continue
+		}
+		blobs = append(blobs, blob)
+	}
+
+	return blobs
+}
+
+func readOrphanBlob(shardName string, entry os.DirEntry) (orphanBlob, bool) {
+	if entry.IsDir() || len(entry.Name()) != 36 {
+		return orphanBlob{}, false
+	}
+
+	info, err := entry.Info()
+	if err != nil {
+		return orphanBlob{}, false
+	}
+
+	return orphanBlob{
+		id:      entry.Name(),
+		relPath: shardName + "/" + entry.Name(),
+		size:    info.Size(),
+		modTime: info.ModTime(),
+	}, true
 }
 
 func queryKnownOrphanIDs(ctx context.Context, db *pgxpool.Pool, ids []string) (map[string]struct{}, error) {

@@ -13,18 +13,12 @@ import { useI18n } from '@/lib/i18n'
 import { formatDate } from '@/lib/utils'
 import { ignorePromise } from '@/lib/ignore-promise'
 import {
-  ChevronDown,
-  ChevronUp,
   Clock,
-  Eye,
   Folder,
   FolderOpen,
   FolderPlus,
   Link as LinkIcon,
   Mail,
-  Pencil,
-  Share2,
-  Trash2,
   UserRound,
   Users,
 } from 'lucide-react'
@@ -414,6 +408,47 @@ function ActionIconButton({
   )
 }
 
+function ShareActionButtons({
+  onView,
+  onUpload,
+  onEdit,
+  onDelete,
+  onReshare,
+}: Readonly<{
+  onView: () => void
+  onUpload: () => void
+  onEdit: () => void
+  onDelete: () => void
+  onReshare: () => void
+}>) {
+  const { t } = useI18n()
+  const actions: ReadonlyArray<{ key: string; label: string; onClick: () => void; className?: string }> = [
+    { key: 'view', label: t('share.permView'), onClick: onView },
+    { key: 'upload', label: t('share.permUpload'), onClick: onUpload },
+    { key: 'edit', label: t('share.permEdit'), onClick: onEdit },
+    { key: 'delete', label: t('share.permDelete'), onClick: onDelete, className: 'text-red-600 dark:text-red-300' },
+    { key: 'reshare', label: t('share.permReshare'), onClick: onReshare },
+  ]
+
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
+      {actions.map(action => (
+        <button
+          key={action.key}
+          type="button"
+          onClick={action.onClick}
+          className={[
+            'text-xs font-medium text-zinc-600 underline-offset-4 transition-colors hover:text-indigo-600 hover:underline dark:text-slate-300 dark:hover:text-indigo-300',
+            action.className ?? '',
+          ].join(' ').trim()}
+        >
+          {action.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function PermissionSummary({
   share,
   isFolder,
@@ -502,6 +537,9 @@ function RecipientShareCard({
   const { t } = useI18n()
   const previewShares = expanded ? group.shares : group.shares.slice(0, 2)
   const remainingCount = group.shares.length - previewShares.length
+  let toggleLabel = t('shared.sharedFolders')
+  if (expanded) toggleLabel = t('share.collapse')
+  else if (remainingCount > 0) toggleLabel = t('shared.moreFolders', { n: String(remainingCount) })
 
   return (
     <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
@@ -526,18 +564,6 @@ function RecipientShareCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
-          <ActionIconButton icon={Eye} title={t('shared.viewShare')} onClick={onView} />
-          <ActionIconButton icon={FolderOpen} title={t('shared.openSharedFolder')} onClick={onOpenInFiles} />
-          <ActionIconButton icon={Pencil} title={t('shared.editShare')} onClick={onEdit} className="text-zinc-400 hover:text-emerald-500 dark:hover:text-emerald-300" />
-          <ActionIconButton icon={Share2} title={t('shared.shareWithAnother')} onClick={onReshare} className="text-zinc-400 hover:text-violet-500 dark:hover:text-violet-300" />
-          <ActionIconButton icon={Trash2} title={t('shared.deleteShareGroup')} onClick={onDelete} className="text-zinc-400 hover:text-red-500 dark:hover:text-red-300" />
-          <ActionIconButton
-            icon={expanded ? ChevronUp : ChevronDown}
-            title={expanded ? t('share.collapse') : t('shared.sharedFolders')}
-            onClick={onToggleExpanded}
-          />
-        </div>
       </div>
 
       <div className="px-4 py-3 space-y-2.5">
@@ -551,21 +577,25 @@ function RecipientShareCard({
                   <span className="text-[11px] text-zinc-400 dark:text-slate-500">{getShareStatus(entry.share, t)}</span>
                 </div>
                 <p className="text-xs text-zinc-500 dark:text-slate-400 break-all">{entry.item.full_path}</p>
-                <PermissionSummary share={entry.share} isFolder={entry.item.is_folder} />
+                <ShareActionButtons
+                  onView={onView}
+                  onUpload={onOpenInFiles}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onReshare={onReshare}
+                />
               </div>
             </div>
           </div>
         ))}
 
-        {!expanded && remainingCount > 0 && (
-          <button
-            type="button"
-            onClick={onToggleExpanded}
-            className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            {t('shared.moreFolders', { n: String(remainingCount) })}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onToggleExpanded}
+          className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+        >
+          {toggleLabel}
+        </button>
       </div>
     </div>
   )
@@ -878,20 +908,29 @@ function ReshareDialog({
         <div className="space-y-3">
           <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-slate-400">{t('shared.selectedFolders')}</p>
           <div className="space-y-2">
-            {group.shares.map(entry => (
-              <label key={entry.share.id} className="flex items-start gap-3 rounded-xl border border-zinc-200 px-3 py-3 cursor-pointer dark:border-[#2d3148]">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(entry.item.id)}
-                  onChange={() => toggleSelection(entry.item.id)}
-                  className="mt-1 rounded border-zinc-300 text-brand-600 dark:border-[#4d5678]"
-                />
-                <div className="min-w-0 space-y-1">
-                  <p className="text-sm font-medium text-zinc-900 dark:text-slate-100">{entry.item.name}</p>
-                  <p className="text-xs break-all text-zinc-500 dark:text-slate-400">{entry.item.full_path}</p>
+            {group.shares.map(entry => {
+              const checkboxId = `reshare-folder-${entry.share.id}`
+              const nameId = `reshare-folder-name-${entry.share.id}`
+              const pathId = `reshare-folder-path-${entry.share.id}`
+
+              return (
+                <div key={entry.share.id} className="flex items-start gap-3 rounded-xl border border-zinc-200 px-3 py-3 dark:border-[#2d3148]">
+                  <input
+                    id={checkboxId}
+                    type="checkbox"
+                    checked={selectedIds.has(entry.item.id)}
+                    onChange={() => toggleSelection(entry.item.id)}
+                    aria-labelledby={nameId}
+                    aria-describedby={pathId}
+                    className="mt-1 rounded border-zinc-300 text-brand-600 dark:border-[#4d5678]"
+                  />
+                  <label htmlFor={checkboxId} className="min-w-0 flex-1 cursor-pointer space-y-1">
+                    <p id={nameId} className="text-sm font-medium text-zinc-900 dark:text-slate-100">{entry.item.name}</p>
+                    <p id={pathId} className="text-xs break-all text-zinc-500 dark:text-slate-400">{entry.item.full_path}</p>
+                  </label>
                 </div>
-              </label>
-            ))}
+              )
+            })}
           </div>
         </div>
 

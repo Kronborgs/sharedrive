@@ -238,22 +238,23 @@ func (h *Handler) notifyShareRecipient(ctx context.Context, recipient shareRecip
 }
 
 type Share struct {
-	ID               string     `json:"id"`
-	ResourceID       string     `json:"resource_id"`
-	OwnerID          string     `json:"owner_id"`
-	GranteeType      string     `json:"grantee_type"`
-	GranteeID        *string    `json:"grantee_id,omitempty"`
-	GranteeEmail     *string    `json:"grantee_email,omitempty"`
-	GranteeGroupName *string    `json:"grantee_group_name,omitempty"`
-	PendingEmail     *string    `json:"pending_email,omitempty"`
-	Token            *string    `json:"token,omitempty"`
-	CanView          bool       `json:"can_view"`
-	CanUpload        bool       `json:"can_upload"`
-	CanEdit          bool       `json:"can_edit"`
-	CanDelete        bool       `json:"can_delete"`
-	CanReshare       bool       `json:"can_reshare"`
-	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
+	ID                 string     `json:"id"`
+	ResourceID         string     `json:"resource_id"`
+	OwnerID            string     `json:"owner_id"`
+	GranteeType        string     `json:"grantee_type"`
+	GranteeID          *string    `json:"grantee_id,omitempty"`
+	GranteeEmail       *string    `json:"grantee_email,omitempty"`
+	GranteeDisplayName *string    `json:"grantee_display_name,omitempty"`
+	GranteeGroupName   *string    `json:"grantee_group_name,omitempty"`
+	PendingEmail       *string    `json:"pending_email,omitempty"`
+	Token              *string    `json:"token,omitempty"`
+	CanView            bool       `json:"can_view"`
+	CanUpload          bool       `json:"can_upload"`
+	CanEdit            bool       `json:"can_edit"`
+	CanDelete          bool       `json:"can_delete"`
+	CanReshare         bool       `json:"can_reshare"`
+	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
 }
 
 type createShareRequest struct {
@@ -294,6 +295,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	                 s.can_view, s.can_upload, s.can_edit, s.can_delete, s.can_reshare,
 	                 s.expires_at, s.created_at,
 	                 u.email AS grantee_email,
+	                 u.display_name AS grantee_display_name,
 	                 g.name  AS grantee_group_name,
 	                 s.pending_email,
 	                 s.token
@@ -322,7 +324,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			&s.ID, &s.ResourceID, &s.OwnerID, &s.GranteeType, &s.GranteeID,
 			&s.CanView, &s.CanUpload, &s.CanEdit, &s.CanDelete, &s.CanReshare,
 			&s.ExpiresAt, &s.CreatedAt,
-			&s.GranteeEmail, &s.GranteeGroupName, &s.PendingEmail, &s.Token,
+			&s.GranteeEmail, &s.GranteeDisplayName, &s.GranteeGroupName, &s.PendingEmail, &s.Token,
 		); err != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 			return
@@ -592,6 +594,7 @@ func (h *Handler) MyShares(w http.ResponseWriter, r *http.Request) {
 		ID        string    `json:"id"`
 		ParentID  *string   `json:"parent_id"`
 		Name      string    `json:"name"`
+		FullPath  string    `json:"full_path"`
 		IsFolder  bool      `json:"is_folder"`
 		SizeBytes int64     `json:"size_bytes"`
 		MimeType  *string   `json:"mime_type"`
@@ -603,20 +606,32 @@ func (h *Handler) MyShares(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.db.Query(ctx,
-		`SELECT s.id, s.resource_id, s.owner_id, s.grantee_type, s.grantee_id,
-		        s.can_view, s.can_upload, s.can_edit, s.can_delete, s.can_reshare,
-		        s.expires_at, s.created_at,
-		        u.email  AS grantee_email,
-		        g.name   AS grantee_group_name,
-		        s.pending_email, s.token,
-		        f.name, f.is_folder, COALESCE(f.size_bytes, 0), f.mime_type, f.created_at AS file_created_at,
-		        f.parent_id
-		 FROM shares s
-		 JOIN files f ON f.id = s.resource_id AND f.deleted_at IS NULL
-		 LEFT JOIN users  u ON s.grantee_type = 'user'  AND u.id = s.grantee_id
-		 LEFT JOIN groups g ON s.grantee_type = 'group' AND g.id = s.grantee_id
-		 WHERE s.owner_id = $1 AND s.revoked_at IS NULL
-		 ORDER BY f.name ASC, s.created_at DESC`,
+		`WITH RECURSIVE owned_files AS (
+		    SELECT f.id, f.parent_id, f.name, f.name AS full_path
+		    FROM files f
+		    WHERE f.owner_id = $1 AND f.parent_id IS NULL AND f.deleted_at IS NULL
+		    UNION ALL
+		    SELECT c.id, c.parent_id, c.name, owned_files.full_path || '/' || c.name
+		    FROM files c
+		    JOIN owned_files ON c.parent_id = owned_files.id
+		    WHERE c.owner_id = $1 AND c.deleted_at IS NULL
+		  )
+		  SELECT s.id, s.resource_id, s.owner_id, s.grantee_type, s.grantee_id,
+		         s.can_view, s.can_upload, s.can_edit, s.can_delete, s.can_reshare,
+		         s.expires_at, s.created_at,
+		         u.email AS grantee_email,
+		         u.display_name AS grantee_display_name,
+		         g.name AS grantee_group_name,
+		         s.pending_email, s.token,
+		         f.name, f.is_folder, COALESCE(f.size_bytes, 0), f.mime_type, f.created_at AS file_created_at,
+		         f.parent_id, COALESCE(owned_files.full_path, f.name) AS full_path
+		  FROM shares s
+		  JOIN files f ON f.id = s.resource_id AND f.deleted_at IS NULL
+		  JOIN owned_files ON owned_files.id = f.id
+		  LEFT JOIN users u ON s.grantee_type = 'user' AND u.id = s.grantee_id
+		  LEFT JOIN groups g ON s.grantee_type = 'group' AND g.id = s.grantee_id
+		  WHERE s.owner_id = $1 AND s.revoked_at IS NULL
+		  ORDER BY u.display_name NULLS LAST, u.email NULLS LAST, s.pending_email NULLS LAST, g.name NULLS LAST, f.name ASC, s.created_at DESC`,
 		u.ID,
 	)
 	if err != nil {
@@ -635,9 +650,9 @@ func (h *Handler) MyShares(w http.ResponseWriter, r *http.Request) {
 			&s.ID, &s.ResourceID, &s.OwnerID, &s.GranteeType, &s.GranteeID,
 			&s.CanView, &s.CanUpload, &s.CanEdit, &s.CanDelete, &s.CanReshare,
 			&s.ExpiresAt, &s.CreatedAt,
-			&s.GranteeEmail, &s.GranteeGroupName, &s.PendingEmail, &s.Token,
+			&s.GranteeEmail, &s.GranteeDisplayName, &s.GranteeGroupName, &s.PendingEmail, &s.Token,
 			&item.Name, &item.IsFolder, &item.SizeBytes, &item.MimeType, &item.CreatedAt,
-			&item.ParentID,
+			&item.ParentID, &item.FullPath,
 		); err != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 			return

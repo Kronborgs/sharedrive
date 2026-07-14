@@ -165,6 +165,73 @@ type updateSettingsRequest struct {
 	PlaylistMaxTracks   *int    `json:"playlist_max_tracks"`
 }
 
+type settingsUpserter struct {
+	ctx context.Context
+	db  *pgxpool.Pool
+}
+
+func newSettingsUpserter(ctx context.Context, db *pgxpool.Pool) *settingsUpserter {
+	return &settingsUpserter{ctx: ctx, db: db}
+}
+
+func (u *settingsUpserter) upsert(key, value string) {
+	_, err := u.db.Exec(u.ctx,
+		`INSERT INTO system_settings (key, value) VALUES ($1, $2)
+		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+		key, value,
+	)
+	if err != nil {
+		log.Error().Err(err).Str("key", key).Msg("system_settings upsert failed")
+	}
+}
+
+func (u *settingsUpserter) setString(key string, value *string) {
+	if value != nil {
+		u.upsert(key, *value)
+	}
+}
+
+func (u *settingsUpserter) setInt64(key string, value *int64) {
+	if value != nil {
+		u.upsert(key, strconv.FormatInt(*value, 10))
+	}
+}
+
+func (u *settingsUpserter) setInt(key string, value *int) {
+	if value != nil {
+		u.upsert(key, strconv.Itoa(*value))
+	}
+}
+
+func (u *settingsUpserter) setBool(key string, value *bool) {
+	if value != nil {
+		u.upsert(key, strconv.FormatBool(*value))
+	}
+}
+
+func (u *settingsUpserter) setMappedBool(key string, value *bool, trueValue, falseValue string) {
+	if value == nil {
+		return
+	}
+	if *value {
+		u.upsert(key, trueValue)
+		return
+	}
+	u.upsert(key, falseValue)
+}
+
+func (u *settingsUpserter) setNonEmptyString(key string, value *string) {
+	if value != nil && *value != "" {
+		u.upsert(key, *value)
+	}
+}
+
+func (u *settingsUpserter) setPositiveInt(key string, value *int) {
+	if value != nil && *value > 0 {
+		u.upsert(key, strconv.Itoa(*value))
+	}
+}
+
 func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req updateSettingsRequest
@@ -173,74 +240,23 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upsert := func(k, v string) {
-		_, err := h.db.Exec(ctx,
-			`INSERT INTO system_settings (key, value) VALUES ($1, $2)
-			 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
-			k, v,
-		)
-		if err != nil {
-			log.Error().Err(err).Str("key", k).Msg("system_settings upsert failed")
-		}
-	}
+	upserter := newSettingsUpserter(ctx, h.db)
+	upserter.setString("app_name", req.SiteName)
+	upserter.setBool("allow_registrations", req.AllowRegistrations)
+	upserter.setBool("require_invite", req.RequireInvite)
+	upserter.setInt64("default_quota_bytes", req.DefaultQuotaBytes)
+	upserter.setInt64("max_upload_bytes", req.MaxUploadBytes)
+	upserter.setString("direct_upload_url", req.DirectUploadURL)
+	upserter.setString("smtp_host", req.SMTPHost)
+	upserter.setInt("smtp_port", req.SMTPPort)
+	upserter.setString("smtp_user", req.SMTPUsername)
+	upserter.setString("smtp_password", req.SMTPPassword)
+	upserter.setString("smtp_from", req.SMTPFromAddress)
+	upserter.setMappedBool("smtp_tls", req.SMTPTls, "starttls", "none")
+	upserter.setString("onlyoffice_url", req.OnlyOfficeURL)
+	upserter.setNonEmptyString("onlyoffice_jwt_secret", req.OnlyOfficeJWTSecret)
+	upserter.setPositiveInt("playlist_max_tracks", req.PlaylistMaxTracks)
 
-	if req.SiteName != nil {
-		upsert("app_name", *req.SiteName)
-	}
-	if req.AllowRegistrations != nil {
-		if *req.AllowRegistrations {
-			upsert("allow_registrations", "true")
-		} else {
-			upsert("allow_registrations", "false")
-		}
-	}
-	if req.RequireInvite != nil {
-		if *req.RequireInvite {
-			upsert("require_invite", "true")
-		} else {
-			upsert("require_invite", "false")
-		}
-	}
-	if req.DefaultQuotaBytes != nil {
-		upsert("default_quota_bytes", strconv.FormatInt(*req.DefaultQuotaBytes, 10))
-	}
-	if req.MaxUploadBytes != nil {
-		upsert("max_upload_bytes", strconv.FormatInt(*req.MaxUploadBytes, 10))
-	}
-	if req.DirectUploadURL != nil {
-		upsert("direct_upload_url", *req.DirectUploadURL)
-	}
-	if req.SMTPHost != nil {
-		upsert("smtp_host", *req.SMTPHost)
-	}
-	if req.SMTPPort != nil {
-		upsert("smtp_port", strconv.Itoa(*req.SMTPPort))
-	}
-	if req.SMTPUsername != nil {
-		upsert("smtp_user", *req.SMTPUsername)
-	}
-	if req.SMTPPassword != nil {
-		upsert("smtp_password", *req.SMTPPassword)
-	}
-	if req.SMTPFromAddress != nil {
-		upsert("smtp_from", *req.SMTPFromAddress)
-	}
-	if req.SMTPTls != nil {
-		if *req.SMTPTls {
-			upsert("smtp_tls", "starttls")
-		} else {
-			upsert("smtp_tls", "none")
-		}
-	}
-	if req.OnlyOfficeURL != nil {
-		upsert("onlyoffice_url", *req.OnlyOfficeURL)
-	}
-	if req.OnlyOfficeJWTSecret != nil && *req.OnlyOfficeJWTSecret != "" {
-		upsert("onlyoffice_jwt_secret", *req.OnlyOfficeJWTSecret)
-	}
-	if req.PlaylistMaxTracks != nil && *req.PlaylistMaxTracks > 0 {
-		upsert("playlist_max_tracks", strconv.Itoa(*req.PlaylistMaxTracks))
-	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -337,6 +353,47 @@ const lockoutFailuresSuffix = "failures:"
 const errInternal = "internal error"
 const errInvalidRequest = "invalid request"
 
+func classifyLockoutTTL(ttl time.Duration) (string, *int64) {
+	if ttl <= 0 {
+		return "manual", nil
+	}
+	secs := int64(ttl.Seconds())
+	tier := "24h"
+	switch {
+	case secs <= 61*60:
+		tier = "60m"
+	case secs <= 7*60*60:
+		tier = "6h"
+	}
+	return tier, &secs
+}
+
+func (h *Handler) blockedIPAttempts(ctx context.Context, ip string) int64 {
+	attempts, err := h.rdb.Get(ctx, lockoutKeyPrefix+lockoutFailuresSuffix+ip).Int64()
+	if err != nil {
+		return 0
+	}
+	return attempts
+}
+
+func (h *Handler) blockedIPEntry(ctx context.Context, key string) (*blockedIPEntry, error) {
+	if strings.HasPrefix(key, lockoutKeyPrefix+lockoutFailuresSuffix) {
+		return nil, nil
+	}
+	ttl, err := h.rdb.TTL(ctx, key).Result()
+	if err != nil {
+		return nil, err
+	}
+	ip := strings.TrimPrefix(key, lockoutKeyPrefix)
+	tier, ttlSeconds := classifyLockoutTTL(ttl)
+	return &blockedIPEntry{
+		IP:           ip,
+		Tier:         tier,
+		TTLSeconds:   ttlSeconds,
+		AttemptCount: h.blockedIPAttempts(ctx, ip),
+	}, nil
+}
+
 // ListBlockedIPs lists IPs currently locked out (TTL-based entries in Redis).
 func (h *Handler) ListBlockedIPs(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -350,36 +407,11 @@ func (h *Handler) ListBlockedIPs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, key := range keys {
-			// Skip failure counters — only include active lockout entries.
-			if strings.HasPrefix(key, lockoutKeyPrefix+lockoutFailuresSuffix) {
+			entry, err := h.blockedIPEntry(ctx, key)
+			if err != nil || entry == nil {
 				continue
 			}
-			ip := strings.TrimPrefix(key, lockoutKeyPrefix)
-			ttl, err := h.rdb.TTL(ctx, key).Result()
-			if err != nil {
-				continue
-			}
-			// Determine tier label from TTL
-			tier := "manual"
-			var ttlSeconds *int64
-			if ttl > 0 {
-				secs := int64(ttl.Seconds())
-				ttlSeconds = &secs
-				switch {
-				case secs <= 61*60:
-					tier = "60m"
-				case secs <= 7*60*60:
-					tier = "6h"
-				default:
-					tier = "24h"
-				}
-			}
-			// Fetch failure counter for this IP
-			var attemptCount int64
-			if n, err2 := h.rdb.Get(ctx, lockoutKeyPrefix+lockoutFailuresSuffix+ip).Int64(); err2 == nil {
-				attemptCount = n
-			}
-			out = append(out, blockedIPEntry{IP: ip, Tier: tier, TTLSeconds: ttlSeconds, AttemptCount: attemptCount})
+			out = append(out, *entry)
 		}
 		cursor = next
 		if cursor == 0 {
@@ -389,7 +421,6 @@ func (h *Handler) ListBlockedIPs(w http.ResponseWriter, r *http.Request) {
 
 	httputil.Respond(w, http.StatusOK, out)
 }
-
 func (h *Handler) UnblockIP(w http.ResponseWriter, r *http.Request) {
 	ip := chi.URLParam(r, "ip")
 	if ip == "" {
@@ -1008,19 +1039,19 @@ func (h *Handler) StorageScrub(w http.ResponseWriter, r *http.Request) {
 
 // RunStorageScrub is the core scrub logic — exported so it can also be called
 // from the server startup goroutine.
-func RunStorageScrub(ctx context.Context, db *pgxpool.Pool, filesRoot string) (*ScrubResult, error) {
-	// Collect all UUIDs found on disk (only files exactly 2 levels deep).
-	type blob struct {
-		id   string
-		path string
-		size int64
-	}
-	var blobs []blob
+type scrubBlob struct {
+	id   string
+	path string
+	size int64
+}
 
+func scanStorageBlobs(filesRoot string) ([]scrubBlob, error) {
 	entries, err := os.ReadDir(filesRoot)
 	if err != nil {
 		return nil, fmt.Errorf("storage scrub: read root: %w", err)
 	}
+
+	var blobs []scrubBlob
 	for _, shard := range entries {
 		if !shard.IsDir() || len(shard.Name()) != 2 {
 			continue
@@ -1035,7 +1066,6 @@ func RunStorageScrub(ctx context.Context, db *pgxpool.Pool, filesRoot string) (*
 				continue
 			}
 			name := f.Name()
-			// Must look like a UUID (36 chars with dashes)
 			if len(name) != 36 {
 				continue
 			}
@@ -1043,17 +1073,59 @@ func RunStorageScrub(ctx context.Context, db *pgxpool.Pool, filesRoot string) (*
 			if err != nil {
 				continue
 			}
-			blobs = append(blobs, blob{
+			blobs = append(blobs, scrubBlob{
 				id:   name,
 				path: filepath.Join(shardPath, name),
 				size: info.Size(),
 			})
 		}
 	}
+	return blobs, nil
+}
+
+func knownScrubBlobIDs(ctx context.Context, db *pgxpool.Pool, batch []scrubBlob) (map[string]struct{}, error) {
+	ids := make([]string, len(batch))
+	for i, blob := range batch {
+		ids[i] = blob.id
+	}
+	rows, err := db.Query(ctx, `SELECT id::text FROM files WHERE id = ANY($1::uuid[])`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("storage scrub: db query: %w", err)
+	}
+	defer rows.Close()
+
+	known := make(map[string]struct{}, len(batch))
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			known[id] = struct{}{}
+		}
+	}
+	return known, nil
+}
+
+func removeOrphanScrubBlobs(batch []scrubBlob, known map[string]struct{}, result *ScrubResult) {
+	for _, blob := range batch {
+		if _, exists := known[blob.id]; exists {
+			continue
+		}
+		if err := os.Remove(blob.path); err != nil && !os.IsNotExist(err) {
+			log.Warn().Str("path", blob.path).Err(err).Msg("storage scrub: failed to delete orphan")
+			continue
+		}
+		result.DeletedBlobs++
+		result.FreedBytes += blob.size
+		log.Debug().Str("id", blob.id).Int64("bytes", blob.size).Msg("storage scrub: deleted orphan blob")
+	}
+}
+
+func RunStorageScrub(ctx context.Context, db *pgxpool.Pool, filesRoot string) (*ScrubResult, error) {
+	blobs, err := scanStorageBlobs(filesRoot)
+	if err != nil {
+		return nil, err
+	}
 
 	result := &ScrubResult{ScannedBlobs: int64(len(blobs))}
-
-	// Process in batches of 500 to avoid huge IN() clauses.
 	const batchSize = 500
 	for i := 0; i < len(blobs); i += batchSize {
 		end := i + batchSize
@@ -1061,40 +1133,11 @@ func RunStorageScrub(ctx context.Context, db *pgxpool.Pool, filesRoot string) (*
 			end = len(blobs)
 		}
 		batch := blobs[i:end]
-
-		// Build a set of IDs to check.
-		ids := make([]string, len(batch))
-		for j, b := range batch {
-			ids[j] = b.id
-		}
-
-		// Query which IDs actually exist in the files table.
-		rows, err := db.Query(ctx, `SELECT id::text FROM files WHERE id = ANY($1::uuid[])`, ids)
+		known, err := knownScrubBlobIDs(ctx, db, batch)
 		if err != nil {
-			return nil, fmt.Errorf("storage scrub: db query: %w", err)
+			return nil, err
 		}
-		known := make(map[string]struct{})
-		for rows.Next() {
-			var id string
-			if err := rows.Scan(&id); err == nil {
-				known[id] = struct{}{}
-			}
-		}
-		rows.Close()
-
-		// Delete blobs not in DB.
-		for _, b := range batch {
-			if _, exists := known[b.id]; exists {
-				continue
-			}
-			if err := os.Remove(b.path); err != nil && !os.IsNotExist(err) {
-				log.Warn().Str("path", b.path).Err(err).Msg("storage scrub: failed to delete orphan")
-				continue
-			}
-			result.DeletedBlobs++
-			result.FreedBytes += b.size
-			log.Debug().Str("id", b.id).Int64("bytes", b.size).Msg("storage scrub: deleted orphan blob")
-		}
+		removeOrphanScrubBlobs(batch, known, result)
 	}
 
 	log.Info().

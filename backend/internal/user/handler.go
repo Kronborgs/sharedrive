@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -49,6 +50,75 @@ func NewHandler(db *pgxpool.Pool, auditSvc audit.Logger, mailer Mailer, appURL s
 	return &Handler{db: db, auditSvc: auditSvc, mailer: mailer, appURL: appURL, totpMgr: totpMgr}
 }
 
+const (
+	userErrInternal       = "internal error"
+	userErrNotFound       = "user not found"
+	userErrInvalidRequest = "invalid request"
+)
+
+var errLastAdminDemotion = errors.New("cannot demote the last admin — promote another user first")
+
+type userUpdateBuilder struct {
+	sets []string
+	args []any
+	argN int
+}
+
+func newUserUpdateBuilder() *userUpdateBuilder {
+	return &userUpdateBuilder{
+		sets: []string{"updated_at = now()"},
+		args: []any{},
+		argN: 1,
+	}
+}
+
+func (b *userUpdateBuilder) add(column string, value any) {
+	b.sets = append(b.sets, column+" = $"+strconv.Itoa(b.argN))
+	b.args = append(b.args, value)
+	b.argN++
+}
+
+func (b *userUpdateBuilder) build(id string) (string, []any) {
+	args := append(b.args, id)
+	q := "UPDATE users SET " + join(b.sets, ", ") + " WHERE id = $" + strconv.Itoa(b.argN)
+	return q, args
+}
+
+func (h *Handler) ensureRemainingAdmin(ctx context.Context, id string, role *string) error {
+	if role == nil || *role == "admin" {
+		return nil
+	}
+
+	var otherAdmins int
+	if err := h.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM users WHERE role = 'admin' AND id != $1::uuid`,
+		id,
+	).Scan(&otherAdmins); err != nil {
+		log.Error().Err(err).Msg("admin: check admin count")
+		return err
+	}
+	if otherAdmins == 0 {
+		return errLastAdminDemotion
+	}
+	return nil
+}
+
+func userUpdateAuditEvent(actor *User, r *http.Request, id string, req updateUserRequest) audit.Event {
+	eventType := audit.EventUserActivated
+	metadata := map[string]any{"target_user_id": id}
+	if req.QuotaBytes != nil {
+		eventType = audit.EventUserQuotaChanged
+		metadata["quota_bytes"] = *req.QuotaBytes
+	}
+	return audit.Event{
+		Type:          eventType,
+		ActorID:       &actor.ID,
+		IPAddress:     clientIP(r),
+		IsAdminAction: true,
+		Metadata:      metadata,
+	}
+}
+
 // List handles GET /api/v1/admin/users
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
@@ -61,7 +131,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	users, total, err := List(r.Context(), h.db, perPage, offset, false)
 	if err != nil {
 		log.Error().Err(err).Msg("admin: list users")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
@@ -90,7 +160,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	u, err := FindByID(r.Context(), h.db, id)
 	if err != nil || u == nil {
-		httputil.RespondError(w, http.StatusNotFound, "user not found")
+		httputil.RespondError(w, http.StatusNotFound, userErrNotFound)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, u)
@@ -113,7 +183,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req createUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, userErrInvalidRequest)
 		return
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
@@ -137,13 +207,13 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := argon2id.CreateHash(req.Password, argon2id.DefaultParams)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -167,7 +237,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
@@ -201,89 +271,46 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var req updateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, userErrInvalidRequest)
+		return
+	}
+	if err := h.ensureRemainingAdmin(ctx, id, req.Role); err != nil {
+		if errors.Is(err, errLastAdminDemotion) {
+			httputil.RespondError(w, http.StatusUnprocessableEntity, errLastAdminDemotion.Error())
+			return
+		}
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
-	// Build dynamic SET clause.
-	sets := []string{"updated_at = now()"}
-	args := []any{}
-	argN := 1
-
+	builder := newUserUpdateBuilder()
 	if req.Role != nil {
-		// Prevent demoting the last admin — require at least one other admin.
-		if *req.Role != "admin" {
-			var otherAdmins int
-			if err := h.db.QueryRow(ctx,
-				`SELECT COUNT(*) FROM users WHERE role = 'admin' AND id != $1::uuid`,
-				id,
-			).Scan(&otherAdmins); err != nil {
-				log.Error().Err(err).Msg("admin: check admin count")
-				httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-				return
-			}
-			if otherAdmins == 0 {
-				httputil.RespondError(w, http.StatusUnprocessableEntity, "cannot demote the last admin — promote another user first")
-				return
-			}
-		}
-		sets = append(sets, "role = $"+strconv.Itoa(argN))
-		args = append(args, *req.Role)
-		argN++
+		builder.add("role", *req.Role)
 	}
 	if req.IsActive != nil {
-		sets = append(sets, "is_active = $"+strconv.Itoa(argN))
-		args = append(args, *req.IsActive)
-		argN++
+		builder.add("is_active", *req.IsActive)
 	}
 	if req.QuotaBytes != nil {
-		sets = append(sets, "quota_bytes = $"+strconv.Itoa(argN))
-		args = append(args, *req.QuotaBytes)
-		argN++
+		builder.add("quota_bytes", *req.QuotaBytes)
 	}
 	if req.MaxUploadBytes != nil {
-		sets = append(sets, "max_upload_bytes = $"+strconv.Itoa(argN))
-		args = append(args, *req.MaxUploadBytes)
-		argN++
+		builder.add("max_upload_bytes", *req.MaxUploadBytes)
 	}
 	if req.WebDAVEnabled != nil {
-		sets = append(sets, "webdav_enabled = $"+strconv.Itoa(argN))
-		args = append(args, *req.WebDAVEnabled)
-		argN++
+		builder.add("webdav_enabled", *req.WebDAVEnabled)
 	}
 	if req.TrashRetentionDays != nil {
-		sets = append(sets, "trash_retention_days = $"+strconv.Itoa(argN))
-		args = append(args, *req.TrashRetentionDays)
-		argN++
+		builder.add("trash_retention_days", *req.TrashRetentionDays)
 	}
 
-	args = append(args, id)
-	q := "UPDATE users SET " + join(sets, ", ") + " WHERE id = $" + strconv.Itoa(argN)
-
+	q, args := builder.build(id)
 	if _, err := h.db.Exec(ctx, q, args...); err != nil {
 		log.Error().Err(err).Msg("admin: update user")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
-	h.auditSvc.Log(ctx, audit.Event{
-		Type: func() string {
-			if req.QuotaBytes != nil {
-				return audit.EventUserQuotaChanged
-			}
-			return audit.EventUserActivated
-		}(),
-		ActorID:       &actor.ID,
-		IPAddress:     clientIP(r),
-		IsAdminAction: true,
-		Metadata: func() map[string]any {
-			m := map[string]any{"target_user_id": id}
-			if req.QuotaBytes != nil {
-				m["quota_bytes"] = *req.QuotaBytes
-			}
-			return m
-		}(),
-	})
+	h.auditSvc.Log(ctx, userUpdateAuditEvent(actor, r, id, req))
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -301,7 +328,7 @@ func (h *Handler) Lock(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.db.Exec(ctx,
 		`UPDATE users SET is_active = false, updated_at = now() WHERE id = $1`, id,
 	); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
@@ -330,7 +357,7 @@ func (h *Handler) Unlock(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.db.Exec(ctx,
 		`UPDATE users SET is_active = true, updated_at = now() WHERE id = $1`, id,
 	); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
@@ -358,13 +385,13 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.db.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`, id,
 	).Scan(&exists); err != nil || !exists {
-		httputil.RespondError(w, http.StatusNotFound, "user not found")
+		httputil.RespondError(w, http.StatusNotFound, userErrNotFound)
 		return
 	}
 
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -390,12 +417,12 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
 		log.Error().Err(err).Msg("admin: delete user")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
@@ -421,7 +448,7 @@ func (h *Handler) ForcePasswordReset(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.db.Exec(ctx,
 		`UPDATE users SET must_change_password = true, updated_at = now() WHERE id = $1`, id,
 	); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
@@ -453,7 +480,7 @@ func (h *Handler) RequireTOTP(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.db.Exec(ctx,
 		`UPDATE users SET force_totp_setup = true, updated_at = now() WHERE id = $1`, id,
 	); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 	if actor != nil {
@@ -480,7 +507,7 @@ func (h *Handler) RevokeTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.totpMgr.Disable(ctx, id); err != nil {
 		log.Error().Err(err).Msg("admin: revoke user TOTP")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 	if actor != nil {
@@ -516,7 +543,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		id,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 	defer rows.Close()
@@ -554,13 +581,13 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, err := argon2id.CreateHash(body.Password, argon2id.DefaultParams)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 	if _, err := h.db.Exec(ctx,
 		`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, hash, id,
 	); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 	h.auditSvc.Log(ctx, audit.Event{
@@ -593,7 +620,7 @@ func (h *Handler) Reinvite(w http.ResponseWriter, r *http.Request) {
 	// Get the target user's email
 	var email string
 	if err := h.db.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, targetID).Scan(&email); err != nil {
-		httputil.RespondError(w, http.StatusNotFound, "user not found")
+		httputil.RespondError(w, http.StatusNotFound, userErrNotFound)
 		return
 	}
 
@@ -607,7 +634,7 @@ func (h *Handler) Reinvite(w http.ResponseWriter, r *http.Request) {
 		email, tokenHash, actor.ID,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
@@ -658,10 +685,7 @@ type GuestUser struct {
 	SharedItems   []GuestSharedItem `json:"shared_items"`
 }
 
-// ListGuests handles GET /api/v1/admin/guests
-func (h *Handler) ListGuests(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
+func (h *Handler) loadGuests(ctx context.Context) ([]GuestUser, error) {
 	rows, err := h.db.Query(ctx,
 		`SELECT u.id, u.email, u.display_name, u.last_login_at, u.created_at,
 		        inviter.display_name
@@ -671,8 +695,7 @@ func (h *Handler) ListGuests(w http.ResponseWriter, r *http.Request) {
 		 ORDER BY u.created_at DESC`,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -680,53 +703,80 @@ func (h *Handler) ListGuests(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var g GuestUser
 		if err := rows.Scan(&g.ID, &g.Email, &g.DisplayName, &g.LastLoginAt, &g.CreatedAt, &g.InvitedByName); err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-			return
+			return nil, err
 		}
 		g.SharedItems = []GuestSharedItem{}
 		guests = append(guests, g)
 	}
 	if err := rows.Err(); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, err
+	}
+	return guests, nil
+}
+
+func guestIDs(guests []GuestUser) []string {
+	ids := make([]string, len(guests))
+	for i, guest := range guests {
+		ids[i] = guest.ID
+	}
+	return ids
+}
+
+func (h *Handler) loadGuestSharedItems(ctx context.Context, ids []string) map[string][]GuestSharedItem {
+	itemMap := make(map[string][]GuestSharedItem)
+	if len(ids) == 0 {
+		return itemMap
 	}
 
-	// Fetch shared items for each guest in a single batched query.
-	if len(guests) > 0 {
-		ids := make([]string, len(guests))
-		for i, g := range guests {
-			ids[i] = g.ID
-		}
-		sRows, err := h.db.Query(ctx,
-			`SELECT s.grantee_id, f.id, f.name, f.is_folder, owner.email
-			 FROM shares s
-			 JOIN files f ON f.id = s.resource_id AND f.deleted_at IS NULL
-			 JOIN users owner ON owner.id = s.owner_id
-			 WHERE s.grantee_type = 'user'
-			   AND s.grantee_id = ANY($1::uuid[])
-			   AND s.revoked_at IS NULL
-			   AND (s.expires_at IS NULL OR s.expires_at > now())
-			 ORDER BY f.name ASC`,
-			ids,
-		)
-		if err == nil {
-			defer sRows.Close()
-			// Build a map from guestID -> items
-			itemMap := make(map[string][]GuestSharedItem)
-			for sRows.Next() {
-				var granteeID string
-				var item GuestSharedItem
-				if err := sRows.Scan(&granteeID, &item.ResourceID, &item.Name, &item.IsFolder, &item.OwnerEmail); err == nil {
-					itemMap[granteeID] = append(itemMap[granteeID], item)
-				}
-			}
-			for i := range guests {
-				if items, ok := itemMap[guests[i].ID]; ok {
-					guests[i].SharedItems = items
-				}
-			}
+	sRows, err := h.db.Query(ctx,
+		`SELECT s.grantee_id, f.id, f.name, f.is_folder, owner.email
+		 FROM shares s
+		 JOIN files f ON f.id = s.resource_id AND f.deleted_at IS NULL
+		 JOIN users owner ON owner.id = s.owner_id
+		 WHERE s.grantee_type = 'user'
+		   AND s.grantee_id = ANY($1::uuid[])
+		   AND s.revoked_at IS NULL
+		   AND (s.expires_at IS NULL OR s.expires_at > now())
+		 ORDER BY f.name ASC`,
+		ids,
+	)
+	if err != nil {
+		log.Warn().Err(err).Msg("admin: list guest shares")
+		return itemMap
+	}
+	defer sRows.Close()
+
+	for sRows.Next() {
+		var granteeID string
+		var item GuestSharedItem
+		if err := sRows.Scan(&granteeID, &item.ResourceID, &item.Name, &item.IsFolder, &item.OwnerEmail); err == nil {
+			itemMap[granteeID] = append(itemMap[granteeID], item)
 		}
 	}
+	if err := sRows.Err(); err != nil {
+		log.Warn().Err(err).Msg("admin: list guest shares rows")
+	}
+	return itemMap
+}
+
+func applyGuestSharedItems(guests []GuestUser, itemMap map[string][]GuestSharedItem) {
+	for i := range guests {
+		if items, ok := itemMap[guests[i].ID]; ok {
+			guests[i].SharedItems = items
+		}
+	}
+}
+
+// ListGuests handles GET /api/v1/admin/guests
+func (h *Handler) ListGuests(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	guests, err := h.loadGuests(ctx)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
+		return
+	}
+	applyGuestSharedItems(guests, h.loadGuestSharedItems(ctx, guestIDs(guests)))
 
 	httputil.Respond(w, http.StatusOK, guests)
 }
@@ -741,7 +791,7 @@ func (h *Handler) PromoteGuest(w http.ResponseWriter, r *http.Request) {
 	// Verify the target is actually a guest.
 	var currentRole string
 	if err := h.db.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&currentRole); err != nil {
-		httputil.RespondError(w, http.StatusNotFound, "user not found")
+		httputil.RespondError(w, http.StatusNotFound, userErrNotFound)
 		return
 	}
 	if currentRole != "guest" {
@@ -752,7 +802,7 @@ func (h *Handler) PromoteGuest(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.db.Exec(ctx,
 		`UPDATE users SET role = 'user', updated_at = now() WHERE id = $1`, id,
 	); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
@@ -775,7 +825,7 @@ func (h *Handler) DeleteGuest(w http.ResponseWriter, r *http.Request) {
 	// Verify the target is actually a guest.
 	var currentRole string
 	if err := h.db.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&currentRole); err != nil {
-		httputil.RespondError(w, http.StatusNotFound, "user not found")
+		httputil.RespondError(w, http.StatusNotFound, userErrNotFound)
 		return
 	}
 	if currentRole != "guest" {
@@ -785,7 +835,7 @@ func (h *Handler) DeleteGuest(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -802,12 +852,12 @@ func (h *Handler) DeleteGuest(w http.ResponseWriter, r *http.Request) {
 	tx.Exec(ctx, `DELETE FROM files WHERE owner_id = $1`, id)
 	// Hard-delete the user record.
 	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
 
@@ -828,7 +878,7 @@ func (h *Handler) RecalculateQuota(w http.ResponseWriter, r *http.Request) {
 
 	var before int64
 	if err := h.db.QueryRow(ctx, `SELECT quota_used_bytes FROM users WHERE id = $1`, id).Scan(&before); err != nil {
-		httputil.RespondError(w, http.StatusNotFound, "user not found")
+		httputil.RespondError(w, http.StatusNotFound, userErrNotFound)
 		return
 	}
 

@@ -205,7 +205,7 @@ function GroupCombobox({ allGroups, selected, onChange }: Readonly<GroupCombobox
         name: trimmed,
         color: '#6b7280',
       })
-      void qc.invalidateQueries({ queryKey: ['admin', 'groups'] })
+      await qc.invalidateQueries({ queryKey: ['admin', 'groups'] })
       onChange([...selected, res.id])
       setInput('')
       setOpen(false)
@@ -316,7 +316,7 @@ function AdminUsersPage() {
     queryFn: ({ signal }) => api.get<{ default_quota_bytes: number }>('/api/v1/admin/settings', signal),
   })
 
-  const invalidateUsers = () => void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+  const invalidateUsers = () => qc.invalidateQueries({ queryKey: ['admin', 'users'] })
 
   const lockMutation = useMutation({
     mutationFn: (id: string) => api.post(`/api/v1/admin/users/${id}/lock`),
@@ -410,7 +410,7 @@ function AdminUsersPage() {
                         try {
                           await adminRevokeTOTP(id)
                           toast.success(t('users.totpRevoked'))
-                          void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+                          await invalidateUsers()
                         } catch {
                           toast.error(t('users.totpRevokeFailed'))
                         }
@@ -420,7 +420,7 @@ function AdminUsersPage() {
                       try {
                         await adminRequireTOTP(id)
                         toast.success(t('users.totpRequired'))
-                        void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+                        await invalidateUsers()
                       } catch {
                         toast.error(t('users.totpRequireFailed'))
                       }
@@ -429,7 +429,7 @@ function AdminUsersPage() {
                       try {
                         await adminUnrequireTOTP(id)
                         toast.success(t('users.totpRequirementRemoved'))
-                        void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+                        await invalidateUsers()
                       } catch {
                         toast.error(t('users.totpRequirementRemoveFailed'))
                       }
@@ -470,7 +470,7 @@ function AdminUsersPage() {
           groups={groups}
           defaultQuotaBytes={settings?.default_quota_bytes ?? 0}
           onClose={() => setShowDialog(false)}
-          onCreated={() => void qc.invalidateQueries({ queryKey: ['admin', 'users'] })}
+          onCreated={invalidateUsers}
         />
       )}
 
@@ -478,7 +478,7 @@ function AdminUsersPage() {
         <EditUserDialog
           user={editUser}
           onClose={() => setEditUser(null)}
-          onSaved={() => void qc.invalidateQueries({ queryKey: ['admin', 'users'] })}
+          onSaved={invalidateUsers}
         />
       )}
     </div>
@@ -515,22 +515,23 @@ function GuestsPanel({
 }>) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const { t } = useI18n()
+  const invalidateGuests = () => qc.invalidateQueries({ queryKey: ['admin', 'guests'] })
 
   const promote = useMutation({
     mutationFn: (id: string) => api.post(`/api/v1/admin/guests/${id}/promote`, {}),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('users.guestPromoted'))
-      void qc.invalidateQueries({ queryKey: ['admin', 'guests'] })
-      void qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+      await invalidateGuests()
+      await qc.invalidateQueries({ queryKey: ['admin', 'users'] })
     },
     onError: () => toast.error(t('users.guestPromoteFailed')),
   })
 
   const deactivate = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/admin/guests/${id}`),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('users.guestRemoved'))
-      void qc.invalidateQueries({ queryKey: ['admin', 'guests'] })
+      await invalidateGuests()
     },
     onError: () => toast.error(t('users.guestRemoveFailed')),
   })
@@ -970,7 +971,7 @@ function UserRow({
 
 /** Parse a human-readable size string like "1GB", "500 MB", "2.5TB" ÔåÆ bytes, or null on failure. */
 function parseQuotaInput(s: string): number | null {
-  const m = s.trim().match(/^([0-9]*\.?[0-9]+)\s*(KB|MB|GB|TB|PB|B)?$/i)
+  const m = s.trim().match(/^(\d+(?:\.\d+)?|\.\d+)\s*(KB|MB|GB|TB|PB|B)?$/i)
   if (!m) return null
   const n = Number.parseFloat(m[1])
   const unit = (m[2] ?? 'B').toUpperCase()

@@ -77,7 +77,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if parentParam != "" {
 		id, err := uuid.Parse(parentParam)
 		if err != nil {
-			httputil.RespondError(w, http.StatusBadRequest, "invalid parent_id")
+			httputil.RespondError(w, http.StatusBadRequest, errInvalidParentID)
 			return
 		}
 		parentID = &id
@@ -86,7 +86,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	files, err := h.svc.List(r.Context(), actor.ID.String(), parentID)
 	if err != nil {
 		log.Error().Err(err).Msg("files.List")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, files)
@@ -99,7 +99,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 	f, err := h.svc.GetAccessible(r.Context(), id, actor.ID.String())
 	if err != nil || f == nil {
-		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		httputil.RespondError(w, http.StatusNotFound, errFileNotFound)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, f)
@@ -115,7 +115,7 @@ func (h *Handler) CreateFolder(w http.ResponseWriter, r *http.Request) {
 		ParentID *string `json:"parent_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
-		httputil.RespondError(w, http.StatusBadRequest, "name is required")
+		httputil.RespondError(w, http.StatusBadRequest, errNameRequired)
 		return
 	}
 
@@ -123,7 +123,7 @@ func (h *Handler) CreateFolder(w http.ResponseWriter, r *http.Request) {
 	if body.ParentID != nil {
 		id, err := uuid.Parse(*body.ParentID)
 		if err != nil {
-			httputil.RespondError(w, http.StatusBadRequest, "invalid parent_id")
+			httputil.RespondError(w, http.StatusBadRequest, errInvalidParentID)
 			return
 		}
 		parentID = &id
@@ -132,7 +132,7 @@ func (h *Handler) CreateFolder(w http.ResponseWriter, r *http.Request) {
 	f, err := h.svc.CreateFolder(ctx, actor.ID.String(), body.Name, parentID)
 	if err != nil {
 		log.Error().Err(err).Msg("files.CreateFolder")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusCreated, f)
@@ -149,7 +149,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		ParentID *string `json:"parent_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 
@@ -164,7 +164,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		if *body.ParentID != "" {
 			uid, err := uuid.Parse(*body.ParentID)
 			if err != nil {
-				httputil.RespondError(w, http.StatusBadRequest, "invalid parent_id")
+				httputil.RespondError(w, http.StatusBadRequest, errInvalidParentID)
 				return
 			}
 			newParent = &uid
@@ -249,14 +249,14 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	if h.limiter != nil {
 		userOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyUserDownload, actor.ID.String(), 200, time.Hour)
 		if !userOK {
-			w.Header().Set("Retry-After", "3600")
+			w.Header().Set(retryAfterHeader, "3600")
 			httputil.RespondError(w, http.StatusTooManyRequests, "download rate limit exceeded — try again later")
 			return
 		}
 		ip := middleware.ClientIP(r)
 		ipOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyIPDownload, ip, 600, time.Hour)
 		if !ipOK {
-			w.Header().Set("Retry-After", "3600")
+			w.Header().Set(retryAfterHeader, "3600")
 			httputil.RespondError(w, http.StatusTooManyRequests, "download rate limit exceeded — try again later")
 			return
 		}
@@ -264,26 +264,26 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 
 	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
 	if err != nil || f == nil || f.IsFolder {
-		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		httputil.RespondError(w, http.StatusNotFound, errFileNotFound)
 		return
 	}
 
 	reader, err := h.svc.storage.Open(id)
 	if err != nil {
 		log.Error().Err(err).Str("file_id", id).Msg("files.Download: open storage")
-		httputil.RespondError(w, http.StatusInternalServerError, "could not open file")
+		httputil.RespondError(w, http.StatusInternalServerError, errCouldNotOpenFile)
 		return
 	}
 	defer reader.Close()
 
 	mime := f.MimeType
 	if mime == "" {
-		mime = "application/octet-stream"
+		mime = octetStreamContentType
 	}
-	w.Header().Set("Content-Type", mime)
+	w.Header().Set(contentTypeHeader, mime)
 	w.Header().Set("Content-Length", strconv.FormatInt(f.SizeBytes, 10))
-	w.Header().Set("Content-Disposition", contentDisposition("attachment", f.Name))
-	w.Header().Set("Cache-Control", "private")
+	w.Header().Set(contentDispositionHeader, contentDisposition("attachment", f.Name))
+	w.Header().Set(cacheControlHeader, "private")
 	http.ServeContent(w, r, f.Name, f.UpdatedAt, reader)
 
 	// Use a background context: by the time ServeContent returns for large files,
@@ -309,7 +309,7 @@ func (h *Handler) Recent(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())
 	files, err := h.svc.Recent(r.Context(), actor.ID.String(), 50)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, files)
@@ -326,7 +326,7 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	results, err := h.svc.Search(r.Context(), actor.ID.String(), q, 20)
 	if err != nil {
 		log.Error().Err(err).Msg("files.Search")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, results)
@@ -344,7 +344,7 @@ func (h *Handler) DuplicateMatches(w http.ResponseWriter, r *http.Request) {
 	hits, err := h.svc.FindExactNameMatches(r.Context(), actor.ID.String(), name, 20)
 	if err != nil {
 		log.Error().Err(err).Msg("files.DuplicateMatches")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, hits)
@@ -355,7 +355,7 @@ func (h *Handler) ListTrash(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())
 	files, err := h.trash.ListTrash(r.Context(), actor.ID.String())
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, files)
@@ -448,7 +448,7 @@ func (h *Handler) EmptyTrash(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if err := h.trash.EmptyTrashAll(ctx, actor.ID.String()); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	h.auditSvc.Log(ctx, audit.Event{
@@ -472,7 +472,7 @@ func (h *Handler) Breadcrumbs(w http.ResponseWriter, r *http.Request) {
 	crumbs, err := h.svc.Breadcrumbs(r.Context(), folderID, actor.ID.String())
 	if err != nil {
 		log.Error().Err(err).Msg("files.Breadcrumbs")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, crumbs)
@@ -515,13 +515,13 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mimeType := header.Header.Get("Content-Type")
+	mimeType := header.Header.Get(contentTypeHeader)
 	if mimeType == "" {
-		mimeType = "application/octet-stream"
+		mimeType = octetStreamContentType
 	}
 	overwrite := strings.EqualFold(strings.TrimSpace(r.FormValue("overwrite")), "1") || strings.EqualFold(strings.TrimSpace(r.FormValue("overwrite")), "true")
 
-	f, err := h.svc.Upload(r.Context(), actor.ID.String(), header.Filename, mimeType, folderID, overwrite, fileData, header.Size)
+	f, err := h.svc.Upload(r.Context(), UploadParams{OwnerID: actor.ID.String(), Name: header.Filename, MimeType: mimeType, FolderID: folderID, Overwrite: overwrite, ContentLength: header.Size}, fileData)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "quota:") {
 			httputil.RespondError(w, http.StatusUnprocessableEntity, err.Error())
@@ -589,8 +589,8 @@ func safeZipName(rawPath string) string {
 // should be truncated for safe, fast preview delivery.
 func isTextMIME(mime string) bool {
 	return strings.HasPrefix(mime, "text/") ||
-		mime == "application/json" ||
-		mime == "application/xml" ||
+		mime == jsonContentType ||
+		mime == xmlContentType ||
 		mime == "application/javascript"
 }
 
@@ -606,7 +606,7 @@ func mimeByExtension(name string) string {
 	switch ext {
 	// Images
 	case ".jpg", ".jpeg":
-		return "image/jpeg"
+		return jpegContentType
 	case ".png":
 		return "image/png"
 	case ".gif":
@@ -656,7 +656,7 @@ func mimeByExtension(name string) string {
 		}
 		return t
 	}
-	return "application/octet-stream"
+	return octetStreamContentType
 }
 
 // ── Thumbnail ─────────────────────────────────────────────────────────────────
@@ -676,7 +676,7 @@ func (h *Handler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 
 	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
 	if err != nil || f == nil || f.IsFolder {
-		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		httputil.RespondError(w, http.StatusNotFound, errFileNotFound)
 		return
 	}
 
@@ -703,7 +703,7 @@ func (h *Handler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 	reader, err := h.svc.storage.Open(id)
 	if err != nil {
 		log.Error().Err(err).Str("file_id", id).Msg("Thumbnail: open storage")
-		httputil.RespondError(w, http.StatusInternalServerError, "could not open file")
+		httputil.RespondError(w, http.StatusInternalServerError, errCouldNotOpenFile)
 		return
 	}
 	defer reader.Close()
@@ -717,8 +717,8 @@ func (h *Handler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 
 	thumb := thumbnailResize(src, thumbnailMaxPx)
 
-	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set(contentTypeHeader, jpegContentType)
+	w.Header().Set(cacheControlHeader, "private, max-age=86400")
 	w.WriteHeader(http.StatusOK)
 	_ = jpeg.Encode(w, thumb, &jpeg.Options{Quality: 85})
 }
@@ -756,16 +756,29 @@ func thumbnailResize(src image.Image, maxPx int) image.Image {
 // ── Download ZIP ─────────────────────────────────────────────────────────────────
 
 const (
-	downloadTokenPrefix  = "download_token:"
-	downloadTokenTTL     = 10 * time.Minute
-	passwordAlphabet     = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
-	passwordLength       = 12
-	customPasswordMaxLen = 128 // prevent oversized payloads being stored in Redis
-	zipContentType       = "application/zip"
-	zipDownloadName      = `attachment; filename="download.zip"`
-	cachePrivateNoStore  = "private, no-store"
-	acceptRangesNone     = "none"
-	errInternal          = "internal error"
+	downloadTokenPrefix      = "download_token:"
+	downloadTokenTTL         = 10 * time.Minute
+	passwordAlphabet         = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+	passwordLength           = 12
+	customPasswordMaxLen     = 128 // prevent oversized payloads being stored in Redis
+	contentTypeHeader        = "Content-Type"
+	contentDispositionHeader = "Content-Disposition"
+	cacheControlHeader       = "Cache-Control"
+	retryAfterHeader         = "Retry-After"
+	jpegContentType          = "image/jpeg"
+	jsonContentType          = "application/json"
+	xmlContentType           = "application/xml"
+	octetStreamContentType   = "application/octet-stream"
+	errCouldNotOpenFile      = "could not open file"
+	errFileNotFound          = "file not found"
+	errInvalidParentID       = "invalid parent_id"
+	errInvalidRequest        = "invalid request"
+	errNameRequired          = "name is required"
+	zipContentType           = "application/zip"
+	zipDownloadName          = `attachment; filename="download.zip"`
+	cachePrivateNoStore      = "private, no-store"
+	acceptRangesNone         = "none"
+	errInternal              = "internal error"
 )
 
 // reDownloadToken matches the 64-character lowercase hex tokens produced by randomToken.
@@ -854,7 +867,7 @@ func (h *Handler) PrepareDownload(w http.ResponseWriter, r *http.Request) {
 			var err error
 			if password, err = randomPassword(); err != nil {
 				log.Error().Err(err).Msg("PrepareDownload: randomPassword")
-				httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+				httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 				return
 			}
 		}
@@ -863,7 +876,7 @@ func (h *Handler) PrepareDownload(w http.ResponseWriter, r *http.Request) {
 	token, err := randomToken()
 	if err != nil {
 		log.Error().Err(err).Msg("PrepareDownload: randomToken")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 
@@ -871,7 +884,7 @@ func (h *Handler) PrepareDownload(w http.ResponseWriter, r *http.Request) {
 	data, _ := json.Marshal(payload)
 	if err := h.redis.Set(ctx, downloadTokenPrefix+token, string(data), downloadTokenTTL).Err(); err != nil {
 		log.Error().Err(err).Msg("PrepareDownload: redis set")
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
 
@@ -897,14 +910,14 @@ func (h *Handler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 	if h.limiter != nil {
 		userOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyUserZipDL, actor.ID.String(), 30, time.Hour)
 		if !userOK {
-			w.Header().Set("Retry-After", "3600")
+			w.Header().Set(retryAfterHeader, "3600")
 			httputil.RespondError(w, http.StatusTooManyRequests, "ZIP download rate limit exceeded — try again later")
 			return
 		}
 		ip := middleware.ClientIP(r)
 		ipOK, _, _, _ := h.limiter.Allow(ctx, ratelimit.KeyIPZipDL, ip, 60, time.Hour)
 		if !ipOK {
-			w.Header().Set("Retry-After", "3600")
+			w.Header().Set(retryAfterHeader, "3600")
 			httputil.RespondError(w, http.StatusTooManyRequests, "ZIP download rate limit exceeded — try again later")
 			return
 		}
@@ -986,9 +999,9 @@ func (h *Handler) downloadZipByToken(w http.ResponseWriter, r *http.Request, ctx
 }
 
 func setZipDownloadHeaders(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", zipContentType)
-	w.Header().Set("Content-Disposition", zipDownloadName)
-	w.Header().Set("Cache-Control", cachePrivateNoStore)
+	w.Header().Set(contentTypeHeader, zipContentType)
+	w.Header().Set(contentDispositionHeader, zipDownloadName)
+	w.Header().Set(cacheControlHeader, cachePrivateNoStore)
 	w.Header().Set("Accept-Ranges", acceptRangesNone)
 }
 
@@ -1115,14 +1128,14 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 
 	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
 	if err != nil || f == nil || f.IsFolder {
-		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		httputil.RespondError(w, http.StatusNotFound, errFileNotFound)
 		return
 	}
 
 	reader, err := h.svc.storage.Open(id)
 	if err != nil {
 		log.Error().Err(err).Str("file_id", id).Msg("files.Preview: open storage")
-		httputil.RespondError(w, http.StatusInternalServerError, "could not open file")
+		httputil.RespondError(w, http.StatusInternalServerError, errCouldNotOpenFile)
 		return
 	}
 	defer reader.Close()
@@ -1132,11 +1145,11 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 	// detect the real content type by sniffing the first 512 bytes of the file.
 	// This is more reliable than extension-based guessing because migrated files
 	// may have the wrong extension (e.g. PNG bytes stored with a .jpg name).
-	if mime == "" || mime == "application/octet-stream" {
+	if mime == "" || mime == octetStreamContentType {
 		var sniffBuf [512]byte
 		n, _ := io.ReadFull(reader, sniffBuf[:])
 		detected := http.DetectContentType(sniffBuf[:n])
-		if detected != "application/octet-stream" {
+		if detected != octetStreamContentType {
 			mime = detected
 		} else {
 			// http.DetectContentType couldn't identify it — fall back to extension.
@@ -1149,9 +1162,9 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Content-Disposition", contentDisposition("inline", f.Name))
-	w.Header().Set("Cache-Control", cachePrivateNoStore)
+	w.Header().Set(contentTypeHeader, mime)
+	w.Header().Set(contentDispositionHeader, contentDisposition("inline", f.Name))
+	w.Header().Set(cacheControlHeader, cachePrivateNoStore)
 
 	const textPreviewLimit = 1 * 1024 * 1024 // 1 MB
 	if isTextMIME(mime) && f.SizeBytes > textPreviewLimit {
@@ -1182,7 +1195,7 @@ func (h *Handler) PreviewPDF(w http.ResponseWriter, r *http.Request) {
 
 	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
 	if err != nil || f == nil || f.IsFolder {
-		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		httputil.RespondError(w, http.StatusNotFound, errFileNotFound)
 		return
 	}
 
@@ -1202,9 +1215,9 @@ func (h *Handler) PreviewPDF(w http.ResponseWriter, r *http.Request) {
 	}
 	defer pdfFile.Close()
 
-	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", contentDisposition("inline", f.Name+".pdf"))
-	w.Header().Set("Cache-Control", cachePrivateNoStore)
+	w.Header().Set(contentTypeHeader, "application/pdf")
+	w.Header().Set(contentDispositionHeader, contentDisposition("inline", f.Name+".pdf"))
+	w.Header().Set(cacheControlHeader, cachePrivateNoStore)
 	http.ServeContent(w, r, f.Name+".pdf", f.UpdatedAt, pdfFile)
 
 	auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1251,7 +1264,7 @@ func (h *Handler) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
 		ParentID *string `json:"parent_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 	if len(body.FileIDs) == 0 {
@@ -1297,7 +1310,7 @@ func (h *Handler) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
 	fileName := now.Format("2006-01-02 15:04") + ".m3u"
 
 	content := sb.String()
-	f, err := h.svc.Upload(ctx, actor.ID.String(), fileName, "audio/mpegurl", playlistFolderID, false, strings.NewReader(content), int64(len(content)))
+	f, err := h.svc.Upload(ctx, UploadParams{OwnerID: actor.ID.String(), Name: fileName, MimeType: "audio/mpegurl", FolderID: playlistFolderID, Overwrite: false, ContentLength: int64(len(content))}, strings.NewReader(content))
 	if err != nil {
 		log.Error().Err(err).Msg("files.CreatePlaylist")
 		httputil.RespondError(w, http.StatusInternalServerError, "failed to save playlist")
@@ -1332,7 +1345,7 @@ func (h *Handler) PlaylistTracks(w http.ResponseWriter, r *http.Request) {
 	// Verify access to the playlist file itself.
 	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
 	if err != nil || f == nil {
-		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		httputil.RespondError(w, http.StatusNotFound, errFileNotFound)
 		return
 	}
 
@@ -1392,7 +1405,7 @@ func (h *Handler) UpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 	// Verify ownership / write access
 	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
 	if err != nil || f == nil || f.IsFolder {
-		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		httputil.RespondError(w, http.StatusNotFound, errFileNotFound)
 		return
 	}
 	if !strings.HasSuffix(strings.ToLower(f.Name), ".m3u") {
@@ -1408,7 +1421,7 @@ func (h *Handler) UpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 		FileIDs []string `json:"file_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
 	if len(body.FileIDs) == 0 {
@@ -1467,7 +1480,7 @@ func (h *Handler) CreateTextFile(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
-		httputil.RespondError(w, http.StatusBadRequest, "name is required")
+		httputil.RespondError(w, http.StatusBadRequest, errNameRequired)
 		return
 	}
 
@@ -1481,11 +1494,11 @@ func (h *Handler) CreateTextFile(w http.ResponseWriter, r *http.Request) {
 	mime := "text/plain"
 	switch ext {
 	case "json", "jsonc":
-		mime = "application/json"
+		mime = jsonContentType
 	case "html", "htm":
 		mime = "text/html"
 	case "xml":
-		mime = "application/xml"
+		mime = xmlContentType
 	case "css":
 		mime = "text/css"
 	case "js", "jsx":
@@ -1601,7 +1614,7 @@ func (h *Handler) PublicCreateTextFile(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
-		httputil.RespondError(w, http.StatusBadRequest, "name is required")
+		httputil.RespondError(w, http.StatusBadRequest, errNameRequired)
 		return
 	}
 
@@ -1614,11 +1627,11 @@ func (h *Handler) PublicCreateTextFile(w http.ResponseWriter, r *http.Request) {
 	mime := "text/plain"
 	switch ext {
 	case "json", "jsonc":
-		mime = "application/json"
+		mime = jsonContentType
 	case "html", "htm":
 		mime = "text/html"
 	case "xml":
-		mime = "application/xml"
+		mime = xmlContentType
 	case "md", "markdown":
 		mime = "text/markdown"
 	}
@@ -1728,7 +1741,7 @@ func (h *Handler) SaveContent(w http.ResponseWriter, r *http.Request) {
 
 	f, err := h.svc.GetAccessible(ctx, id, actor.ID.String())
 	if err != nil || f == nil || f.IsFolder {
-		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		httputil.RespondError(w, http.StatusNotFound, errFileNotFound)
 		return
 	}
 

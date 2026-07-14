@@ -41,6 +41,17 @@ import (
 	"github.com/yourname/privatedrive/internal/webdav"
 )
 
+const (
+	filesRoute             = "/api/v1/files"
+	fileByIDRoute          = "/api/v1/files/{id}"
+	backupPasswordRoute    = "/api/v1/backup/password"
+	backupBuddyConfigRoute = "/api/v1/backup/buddy/config"
+	adminUsersByIDRoute    = "/api/v1/admin/users/{id}"
+	backupsDataRoot        = "/data/backups"
+	contentTypeHeader      = "Content-Type"
+	jsonContentType        = "application/json"
+)
+
 // Server wraps the HTTP server and all application dependencies.
 type Server struct {
 	cfg            *config.Config
@@ -298,7 +309,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Body != nil &&
 				!strings.HasPrefix(r.URL.Path, "/upload/") &&
-				!(r.URL.Path == "/api/v1/files" && r.Method == http.MethodPost) &&
+				!(r.URL.Path == filesRoute && r.Method == http.MethodPost) &&
 				r.URL.Path != "/api/v1/backup/buddy/receive" {
 				r.Body = http.MaxBytesReader(w, r.Body, 4<<20) // 4 MB
 			}
@@ -309,7 +320,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		AllowedOrigins: s.cfg.CORSOrigins,
 		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},
 		AllowedHeaders: []string{
-			"Accept", "Authorization", "Content-Type", "X-Request-ID",
+			"Accept", "Authorization", contentTypeHeader, "X-Request-ID",
 			// Tus resumable-upload protocol headers
 			"Tus-Resumable", "Upload-Length", "Upload-Metadata", "Upload-Offset",
 			"Upload-Defer-Length", "Upload-Concat",
@@ -388,8 +399,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/v1/auth/sessions/{id}", s.handleRevokeSession)
 
 		// Files
-		r.Get("/api/v1/files", s.filesHandler.List)
-		r.Post("/api/v1/files", s.filesHandler.CreateFolder)
+		r.Get(filesRoute, s.filesHandler.List)
+		r.Post(filesRoute, s.filesHandler.CreateFolder)
 		r.Post("/api/v1/files/upload", s.filesHandler.Upload)
 		r.Get("/api/v1/files/recent", s.filesHandler.Recent)
 		r.Get("/api/v1/files/breadcrumbs", s.filesHandler.Breadcrumbs)
@@ -408,9 +419,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/files/playlist", s.filesHandler.CreatePlaylist)
 		r.Get("/api/v1/files/{id}/playlist/tracks", s.filesHandler.PlaylistTracks)
 		r.Put("/api/v1/files/{id}/playlist/tracks", s.filesHandler.UpdatePlaylist)
-		r.Get("/api/v1/files/{id}", s.filesHandler.Get)
-		r.Patch("/api/v1/files/{id}", s.filesHandler.Update)
-		r.Delete("/api/v1/files/{id}", s.filesHandler.Delete)
+		r.Get(fileByIDRoute, s.filesHandler.Get)
+		r.Patch(fileByIDRoute, s.filesHandler.Update)
+		r.Delete(fileByIDRoute, s.filesHandler.Delete)
 		r.Post("/api/v1/files/{id}/copy", s.filesHandler.Copy)
 		r.Get("/api/v1/files/{id}/download", s.filesHandler.Download)
 		r.Put("/api/v1/files/{id}/content", s.filesHandler.SaveContent)
@@ -429,9 +440,9 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		// Backup
 		r.Get("/api/v1/backup/config", s.backupHandler.GetConfig)
-		r.Get("/api/v1/backup/password", s.backupHandler.GetPassword)
-		r.Post("/api/v1/backup/password", s.backupHandler.GeneratePassword)
-		r.Delete("/api/v1/backup/password", s.backupHandler.RevokePassword)
+		r.Get(backupPasswordRoute, s.backupHandler.GetPassword)
+		r.Post(backupPasswordRoute, s.backupHandler.GeneratePassword)
+		r.Delete(backupPasswordRoute, s.backupHandler.RevokePassword)
 		r.Post("/api/v1/backup/export", s.backupHandler.Export)
 		r.Post("/api/v1/backup/restore", s.backupHandler.Restore)
 		// Tertiary backup (server-side storage)
@@ -443,9 +454,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/backup/auto", s.backupHandler.GetAutoConfig)
 		r.Put("/api/v1/backup/auto", s.backupHandler.SetAutoConfig)
 		// Buddy backup (per-user config + push to peer)
-		r.Get("/api/v1/backup/buddy/config", s.backupHandler.GetBuddyConfig)
-		r.Put("/api/v1/backup/buddy/config", s.backupHandler.SetBuddyPeerConfig)
-		r.Delete("/api/v1/backup/buddy/config", s.backupHandler.ClearBuddyPeerConfig)
+		r.Get(backupBuddyConfigRoute, s.backupHandler.GetBuddyConfig)
+		r.Put(backupBuddyConfigRoute, s.backupHandler.SetBuddyPeerConfig)
+		r.Delete(backupBuddyConfigRoute, s.backupHandler.ClearBuddyPeerConfig)
 		r.Post("/api/v1/backup/buddy/receive-token", s.backupHandler.GenerateBuddyReceiveToken)
 		r.Delete("/api/v1/backup/buddy/receive-token", s.backupHandler.RevokeBuddyReceiveToken)
 		r.Post("/api/v1/backup/buddy/push", s.backupHandler.BuddyPush)
@@ -480,9 +491,9 @@ func (s *Server) buildRouter() *chi.Mux {
 
 			r.Get("/api/v1/admin/users", s.userHandler.List)
 			r.Post("/api/v1/admin/users", s.userHandler.Create)
-			r.Get("/api/v1/admin/users/{id}", s.userHandler.Get)
-			r.Patch("/api/v1/admin/users/{id}", s.userHandler.Update)
-			r.Delete("/api/v1/admin/users/{id}", s.userHandler.Delete)
+			r.Get(adminUsersByIDRoute, s.userHandler.Get)
+			r.Patch(adminUsersByIDRoute, s.userHandler.Update)
+			r.Delete(adminUsersByIDRoute, s.userHandler.Delete)
 			r.Post("/api/v1/admin/users/{id}/lock", s.userHandler.Lock)
 			r.Post("/api/v1/admin/users/{id}/unlock", s.userHandler.Unlock)
 			r.Post("/api/v1/admin/users/{id}/force-password-reset", s.userHandler.ForcePasswordReset)
@@ -874,7 +885,7 @@ func (s *Server) tusHandler() http.Handler {
 						return tusd.HTTPResponse{
 							StatusCode: http.StatusConflict,
 							Body:       `{"error":"` + msg + `"}`,
-							Header:     tusd.HTTPHeader{"Content-Type": "application/json"},
+							Header:     tusd.HTTPHeader{contentTypeHeader: jsonContentType},
 						}, tusd.FileInfoChanges{}, nil
 					}
 				}
@@ -886,7 +897,7 @@ func (s *Server) tusHandler() http.Handler {
 					return tusd.HTTPResponse{
 						StatusCode: http.StatusRequestEntityTooLarge,
 						Body:       `{"error":"file exceeds the maximum upload size for this account"}`,
-						Header:     tusd.HTTPHeader{"Content-Type": "application/json"},
+						Header:     tusd.HTTPHeader{contentTypeHeader: jsonContentType},
 					}, tusd.FileInfoChanges{}, nil
 				}
 				if !overwrite || conflict == nil {
@@ -894,7 +905,7 @@ func (s *Server) tusHandler() http.Handler {
 						return tusd.HTTPResponse{
 							StatusCode: http.StatusUnprocessableEntity,
 							Body:       `{"error":"` + err.Error() + `"}`,
-							Header:     tusd.HTTPHeader{"Content-Type": "application/json"},
+							Header:     tusd.HTTPHeader{contentTypeHeader: jsonContentType},
 						}, tusd.FileInfoChanges{}, nil
 					}
 				}
@@ -920,7 +931,7 @@ func (s *Server) tusHandler() http.Handler {
 			overwrite := strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "1") || strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "true")
 			tempPath := filepath.Join(s.cfg.TusUploadDir, hook.Upload.ID)
 
-			f, err := s.fileSvc.FinalizeTusUpload(ctx, tempPath, actor.ID.String(), name, mimeType, folderID, overwrite, hook.Upload.Size)
+			f, err := s.fileSvc.FinalizeTusUpload(ctx, tempPath, files.UploadParams{OwnerID: actor.ID.String(), Name: name, MimeType: mimeType, FolderID: folderID, Overwrite: overwrite, ContentLength: hook.Upload.Size})
 			if err != nil {
 				log.Error().Err(err).Str("upload_id", hook.Upload.ID).Msg("tusHandler: finalize")
 				code := http.StatusInternalServerError
@@ -934,7 +945,7 @@ func (s *Server) tusHandler() http.Handler {
 				return tusd.HTTPResponse{
 					StatusCode: code,
 					Body:       `{"error":"` + err.Error() + `"}`,
-					Header:     tusd.HTTPHeader{"Content-Type": "application/json"},
+					Header:     tusd.HTTPHeader{contentTypeHeader: jsonContentType},
 				}, err
 			}
 			s.auditSvc.Log(ctx, audit.Event{
@@ -1037,9 +1048,9 @@ func buddyStorageRoot(backupsRootCfg, filesRoot string) string {
 		}
 	}
 	// Standard Docker container path — always mounted via the backups volume.
-	if info, err := os.Stat("/data/backups"); err == nil && info.IsDir() {
-		log.Info().Str("path", "/data/backups").Msg("buddy storage root: using /data/backups")
-		return "/data/backups"
+	if info, err := os.Stat(backupsDataRoot); err == nil && info.IsDir() {
+		log.Info().Str("path", backupsDataRoot).Msg("buddy storage root: using /data/backups")
+		return backupsDataRoot
 	}
 	// Last resort: a sibling directory of FILES_ROOT.
 	if filesRoot != "" {

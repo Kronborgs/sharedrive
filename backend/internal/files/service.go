@@ -690,77 +690,103 @@ func (s *Service) FindExactNameMatches(ctx context.Context, userID, name string,
 	return hits, rows.Err()
 }
 
-// Upload streams r to storage with SHA-256 hashing, enforces quota, and
-// inserts a file record. Pass contentLength=0 if Content-Length is unknown.
-func (s *Service) Upload(ctx context.Context, ownerID, name, mimeType, folderIDStr string, overwrite bool, r io.Reader, contentLength int64) (*File, error) {
-	var parentID *uuid.UUID
-	if folderIDStr != "" {
-		if id, err := uuid.Parse(folderIDStr); err == nil {
-			parentID = &id
-		}
-	}
+// UploadParams describes a new or finalized upload request.
+type UploadParams struct {
+	OwnerID       string
+	Name          string
+	MimeType      string
+	FolderID      string
+	Overwrite     bool
+	ContentLength int64
+}
 
-	// Authorize write into the target folder
-	if err := s.AuthorizeParentWrite(ctx, ownerID, parentID); err != nil {
-		return nil, fmt.Errorf("files.Upload: %w", err)
+func parseUploadParentID(folderIDStr string) *uuid.UUID {
+	if folderIDStr == "" {
+		return nil
 	}
+	if id, err := uuid.Parse(folderIDStr); err == nil {
+		return &id
+	}
+	return nil
+}
 
-	if conflict, err := s.FindNameConflict(ctx, name, folderIDStr); err != nil {
+func (s *Service) authorizeUpload(ctx context.Context, params UploadParams) (*uuid.UUID, error) {
+	parentID := parseUploadParentID(params.FolderID)
+	if err := s.AuthorizeParentWrite(ctx, params.OwnerID, parentID); err != nil {
 		return nil, err
-	} else if conflict != nil {
-		if !overwrite || conflict.IsFolder {
-			return nil, &UploadConflictError{Existing: conflict}
-		}
-		return s.overwriteExistingFile(ctx, conflict, mimeType, r, contentLength)
 	}
+	return parentID, nil
+}
 
-	// Pre-check quota when content length is known upfront
-	if contentLength > 0 {
-		if err := s.quota.Check(ctx, ownerID, contentLength); err != nil {
+func (s *Service) resolveUploadConflict(ctx context.Context, params UploadParams, r io.Reader) (*File, bool, error) {
+	conflict, err := s.FindNameConflict(ctx, params.Name, params.FolderID)
+	if err != nil {
+		return nil, true, err
+	}
+	if conflict == nil {
+		return nil, false, nil
+	}
+	if !params.Overwrite || conflict.IsFolder {
+		return nil, true, &UploadConflictError{Existing: conflict}
+	}
+	file, err := s.overwriteExistingFile(ctx, conflict, params.MimeType, r, params.ContentLength)
+	return file, true, err
+}
+
+func (s *Service) createUploadedFile(ctx context.Context, op string, params UploadParams, parentID *uuid.UUID, r io.Reader) (*File, error) {
+	if params.ContentLength > 0 {
+		if err := s.quota.Check(ctx, params.OwnerID, params.ContentLength); err != nil {
 			return nil, err
 		}
 	}
 
 	fileID := uuid.New()
-
-	// Stream to storage while computing SHA-256
 	hash := sha256.New()
 	n, err := s.storage.Write(fileID.String(), io.TeeReader(r, hash))
 	if err != nil {
-		return nil, fmt.Errorf("files.Upload: storage write: %w", err)
+		return nil, fmt.Errorf("%s: storage write: %w", op, err)
 	}
-	shaHex := hex.EncodeToString(hash.Sum(nil))
-
-	// Post-write quota check when length was not known upfront
-	if contentLength <= 0 {
-		if err := s.quota.Check(ctx, ownerID, n); err != nil {
+	if params.ContentLength <= 0 {
+		if err := s.quota.Check(ctx, params.OwnerID, n); err != nil {
 			_ = s.storage.Delete(fileID.String())
 			return nil, err
 		}
 	}
 
+	shaHex := hex.EncodeToString(hash.Sum(nil))
 	storagePath := s.storage.Path(fileID.String())
 	f := &File{}
 	err = s.db.QueryRow(ctx,
 		`INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path, checksum_sha256)
 		 VALUES ($1, $2, $3, false, $4, $5, $6, $7, $8)
 		 RETURNING `+fileCols,
-		fileID, ownerID, parentID, name, mimeType, n, storagePath, shaHex,
+		fileID, params.OwnerID, parentID, params.Name, params.MimeType, n, storagePath, shaHex,
 	).Scan(
 		&f.ID, &f.ParentID, &f.OwnerID, &f.IsFolder, &f.Name, &f.MimeType,
 		&f.SizeBytes, &f.StoragePath, &f.DeletedAt, &f.CreatedAt, &f.UpdatedAt,
 	)
 	if err != nil {
 		_ = s.storage.Delete(fileID.String())
-		return nil, fmt.Errorf("files.Upload: db insert: %w", err)
+		return nil, fmt.Errorf("%s: db insert: %w", op, err)
 	}
 
-	// Increment quota used
-	if err := s.quota.Add(ctx, ownerID, n); err != nil {
-		log.Warn().Err(err).Str("file_id", fileID.String()).Msg("files.Upload: quota update")
+	if err := s.quota.Add(ctx, params.OwnerID, n); err != nil {
+		log.Warn().Err(err).Str("file_id", fileID.String()).Msg(op + ": quota update")
 	}
-
 	return f, nil
+}
+
+// Upload streams r to storage with SHA-256 hashing, enforces quota, and
+// inserts a file record. Pass ContentLength=0 if Content-Length is unknown.
+func (s *Service) Upload(ctx context.Context, params UploadParams, r io.Reader) (*File, error) {
+	parentID, err := s.authorizeUpload(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("files.Upload: %w", err)
+	}
+	if file, handled, err := s.resolveUploadConflict(ctx, params, r); handled {
+		return file, err
+	}
+	return s.createUploadedFile(ctx, "files.Upload", params, parentID, r)
 }
 
 // CheckQuota returns an error when the user has insufficient quota for addBytes.
@@ -810,27 +836,14 @@ func (s *Service) GetEffectiveMaxUpload(ctx context.Context, userID, role, folde
 
 // FinalizeTusUpload moves a completed tus temp file into permanent storage,
 // inserts a DB record, updates quota, and cleans up the tus temp files.
-func (s *Service) FinalizeTusUpload(
-	ctx context.Context,
-	tempPath, ownerID, name, mimeType, folderIDStr string,
-	overwrite bool,
-	size int64,
-) (*File, error) {
-	// Always remove tus temp files when this function returns.
+func (s *Service) FinalizeTusUpload(ctx context.Context, tempPath string, params UploadParams) (*File, error) {
 	defer func() {
 		_ = os.Remove(tempPath)
 		_ = os.Remove(tempPath + ".info")
 	}()
 
-	var parentID *uuid.UUID
-	if folderIDStr != "" {
-		if id, err := uuid.Parse(folderIDStr); err == nil {
-			parentID = &id
-		}
-	}
-
-	// Authorize write into the target folder
-	if err := s.AuthorizeParentWrite(ctx, ownerID, parentID); err != nil {
+	parentID, err := s.authorizeUpload(ctx, params)
+	if err != nil {
 		return nil, fmt.Errorf("files.FinalizeTusUpload: %w", err)
 	}
 
@@ -840,48 +853,10 @@ func (s *Service) FinalizeTusUpload(
 	}
 	defer src.Close()
 
-	if conflict, err := s.FindNameConflict(ctx, name, folderIDStr); err != nil {
-		return nil, err
-	} else if conflict != nil {
-		if !overwrite || conflict.IsFolder {
-			return nil, &UploadConflictError{Existing: conflict}
-		}
-		return s.overwriteExistingFile(ctx, conflict, mimeType, src, size)
+	if file, handled, err := s.resolveUploadConflict(ctx, params, src); handled {
+		return file, err
 	}
-
-	if size > 0 {
-		if err := s.quota.Check(ctx, ownerID, size); err != nil {
-			return nil, err
-		}
-	}
-
-	fileID := uuid.New()
-	hash := sha256.New()
-	n, err := s.storage.Write(fileID.String(), io.TeeReader(src, hash))
-	if err != nil {
-		return nil, fmt.Errorf("files.FinalizeTusUpload: storage write: %w", err)
-	}
-	shaHex := hex.EncodeToString(hash.Sum(nil))
-
-	storagePath := s.storage.Path(fileID.String())
-	f := &File{}
-	if err = s.db.QueryRow(ctx,
-		`INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path, checksum_sha256)
-		 VALUES ($1, $2, $3, false, $4, $5, $6, $7, $8)
-		 RETURNING `+fileCols,
-		fileID, ownerID, parentID, name, mimeType, n, storagePath, shaHex,
-	).Scan(
-		&f.ID, &f.ParentID, &f.OwnerID, &f.IsFolder, &f.Name, &f.MimeType,
-		&f.SizeBytes, &f.StoragePath, &f.DeletedAt, &f.CreatedAt, &f.UpdatedAt,
-	); err != nil {
-		_ = s.storage.Delete(fileID.String())
-		return nil, fmt.Errorf("files.FinalizeTusUpload: db insert: %w", err)
-	}
-
-	if err := s.quota.Add(ctx, ownerID, n); err != nil {
-		log.Warn().Err(err).Str("file_id", fileID.String()).Msg("FinalizeTusUpload: quota.Add")
-	}
-	return f, nil
+	return s.createUploadedFile(ctx, "files.FinalizeTusUpload", params, parentID, src)
 }
 
 // BreadcrumbItem is a minimal representation used for folder navigation breadcrumbs.

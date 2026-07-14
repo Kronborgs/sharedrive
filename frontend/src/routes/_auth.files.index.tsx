@@ -420,62 +420,84 @@ function FilesPage() {
     }
   }, [addTracks, fetchPlaylistTracks, playlistMaxTracks])
 
-  const handleContextMenuAction = useCallback((action: ContextAction, item: FileItem) => {
+  const handleTrashContextAction = useCallback((item: FileItem) => {
+    const msg = item.is_folder
+      ? `Flytte mappen "${item.name}" og alt dens indhold til papirkurven?`
+      : `Flytte "${item.name}" til papirkurven?`
+    if (confirm(msg)) {
+      trash.mutate(item.id)
+    }
+  }, [trash])
+
+  const handlePlayInPlayerContextAction = useCallback((item: FileItem) => {
+    if (item.is_folder) {
+      return
+    }
+    const displayName = item.name.replace(/\.m3u$/i, '')
+    setPlaylist(item.id, displayName)
+    toast.success(`Indlæser "${displayName}"`)
+  }, [setPlaylist])
+
+  const handleBasicContextMenuAction = useCallback((action: ContextAction, item: FileItem): boolean => {
     switch (action) {
       case 'open':
         handleOpen(item)
-        break
+        return true
       case 'download':
-        if (item.is_folder) setDownloadIds([item.id])
-        else window.open(`/api/v1/files/${item.id}/download`, '_blank')
-        break
+        if (item.is_folder) {
+          setDownloadIds([item.id])
+        } else {
+          window.open(`/api/v1/files/${item.id}/download`, '_blank')
+        }
+        return true
       case 'share':
         setShareItem(item)
-        break
+        return true
       case 'rename':
         setRenameId(item.id)
         setRenameName(item.name)
-        break
+        return true
       case 'move':
         setMoveItem(item)
-        break
+        return true
       case 'copy':
         setDuplicateItem(item)
-        break
-      case 'trash': {
-        const msg = item.is_folder
-          ? `Flytte mappen "${item.name}" og alt dens indhold til papirkurven?`
-          : `Flytte "${item.name}" til papirkurven?`
-        if (confirm(msg)) trash.mutate(item.id)
-        break
-      }
-      case 'backup':
-        ignorePromise(handleBackupContextAction(item))
-        break
-      case 'playlist':
-        if (item.is_folder) {
-          ignorePromise(handlePlaylistContextAction(item))
-        }
-        break
-      case 'addtoqueue':
-        if (!item.is_folder) {
-          ignorePromise(handleAddToQueueContextAction(item))
-        }
-        break
-      case 'playInPlayer': {
-        if (item.is_folder) break
-        const displayName = item.name.replace(/\.m3u$/i, '')
-        setPlaylist(item.id, displayName)
-        toast.success(`Indlæser "${displayName}"`)
-        break
-      }
-      case 'addToPlayer':
-        if (!item.is_folder) {
-          ignorePromise(handleAddToPlayerContextAction(item))
-        }
-        break
+        return true
+      case 'trash':
+        handleTrashContextAction(item)
+        return true
+      case 'playInPlayer':
+        handlePlayInPlayerContextAction(item)
+        return true
+      default:
+        return false
     }
-  }, [handleOpen, trash, handleBackupContextAction, handlePlaylistContextAction, handleAddToQueueContextAction, handleAddToPlayerContextAction, setPlaylist])
+  }, [handleOpen, handlePlayInPlayerContextAction, handleTrashContextAction])
+
+  const handleContextMenuAction = useCallback((action: ContextAction, item: FileItem) => {
+    if (handleBasicContextMenuAction(action, item)) {
+      return
+    }
+    if (action === 'backup') {
+      ignorePromise(handleBackupContextAction(item))
+      return
+    }
+    if (action === 'playlist') {
+      if (item.is_folder) {
+        ignorePromise(handlePlaylistContextAction(item))
+      }
+      return
+    }
+    if (action === 'addtoqueue') {
+      if (!item.is_folder) {
+        ignorePromise(handleAddToQueueContextAction(item))
+      }
+      return
+    }
+    if (action === 'addToPlayer' && !item.is_folder) {
+      ignorePromise(handleAddToPlayerContextAction(item))
+    }
+  }, [handleBasicContextMenuAction, handleBackupContextAction, handlePlaylistContextAction, handleAddToQueueContextAction, handleAddToPlayerContextAction])
 
   const items = files ?? []
 
@@ -1111,4 +1133,9 @@ function FilesPage() {
     </DropZone>
   )
 }
+
+
+
+
+
 

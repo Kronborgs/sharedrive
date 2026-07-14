@@ -7,6 +7,53 @@ interface ThreeMFRendererProps {
   url: string
 }
 
+function applyDefaultMeshMaterial(group: THREE.Group) {
+  group.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) {
+      return
+    }
+    if (!child.material || (child.material as THREE.Material).type === 'MeshPhongMaterial') {
+      child.material = new THREE.MeshStandardMaterial({ color: 0x7eb3f5 })
+    }
+  })
+}
+
+function centerModelAndPositionCamera(
+  group: THREE.Group,
+  scene: THREE.Scene,
+  camera: THREE.PerspectiveCamera,
+  controls: OrbitControls,
+) {
+  const box = new THREE.Box3().setFromObject(group)
+  const center = box.getCenter(new THREE.Vector3())
+  const size = box.getSize(new THREE.Vector3())
+  const maxDim = Math.max(size.x, size.y, size.z)
+
+  group.position.sub(center)
+  scene.add(group)
+
+  const radius = maxDim / 2
+  camera.position.set(0, 0, radius * 2.5)
+  camera.near = radius * 0.01
+  camera.far = radius * 10
+  camera.updateProjectionMatrix()
+  controls.update()
+}
+
+function disposeGroupMeshes(group: THREE.Group | null) {
+  group?.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) {
+      return
+    }
+    child.geometry?.dispose()
+    if (Array.isArray(child.material)) {
+      child.material.forEach(material => material.dispose())
+      return
+    }
+    child.material?.dispose()
+  })
+}
+
 export function ThreeMFRenderer({ url }: Readonly<ThreeMFRendererProps>) {
   const mountRef = useRef<HTMLDivElement>(null)
   const groupRef = useRef<THREE.Group | null>(null)
@@ -46,31 +93,8 @@ export function ThreeMFRenderer({ url }: Readonly<ThreeMFRendererProps>) {
     loader.load(url, (group) => {
       if (!active) return
       groupRef.current = group
-
-      // Apply a default material to meshes that don't have one with color
-      group.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          if (!child.material || (child.material as THREE.Material).type === 'MeshPhongMaterial') {
-            child.material = new THREE.MeshStandardMaterial({ color: 0x7eb3f5 })
-          }
-        }
-      })
-
-      // Center and scale the model
-      const box = new THREE.Box3().setFromObject(group)
-      const center = box.getCenter(new THREE.Vector3())
-      const size = box.getSize(new THREE.Vector3())
-      const maxDim = Math.max(size.x, size.y, size.z)
-
-      group.position.sub(center)
-      scene.add(group)
-
-      const radius = maxDim / 2
-      camera.position.set(0, 0, radius * 2.5)
-      camera.near = radius * 0.01
-      camera.far = radius * 10
-      camera.updateProjectionMatrix()
-      controls.update()
+      applyDefaultMeshMaterial(group)
+      centerModelAndPositionCamera(group, scene, camera, controls)
     })
 
     let animId: number
@@ -95,20 +119,10 @@ export function ThreeMFRenderer({ url }: Readonly<ThreeMFRendererProps>) {
       cancelAnimationFrame(animId)
       ro.disconnect()
       controls.dispose()
-      // Dispose all meshes inside the group
-      groupRef.current?.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.geometry?.dispose()
-          if (Array.isArray(child.material)) {
-            child.material.forEach(m => m.dispose())
-          } else {
-            child.material?.dispose()
-          }
-        }
-      })
+      disposeGroupMeshes(groupRef.current)
       groupRef.current = null
       renderer.dispose()
-      if (el.contains(renderer.domElement)) el.removeChild(renderer.domElement)
+      renderer.domElement.remove()
     }
   }, [url])
 

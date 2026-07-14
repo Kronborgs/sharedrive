@@ -123,11 +123,11 @@ function PermCheckboxes({
   perms,
   onChange,
   isFolder = true,
-}: {
+}: Readonly<{
   perms: SharePermissions
   onChange: (p: SharePermissions) => void
   isFolder?: boolean
-}) {
+}>) {
   const { t } = useI18n()
   const permLabels: Partial<Record<string, string>> = {
     can_view: t('share.permView'),
@@ -163,14 +163,14 @@ function ActiveShareRow({
   copied,
   onUpdate,
   isFolder = true,
-}: {
+}: Readonly<{
   s: Share
   onRevoke: () => void
   onCopyLink?: () => void
   copied: boolean
   onUpdate: (perms: SharePermissions, expiresAt: string | null) => void
   isFolder?: boolean
-}) {
+}>) {
   const [expanded, setExpanded] = useState(false)
   const { t } = useI18n()
   const [editPerms, setEditPerms] = useState<SharePermissions>({

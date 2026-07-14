@@ -15,7 +15,7 @@ interface Props {
 
 type Step = 'qr' | 'verify' | 'backup'
 
-export function TOTPSetupDialog({ isEnabled, onClose, onChanged }: Props) {
+export function TOTPSetupDialog({ isEnabled, onClose, onChanged }: Readonly<Props>) {
   const mode: Mode = isEnabled ? 'disable' : 'setup'
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">

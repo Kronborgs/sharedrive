@@ -111,7 +111,7 @@ function FileRow({
   onContextMenu,
   onQuickShare,
   highlight,
-}: {
+}: Readonly<{
   item: FileItem
   selected: boolean
   onSelect: (id: string, additive: boolean) => void
@@ -119,7 +119,7 @@ function FileRow({
   onContextMenu: (item: FileItem, x: number, y: number) => void
   onQuickShare?: (item: FileItem) => void
   highlight?: boolean
-}) {
+}>) {
   const moreRef = useRef<HTMLButtonElement>(null)
   const rowRef = useRef<HTMLTableRowElement>(null)
   const { t } = useI18n()

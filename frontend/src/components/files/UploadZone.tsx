@@ -1,6 +1,11 @@
-import { useState, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDropzone } from 'react-dropzone'
 import { Upload, X } from 'lucide-react'
+import * as tus from 'tus-js-client'
+import { api } from '@/lib/api'
+import type { FileItem } from '@/types/api'
+import { ignorePromise } from '@/lib/ignore-promise'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
 
@@ -137,7 +142,7 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: Readonly<Up
 function renderUploadStatus(u: UploadEntry, t: ReturnType<typeof useI18n>['t']) {
   if (u.status === 'error') {
     return (
-              <p className="text-xs text-red-500">{u.error ?? t('upload.failed')}</p>
+      <p className="text-xs text-red-500">{u.error ?? t('upload.failed')}</p>
     )
   }
 
@@ -188,13 +193,6 @@ function renderUploadStatus(u: UploadEntry, t: ReturnType<typeof useI18n>['t']) 
 }
 
 // --- Upload hook ---
-
-import { useCallback, useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import * as tus from 'tus-js-client'
-import { api } from '@/lib/api'
-import type { FileItem } from '@/types/api'
-import { ignorePromise } from '@/lib/ignore-promise'
 
 // Chunk size: 50 MB — safely below Cloudflare's 100 MB per-request limit.
 const TUS_CHUNK_SIZE = 50 * 1024 * 1024
@@ -259,250 +257,147 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     }
   }, [])
 
-  // Fetch direct_upload_url from public system settings (no auth required)
-  const { data: settings } = useQuery({
-    queryKey: ['system', 'settings'],
-    queryFn: ({ signal }) => api.get<{ direct_upload_url?: string }>('/api/v1/system/settings', signal),
-    staleTime: 5 * 60 * 1000, // 5 min
-  })
+  const syncRefs = useCallback((next: UploadEntry[]) => {
+    uploadsRef.current = next
+    return next
+  }, [])
 
   const update = useCallback((id: string, patch: Partial<UploadEntry>) => {
-    setUploads(prev => {
-      const next = prev.map(u => u.id === id ? { ...u, ...patch } : u)
-      uploadsRef.current = next
-      return next
-    })
-  }, [])
+    setUploads(prev => syncRefs(prev.map(u => u.id === id ? { ...u, ...patch } : u)))
+  }, [syncRefs])
 
-  const removeUploadEntry = useCallback((id: string) => {
-    setUploads(prev => {
-      const next = prev.filter(u => u.id !== id)
-      uploadsRef.current = next
-      return next
-    })
-  }, [])
+  const removeUpload = useCallback((id: string) => {
+    tusUploads.current.delete(id)
+    speedSamples.current.delete(id)
+    setUploads(prev => syncRefs(prev.filter(u => u.id !== id)))
+  }, [syncRefs])
 
-  const getUploadToken = useCallback(async (directBase: string | false | undefined, effectiveFolderId: string | null) => {
-    if (!directBase) {
-      return undefined
+  const refreshFolder = useCallback(() => {
+    if (queryKey?.length) {
+      ignorePromise(qc.invalidateQueries({ queryKey }))
+      return
     }
-    try {
-      const res = await api.post<{ token: string }>('/api/v1/upload-token', { folder_id: effectiveFolderId ?? '' })
-      return res.token
-    } catch (err) {
-      console.warn('[UploadZone] Failed to fetch upload token; falling back to cookie auth:', err)
-      return undefined
-    }
-  }, [])
+    const fallbackKey = ['files', folderId ?? 'root']
+    ignorePromise(qc.invalidateQueries({ queryKey: fallbackKey }))
+  }, [folderId, qc, queryKey])
 
-  const handleTusUploadError = useCallback((entryId: string, error: tus.DetailedError) => {
-    let msg = 'Upload failed'
-    if (error.originalResponse != null) {
-      try {
-        const body = error.originalResponse.getBody()
-        const data = JSON.parse(body) as { error?: string | { message?: string } }
-        if (data.error) {
-          msg = typeof data.error === 'string' ? data.error : (data.error.message ?? 'Upload failed')
+  const { data: systemSettings } = useQuery({
+    queryKey: ['system', 'settings'],
+    queryFn: ({ signal }) => api.get<{ direct_uploads_enabled?: boolean; upload_endpoint?: string }>('/api/v1/system/settings', signal),
+    staleTime: 60_000,
+  })
+
+  const directUpload = !!systemSettings?.direct_uploads_enabled
+
+  const createTusUpload = useCallback(async (
+    request: UploadRequest,
+    targetFolderId: string | null,
+    entryId: string,
+  ) => {
+    const endpointBase = trimTrailingSlashes(systemSettings?.upload_endpoint ?? '')
+    const endpoint = endpointBase || '/api/v1/files/upload/resumable'
+    const metadata: Record<string, string> = {
+      filename: request.file.name,
+    }
+    if (targetFolderId) metadata.parent_id = targetFolderId
+    if (request.overwrite) metadata.overwrite = '1'
+
+    return new tus.Upload(request.file, {
+      endpoint,
+      chunkSize: TUS_CHUNK_SIZE,
+      metadata,
+      retryDelays: [0, 1000, 3000, 5000],
+      removeFingerprintOnSuccess: true,
+      onError: (err) => {
+        update(entryId, { status: 'error', error: err.message, speed: undefined, eta: undefined })
+      },
+      onProgress: (bytesUploaded, bytesTotal) => {
+        const percent = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0
+        const now = Date.now()
+        const samples = speedSamples.current.get(entryId) ?? []
+        samples.push({ time: now, bytes: bytesUploaded })
+        while (samples.length > SPEED_WINDOW) samples.shift()
+        speedSamples.current.set(entryId, samples)
+
+        let speed: number | undefined
+        let eta: number | undefined
+        if (samples.length >= 2) {
+          const first = samples[0]
+          const last = samples[samples.length - 1]
+          const dt = (last.time - first.time) / 1000
+          const db = last.bytes - first.bytes
+          if (dt > 0 && db >= 0) {
+            speed = db / dt
+            if (speed > 0) eta = (bytesTotal - bytesUploaded) / speed
+          }
         }
-      } catch {
-        // ignore
-      }
-    }
-    tusUploads.current.delete(entryId)
-    update(entryId, { status: 'error', error: msg })
-  }, [update])
 
-  const handleTusUploadProgress = useCallback((entryId: string, bytesUploaded: number, bytesTotal: number) => {
-    const progress = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0
-    const now = Date.now()
-    const samples = speedSamples.current.get(entryId) ?? []
-    samples.push({ time: now, bytes: bytesUploaded })
-    while (samples.length > SPEED_WINDOW) samples.shift()
-    speedSamples.current.set(entryId, samples)
-
-    let speed: number | undefined
-    let eta: number | undefined
-    if (samples.length >= 2) {
-      const oldest = samples[0]
-      const newest = samples[samples.length - 1]
-      const elapsed = (newest.time - oldest.time) / 1000
-      if (elapsed > 0) {
-        speed = (newest.bytes - oldest.bytes) / elapsed
-        if (speed > 0 && bytesTotal > bytesUploaded) {
-          eta = (bytesTotal - bytesUploaded) / speed
-        }
-      }
-    }
-
-    update(entryId, { progress, speed, eta, bytesUploaded })
-  }, [update])
-
-  const handleTusUploadSuccess = useCallback((entryId: string, effectiveFolderId: string | null) => {
-    speedSamples.current.delete(entryId)
-    tusUploads.current.delete(entryId)
-    update(entryId, { status: 'done', progress: 100 })
-    ignorePromise(qc.invalidateQueries({ queryKey: queryKey ?? ['files', effectiveFolderId] }))
-    ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
-    setTimeout(() => removeUploadEntry(entryId), 2000)
-  }, [qc, queryKey, removeUploadEntry, update])
-
-  const startUpload = useCallback((files: Array<File | UploadRequest>, targetFolderId: string | null = folderId) => {
-    // Determine TUS endpoint: prefer direct_upload_url (bypasses Cloudflare) if set
-    const directUploadUrl = settings?.direct_upload_url?.trim() ?? undefined
-    const directBase = directUploadUrl && trimTrailingSlashes(directUploadUrl)
-    const tusEndpoint = directBase ? `${directBase}/upload/` : '/upload/'
-    // No chunking when uploading directly (no Cloudflare 100 MB limit).
-    // When going through Cloudflare, keep 50 MB chunks to stay under their limit.
-    const chunkSize = directBase ? Infinity : TUS_CHUNK_SIZE
-    // Allow caller to override the target folder (e.g. when coming from share target)
-    const effectiveFolderId = targetFolderId
-
-    const normalized: UploadRequest[] = files.map(item => {
-      if (item instanceof File) return { file: item, overwrite: false }
-      return { file: item.file, overwrite: !!item.overwrite }
+        update(entryId, { progress: percent, bytesUploaded, speed, eta, status: 'uploading' })
+      },
+      onSuccess: () => {
+        update(entryId, { progress: 100, status: 'done', speed: undefined, eta: undefined })
+        refreshFolder()
+      },
     })
+  }, [refreshFolder, systemSettings?.upload_endpoint, update])
 
-    const entries: UploadEntry[] = normalized.map(({ file, overwrite }) => ({
+  const startUpload = useCallback(async (requests: UploadRequest[], overrideFolderId?: string | null) => {
+    const targetFolderId = overrideFolderId ?? folderId
+    const newEntries = requests.map(request => ({
       id: crypto.randomUUID(),
-      file,
-      overwrite,
+      file: request.file,
+      overwrite: request.overwrite,
       progress: 0,
       status: 'queued' as const,
+      bytesUploaded: 0,
     }))
 
-    setUploads(prev => {
-      const next = [...prev, ...entries]
-      uploadsRef.current = next
-      return next
-    })
+    setUploads(prev => syncRefs([...prev, ...newEntries]))
 
-    // When using the direct upload subdomain, fetch a short-lived upload token so
-    // authentication works cross-subdomain (session cookie may not be forwarded).
-    const startEntries = async () => {
-      const uploadToken = await getUploadToken(directBase, effectiveFolderId)
+    for (let i = 0; i < newEntries.length; i += 1) {
+      const entry = newEntries[i]
+      const request = requests[i]
 
-      for (const entry of entries) {
-        update(entry.id, { status: 'uploading' })
-
-        const extraHeaders: Record<string, string> = {}
-        if (uploadToken) extraHeaders['X-Upload-Token'] = uploadToken
-
-        const upload = new tus.Upload(entry.file, {
-          endpoint: tusEndpoint,
-          chunkSize: chunkSize,
-          retryDelays: [0, 1000, 3000, 5000, 10000, 20000, 30000],
-          headers: extraHeaders,
-          metadata: {
-            filename: entry.file.name,
-            filetype: entry.file.type || 'application/octet-stream',
-            folder_id: effectiveFolderId ?? '',
-            overwrite: entry.overwrite ? '1' : '0',
-          },
-          onError: (error) => handleTusUploadError(entry.id, error as tus.DetailedError),
-          onProgress: (bytesUploaded, bytesTotal) => handleTusUploadProgress(entry.id, bytesUploaded, bytesTotal),
-          onSuccess: () => handleTusUploadSuccess(entry.id, effectiveFolderId),
-        })
+      if (directUpload) {
+        const upload = await createTusUpload(request, targetFolderId, entry.id)
         tusUploads.current.set(entry.id, upload)
+        update(entry.id, { status: 'uploading' })
+        upload.start()
+        continue
+      }
 
-        // If offline at start time, queue as paused instead of starting
-        if (!navigator.onLine) {
-          update(entry.id, { status: 'paused' })
-        } else {
-          upload.start()
-        }
+      try {
+        const formData = new FormData()
+        formData.append('file', request.file)
+        if (targetFolderId) formData.append('parent_id', targetFolderId)
+        if (request.overwrite) formData.append('overwrite', '1')
+        update(entry.id, { status: 'uploading' })
+        await api.post<FileItem>('/api/v1/files/upload', formData)
+        update(entry.id, { progress: 100, status: 'done' })
+        refreshFolder()
+      } catch (err) {
+        update(entry.id, {
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Upload failed',
+        })
       }
     }
-
-    ignorePromise(startEntries())
-  }, [folderId, getUploadToken, handleTusUploadError, handleTusUploadProgress, handleTusUploadSuccess, settings, update])
+  }, [createTusUpload, directUpload, folderId, refreshFolder, syncRefs, update])
 
   const dismiss = useCallback((id: string) => {
-    const tusUpload = tusUploads.current.get(id)
-    if (tusUpload) {
-      tusUpload.abort()
-      tusUploads.current.delete(id)
-    }
-    speedSamples.current.delete(id)
-    setUploads(prev => {
-      const next = prev.filter(u => u.id !== id)
-      uploadsRef.current = next
-      return next
-    })
-  }, [])
+    removeUpload(id)
+  }, [removeUpload])
 
-  // Folder upload: create the server folder tree and return each file with its target folder.
-  // Reads webkitRelativePath from each File to reconstruct the hierarchy.
-  const prepareFolderUpload = useCallback(async (fileList: FileList): Promise<PreparedFolderUpload[]> => {
-    const files = Array.from(fileList) as (File & { webkitRelativePath: string })[]
-    if (files.length === 0) return []
-
-    // Map path string → server folder ID. Empty string = current root.
-    const folderIdMap = new Map<string, string>()
-    folderIdMap.set('', folderId ?? '')
-
-    // Collect unique directory paths, sorted shallowest-first so parents are created before children.
-    const folderPaths = new Set<string>()
-    for (const file of files) {
-      const parts = file.webkitRelativePath.split('/')
-      for (let i = 1; i < parts.length; i++) {
-        folderPaths.add(parts.slice(0, i).join('/'))
-      }
-    }
-    const sortedPaths = Array.from(folderPaths).sort((a, b) => {
-      const da = a.split('/').length
-      const db = b.split('/').length
-      return da !== db ? da - db : a.localeCompare(b)
-    })
-
-    // Create each folder on the server in order.
-    for (const folderPath of sortedPaths) {
-      const parts = folderPath.split('/')
-      const name = parts.at(-1) ?? ''
-      const parentPath = parts.slice(0, -1).join('/')
-      const parentId = folderIdMap.get(parentPath) ?? folderId
-      try {
-        const created = await api.post<FileItem>('/api/v1/files', {
-          name,
-          parent_id: parentId || null,
-        })
-        folderIdMap.set(folderPath, created.id)
-      } catch {
-        // Ignore — folder may already exist. Files will still upload.
-      }
-    }
-
-    // Queue each file upload into its correct folder.
-    const prepared: PreparedFolderUpload[] = []
-    for (const file of files) {
-      const parts = file.webkitRelativePath.split('/')
-      const dirPath = parts.slice(0, -1).join('/')
-      const targetId = folderIdMap.get(dirPath) ?? folderId
-      prepared.push({ file, targetFolderId: targetId })
-    }
-
-    return prepared
+  const prepareFolderUpload = useCallback((files: FileList | File[]): PreparedFolderUpload[] => {
+    const input = Array.from(files)
+    return input.map(file => ({ file, targetFolderId: folderId }))
   }, [folderId])
 
-  const startFolderUpload = useCallback(async (fileList: FileList) => {
-    const prepared = await prepareFolderUpload(fileList)
-    if (prepared.length === 0) return
-
-    const grouped = new Map<string, File[]>()
-    for (const entry of prepared) {
-      const key = entry.targetFolderId ?? ''
-      const list = grouped.get(key)
-      if (list) list.push(entry.file)
-      else grouped.set(key, [entry.file])
-    }
-
-    for (const [key, filesForFolder] of grouped) {
-      startUpload(filesForFolder, key === '' ? folderId : key)
-    }
-
-    ignorePromise(qc.invalidateQueries({ queryKey: queryKey ?? ['files', folderId] }))
-  }, [folderId, qc, startUpload, queryKey, prepareFolderUpload])
-
-  return { uploads, startUpload, startFolderUpload, prepareFolderUpload, dismiss, directUpload: !!(settings?.direct_upload_url?.trim()) }
+  return {
+    uploads,
+    directUpload,
+    startUpload,
+    dismiss,
+    prepareFolderUpload,
+  }
 }
-
-

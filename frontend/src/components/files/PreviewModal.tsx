@@ -93,12 +93,14 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: Readonly<Pre
       if (!w) return
       const doc = w.document
       doc.open()
-      doc.write(
-        `<!DOCTYPE html><html><head><style>` +
+      const root = doc.documentElement
+      if (!root) return
+      doc.open()
+      root.innerHTML =
+        `<head><style>` +
         `body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh}` +
         `img{max-width:100%;max-height:100vh;object-fit:contain}` +
-        `</style></head><body><img src="${url}"></body></html>`
-      )
+        `</style></head><body><img src="${url}"></body>`
       doc.close()
       setTimeout(() => {
         w.print()

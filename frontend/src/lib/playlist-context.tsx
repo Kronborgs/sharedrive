@@ -101,10 +101,10 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
   const [isPlaying, setIsPlaying]                   = useState(false)
   const [progress, setProgress]                     = useState(0)
   const [duration, setDuration]                     = useState(0)
-  const [volume, setVolumeState]                    = useState(() => loadCache()?.vol ?? 1)
-  const [bass,   setBassState]                      = useState(0)
-  const [treble, setTrebleState]                    = useState(0)
-  const [shuffle, setShuffleState]                  = useState(() => loadCache()?.shuffle ?? false)
+  const [volumeLevel, setVolumeLevel]              = useState(() => loadCache()?.vol ?? 1)
+  const [bassLevel, setBassLevel]                  = useState(0)
+  const [trebleLevel, setTrebleLevel]              = useState(0)
+  const [shuffleEnabled, setShuffleEnabled]        = useState(() => loadCache()?.shuffle ?? false)
 
   // Web Audio refs — lazily initialised on first play
   const audioCtxRef    = useRef<AudioContext | null>(null)
@@ -124,7 +124,7 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
   const shuffleRef      = useRef(loadCache()?.shuffle ?? false)
   const tracksRef       = useRef<PlaylistTrack[]>([])
   const currentIndexRef = useRef(0)
-  useEffect(() => { shuffleRef.current = shuffle }, [shuffle])
+  useEffect(() => { shuffleRef.current = shuffleEnabled }, [shuffleEnabled])
   useEffect(() => { tracksRef.current = tracks }, [tracks])
   useEffect(() => { currentIndexRef.current = currentIndex }, [currentIndex])
 
@@ -149,9 +149,9 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
         // setActivePlaylistId is a no-op if the value hasn't changed (React bails out)
         setActivePlaylistId(state.id)
         setActivePlaylistName(state.name)
-        setVolumeState(state.vol)
+        setVolumeLevel(state.vol)
         audioRef.current!.volume = state.vol
-        setShuffleState(state.shuffle)
+        setShuffleEnabled(state.shuffle)
         shuffleRef.current = state.shuffle
       })
       .catch(() => { /* server unavailable — local cache is fine */ })
@@ -272,7 +272,7 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
   useEffect(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     if (activePlaylistId) {
-      const p = { id: activePlaylistId, name: activePlaylistName ?? '', index: currentIndex, vol: volume, shuffle }
+      const p = { id: activePlaylistId, name: activePlaylistName ?? '', index: currentIndex, vol: volumeLevel, shuffle: shuffleEnabled }
       saveCache(p)
       saveTimerRef.current = setTimeout(() => {
   		savePersistedPlaylistState(p).catch(() => { /* ignore */ })
@@ -284,7 +284,7 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
       }, 500)
     }
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
-  }, [activePlaylistId, activePlaylistName, currentIndex, volume, shuffle])
+  }, [activePlaylistId, activePlaylistName, currentIndex, volumeLevel, shuffleEnabled])
 
   // ── Controls ──────────────────────────────────────────────────────────────────
 
@@ -341,23 +341,23 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
 
   const setVolume = useCallback((v: number) => {
     audioRef.current!.volume = v
-    setVolumeState(v)
+    setVolumeLevel(v)
   }, [])
 
   const setBass = useCallback((v: number) => {
     bassValRef.current = v
     if (bassFilterRef.current) bassFilterRef.current.gain.value = v
-    setBassState(v)
+    setBassLevel(v)
   }, [])
 
   const setTreble = useCallback((v: number) => {
     trebleValRef.current = v
     if (trebleFilterRef.current) trebleFilterRef.current.gain.value = v
-    setTrebleState(v)
+    setTrebleLevel(v)
   }, [])
 
   const toggleShuffle = useCallback(() => {
-    setShuffleState(v => {
+    setShuffleEnabled(v => {
       shuffleRef.current = !v
       return !v
     })
@@ -418,10 +418,10 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
     isPlaying,
     progress,
     duration,
-    volume,
-    bass,
-    treble,
-    shuffle,
+    volume: volumeLevel,
+    bass: bassLevel,
+    treble: trebleLevel,
+    shuffle: shuffleEnabled,
     setPlaylist,
     clearPlaylist,
     jumpTo,
@@ -445,10 +445,10 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
     isPlaying,
     progress,
     duration,
-    volume,
-    bass,
-    treble,
-    shuffle,
+    volumeLevel,
+    bassLevel,
+    trebleLevel,
+    shuffleEnabled,
     setPlaylist,
     clearPlaylist,
     jumpTo,

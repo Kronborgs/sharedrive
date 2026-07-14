@@ -34,7 +34,7 @@ interface Props {
   shareToken?: string
 }
 
-export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose, backLabel, shareToken }: Props) {
+export function OnlyOfficeEditor({ item, onlyofficeUrl, onClose, backLabel, shareToken }: Readonly<Props>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<unknown>(null)
   const { t } = useI18n()

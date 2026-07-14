@@ -1,4 +1,4 @@
-﻿import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
@@ -394,13 +394,13 @@ function StoragePage() {
 
 // -- Schedule panel
 
-function SchedulePanel({ value, onChange, onSave, isSaving, lastRun }: {
+function SchedulePanel({ value, onChange, onSave, isSaving, lastRun }: Readonly<{
   value: ScanScheduleConfig
   onChange: (v: ScanScheduleConfig) => void
   onSave: () => void
   isSaving: boolean
   lastRun: string
-}) {
+}>) {
   const [open, setOpen] = useState(false)
   const sel = 'text-xs px-2 py-1 rounded border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1e2130] text-zinc-700 dark:text-slate-300'
 
@@ -481,8 +481,8 @@ function SchedulePanel({ value, onChange, onSave, isSaving, lastRun }: {
                     onChange={e => onChange({ ...value, day_of_week: +e.target.value })}
                     className={sel}
                   >
-                    {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d, i) => (
-                      <option key={i} value={i}>{d}</option>
+                    {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, index) => (
+                      <option key={day} value={index}>{day}</option>
                     ))}
                   </select>
                 </div>
@@ -539,7 +539,7 @@ interface TableRow {
 
 function FileTable({
   icon, title, selected, onToggleAll, onToggle, onDelete, isDeleting, rows, headers, extraActions, onPreview,
-}: {
+}: Readonly<{
   icon: React.ReactNode
   title: string
   selected: Set<string>
@@ -551,7 +551,7 @@ function FileTable({
   headers: [string, string, string, string]
   extraActions?: React.ReactNode
   onPreview?: (id: string) => void
-}) {
+}>) {
   return (
     <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148]">

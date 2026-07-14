@@ -957,13 +957,15 @@ function FilesPage() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-1">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.loading')}</div>
-          ) : view === 'list' ? (
-            <FileList items={sorted} selectedIds={selected} onSelect={handleSelect} onOpen={handleOpen} onContextMenu={(item, x, y) => setContextMenu({ item, x, y })} onSelectAll={handleSelectAll} onQuickShare={item => setShareItem(item)} highlightId={highlightFileId ?? undefined} />
-          ) : (
-            <FileGrid items={sorted} selectedIds={selected} onSelect={handleSelect} onOpen={handleOpen} onContextMenu={(item, x, y) => setContextMenu({ item, x, y })} />
-          )}
+          {(() => {
+            if (isLoading) {
+              return <div className="flex items-center justify-center h-40 text-sm text-muted">{t('files.loading')}</div>
+            }
+            if (view === 'list') {
+              return <FileList items={sorted} selectedIds={selected} onSelect={handleSelect} onOpen={handleOpen} onContextMenu={(item, x, y) => setContextMenu({ item, x, y })} onSelectAll={handleSelectAll} onQuickShare={item => setShareItem(item)} highlightId={highlightFileId ?? undefined} />
+            }
+            return <FileGrid items={sorted} selectedIds={selected} onSelect={handleSelect} onOpen={handleOpen} onContextMenu={(item, x, y) => setContextMenu({ item, x, y })} />
+          })()}
         </div>
       </div>
 

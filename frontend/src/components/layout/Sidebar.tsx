@@ -1,5 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Files,
   Share2,
@@ -25,7 +25,6 @@ import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
 import { api, createPlaylist } from '@/lib/api'
-import { useQueryClient } from '@tanstack/react-query'
 import { formatBytes, cn } from '@/lib/utils'
 import { WebDAVDialog } from '@/components/layout/WebDAVDialog'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'

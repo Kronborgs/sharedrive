@@ -449,9 +449,9 @@ function Field({ label, error, children }: Readonly<{ label: string; error?: str
 
 function Toggle({
   label, description, name, register,
-}: {
+}: Readonly<{
   label: string; description: string; name: string; register: UseFormRegister<FormValues>
-}) {
+}>) {
   return (
     <label className="flex items-start gap-3 cursor-pointer">
       <input type="checkbox" {...register(name as Parameters<typeof register>[0])} className="mt-0.5 rounded border-zinc-300 dark:border-[#4d5678] text-brand-600 focus:ring-brand-500 focus:ring-offset-0" />

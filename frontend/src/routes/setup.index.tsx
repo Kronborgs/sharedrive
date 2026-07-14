@@ -120,7 +120,7 @@ function SetupPage() {
         {/* Steps indicator */}
         <div className="flex items-center justify-center gap-2 mb-6">
           {STEPS.map((_label, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div key={_label} className="flex items-center gap-2">
               <StepIndicator index={i} currentStep={step} />
               <StepGlyph index={i} currentStep={step} />
               {i < STEPS.length - 1 && <ChevronRight size={12} className="text-zinc-300 dark:text-slate-600" />}
@@ -174,13 +174,13 @@ function Step1({
   onRestoreFileChange,
   onRestore,
   restoring,
-}: {
+}: Readonly<{
   onNext: (v: Step1Values) => void
   restoreFile: File | null
   onRestoreFileChange: (f: File | null) => void
   onRestore: () => void
   restoring: boolean
-}) {
+}>) {
   const { register, handleSubmit, formState: { errors } } = useForm<Step1Values>({
     resolver: zodResolver(step1Schema),
     defaultValues: { site_name: 'Sharedrive' },
@@ -277,11 +277,11 @@ function Step3({
   onBack,
   onNext,
   submitting,
-}: {
+}: Readonly<{
   onBack: () => void
   onNext: (v: Step3Values) => void
   submitting: boolean
-}) {
+}>) {
   const { t } = useI18n()
   const { register, handleSubmit, watch, getValues } = useForm<Step3Values>({
     defaultValues: { smtp_port: 587, smtp_tls: true, skip: false },

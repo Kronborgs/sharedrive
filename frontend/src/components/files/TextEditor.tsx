@@ -13,7 +13,7 @@ interface Props {
   onClose: () => void
 }
 
-export function TextEditor({ item, onClose }: Props) {
+export function TextEditor({ item, onClose }: Readonly<Props>) {
   const qc = useQueryClient()
   const { t } = useI18n()
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null)

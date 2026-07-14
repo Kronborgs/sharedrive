@@ -88,7 +88,7 @@ export function WebDAVDialog({ onClose }: Props) {
   const linuxUidCmd = `id -u`
   const linuxGidCmd = `id -g`
   const macAutoScript = `cat > ~/mount-sharedrive-webdav.sh <<'EOF'\n#!/bin/zsh\nosascript -e 'tell application "Finder" to mount volume "${macDavUrl}"'\nEOF\nchmod +x ~/mount-sharedrive-webdav.sh`
-  const windowsRegCmd = `Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters" -Name FileSizeLimitInBytes -Value 0xFFFFFFFF; net stop webclient; net start webclient`
+  const windowsRegCmd = String.raw`Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\WebClient\Parameters" -Name FileSizeLimitInBytes -Value 0xFFFFFFFF; net stop webclient; net start webclient`
 
   const { data: passwords } = useQuery({
     queryKey: ['app-passwords'],

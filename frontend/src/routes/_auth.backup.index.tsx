@@ -4,18 +4,18 @@ import { useState, useRef, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { formatBytes } from '@/lib/utils'
 import type {
-  BackupPasswordStatus,
-  GeneratedBackupPassword,
-  RestoreResult,
-  BackupConfig,
-  TertiaryArchive,
-  BuddyArchive,
-  BuddyUserConfig,
-  BuddyTunnelStatus,
-  GeneratedBuddyReceiveToken,
   AutoBackupConfig,
+  BackupConfig,
+  BackupPasswordStatus,
+  BuddyArchive,
+  BuddyTunnelStatus,
+  BuddyUserConfig,
+  FileItem,
+  GeneratedBackupPassword,
+  GeneratedBuddyReceiveToken,
+  RestoreResult,
+  TertiaryArchive,
 } from '@/types/api'
-import type { FileItem } from '@/types/api'
 import {
   Archive,
   Bell,

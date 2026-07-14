@@ -258,11 +258,12 @@ interface StatCardProps {
 }
 
 function StatCard({ label, value, small, accent }: Readonly<StatCardProps>) {
-  const valueClass = accent === 'red'
-    ? 'text-red-600 dark:text-red-400'
-    : accent === 'green'
-    ? 'text-green-600 dark:text-green-400'
-    : 'text-zinc-900 dark:text-slate-100'
+  let valueClass = 'text-zinc-900 dark:text-slate-100'
+  if (accent === 'red') {
+    valueClass = 'text-red-600 dark:text-red-400'
+  } else if (accent === 'green') {
+    valueClass = 'text-green-600 dark:text-green-400'
+  }
   return (
     <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4">
       <p className="text-xs text-muted font-medium uppercase tracking-wide">{label}</p>

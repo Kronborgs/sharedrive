@@ -1066,7 +1066,7 @@ function getInitialLocale(): Locale {
   return 'da'
 }
 
-export function I18nProvider({ children }: { children: ReactNode }) {
+export function I18nProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [locale, setLocaleState] = useState<Locale>(getInitialLocale)
 
   const setLocale = useCallback((l: Locale) => {

@@ -22,7 +22,7 @@ function trimTrailingSlashes(input: string): string {
   return out
 }
 
-function CopyButton({ text, copyKey, copied, onCopy }: { text: string; copyKey: string; copied: string | null; onCopy: (t: string, k: string) => void }) {
+function CopyButton({ text, copyKey, copied, onCopy }: Readonly<{ text: string; copyKey: string; copied: string | null; onCopy: (t: string, k: string) => void }>) {
   const { t } = useI18n()
   return (
     <button
@@ -35,7 +35,7 @@ function CopyButton({ text, copyKey, copied, onCopy }: { text: string; copyKey: 
   )
 }
 
-function CodeRow({ label, value, copyKey, copied, onCopy }: { label: string; value: string; copyKey: string; copied: string | null; onCopy: (t: string, k: string) => void }) {
+function CodeRow({ label, value, copyKey, copied, onCopy }: Readonly<{ label: string; value: string; copyKey: string; copied: string | null; onCopy: (t: string, k: string) => void }>) {
   return (
     <div className="space-y-1">
       <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">{label}</p>

@@ -274,7 +274,7 @@ function ActiveShareRow({
   )
 }
 
-export function ShareDialog({ item, onClose }: ShareDialogProps) {
+export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
   const qc = useQueryClient()
   const { user } = useAuth()
   const { t } = useI18n()
@@ -383,7 +383,7 @@ export function ShareDialog({ item, onClose }: ShareDialogProps) {
   })
 
   const updateShare = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: object }) =>
+    mutationFn: ({ id, body }: Readonly<{ id: string; body: object }>) =>
       api.patch(`/api/v1/shares/${id}`, body),
     onSuccess: () => {
       ignorePromise(qc.invalidateQueries({ queryKey: ['shares', item.id] }))

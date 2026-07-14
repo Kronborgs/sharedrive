@@ -9,7 +9,7 @@ import { formatBytes } from '@/lib/utils'
 import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import { ignorePromise } from '@/lib/ignore-promise'
 
-export function Header({ user, onMenuToggle }: { user?: User; onMenuToggle?: () => void }) {
+export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuToggle?: () => void }>) {
   const [isDark, setIsDark] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<FileItem[]>([])

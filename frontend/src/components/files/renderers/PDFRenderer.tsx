@@ -12,7 +12,7 @@ interface PDFRendererProps {
   loadingText?: string
 }
 
-export function PDFRenderer({ url, loadingText = 'Loading PDF…' }: PDFRendererProps) {
+export function PDFRenderer({ url, loadingText = 'Loading PDF…' }: Readonly<PDFRendererProps>) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null)
   const [page, setPage] = useState(1)

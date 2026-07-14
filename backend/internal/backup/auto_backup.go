@@ -109,12 +109,24 @@ func (s *AutoBackupService) Set(ctx context.Context, userID uuid.UUID, enabled b
 	return nil
 }
 
-// computeFileHash returns a SHA-256 fingerprint of the non-deleted file tree
-// for userID. If folderIDs is non-empty, only those subtrees are included.
-// An empty file set hashes to the SHA-256 of "".
-func (s *AutoBackupService) computeFileHash(ctx context.Context, userID uuid.UUID, folderIDs []uuid.UUID) (string, error) {
-	var checksums []string
+func collectChecksums(rows pgx.Rows, errPrefix string) ([]string, error) {
+	defer rows.Close()
 
+	checksums := make([]string, 0)
+	for rows.Next() {
+		var checksum string
+		if err := rows.Scan(&checksum); err != nil {
+			return nil, err
+		}
+		checksums = append(checksums, checksum)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", errPrefix, err)
+	}
+	return checksums, nil
+}
+
+func (s *AutoBackupService) queryChecksums(ctx context.Context, userID uuid.UUID, folderIDs []uuid.UUID) ([]string, error) {
 	if len(folderIDs) == 0 {
 		rows, err := s.db.Query(ctx,
 			`SELECT COALESCE(checksum_sha256, '') FROM files
@@ -123,50 +135,46 @@ func (s *AutoBackupService) computeFileHash(ctx context.Context, userID uuid.UUI
 			userID,
 		)
 		if err != nil {
-			return "", fmt.Errorf("auto backup: hash query: %w", err)
+			return nil, fmt.Errorf("auto backup: hash query: %w", err)
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var cs string
-			if err := rows.Scan(&cs); err != nil {
-				return "", err
-			}
-			checksums = append(checksums, cs)
-		}
-		if err := rows.Err(); err != nil {
-			return "", fmt.Errorf("auto backup: hash rows: %w", err)
-		}
-	} else {
-		rows, err := s.db.Query(ctx,
-			`WITH RECURSIVE subtree AS (
-			   SELECT id FROM files
-			   WHERE id = ANY($2) AND owner_id = $1 AND deleted_at IS NULL
-			   UNION ALL
-			   SELECT f.id FROM files f
-			   JOIN subtree st ON f.parent_id = st.id
-			   WHERE f.deleted_at IS NULL
-			 )
-			 SELECT COALESCE(f.checksum_sha256, '') FROM files f
-			 JOIN subtree st ON f.id = st.id
-			 WHERE f.is_folder = FALSE ORDER BY f.id`,
-			userID, folderIDs,
-		)
-		if err != nil {
-			return "", fmt.Errorf("auto backup: hash query selective: %w", err)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var cs string
-			if err := rows.Scan(&cs); err != nil {
-				return "", err
-			}
-			checksums = append(checksums, cs)
-		}
-		if err := rows.Err(); err != nil {
-			return "", fmt.Errorf("auto backup: hash rows selective: %w", err)
-		}
+		return collectChecksums(rows, "auto backup: hash rows")
 	}
 
+	rows, err := s.db.Query(ctx,
+		`WITH RECURSIVE subtree AS (
+		   SELECT id FROM files
+		   WHERE id = ANY($2) AND owner_id = $1 AND deleted_at IS NULL
+		   UNION ALL
+		   SELECT f.id FROM files f
+		   JOIN subtree st ON f.parent_id = st.id
+		   WHERE f.deleted_at IS NULL
+		 )
+		 SELECT COALESCE(f.checksum_sha256, '') FROM files f
+		 JOIN subtree st ON f.id = st.id
+		 WHERE f.is_folder = FALSE ORDER BY f.id`,
+		userID, folderIDs,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("auto backup: hash query selective: %w", err)
+	}
+	return collectChecksums(rows, "auto backup: hash rows selective")
+}
+
+func shouldSkipScheduledRun(lastRunAt *time.Time, intervalHours int) bool {
+	if lastRunAt == nil {
+		return false
+	}
+	return time.Now().UTC().Before(lastRunAt.Add(time.Duration(intervalHours) * time.Hour))
+}
+
+// computeFileHash returns a SHA-256 fingerprint of the non-deleted file tree
+// for userID. If folderIDs is non-empty, only those subtrees are included.
+// An empty file set hashes to the SHA-256 of "".
+func (s *AutoBackupService) computeFileHash(ctx context.Context, userID uuid.UUID, folderIDs []uuid.UUID) (string, error) {
+	checksums, err := s.queryChecksums(ctx, userID, folderIDs)
+	if err != nil {
+		return "", err
+	}
 	sort.Strings(checksums)
 	h := sha256.Sum256([]byte(strings.Join(checksums, ",")))
 	return hex.EncodeToString(h[:]), nil
@@ -295,6 +303,50 @@ func (s *AutoBackupService) clearTertiaryFailure(ctx context.Context, userID uui
 	)
 }
 
+func (s *AutoBackupService) prepareBuddyPush(ctx context.Context, userID uuid.UUID, cfg *autoPushConfig) ([]uuid.UUID, string, bool, error) {
+	if !cfg.OnChange && shouldSkipScheduledRun(cfg.LastRunAt, cfg.IntervalHours) {
+		return nil, "", true, nil
+	}
+
+	folderUUIDs, err := parseUUIDs(cfg.FolderIDs)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("auto buddy push: parse folder ids: %w", err)
+	}
+	currentHash, err := s.computeFileHash(ctx, userID, folderUUIDs)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("auto buddy push: compute hash: %w", err)
+	}
+	if currentHash == cfg.LastHash && cfg.LastHash != "" {
+		_ = s.buddyCfg.updateAutoPushRun(ctx, userID, currentHash)
+		return nil, "", true, nil
+	}
+
+	return folderUUIDs, currentHash, false, nil
+}
+
+func (s *AutoBackupService) executeBuddyPush(ctx context.Context, userID uuid.UUID, folderUUIDs []uuid.UUID) (PushResult, error) {
+	rawToken, err := s.resolveToken(ctx, userID)
+	if err != nil {
+		return PushResult{}, err
+	}
+	peerURL, peerUserID, peerToken, err := s.buddyCfg.GetPeerConfig(ctx, userID)
+	if err != nil {
+		return PushResult{}, fmt.Errorf("auto buddy push: peer config: %w", err)
+	}
+
+	_ = s.buddyCfg.SetPushInProgress(ctx, userID, true, "")
+	result, pushErr := s.buddy.Push(ctx, userID, rawToken, folderUUIDs, peerURL, peerUserID, peerToken)
+	if pushErr == nil {
+		return result, nil
+	}
+	if pushErr == ErrPeerStorageUnavailable {
+		_ = s.buddyCfg.SetPushInProgress(ctx, userID, false, "")
+		return PushResult{}, pushErr
+	}
+	_ = s.buddyCfg.RecordPushFailure(ctx, userID, pushErr.Error())
+	return PushResult{}, fmt.Errorf("auto buddy push: %w", pushErr)
+}
+
 // RunBuddyForUser runs an auto buddy push for userID if the schedule/change
 // condition is met and the file hash has changed since the last push.
 func (s *AutoBackupService) RunBuddyForUser(ctx context.Context, userID uuid.UUID) (skipped bool, err error) {
@@ -304,60 +356,17 @@ func (s *AutoBackupService) RunBuddyForUser(ctx context.Context, userID uuid.UUI
 
 	cfg, err := s.buddyCfg.getAutoPushConfig(ctx, userID)
 	if err != nil {
-		return true, nil // no config row yet
-	}
-
-	// ── time check (skip if on_change mode — hash check is enough) ────────────
-	if !cfg.OnChange && cfg.LastRunAt != nil {
-		nextRun := cfg.LastRunAt.Add(time.Duration(cfg.IntervalHours) * time.Hour)
-		if time.Now().UTC().Before(nextRun) {
-			return true, nil // not yet time
-		}
-	}
-
-	// ── parse folder IDs ──────────────────────────────────────────────────────
-	folderUUIDs, err := parseUUIDs(cfg.FolderIDs)
-	if err != nil {
-		return false, fmt.Errorf("auto buddy push: parse folder ids: %w", err)
-	}
-
-	// ── hash check — only push when files have actually changed ───────────────
-	currentHash, err := s.computeFileHash(ctx, userID, folderUUIDs)
-	if err != nil {
-		return false, fmt.Errorf("auto buddy push: compute hash: %w", err)
-	}
-	if currentHash == cfg.LastHash && cfg.LastHash != "" {
-		// No changes; bump last_run_at so interval resets.
-		_ = s.buddyCfg.updateAutoPushRun(ctx, userID, currentHash)
 		return true, nil
 	}
+	folderUUIDs, currentHash, skipped, err := s.prepareBuddyPush(ctx, userID, cfg)
+	if skipped || err != nil {
+		return skipped, err
+	}
 
-	// ── resolve token ─────────────────────────────────────────────────────────
-	rawToken, err := s.resolveToken(ctx, userID)
+	result, err := s.executeBuddyPush(ctx, userID, folderUUIDs)
 	if err != nil {
 		return false, err
 	}
-
-	// ── get peer config ───────────────────────────────────────────────────────
-	peerURL, peerUserID, peerToken, err := s.buddyCfg.GetPeerConfig(ctx, userID)
-	if err != nil {
-		return false, fmt.Errorf("auto buddy push: peer config: %w", err)
-	}
-
-	// Mark in-progress so the UI reflects it.
-	_ = s.buddyCfg.SetPushInProgress(ctx, userID, true, "")
-
-	result, pushErr := s.buddy.Push(ctx, userID, rawToken, folderUUIDs, peerURL, peerUserID, peerToken)
-	if pushErr != nil {
-		if pushErr == ErrPeerStorageUnavailable {
-			// Peer has no BACKUPS_ROOT — not a transient failure; clear in-progress silently.
-			_ = s.buddyCfg.SetPushInProgress(ctx, userID, false, "")
-			return false, pushErr
-		}
-		_ = s.buddyCfg.RecordPushFailure(ctx, userID, pushErr.Error())
-		return false, fmt.Errorf("auto buddy push: %w", pushErr)
-	}
-
 	_ = s.buddyCfg.UpdateLastPush(ctx, userID, result.ArchiveBytes, result.PeerTotalBytes)
 	_ = s.buddyCfg.ClearPushFailure(ctx, userID)
 	_ = s.buddyCfg.updateAutoPushRun(ctx, userID, currentHash)
@@ -368,7 +377,6 @@ func (s *AutoBackupService) RunBuddyForUser(ctx context.Context, userID uuid.UUI
 			ActorID: &userID,
 		})
 	}
-
 	log.Info().Str("user_id", userID.String()).Int64("bytes", result.ArchiveBytes).Msg("auto buddy push: completed")
 	return false, nil
 }

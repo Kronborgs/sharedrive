@@ -424,7 +424,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return result
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function Field({ label, error, children }: Readonly<{ label: string; error?: string; children: React.ReactNode }>) {
   return (
     <div className="space-y-1">
       <label className="text-xs font-medium text-zinc-600 dark:text-slate-400">{label}</label>

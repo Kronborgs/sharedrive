@@ -121,7 +121,7 @@ function ResetPasswordPage() {
   )
 }
 
-function AuthShell({ children }: { children: React.ReactNode }) {
+function AuthShell({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-[#0f1117] flex items-center justify-center p-4">
       <div className="w-full max-w-sm">

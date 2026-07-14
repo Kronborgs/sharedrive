@@ -257,7 +257,7 @@ interface StatCardProps {
   accent?: 'red' | 'green'
 }
 
-function StatCard({ label, value, small, accent }: StatCardProps) {
+function StatCard({ label, value, small, accent }: Readonly<StatCardProps>) {
   const valueClass = accent === 'red'
     ? 'text-red-600 dark:text-red-400'
     : accent === 'green'

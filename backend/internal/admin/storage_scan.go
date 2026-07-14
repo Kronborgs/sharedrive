@@ -228,18 +228,12 @@ func scanStoragePath(root, id string) string {
 	return filepath.Join(root, id[:2], id)
 }
 
-func readMagicBytes(path string) ([]byte, error) {
-	f, err := os.Open(path)
+func detectStoredMimeType(path string) string {
+	data, err := readFirst512(path)
 	if err != nil {
-		return nil, err
+		return "application/octet-stream"
 	}
-	defer f.Close()
-	buf := make([]byte, 16)
-	n, err := f.Read(buf)
-	if err != nil || n == 0 {
-		return nil, err
-	}
-	return buf[:n], nil
+	return http.DetectContentType(data)
 }
 
 // readFirst512 reads up to 512 bytes from a file — enough for
@@ -308,24 +302,21 @@ type orphanScanResult struct {
 	DurationMs   int64        `json:"duration_ms"`
 }
 
-// runOrphanScan is the core orphan-scan logic, also used by the scheduler (scan_schedule.go).
-func runOrphanScan(ctx context.Context, db *pgxpool.Pool, filesRoot string) (orphanScanResult, error) {
-	start := time.Now()
+type orphanBlob struct {
+	id      string
+	relPath string
+	size    int64
+	modTime time.Time
+}
 
-	// 1. Walk disk — collect all UUID-named blobs.
-	type blob struct {
-		id      string
-		relPath string
-		size    int64
-		modTime time.Time
-	}
-	var blobs []blob
-
+func scanOrphanBlobs(filesRoot string) ([]orphanBlob, error) {
 	shards, err := os.ReadDir(filesRoot)
 	if err != nil {
 		log.Error().Err(err).Msg("runOrphanScan: read root")
-		return orphanScanResult{}, err
+		return nil, err
 	}
+
+	blobs := make([]orphanBlob, 0)
 	for _, shard := range shards {
 		if !shard.IsDir() || len(shard.Name()) != 2 {
 			continue
@@ -335,27 +326,130 @@ func runOrphanScan(ctx context.Context, db *pgxpool.Pool, filesRoot string) (orp
 		if err != nil {
 			continue
 		}
-		for _, e := range entries {
-			if e.IsDir() || len(e.Name()) != 36 {
-				continue // skip non-UUID filenames
+		for _, entry := range entries {
+			if entry.IsDir() || len(entry.Name()) != 36 {
+				continue
 			}
-			info, err := e.Info()
+			info, err := entry.Info()
 			if err != nil {
 				continue
 			}
-			blobs = append(blobs, blob{
-				id:      e.Name(),
-				relPath: shard.Name() + "/" + e.Name(),
+			blobs = append(blobs, orphanBlob{
+				id:      entry.Name(),
+				relPath: shard.Name() + "/" + entry.Name(),
 				size:    info.Size(),
 				modTime: info.ModTime(),
 			})
 		}
 	}
 
-	// 2. Check DB in batches of 500.
+	return blobs, nil
+}
+
+func queryKnownOrphanIDs(ctx context.Context, db *pgxpool.Pool, ids []string) (map[string]struct{}, error) {
+	rows, err := db.Query(ctx,
+		`SELECT id::text FROM files WHERE id = ANY($1::uuid[])`,
+		ids,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("runOrphanScan: db query")
+		return nil, err
+	}
+	defer rows.Close()
+
+	known := make(map[string]struct{}, len(ids))
+	for rows.Next() {
+		var id string
+		if scanErr := rows.Scan(&id); scanErr == nil {
+			known[id] = struct{}{}
+		}
+	}
+	return known, nil
+}
+
+func appendUnknownOrphanFiles(orphans []orphanFile, batch []orphanBlob, known map[string]struct{}) []orphanFile {
+	for _, blob := range batch {
+		if _, exists := known[blob.id]; exists {
+			continue
+		}
+		orphans = append(orphans, orphanFile{
+			Path:      blob.relPath,
+			ID:        blob.id,
+			SizeBytes: blob.size,
+			ModTime:   blob.modTime,
+		})
+	}
+	return orphans
+}
+
+func loadOrCreateRestoreFolder(ctx context.Context, db *pgxpool.Pool, ownerID string) (string, error) {
+	const folderName = "Restored from cleanup"
+	var folderID string
+	err := db.QueryRow(ctx,
+		`SELECT id::text FROM files
+		 WHERE owner_id = $1::uuid
+		   AND is_folder = true
+		   AND name = $2
+		   AND parent_id IS NULL
+		   AND deleted_at IS NULL
+		 LIMIT 1`,
+		ownerID, folderName,
+	).Scan(&folderID)
+	if err == nil {
+		return folderID, nil
+	}
+
+	err = db.QueryRow(ctx,
+		`INSERT INTO files (owner_id, parent_id, is_folder, name)
+		 VALUES ($1::uuid, NULL, true, $2)
+		 RETURNING id::text`,
+		ownerID, folderName,
+	).Scan(&folderID)
+	if err != nil {
+		log.Error().Err(err).Msg("admin.StorageRestoreOrphans: create folder")
+		return "", err
+	}
+
+	return folderID, nil
+}
+
+func restoreOrphanFile(ctx context.Context, db *pgxpool.Pool, id, ownerID, folderID, filesRoot string) bool {
+	if len(id) != 36 {
+		return false
+	}
+
+	physPath := scanStoragePath(filesRoot, id)
+	info, err := os.Stat(physPath)
+	if err != nil {
+		log.Warn().Err(err).Str("id", id).Msg("admin.StorageRestoreOrphans: stat")
+		return false
+	}
+
+	_, err = db.Exec(ctx,
+		`INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path)
+		 VALUES ($1::uuid, $2::uuid, $3::uuid, false, $4, $5, $6, $7)
+		 ON CONFLICT (id) DO NOTHING`,
+		id, ownerID, folderID, id, detectStoredMimeType(physPath), info.Size(), physPath,
+	)
+	if err != nil {
+		log.Warn().Err(err).Str("id", id).Msg("admin.StorageRestoreOrphans: insert")
+		return false
+	}
+
+	return true
+}
+
+// runOrphanScan is the core orphan-scan logic, also used by the scheduler (scan_schedule.go).
+func runOrphanScan(ctx context.Context, db *pgxpool.Pool, filesRoot string) (orphanScanResult, error) {
+	start := time.Now()
+
+	blobs, err := scanOrphanBlobs(filesRoot)
+	if err != nil {
+		return orphanScanResult{}, err
+	}
+
 	const batchSize = 500
 	orphans := make([]orphanFile, 0)
-
 	for i := 0; i < len(blobs); i += batchSize {
 		end := i + batchSize
 		if end > len(blobs) {
@@ -364,37 +458,15 @@ func runOrphanScan(ctx context.Context, db *pgxpool.Pool, filesRoot string) (orp
 		batch := blobs[i:end]
 
 		ids := make([]string, len(batch))
-		for j, b := range batch {
-			ids[j] = b.id
+		for j, blob := range batch {
+			ids[j] = blob.id
 		}
 
-		rows, err := db.Query(ctx,
-			`SELECT id::text FROM files WHERE id = ANY($1::uuid[])`,
-			ids,
-		)
+		known, err := queryKnownOrphanIDs(ctx, db, ids)
 		if err != nil {
-			log.Error().Err(err).Msg("runOrphanScan: db query")
 			return orphanScanResult{}, err
 		}
-		known := make(map[string]struct{}, len(batch))
-		for rows.Next() {
-			var id string
-			if scanErr := rows.Scan(&id); scanErr == nil {
-				known[id] = struct{}{}
-			}
-		}
-		rows.Close()
-
-		for _, b := range batch {
-			if _, exists := known[b.id]; !exists {
-				orphans = append(orphans, orphanFile{
-					Path:      b.relPath,
-					ID:        b.id,
-					SizeBytes: b.size,
-					ModTime:   b.modTime,
-				})
-			}
-		}
+		orphans = appendUnknownOrphanFiles(orphans, batch, known)
 	}
 
 	return orphanScanResult{
@@ -482,83 +554,21 @@ func (h *Handler) StorageRestoreOrphans(w http.ResponseWriter, r *http.Request) 
 		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	ownerID := actor.ID.String()
 
-	// Find or create the "Restored from cleanup" folder at root (parent_id IS NULL).
-	const folderName = "Restored from cleanup"
-	var folderID string
-	err := h.db.QueryRow(r.Context(),
-		`SELECT id::text FROM files
-		 WHERE owner_id = $1::uuid
-		   AND is_folder = true
-		   AND name = $2
-		   AND parent_id IS NULL
-		   AND deleted_at IS NULL
-		 LIMIT 1`,
-		ownerID, folderName,
-	).Scan(&folderID)
+	folderID, err := loadOrCreateRestoreFolder(r.Context(), h.db, actor.ID.String())
 	if err != nil {
-		// Folder doesn't exist yet — create it.
-		if scanErr := h.db.QueryRow(r.Context(),
-			`INSERT INTO files (owner_id, parent_id, is_folder, name)
-			 VALUES ($1::uuid, NULL, true, $2)
-			 RETURNING id::text`,
-			ownerID, folderName,
-		).Scan(&folderID); scanErr != nil {
-			log.Error().Err(scanErr).Msg("admin.StorageRestoreOrphans: create folder")
-			httputil.RespondError(w, http.StatusInternalServerError, "could not create restore folder")
-			return
-		}
+		httputil.RespondError(w, http.StatusInternalServerError, "could not create restore folder")
+		return
 	}
 
-	filesRoot := h.cfg.FilesRoot
 	restored := 0
 	skipped := 0
-
 	for _, id := range req.IDs {
-		// Validate UUID length to prevent path traversal.
-		if len(id) != 36 {
+		if restoreOrphanFile(r.Context(), h.db, id, actor.ID.String(), folderID, h.cfg.FilesRoot) {
+			restored++
+		} else {
 			skipped++
-			continue
 		}
-		physPath := scanStoragePath(filesRoot, id)
-		info, err := os.Stat(physPath)
-		if err != nil {
-			log.Warn().Err(err).Str("id", id).Msg("admin.StorageRestoreOrphans: stat")
-			skipped++
-			continue
-		}
-
-		// Detect MIME type from the first 512 bytes.
-		mimeType := "application/octet-stream"
-		if magic, err := readMagicBytes(physPath); err == nil {
-			// Read 512 bytes for http.DetectContentType
-			buf := make([]byte, 512)
-			if f, err := os.Open(physPath); err == nil {
-				n, _ := f.Read(buf)
-				f.Close()
-				if n > 0 {
-					mimeType = http.DetectContentType(buf[:n])
-				}
-				_ = magic // readMagicBytes already opened it; reuse buf here
-			}
-		}
-
-		// Use the UUID as filename — no better name is available for orphan blobs.
-		fileName := id
-
-		_, insertErr := h.db.Exec(r.Context(),
-			`INSERT INTO files (id, owner_id, parent_id, is_folder, name, mime_type, size_bytes, storage_path)
-			 VALUES ($1::uuid, $2::uuid, $3::uuid, false, $4, $5, $6, $7)
-			 ON CONFLICT (id) DO NOTHING`,
-			id, ownerID, folderID, fileName, mimeType, info.Size(), physPath,
-		)
-		if insertErr != nil {
-			log.Warn().Err(insertErr).Str("id", id).Msg("admin.StorageRestoreOrphans: insert")
-			skipped++
-			continue
-		}
-		restored++
 	}
 
 	httputil.Respond(w, http.StatusOK, map[string]any{

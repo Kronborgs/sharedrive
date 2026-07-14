@@ -61,7 +61,7 @@ interface MenuItem {
   requiresActivePlayer?: boolean
 }
 
-export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, canAddToQueue = false, canAddToPlayer = false, onAction, onClose }: FileContextMenuProps) {
+export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, canAddToQueue = false, canAddToPlayer = false, onAction, onClose }: Readonly<FileContextMenuProps>) {
   const ref = useRef<HTMLDivElement>(null)
   const { t } = useI18n()
 

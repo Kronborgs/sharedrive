@@ -14,7 +14,7 @@ function isRasterImage(mime: string | null): boolean {
   return mime.startsWith('image/') && mime !== 'image/svg+xml'
 }
 
-export function FileThumbnail({ item, size = 40, className }: FileThumbnailProps) {
+export function FileThumbnail({ item, size = 40, className }: Readonly<FileThumbnailProps>) {
   const [error, setError] = useState(false)
   const mime = item.mime_type
 

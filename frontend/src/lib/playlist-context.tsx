@@ -91,7 +91,7 @@ function saveCache(p: Cached | null) {
 
 const PlaylistContext = createContext<PlaylistContextValue | null>(null)
 
-export function PlaylistProvider({ children }: { children: ReactNode }) {
+export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(() => loadCache()?.id ?? null)
   const [activePlaylistName, setActivePlaylistName] = useState<string | null>(() => loadCache()?.name ?? null)
   const [tracks, setTracks]                         = useState<PlaylistTrack[]>([])

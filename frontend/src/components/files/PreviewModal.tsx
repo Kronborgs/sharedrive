@@ -50,7 +50,7 @@ function detectKind(item: FileItem): PreviewKind {
   return 'unsupported'
 }
 
-export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModalProps) {
+export function PreviewModal({ item, siblings, onClose, onDelete }: Readonly<PreviewModalProps>) {
   // Internal navigation state — currentItem changes as user goes prev/next
   const [currentItem, setCurrentItem] = useState(item)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -266,7 +266,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: PreviewModal
   )
 }
 
-function ImageRenderer({ url, name, onDelete }: { url: string; name: string; onDelete?: () => void }) {
+function ImageRenderer({ url, name, onDelete }: Readonly<{ url: string; name: string; onDelete?: () => void }>) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(false)
@@ -336,7 +336,7 @@ function ImageRenderer({ url, name, onDelete }: { url: string; name: string; onD
   )
 }
 
-function TextRenderer({ url }: { url: string }) {
+function TextRenderer({ url }: Readonly<{ url: string }>) {
   const [content, setContent] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState(false)

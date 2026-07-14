@@ -28,7 +28,7 @@ export function TOTPSetupDialog({ isEnabled, onClose, onChanged }: Props) {
   )
 }
 
-function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function SetupFlow({ onClose, onDone }: Readonly<{ onClose: () => void; onDone: () => void }>) {
   const { t } = useI18n()
   const [step, setStep] = useState<Step>('qr')
   const [secret, setSecret] = useState('')
@@ -219,7 +219,7 @@ function SetupFlow({ onClose, onDone }: { onClose: () => void; onDone: () => voi
   )
 }
 
-function DisableFlow({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function DisableFlow({ onClose, onDone }: Readonly<{ onClose: () => void; onDone: () => void }>) {
   const [loading, setLoading] = useState(false)
   const { t } = useI18n()
 

@@ -48,7 +48,7 @@ function isFlacFile(mimeType: string, fileName: string): boolean {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function AudioRenderer({ url, fileName, fileId, mimeType: rawMime }: AudioRendererProps) {
+export function AudioRenderer({ url, fileName, fileId, mimeType: rawMime }: Readonly<AudioRendererProps>) {
   const mimeType = resolvedMimeType(rawMime, fileName)
   const flac = isFlacFile(mimeType, fileName)
   const supported = flac

@@ -114,26 +114,109 @@ type loginResponse struct {
 	ResetToken            string `json:"reset_token,omitempty"`
 }
 
-func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	ip := middleware.ClientIP(r)
-
-	// Check lockout first
+func (h *Handler) allowLoginAttempt(ctx context.Context, w http.ResponseWriter, ip string) bool {
 	if locked, ttl, err := h.lockout.IsLocked(ctx, ip); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
-		return
+		return false
 	} else if locked {
 		httputil.RespondError(w, http.StatusTooManyRequests, fmt.Sprintf("IP is locked out for %s", ttl.Round(time.Minute)))
-		return
+		return false
 	}
 
-	// Rate limit
 	allowed, _, _, err := h.limiter.Allow(ctx, KeyIPLogin, ip, h.cfg.RateLimitLoginAttempts, h.cfg.RateLimitLoginWindow)
 	if err != nil {
 		log.Error().Err(err).Msg("rate limiter error")
 	}
 	if !allowed {
 		httputil.RespondError(w, http.StatusTooManyRequests, errTooManyRequests)
+		return false
+	}
+	return true
+}
+
+func (h *Handler) authenticateLogin(ctx context.Context, w http.ResponseWriter, ip string, req loginRequest) (*user.User, bool) {
+	u, err := user.FindByEmail(ctx, h.db, req.Email)
+	if err != nil || u == nil {
+		h.recordLoginFailure(ctx, ip, req.Email, nil)
+		httputil.RespondError(w, http.StatusUnauthorized, "invalid email or password")
+		return nil, false
+	}
+	if !u.IsActive {
+		httputil.RespondError(w, http.StatusForbidden, "account is locked")
+		return nil, false
+	}
+
+	match, err := argon2id.ComparePasswordAndHash(req.Password, u.PasswordHash)
+	if err != nil || !match {
+		h.recordLoginFailure(ctx, ip, req.Email, &u.ID)
+		httputil.RespondError(w, http.StatusUnauthorized, "invalid email or password")
+		return nil, false
+	}
+
+	h.lockout.ClearFailures(ctx, ip)
+	h.limiter.Reset(ctx, KeyIPLogin, ip)
+	return u, true
+}
+
+func (h *Handler) respondForcedPasswordChange(ctx context.Context, w http.ResponseWriter, u *user.User) bool {
+	if !u.MustChangePassword {
+		return false
+	}
+
+	resetToken, err := h.passwordReset.GenerateResetToken(ctx, u.ID.String())
+	if err != nil {
+		log.Error().Err(err).Msg("login: generate forced reset token")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
+		return true
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "_forced_reset",
+		Value:    resetToken,
+		Path:     "/api/v1/auth/password-reset/confirm",
+		HttpOnly: true,
+		Secure:   !h.cfg.IsDev(),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   3600,
+	})
+	httputil.Respond(w, http.StatusOK, loginResponse{RequirePasswordChange: true})
+	return true
+}
+
+func (h *Handler) maybeRespondLoginTOTP(ctx context.Context, w http.ResponseWriter, r *http.Request, u *user.User, ip string, trustDevice bool) bool {
+	hasTOTP, _ := h.totpSvc.HasTOTP(ctx, u.ID.String())
+	if !hasTOTP {
+		return false
+	}
+	if deviceCookie, err := r.Cookie(deviceCookieName); err == nil {
+		ownerID, validateErr := h.deviceTrust.Validate(ctx, deviceCookie.Value, ip, r.UserAgent())
+		if validateErr == nil && ownerID == u.ID.String() {
+			return false
+		}
+	}
+
+	pendingToken, err := h.storePendingTOTP(ctx, u.ID.String(), trustDevice)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
+		return true
+	}
+	if h.auditSvc != nil {
+		h.auditSvc.Log(ctx, audit.Event{
+			Type:       audit.EventUserLoginTOTPRequired,
+			ActorID:    &u.ID,
+			ActorEmail: u.Email,
+			IPAddress:  ip,
+			UserAgent:  r.UserAgent(),
+		})
+	}
+	httputil.Respond(w, http.StatusOK, loginResponse{RequireTOTP: true, PendingToken: pendingToken})
+	return true
+}
+
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ip := middleware.ClientIP(r)
+	if !h.allowLoginAttempt(ctx, w, ip) {
 		return
 	}
 
@@ -144,95 +227,27 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 
-	// Fetch user
-	u, err := user.FindByEmail(ctx, h.db, req.Email)
-	if err != nil || u == nil {
-		h.recordLoginFailure(ctx, ip, req.Email, nil)
-		httputil.RespondError(w, http.StatusUnauthorized, "invalid email or password")
+	u, ok := h.authenticateLogin(ctx, w, ip, req)
+	if !ok {
+		return
+	}
+	if h.respondForcedPasswordChange(ctx, w, u) {
+		return
+	}
+	if h.maybeRespondLoginTOTP(ctx, w, r, u, ip, req.TrustDevice) {
 		return
 	}
 
-	if !u.IsActive {
-		httputil.RespondError(w, http.StatusForbidden, "account is locked")
-		return
-	}
-
-	// Verify password
-	match, err := argon2id.ComparePasswordAndHash(req.Password, u.PasswordHash)
-	if err != nil || !match {
-		h.recordLoginFailure(ctx, ip, req.Email, &u.ID)
-		httputil.RespondError(w, http.StatusUnauthorized, "invalid email or password")
-		return
-	}
-
-	// Password OK — clear failure counters
-	h.lockout.ClearFailures(ctx, ip)
-	h.limiter.Reset(ctx, KeyIPLogin, ip)
-
-	// If admin forced a password change, issue a short-lived reset cookie (HttpOnly)
-	// rather than returning the raw token in the response body.
-	// The PasswordResetConfirm endpoint reads the token from the cookie when the
-	// body token is absent, keeping the secret out of the URL / browser history.
-	if u.MustChangePassword {
-		resetToken, tokenErr := h.passwordReset.GenerateResetToken(ctx, u.ID.String())
-		if tokenErr != nil {
-			log.Error().Err(tokenErr).Msg("login: generate forced reset token")
-			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
-			return
-		}
-		http.SetCookie(w, &http.Cookie{
-			Name:     "_forced_reset",
-			Value:    resetToken,
-			Path:     "/api/v1/auth/password-reset/confirm",
-			HttpOnly: true,
-			Secure:   !h.cfg.IsDev(),
-			SameSite: http.SameSiteLaxMode,
-			MaxAge:   3600,
-		})
-		httputil.Respond(w, http.StatusOK, loginResponse{
-			RequirePasswordChange: true,
-			// ResetToken intentionally omitted — delivered as HttpOnly cookie above.
-		})
-		return
-	}
-
-	// Check if trusted device skips TOTP
-	hasTOTP, _ := h.totpSvc.HasTOTP(ctx, u.ID.String())
-	if hasTOTP {
-		if deviceCookie, err2 := r.Cookie(deviceCookieName); err2 == nil {
-			if ownerID, err3 := h.deviceTrust.Validate(ctx, deviceCookie.Value, ip, r.UserAgent()); err3 == nil && ownerID == u.ID.String() {
-				hasTOTP = false // trusted device — skip 2FA
-			}
-		}
-	}
-
-	if hasTOTP {
-		// Store pending state in Redis for TOTP step
-		pendingToken, storeErr := h.storePendingTOTP(ctx, u.ID.String(), req.TrustDevice)
-		if storeErr != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
-			return
-		}
+	h.createSessionAndCookie(ctx, w, r, u.ID.String(), ip)
+	if h.auditSvc != nil {
 		h.auditSvc.Log(ctx, audit.Event{
-			Type:       audit.EventUserLoginTOTPRequired,
+			Type:       audit.EventUserLogin,
 			ActorID:    &u.ID,
 			ActorEmail: u.Email,
 			IPAddress:  ip,
 			UserAgent:  r.UserAgent(),
 		})
-		httputil.Respond(w, http.StatusOK, loginResponse{RequireTOTP: true, PendingToken: pendingToken})
-		return
 	}
-
-	// Issue session
-	h.createSessionAndCookie(ctx, w, r, u.ID.String(), ip)
-	h.auditSvc.Log(ctx, audit.Event{
-		Type:       audit.EventUserLogin,
-		ActorID:    &u.ID,
-		ActorEmail: u.Email,
-		IPAddress:  ip,
-		UserAgent:  r.UserAgent(),
-	})
 	httputil.Respond(w, http.StatusOK, loginResponse{})
 }
 
@@ -773,6 +788,56 @@ type updateMeRequest struct {
 	OldPassword *string `json:"old_password"`
 }
 
+func (h *Handler) revokeOtherSessions(ctx context.Context, r *http.Request, userID uuid.UUID) {
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		currentHash := hashToken(cookie.Value)
+		_, _ = h.db.Exec(ctx,
+			`UPDATE sessions SET revoked_at = now()
+			 WHERE user_id = $1 AND revoked_at IS NULL AND token_hash != $2`,
+			userID, currentHash,
+		)
+		return
+	}
+
+	_, _ = h.db.Exec(ctx,
+		`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
+		userID,
+	)
+}
+
+func (h *Handler) maybeUpdatePassword(ctx context.Context, w http.ResponseWriter, r *http.Request, u *user.User, req updateMeRequest) bool {
+	if req.Password == nil {
+		return true
+	}
+	if req.OldPassword == nil {
+		httputil.RespondError(w, http.StatusBadRequest, "old_password required to set new password")
+		return false
+	}
+
+	match, err := argon2id.ComparePasswordAndHash(*req.OldPassword, u.PasswordHash)
+	if err != nil || !match {
+		httputil.RespondError(w, http.StatusUnauthorized, "old password is incorrect")
+		return false
+	}
+	if len(*req.Password) < 12 {
+		httputil.RespondError(w, http.StatusBadRequest, errPasswordTooShort)
+		return false
+	}
+
+	newHash, err := argon2id.CreateHash(*req.Password, argon2id.DefaultParams)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
+		return false
+	}
+	if _, err = h.db.Exec(ctx, `UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, newHash, u.ID); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
+		return false
+	}
+
+	h.revokeOtherSessions(ctx, r, u.ID)
+	return true
+}
+
 func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := middleware.UserFromContext(ctx)
@@ -785,46 +850,8 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
 		return
 	}
-	if req.Password != nil {
-		if req.OldPassword == nil {
-			httputil.RespondError(w, http.StatusBadRequest, "old_password required to set new password")
-			return
-		}
-		match, err := argon2id.ComparePasswordAndHash(*req.OldPassword, u.PasswordHash)
-		if err != nil || !match {
-			httputil.RespondError(w, http.StatusUnauthorized, "old password is incorrect")
-			return
-		}
-		if len(*req.Password) < 12 {
-			httputil.RespondError(w, http.StatusBadRequest, errPasswordTooShort)
-			return
-		}
-		newHash, err := argon2id.CreateHash(*req.Password, argon2id.DefaultParams)
-		if err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
-			return
-		}
-		_, err = h.db.Exec(ctx, `UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, newHash, u.ID)
-		if err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
-			return
-		}
-		// Revoke all OTHER sessions — keep only the current one so the user
-		// stays logged in on this device but is forced to re-authenticate everywhere else.
-		if cookie, cookieErr := r.Cookie(sessionCookieName); cookieErr == nil {
-			currentHash := hashToken(cookie.Value)
-			_, _ = h.db.Exec(ctx,
-				`UPDATE sessions SET revoked_at = now()
-				 WHERE user_id = $1 AND revoked_at IS NULL AND token_hash != $2`,
-				u.ID, currentHash,
-			)
-		} else {
-			// No cookie found (shouldn't happen) — revoke all sessions
-			_, _ = h.db.Exec(ctx,
-				`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
-				u.ID,
-			)
-		}
+	if !h.maybeUpdatePassword(ctx, w, r, u, req) {
+		return
 	}
 	if req.DisplayName != nil {
 		_, err := h.db.Exec(ctx, `UPDATE users SET display_name = $1, updated_at = now() WHERE id = $2`, *req.DisplayName, u.ID)

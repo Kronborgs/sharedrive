@@ -31,7 +31,7 @@ function secureRandomInt(maxExclusive: number): number {
   return buf[0] % maxExclusive
 }
 
-export function PlaylistPlayer({ fileId }: PlaylistPlayerProps) {
+export function PlaylistPlayer({ fileId }: Readonly<PlaylistPlayerProps>) {
   const { data: tracks, isLoading, isError } = useQuery({
     queryKey: ['playlist-tracks', fileId],
     queryFn: () => fetchPlaylistTracks(fileId),

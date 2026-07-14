@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 // ── Cassette tape icon (retro media player icon) ──────────────────────────────
-export function CassetteIcon({ size = 12, className = '' }: { size?: number; className?: string }) {
+export function CassetteIcon({ size = 12, className = '' }: Readonly<{ size?: number; className?: string }>) {
   const s = size
   return (
     <svg
@@ -42,7 +42,7 @@ const DOT_COUNT = 20
 const MIN_ANGLE = -135
 const MAX_ANGLE = 135
 
-export function Dial({ value, onChange, label, color, size = 88, min, max, step = 1 }: DialProps) {
+export function Dial({ value, onChange, label, color, size = 88, min, max, step = 1 }: Readonly<DialProps>) {
   const elRef = useRef<HTMLDivElement>(null)
 
   // stateRef keeps always-current values accessible inside the once-registered event handlers,
@@ -238,7 +238,7 @@ interface LedDisplayProps {
   expanded?: boolean
 }
 
-export function LedDisplay({ text, trackNum, onClick, expanded = false }: LedDisplayProps) {
+export function LedDisplay({ text, trackNum, onClick, expanded = false }: Readonly<LedDisplayProps>) {
   const numStr = trackNum !== null ? String(trackNum + 1).padStart(2, '0') : '--'
   // Only animate if text is long enough to overflow the display
   const shouldScroll = text.length > 13
@@ -342,7 +342,7 @@ export function RetroButton({
   active = false,
   color = '#4ade80',
   size = 36,
-}: RetroButtonProps) {
+}: Readonly<RetroButtonProps>) {
   const r = size / 2
   const [pressed, setPressed] = useState(false)
   const isDown = (active || pressed) && !disabled

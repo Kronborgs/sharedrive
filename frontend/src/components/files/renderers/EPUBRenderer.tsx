@@ -8,7 +8,7 @@ interface EPUBRendererProps {
   url: string
 }
 
-export function EPUBRenderer({ url }: EPUBRendererProps) {
+export function EPUBRenderer({ url }: Readonly<EPUBRendererProps>) {
   const viewerRef = useRef<HTMLDivElement>(null)
   const bookRef = useRef<Book | null>(null)
   const renditionRef = useRef<Rendition | null>(null)
@@ -44,7 +44,7 @@ export function EPUBRenderer({ url }: EPUBRendererProps) {
         })
         renditionRef.current = rendition
 
-        rendition.on('relocated', (location: { atStart: boolean; atEnd: boolean }) => {
+        rendition.on('relocated', (location: Readonly<{ atStart: boolean; atEnd: boolean }>) => {
           setCanPrev(!location.atStart)
           setCanNext(!location.atEnd)
         })

@@ -232,7 +232,7 @@ function Step1({
 
 // ─── Step 2: Admin account ──────────────────────────────────────
 
-function Step2({ onBack, onNext }: { onBack: () => void; onNext: (v: Step2Values) => void }) {
+function Step2({ onBack, onNext }: Readonly<{ onBack: () => void; onNext: (v: Step2Values) => void }>) {
   const { t } = useI18n()
   const { register, handleSubmit, formState: { errors } } = useForm<Step2Values>({
     resolver: zodResolver(step2Schema),

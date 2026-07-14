@@ -12,7 +12,7 @@ interface DownloadDialogProps {
 
 type Step = 'configure' | 'ready' | 'downloading'
 
-export function DownloadDialog({ ids, onClose }: DownloadDialogProps) {
+export function DownloadDialog({ ids, onClose }: Readonly<DownloadDialogProps>) {
   const { t } = useI18n()
   const [usePassword, setUsePassword] = useState(true)
   const [passwordMode, setPasswordMode] = useState<'generate' | 'custom'>('generate')

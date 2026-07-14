@@ -33,7 +33,7 @@ const EVENT_LABEL_KEYS: Record<string, string> = {
   FOLDER_CREATED:  'activity.createdFolder',
 }
 
-function EventIcon({ type }: { type: string }) {
+function EventIcon({ type }: Readonly<{ type: string }>) {
   const cls = 'shrink-0'
   switch (type) {
     case 'FILE_UPLOADED':   return <UploadCloud size={15} className={cls} />

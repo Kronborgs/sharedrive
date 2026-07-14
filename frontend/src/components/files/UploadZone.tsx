@@ -10,7 +10,7 @@ interface DropZoneProps {
   children: React.ReactNode
 }
 
-export function DropZone({ folderId: _folderId, onUploadStart, children }: DropZoneProps) {
+export function DropZone({ folderId: _folderId, onUploadStart, children }: Readonly<DropZoneProps>) {
   const [dragActive, setDragActive] = useState(false)
   const { t } = useI18n()
 
@@ -84,7 +84,7 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`
 }
 
-export function UploadProgress({ uploads, onDismiss, directUpload }: UploadProgressProps) {
+export function UploadProgress({ uploads, onDismiss, directUpload }: Readonly<UploadProgressProps>) {
   const active = uploads.filter(u => u.status !== 'done')
   const { t } = useI18n()
 

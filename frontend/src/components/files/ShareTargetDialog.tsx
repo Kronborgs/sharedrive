@@ -29,7 +29,7 @@ export function ShareTargetDialog({
   currentFolderId,
   onUpload,
   onClose,
-}: ShareTargetDialogProps) {
+}: Readonly<ShareTargetDialogProps>) {
   const [trail, setTrail] = useState<BreadcrumbEntry[]>([
     { id: null, name: 'My Files' },
   ])

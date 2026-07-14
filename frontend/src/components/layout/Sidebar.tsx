@@ -66,7 +66,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/settings',     labelKey: 'nav.settings',    icon: <Settings size={16} /> },
 ]
 
-function NavLink({ item }: { item: NavItem }) {
+function NavLink({ item }: Readonly<{ item: NavItem }>) {
   const state = useRouterState()
   const { t } = useI18n()
   const active = item.exact
@@ -108,7 +108,7 @@ function formatBuildDate(raw?: string) {
   }).format(d)
 }
 
-export function Sidebar({ isOpen = false, onClose }: { isOpen?: boolean; onClose?: () => void }) {
+export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean; onClose?: () => void }>) {
   const { user, setUser } = useAuth()
   const qc = useQueryClient()
   const state = useRouterState()

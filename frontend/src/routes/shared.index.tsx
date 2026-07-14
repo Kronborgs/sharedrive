@@ -56,7 +56,7 @@ function SharedPage() {
   })
 
   const createDocument = useMutation({
-    mutationFn: (payload: { type: string; name: string; parent_id: string }) =>
+    mutationFn: (payload: Readonly<{ type: string; name: string; parent_id: string }>) =>
       api.post<{ id: string; name: string }>(
         `/api/v1/public/onlyoffice/create?share_token=${encodeURIComponent(token)}`,
         payload,
@@ -87,7 +87,7 @@ function SharedPage() {
   })
 
   const createTextFile = useMutation({
-    mutationFn: (payload: { name: string; parent_id: string }) =>
+    mutationFn: (payload: Readonly<{ name: string; parent_id: string }>) =>
       api.post<{ id: string; name: string }>(
         `/api/v1/public/files/create-text?share_token=${encodeURIComponent(token)}`,
         payload,
@@ -341,7 +341,7 @@ function SharedPage() {
   )
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-[#0f1117] flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-2xl p-6 shadow-sm">

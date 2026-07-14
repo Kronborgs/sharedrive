@@ -7,7 +7,7 @@ interface ThreeMFRendererProps {
   url: string
 }
 
-export function ThreeMFRenderer({ url }: ThreeMFRendererProps) {
+export function ThreeMFRenderer({ url }: Readonly<ThreeMFRendererProps>) {
   const mountRef = useRef<HTMLDivElement>(null)
   const groupRef = useRef<THREE.Group | null>(null)
 

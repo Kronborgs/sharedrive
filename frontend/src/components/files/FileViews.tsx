@@ -18,7 +18,7 @@ interface FileListProps {
   highlightId?: string
 }
 
-export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, onSelectAll, onQuickShare, highlightId }: FileListProps) {
+export function FileList({ items, selectedIds, onSelect, onOpen, onContextMenu, onSelectAll, onQuickShare, highlightId }: Readonly<FileListProps>) {
   const { t } = useI18n()
   const [localHighlight, setLocalHighlight] = useState(highlightId)
 
@@ -229,7 +229,7 @@ interface FileGridProps {
   onContextMenu: (item: FileItem, x: number, y: number) => void
 }
 
-export function FileGrid({ items, selectedIds, onSelect, onOpen, onContextMenu }: FileGridProps) {
+export function FileGrid({ items, selectedIds, onSelect, onOpen, onContextMenu }: Readonly<FileGridProps>) {
   const { t } = useI18n()
   if (items.length === 0) {
     return (
@@ -288,7 +288,7 @@ export function FileGrid({ items, selectedIds, onSelect, onOpen, onContextMenu }
 // ── FolderSize ────────────────────────────────────────────────────────────────
 // Lazily fetches recursive folder size via GET /api/v1/files/{id}/size.
 // Shows "…" while loading, then the formatted size + file count.
-function FolderSize({ id }: { id: string }) {
+function FolderSize({ id }: Readonly<{ id: string }>) {
   const { t } = useI18n()
   const { data } = useQuery({
     queryKey: ['folder-size', id],

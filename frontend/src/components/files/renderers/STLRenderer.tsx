@@ -7,7 +7,7 @@ interface STLRendererProps {
   url: string
 }
 
-export function STLRenderer({ url }: STLRendererProps) {
+export function STLRenderer({ url }: Readonly<STLRendererProps>) {
   const mountRef = useRef<HTMLDivElement>(null)
   // Hold references to GPU resources so the cleanup function can dispose them
   // even when they were created inside the async STLLoader callback.

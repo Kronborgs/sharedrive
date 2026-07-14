@@ -1045,6 +1045,46 @@ type scrubBlob struct {
 	size int64
 }
 
+func isScrubShard(entry os.DirEntry) bool {
+	return entry.IsDir() && len(entry.Name()) == 2
+}
+
+func scrubBlobFromEntry(shardPath string, entry os.DirEntry) (scrubBlob, bool) {
+	if entry.IsDir() {
+		return scrubBlob{}, false
+	}
+	name := entry.Name()
+	if len(name) != 36 {
+		return scrubBlob{}, false
+	}
+	info, err := entry.Info()
+	if err != nil {
+		return scrubBlob{}, false
+	}
+	return scrubBlob{
+		id:   name,
+		path: filepath.Join(shardPath, name),
+		size: info.Size(),
+	}, true
+}
+
+func scanShardBlobs(filesRoot string, shard os.DirEntry) []scrubBlob {
+	shardPath := filepath.Join(filesRoot, shard.Name())
+	entries, err := os.ReadDir(shardPath)
+	if err != nil {
+		return nil
+	}
+
+	blobs := make([]scrubBlob, 0, len(entries))
+	for _, entry := range entries {
+		blob, ok := scrubBlobFromEntry(shardPath, entry)
+		if ok {
+			blobs = append(blobs, blob)
+		}
+	}
+	return blobs
+}
+
 func scanStorageBlobs(filesRoot string) ([]scrubBlob, error) {
 	entries, err := os.ReadDir(filesRoot)
 	if err != nil {
@@ -1053,32 +1093,10 @@ func scanStorageBlobs(filesRoot string) ([]scrubBlob, error) {
 
 	var blobs []scrubBlob
 	for _, shard := range entries {
-		if !shard.IsDir() || len(shard.Name()) != 2 {
+		if !isScrubShard(shard) {
 			continue
 		}
-		shardPath := filepath.Join(filesRoot, shard.Name())
-		files, err := os.ReadDir(shardPath)
-		if err != nil {
-			continue
-		}
-		for _, f := range files {
-			if f.IsDir() {
-				continue
-			}
-			name := f.Name()
-			if len(name) != 36 {
-				continue
-			}
-			info, err := f.Info()
-			if err != nil {
-				continue
-			}
-			blobs = append(blobs, scrubBlob{
-				id:   name,
-				path: filepath.Join(shardPath, name),
-				size: info.Size(),
-			})
-		}
+		blobs = append(blobs, scanShardBlobs(filesRoot, shard)...)
 	}
 	return blobs, nil
 }

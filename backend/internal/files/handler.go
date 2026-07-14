@@ -827,8 +827,6 @@ type PrepareDownloadRequest struct {
 func (h *Handler) PrepareDownload(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Reject oversized bodies before decoding — prevent DoS via malformed JSON.
-	// 500 UUIDs * ~40 bytes each + JSON overhead fits well within 64 KB.
 	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 
 	var req PrepareDownloadRequest
@@ -836,58 +834,80 @@ func (h *Handler) PrepareDownload(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if len(req.IDs) == 0 {
-		httputil.RespondError(w, http.StatusBadRequest, "ids is required")
+	if err := validatePrepareDownloadRequest(req); err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if len(req.IDs) > 500 {
-		httputil.RespondError(w, http.StatusBadRequest, "too many ids (max 500)")
+
+	password, ok := h.resolvePrepareDownloadPassword(w, req)
+	if !ok {
 		return
+	}
+	token, ok := h.storePrepareDownloadToken(ctx, req.IDs, password, w)
+	if !ok {
+		return
+	}
+
+	httputil.Respond(w, http.StatusOK, buildPrepareDownloadResponse(token, password))
+}
+
+func validatePrepareDownloadRequest(req PrepareDownloadRequest) error {
+	if len(req.IDs) == 0 {
+		return fmt.Errorf("ids is required")
+	}
+	if len(req.IDs) > 500 {
+		return fmt.Errorf("too many ids (max 500)")
 	}
 	for _, id := range req.IDs {
 		if _, err := uuid.Parse(strings.TrimSpace(id)); err != nil {
-			httputil.RespondError(w, http.StatusBadRequest, "invalid id: "+id)
-			return
+			return fmt.Errorf("invalid id: %s", id)
 		}
 	}
+	return nil
+}
 
-	password := ""
-	if req.UsePassword {
-		if req.CustomPassword != "" {
-			if len(req.CustomPassword) < 4 {
-				httputil.RespondError(w, http.StatusBadRequest, "custom password must be at least 4 characters")
-				return
-			}
-			if len(req.CustomPassword) > customPasswordMaxLen {
-				httputil.RespondError(w, http.StatusBadRequest, "custom password too long (max 128 characters)")
-				return
-			}
-			password = req.CustomPassword
-		} else {
-			var err error
-			if password, err = randomPassword(); err != nil {
-				log.Error().Err(err).Msg("PrepareDownload: randomPassword")
-				httputil.RespondError(w, http.StatusInternalServerError, errInternal)
-				return
-			}
-		}
+func (h *Handler) resolvePrepareDownloadPassword(w http.ResponseWriter, req PrepareDownloadRequest) (string, bool) {
+	if !req.UsePassword {
+		return "", true
 	}
+	if req.CustomPassword != "" {
+		if len(req.CustomPassword) < 4 {
+			httputil.RespondError(w, http.StatusBadRequest, "custom password must be at least 4 characters")
+			return "", false
+		}
+		if len(req.CustomPassword) > customPasswordMaxLen {
+			httputil.RespondError(w, http.StatusBadRequest, "custom password too long (max 128 characters)")
+			return "", false
+		}
+		return req.CustomPassword, true
+	}
+	password, err := randomPassword()
+	if err != nil {
+		log.Error().Err(err).Msg("PrepareDownload: randomPassword")
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
+		return "", false
+	}
+	return password, true
+}
 
+func (h *Handler) storePrepareDownloadToken(ctx context.Context, ids []string, password string, w http.ResponseWriter) (string, bool) {
 	token, err := randomToken()
 	if err != nil {
 		log.Error().Err(err).Msg("PrepareDownload: randomToken")
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
-		return
+		return "", false
 	}
-
-	payload := downloadTokenPayload{IDs: req.IDs, Password: password}
+	payload := downloadTokenPayload{IDs: ids, Password: password}
 	data, _ := json.Marshal(payload)
 	if err := h.redis.Set(ctx, downloadTokenPrefix+token, string(data), downloadTokenTTL).Err(); err != nil {
 		log.Error().Err(err).Msg("PrepareDownload: redis set")
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
-		return
+		return "", false
 	}
+	return token, true
+}
 
+func buildPrepareDownloadResponse(token, password string) map[string]any {
 	resp := map[string]any{
 		"token":      token,
 		"expires_in": int(downloadTokenTTL.Seconds()),
@@ -895,7 +915,7 @@ func (h *Handler) PrepareDownload(w http.ResponseWriter, r *http.Request) {
 	if password != "" {
 		resp["password"] = password
 	}
-	httputil.Respond(w, http.StatusOK, resp)
+	return resp
 }
 
 //	GET /api/v1/files/download-zip?ids=id1,id2,...  (plain ZIP, folders expanded)

@@ -82,67 +82,104 @@ func (s *Storage) Write(id string, r io.Reader) (int64, error) {
 	defer f.Close()
 
 	if len(s.encKey) == 0 {
-		n, err := io.Copy(f, r)
-		if err != nil {
-			return n, fmt.Errorf("storage: write: %w", err)
-		}
-		return n, nil
+		return writePlainFile(f, r)
 	}
+	gcm, err := s.newGCM()
+	if err != nil {
+		return 0, err
+	}
+	return writeEncryptedFile(f, r, gcm)
+}
 
-	// ── Encrypted write ───────────────────────────────────────────────────
+func writePlainFile(f *os.File, r io.Reader) (int64, error) {
+	n, err := io.Copy(f, r)
+	if err != nil {
+		return n, fmt.Errorf("storage: write: %w", err)
+	}
+	return n, nil
+}
+
+func (s *Storage) newGCM() (cipher.AEAD, error) {
 	block, err := aes.NewCipher(s.encKey)
 	if err != nil {
-		return 0, fmt.Errorf("storage: cipher: %w", err)
+		return nil, fmt.Errorf("storage: cipher: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return 0, fmt.Errorf("storage: gcm: %w", err)
+		return nil, fmt.Errorf("storage: gcm: %w", err)
 	}
+	return gcm, nil
+}
 
-	// Write magic header; patch plaintext size after streaming all chunks.
+func writeEncryptedFile(f *os.File, r io.Reader, gcm cipher.AEAD) (int64, error) {
+	if err := writeEncryptedHeader(f); err != nil {
+		return 0, err
+	}
+	total, err := writeEncryptedChunks(f, r, gcm)
+	if err != nil {
+		return total, err
+	}
+	if err := patchEncryptedPlainSize(f, total); err != nil {
+		return total, err
+	}
+	return total, nil
+}
+
+func writeEncryptedHeader(f *os.File) error {
 	if _, err := f.Write(encMagic[:]); err != nil {
-		return 0, fmt.Errorf("storage: write magic: %w", err)
+		return fmt.Errorf("storage: write magic: %w", err)
 	}
-	if _, err := f.Write(make([]byte, 8)); err != nil { // placeholder for size
-		return 0, fmt.Errorf("storage: write size placeholder: %w", err)
+	if _, err := f.Write(make([]byte, 8)); err != nil {
+		return fmt.Errorf("storage: write size placeholder: %w", err)
 	}
+	return nil
+}
 
+func writeEncryptedChunks(f *os.File, r io.Reader, gcm cipher.AEAD) (int64, error) {
 	buf := make([]byte, encChunkPlain)
 	var total int64
 	for {
 		n, readErr := io.ReadFull(r, buf)
 		if n > 0 {
-			nonce := make([]byte, gcm.NonceSize())
-			if _, err := rand.Read(nonce); err != nil {
-				return total, fmt.Errorf("storage: nonce: %w", err)
-			}
-			ct := gcm.Seal(nil, nonce, buf[:n], nil) // appends 16-byte tag
-			if _, err := f.Write(nonce); err != nil {
-				return total, fmt.Errorf("storage: write nonce: %w", err)
-			}
-			if _, err := f.Write(ct); err != nil {
-				return total, fmt.Errorf("storage: write chunk: %w", err)
+			if err := writeEncryptedChunk(f, gcm, buf[:n]); err != nil {
+				return total, err
 			}
 			total += int64(n)
 		}
 		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF {
-			break
+			return total, nil
 		}
 		if readErr != nil {
 			return total, fmt.Errorf("storage: read: %w", readErr)
 		}
 	}
+}
 
-	// Patch plaintext size at byte offset 8 (after magic).
+func writeEncryptedChunk(f *os.File, gcm cipher.AEAD, plain []byte) error {
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return fmt.Errorf("storage: nonce: %w", err)
+	}
+	ct := gcm.Seal(nil, nonce, plain, nil)
+	if _, err := f.Write(nonce); err != nil {
+		return fmt.Errorf("storage: write nonce: %w", err)
+	}
+	if _, err := f.Write(ct); err != nil {
+		return fmt.Errorf("storage: write chunk: %w", err)
+	}
+	return nil
+}
+
+func patchEncryptedPlainSize(f *os.File, total int64) error {
 	var sizeBuf [8]byte
 	binary.LittleEndian.PutUint64(sizeBuf[:], uint64(total))
 	if _, err := f.Seek(8, io.SeekStart); err != nil {
-		return total, fmt.Errorf("storage: seek for size patch: %w", err)
+		return fmt.Errorf("storage: seek for size patch: %w", err)
 	}
 	if _, err := f.Write(sizeBuf[:]); err != nil {
-		return total, fmt.Errorf("storage: write size: %w", err)
+		return fmt.Errorf("storage: write size: %w", err)
 	}
-	return total, nil
+	return nil
 }
 
 // Open returns a ReadSeekCloser for reading the stored file.

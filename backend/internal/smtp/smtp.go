@@ -34,51 +34,67 @@ type smtpSettings struct {
 
 // loadSettings reads SMTP config from DB if available, otherwise falls back to cfg.
 func (m *Mailer) loadSettings(ctx context.Context) (smtpSettings, error) {
-	s := smtpSettings{
-		host:     m.cfg.SMTPHost,
-		port:     m.cfg.SMTPPort,
-		user:     m.cfg.SMTPUser,
-		password: m.cfg.SMTPPassword,
-		from:     m.cfg.SMTPFrom,
-		tls:      m.cfg.SMTPTLS,
-	}
+	settings := defaultSMTPSettings(m.cfg)
 	if m.db != nil {
-		rows, err := m.db.Query(ctx, `SELECT key, value FROM system_settings WHERE key LIKE 'smtp_%'`)
-		if err == nil {
-			defer rows.Close()
-			kv := map[string]string{}
-			for rows.Next() {
-				var k, v string
-				if rows.Scan(&k, &v) == nil {
-					kv[k] = v
-				}
-			}
-			if v := kv["smtp_host"]; v != "" {
-				s.host = v
-			}
-			if v := kv["smtp_port"]; v != "" {
-				if p, err := strconv.Atoi(v); err == nil {
-					s.port = p
-				}
-			}
-			if v := kv["smtp_user"]; v != "" {
-				s.user = v
-			}
-			if v := kv["smtp_password"]; v != "" {
-				s.password = v
-			}
-			if v := kv["smtp_from"]; v != "" {
-				s.from = v
-			}
-			if v := kv["smtp_tls"]; v != "" {
-				s.tls = v
-			}
+		if overrides, err := m.loadDBSettings(ctx); err == nil {
+			applySMTPOverrides(&settings, overrides)
 		}
 	}
-	if s.host == "" {
-		return s, fmt.Errorf("smtp: SMTP_HOST not configured")
+	if settings.host == "" {
+		return settings, fmt.Errorf("smtp: SMTP_HOST not configured")
 	}
-	return s, nil
+	return settings, nil
+}
+
+func defaultSMTPSettings(cfg *config.Config) smtpSettings {
+	return smtpSettings{
+		host:     cfg.SMTPHost,
+		port:     cfg.SMTPPort,
+		user:     cfg.SMTPUser,
+		password: cfg.SMTPPassword,
+		from:     cfg.SMTPFrom,
+		tls:      cfg.SMTPTLS,
+	}
+}
+
+func (m *Mailer) loadDBSettings(ctx context.Context) (map[string]string, error) {
+	rows, err := m.db.Query(ctx, `SELECT key, value FROM system_settings WHERE key LIKE 'smtp_%'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	settings := map[string]string{}
+	for rows.Next() {
+		var key, value string
+		if rows.Scan(&key, &value) == nil {
+			settings[key] = value
+		}
+	}
+	return settings, nil
+}
+
+func applySMTPOverrides(settings *smtpSettings, overrides map[string]string) {
+	if value := overrides["smtp_host"]; value != "" {
+		settings.host = value
+	}
+	if value := overrides["smtp_port"]; value != "" {
+		if port, err := strconv.Atoi(value); err == nil {
+			settings.port = port
+		}
+	}
+	if value := overrides["smtp_user"]; value != "" {
+		settings.user = value
+	}
+	if value := overrides["smtp_password"]; value != "" {
+		settings.password = value
+	}
+	if value := overrides["smtp_from"]; value != "" {
+		settings.from = value
+	}
+	if value := overrides["smtp_tls"]; value != "" {
+		settings.tls = value
+	}
 }
 
 // SendPasswordReset sends the pre-constructed reset link to the given address.

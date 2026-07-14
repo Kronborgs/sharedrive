@@ -82,19 +82,31 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 	storage := files.NewStorage(cfg.FilesRoot, cfg.FileEncryptKey)
 	fileSvc := files.NewService(db, storage)
 	trashSvc := files.NewTrashService(db, storage)
-
-	var conv *preview.Converter
-	if cfg.PreviewCacheDir != "" && cfg.GotenbergURL != "" {
-		if c, err := preview.New(cfg.PreviewCacheDir, cfg.GotenbergURL); err != nil {
-			log.Warn().Err(err).Msg("preview: converter init failed — Office preview unavailable")
-		} else {
-			conv = c
-		}
-	}
-
+	conv := initPreviewConverter(cfg)
 	ioTracker := files.NewIOTracker(rdb)
 
-	s := &Server{
+	s := newServerDependencies(cfg, db, rdb, authHandler, auditSvc, version, buildDate, storage, fileSvc, trashSvc, conv, ioTracker)
+	s.backupHandler.SetMailer(smtp.New(cfg, db))
+	s.router = s.buildRouter()
+	startServerBackgroundTasks(s, db, rdb, cfg, storage)
+	s.http = newHTTPServer(s, rdb, storage)
+	return s
+}
+
+func initPreviewConverter(cfg *config.Config) *preview.Converter {
+	if cfg.PreviewCacheDir == "" || cfg.GotenbergURL == "" {
+		return nil
+	}
+	conv, err := preview.New(cfg.PreviewCacheDir, cfg.GotenbergURL)
+	if err != nil {
+		log.Warn().Err(err).Msg("preview: converter init failed — Office preview unavailable")
+		return nil
+	}
+	return conv
+}
+
+func newServerDependencies(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler *auth.Handler, auditSvc audit.Logger, version, buildDate string, storage *files.Storage, fileSvc *files.Service, trashSvc *files.TrashService, conv *preview.Converter, ioTracker *files.IOTracker) *Server {
+	return &Server{
 		cfg:            cfg,
 		db:             db,
 		redis:          rdb,
@@ -115,30 +127,35 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 		auditSvc:       auditSvc,
 		ioTracker:      ioTracker,
 	}
-	// Wire SMTP mailer into the backup service for push-failure email notifications.
-	s.backupHandler.SetMailer(smtp.New(cfg, db))
-	s.router = s.buildRouter()
+}
 
-	// Start buddy CGNAT tunnel auto-reconnect — re-dials the outbound tunnel
-	// every 30 s for any user who has peer_use_tunnel=true, so the tunnel
-	// survives server restarts without manual intervention.
+func startServerBackgroundTasks(s *Server, db *pgxpool.Pool, rdb *goredis.Client, cfg *config.Config, storage *files.Storage) {
 	s.backupHandler.StartTunnelAutoReconnect(context.Background())
+	startPreviewCleanup(cfg)
+	startTusCleanup(cfg)
+	startAutoBackupScheduler(s)
+	startStartupOrphanCascade(db)
+	startStartupQuotaRecalc(db)
+	startBuddyPushReset(db)
+	startStartupStorageScrub(db, cfg)
+}
 
-	// Start preview-cache cleanup goroutine — purges cached PDFs older than 24 h.
-	if cfg.PreviewCacheDir != "" {
-		go func() {
-			ticker := time.NewTicker(1 * time.Hour)
-			defer ticker.Stop()
-			for range ticker.C {
-				if err := cleanPreviewCache(cfg.PreviewCacheDir); err != nil {
-					log.Warn().Err(err).Msg("preview cache cleanup")
-				}
-			}
-		}()
+func startPreviewCleanup(cfg *config.Config) {
+	if cfg.PreviewCacheDir == "" {
+		return
 	}
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := cleanPreviewCache(cfg.PreviewCacheDir); err != nil {
+				log.Warn().Err(err).Msg("preview cache cleanup")
+			}
+		}
+	}()
+}
 
-	// Start TUS temp-file cleanup goroutine — removes abandoned partial uploads
-	// older than 48 h to prevent unbounded disk growth.
+func startTusCleanup(cfg *config.Config) {
 	go func() {
 		ticker := time.NewTicker(6 * time.Hour)
 		defer ticker.Stop()
@@ -148,9 +165,9 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 			}
 		}
 	}()
+}
 
-	// Start auto-backup scheduler — runs every 15 minutes and backs up any user
-	// whose schedule interval has elapsed and whose file tree has changed.
+func startAutoBackupScheduler(s *Server) {
 	go func() {
 		ticker := time.NewTicker(15 * time.Minute)
 		defer ticker.Stop()
@@ -158,11 +175,9 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 			s.backupHandler.RunScheduled(context.Background())
 		}
 	}()
+}
 
-	// At startup: cascade deleted_at to orphaned children of soft-deleted folders.
-	// These are files whose parent has deleted_at IS NOT NULL but the child still
-	// has deleted_at IS NULL (created by older SoftDelete that didn't cascade).
-	// After this they will appear in each owner's trash and be purged by EmptyTrash.
+func startStartupOrphanCascade(db *pgxpool.Pool) {
 	go func() {
 		ctx := context.Background()
 		tag, err := db.Exec(ctx, `
@@ -185,13 +200,13 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 			WHERE files.id = o.id`)
 		if err != nil {
 			log.Warn().Err(err).Msg("startup orphan cascade failed")
-		} else {
-			log.Info().Int64("rows", tag.RowsAffected()).Msg("startup orphan cascade completed")
+			return
 		}
+		log.Info().Int64("rows", tag.RowsAffected()).Msg("startup orphan cascade completed")
 	}()
+}
 
-	// At startup: recalculate quota_used_bytes for all users from actual DB rows
-	// to correct any drift caused by the folder-cascade bug or crashes.
+func startStartupQuotaRecalc(db *pgxpool.Pool) {
 	go func() {
 		ctx := context.Background()
 		if _, err := db.Exec(ctx, `
@@ -203,13 +218,13 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 			    ), 0),
 			    updated_at = now()`); err != nil {
 			log.Warn().Err(err).Msg("startup quota recalc failed")
-		} else {
-			log.Info().Msg("startup quota recalc completed")
+			return
 		}
+		log.Info().Msg("startup quota recalc completed")
 	}()
+}
 
-	// At startup: clear any push_in_progress flags that were left set by a crash
-	// or interrupted goroutine. Without this the push button stays disabled forever.
+func startBuddyPushReset(db *pgxpool.Pool) {
 	go func() {
 		ctx := context.Background()
 		if tag, err := db.Exec(ctx, `UPDATE user_buddy_configs SET push_in_progress = FALSE WHERE push_in_progress = TRUE`); err != nil {
@@ -218,26 +233,26 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 			log.Info().Int64("rows", tag.RowsAffected()).Msg("startup: reset stuck buddy push_in_progress flags")
 		}
 	}()
+}
 
-	// At startup: scrub orphaned blobs from disk (UUIDs on disk with no DB record).
+func startStartupStorageScrub(db *pgxpool.Pool, cfg *config.Config) {
 	go func() {
 		result, err := admin.RunStorageScrub(context.Background(), db, cfg.FilesRoot)
 		if err != nil {
 			log.Warn().Err(err).Msg("startup storage scrub failed")
-		} else {
-			log.Info().
-				Int64("deleted", result.DeletedBlobs).
-				Int64("freed_bytes", result.FreedBytes).
-				Msg("startup storage scrub completed")
+			return
 		}
+		log.Info().
+			Int64("deleted", result.DeletedBlobs).
+			Int64("freed_bytes", result.FreedBytes).
+			Msg("startup storage scrub completed")
 	}()
+}
 
-	// WebDAV is mounted OUTSIDE Chi so that non-standard HTTP methods such as
-	// PROPFIND, MKCOL, PROPPATCH, COPY, MOVE, LOCK and UNLOCK are accepted.
-	// Chi only recognises the standard nine methods and returns 405 for the rest.
+func newHTTPServer(s *Server, rdb *goredis.Client, storage *files.Storage) *http.Server {
 	davSrv := webdav.NewAuthDAVServer(s.db, s.cfg.FilesRoot, s.auditSvc, s.ioTracker, ratelimit.New(rdb), storage)
-	s.http = &http.Server{
-		Addr: cfg.ListenAddr(),
+	return &http.Server{
+		Addr: s.cfg.ListenAddr(),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasPrefix(r.URL.Path, "/dav/") || r.URL.Path == "/dav" {
 				davSrv.ServeHTTP(w, r)
@@ -245,11 +260,10 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 			}
 			s.router.ServeHTTP(w, r)
 		}),
-		ReadHeaderTimeout: 15 * time.Second, // guards against slow-header attacks
-		WriteTimeout:      0,                // disabled; large up/downloads need unbounded time
+		ReadHeaderTimeout: 15 * time.Second,
+		WriteTimeout:      0,
 		IdleTimeout:       120 * time.Second,
 	}
-	return s
 }
 
 // Start begins serving HTTP requests. Blocks until ctx is cancelled.
@@ -859,104 +873,11 @@ func (s *Server) tusHandler() http.Handler {
 	store.UseIn(composer)
 
 	tusConfig := tusd.Config{
-		BasePath:                "/upload/",
-		StoreComposer:           composer,
-		RespectForwardedHeaders: true,
-		PreUploadCreateCallback: func(hook tusd.HookEvent) (tusd.HTTPResponse, tusd.FileInfoChanges, error) {
-			ctx := hook.Context
-			actor := mw.UserFromContext(ctx)
-			if actor == nil {
-				return tusd.HTTPResponse{StatusCode: http.StatusUnauthorized}, tusd.FileInfoChanges{}, nil
-			}
-			meta := hook.Upload.MetaData
-			overwrite := strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "1") || strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "true")
-			var conflict *files.File
-			if name := strings.TrimSpace(meta["filename"]); name != "" {
-				if found, err := s.fileSvc.FindNameConflict(ctx, name, meta["folder_id"]); err != nil {
-					log.Error().Err(err).Msg("tusHandler: precreate conflict lookup")
-					return tusd.HTTPResponse{StatusCode: http.StatusInternalServerError}, tusd.FileInfoChanges{}, nil
-				} else if found != nil {
-					conflict = found
-					if conflict.IsFolder || !overwrite {
-						msg := "a file with this name already exists"
-						if conflict.IsFolder {
-							msg = "a folder with this name already exists"
-						}
-						return tusd.HTTPResponse{
-							StatusCode: http.StatusConflict,
-							Body:       `{"error":"` + msg + `"}`,
-							Header:     tusd.HTTPHeader{contentTypeHeader: jsonContentType},
-						}, tusd.FileInfoChanges{}, nil
-					}
-				}
-			}
-			if hook.Upload.Size > 0 {
-				// Enforce per-user (or folder-owner for guests) max upload size
-				maxBytes := s.fileSvc.GetEffectiveMaxUpload(ctx, actor.ID.String(), actor.Role, meta["folder_id"])
-				if hook.Upload.Size > maxBytes {
-					return tusd.HTTPResponse{
-						StatusCode: http.StatusRequestEntityTooLarge,
-						Body:       `{"error":"file exceeds the maximum upload size for this account"}`,
-						Header:     tusd.HTTPHeader{contentTypeHeader: jsonContentType},
-					}, tusd.FileInfoChanges{}, nil
-				}
-				if !overwrite || conflict == nil {
-					if err := s.fileSvc.CheckQuota(ctx, actor.ID.String(), hook.Upload.Size); err != nil {
-						return tusd.HTTPResponse{
-							StatusCode: http.StatusUnprocessableEntity,
-							Body:       `{"error":"` + err.Error() + `"}`,
-							Header:     tusd.HTTPHeader{contentTypeHeader: jsonContentType},
-						}, tusd.FileInfoChanges{}, nil
-					}
-				}
-			}
-			return tusd.HTTPResponse{}, tusd.FileInfoChanges{}, nil
-		},
-		PreFinishResponseCallback: func(hook tusd.HookEvent) (tusd.HTTPResponse, error) {
-			ctx := hook.Context
-			actor := mw.UserFromContext(ctx)
-			if actor == nil {
-				return tusd.HTTPResponse{StatusCode: http.StatusUnauthorized}, nil
-			}
-			meta := hook.Upload.MetaData
-			name := meta["filename"]
-			if name == "" {
-				name = "upload"
-			}
-			mimeType := meta["filetype"]
-			if mimeType == "" {
-				mimeType = "application/octet-stream"
-			}
-			folderID := meta["folder_id"]
-			overwrite := strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "1") || strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "true")
-			tempPath := filepath.Join(s.cfg.TusUploadDir, hook.Upload.ID)
-
-			f, err := s.fileSvc.FinalizeTusUpload(ctx, tempPath, files.UploadParams{OwnerID: actor.ID.String(), Name: name, MimeType: mimeType, FolderID: folderID, Overwrite: overwrite, ContentLength: hook.Upload.Size})
-			if err != nil {
-				log.Error().Err(err).Str("upload_id", hook.Upload.ID).Msg("tusHandler: finalize")
-				code := http.StatusInternalServerError
-				if strings.HasPrefix(err.Error(), "quota:") {
-					code = http.StatusUnprocessableEntity
-				}
-				var conflictErr *files.UploadConflictError
-				if errors.As(err, &conflictErr) {
-					code = http.StatusConflict
-				}
-				return tusd.HTTPResponse{
-					StatusCode: code,
-					Body:       `{"error":"` + err.Error() + `"}`,
-					Header:     tusd.HTTPHeader{contentTypeHeader: jsonContentType},
-				}, err
-			}
-			s.auditSvc.Log(ctx, audit.Event{
-				Type:         audit.EventFileUploaded,
-				ActorID:      &actor.ID,
-				ResourceID:   &f.ID,
-				ResourceName: f.Name,
-				IPAddress:    hook.HTTPRequest.RemoteAddr,
-			})
-			return tusd.HTTPResponse{}, nil
-		},
+		BasePath:                  "/upload/",
+		StoreComposer:             composer,
+		RespectForwardedHeaders:   true,
+		PreUploadCreateCallback:   s.tusPreUploadCreateCallback,
+		PreFinishResponseCallback: s.tusPreFinishResponseCallback,
 	}
 
 	h, err := tusd.NewUnroutedHandler(tusConfig)
@@ -965,49 +886,192 @@ func (s *Server) tusHandler() http.Handler {
 	}
 
 	r := chi.NewRouter()
-	// chi.Mount does NOT strip r.URL.Path (only sets the internal RoutePath).
-	// tusd's extractIDFromPath uses strings.Trim(r.URL.Path, "/"), so a PATCH
-	// to /upload/{id} would yield "upload/{id}" instead of "{id}" without this.
 	r.Use(func(next http.Handler) http.Handler { return http.StripPrefix("/upload", next) })
+	r.Options("/", http.HandlerFunc(writeTusNoContent))
+	r.Options("/{id}", http.HandlerFunc(writeTusNoContent))
 
-	// OPTIONS must be handled without auth so that CORS preflight requests
-	// (which carry no session cookie) are not rejected by RequireAuth.
-	// The parent router's go-chi/cors middleware adds the ACAO headers.
-	r.Options("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	r.Options("/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-
-	// All mutating TUS routes require a valid session or an upload token.
 	r.Group(func(r chi.Router) {
 		r.Use(s.authHandler.SessionMiddleware)
 		r.Use(s.authHandler.UploadTokenMiddleware)
 		r.Use(mw.RequireAuth)
 		r.Use(h.Middleware)
-		// Track each PATCH chunk so the admin bandwidth dashboard shows
-		// live upload activity while transfers are in progress.
-		r.Use(func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == http.MethodPatch {
-					if actor := mw.UserFromContext(r.Context()); actor != nil {
-						if cl := r.Header.Get("Content-Length"); cl != "" {
-							if n, err := strconv.ParseInt(cl, 10, 64); err == nil && n > 0 {
-								go s.ioTracker.TrackUpload(context.Background(), actor.ID.String(), n)
-							}
-						}
-					}
-				}
-				next.ServeHTTP(w, r)
-			})
-		})
+		r.Use(s.tusTrackPatchUploadMiddleware)
 		r.Post("/", h.PostFile)
 		r.Head("/{id}", h.HeadFile)
 		r.Patch("/{id}", h.PatchFile)
 		r.Delete("/{id}", h.DelFile)
 	})
 	return r
+}
+
+func writeTusNoContent(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) tusPreUploadCreateCallback(hook tusd.HookEvent) (tusd.HTTPResponse, tusd.FileInfoChanges, error) {
+	ctx := hook.Context
+	actor := mw.UserFromContext(ctx)
+	if actor == nil {
+		return tusd.HTTPResponse{StatusCode: http.StatusUnauthorized}, tusd.FileInfoChanges{}, nil
+	}
+
+	meta := hook.Upload.MetaData
+	overwrite := isTusOverwrite(meta)
+	conflict, response := s.tusFindUploadConflict(ctx, meta, overwrite)
+	if response != nil {
+		return *response, tusd.FileInfoChanges{}, nil
+	}
+	if response := s.tusValidateUploadSize(ctx, actor, hook.Upload.Size, meta["folder_id"], overwrite, conflict); response != nil {
+		return *response, tusd.FileInfoChanges{}, nil
+	}
+
+	return tusd.HTTPResponse{}, tusd.FileInfoChanges{}, nil
+}
+
+func isTusOverwrite(meta map[string]string) bool {
+	return strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "1") || strings.EqualFold(strings.TrimSpace(meta["overwrite"]), "true")
+}
+
+func (s *Server) tusFindUploadConflict(ctx context.Context, meta map[string]string, overwrite bool) (*files.File, *tusd.HTTPResponse) {
+	name := strings.TrimSpace(meta["filename"])
+	if name == "" {
+		return nil, nil
+	}
+
+	found, err := s.fileSvc.FindNameConflict(ctx, name, meta["folder_id"])
+	if err != nil {
+		log.Error().Err(err).Msg("tusHandler: precreate conflict lookup")
+		response := tusd.HTTPResponse{StatusCode: http.StatusInternalServerError}
+		return nil, &response
+	}
+	if found == nil {
+		return nil, nil
+	}
+	if found.IsFolder || !overwrite {
+		response := tusUploadConflictResponse(found.IsFolder)
+		return nil, &response
+	}
+
+	return found, nil
+}
+
+func tusUploadConflictResponse(isFolder bool) tusd.HTTPResponse {
+	message := "a file with this name already exists"
+	if isFolder {
+		message = "a folder with this name already exists"
+	}
+	return tusUploadErrorResponse(http.StatusConflict, message)
+}
+
+func (s *Server) tusValidateUploadSize(ctx context.Context, actor *user.User, size int64, folderID string, overwrite bool, conflict *files.File) *tusd.HTTPResponse {
+	if size <= 0 {
+		return nil
+	}
+
+	maxBytes := s.fileSvc.GetEffectiveMaxUpload(ctx, actor.ID.String(), actor.Role, folderID)
+	if size > maxBytes {
+		response := tusUploadErrorResponse(http.StatusRequestEntityTooLarge, "file exceeds the maximum upload size for this account")
+		return &response
+	}
+	if !overwrite || conflict == nil {
+		if err := s.fileSvc.CheckQuota(ctx, actor.ID.String(), size); err != nil {
+			response := tusUploadErrorResponse(http.StatusUnprocessableEntity, err.Error())
+			return &response
+		}
+	}
+
+	return nil
+}
+
+func (s *Server) tusPreFinishResponseCallback(hook tusd.HookEvent) (tusd.HTTPResponse, error) {
+	ctx := hook.Context
+	actor := mw.UserFromContext(ctx)
+	if actor == nil {
+		return tusd.HTTPResponse{StatusCode: http.StatusUnauthorized}, nil
+	}
+
+	name, mimeType, folderID, overwrite := normalizeTusFinalizeMeta(hook.Upload.MetaData)
+	tempPath := filepath.Join(s.cfg.TusUploadDir, hook.Upload.ID)
+	params := files.UploadParams{
+		OwnerID:       actor.ID.String(),
+		Name:          name,
+		MimeType:      mimeType,
+		FolderID:      folderID,
+		Overwrite:     overwrite,
+		ContentLength: hook.Upload.Size,
+	}
+
+	file, err := s.fileSvc.FinalizeTusUpload(ctx, tempPath, params)
+	if err != nil {
+		log.Error().Err(err).Str("upload_id", hook.Upload.ID).Msg("tusHandler: finalize")
+		return tusFinalizeUploadErrorResponse(err), err
+	}
+
+	s.auditSvc.Log(ctx, audit.Event{
+		Type:         audit.EventFileUploaded,
+		ActorID:      &actor.ID,
+		ResourceID:   &file.ID,
+		ResourceName: file.Name,
+		IPAddress:    hook.HTTPRequest.RemoteAddr,
+	})
+	return tusd.HTTPResponse{}, nil
+}
+
+func normalizeTusFinalizeMeta(meta map[string]string) (string, string, string, bool) {
+	name := meta["filename"]
+	if name == "" {
+		name = "upload"
+	}
+	mimeType := meta["filetype"]
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	return name, mimeType, meta["folder_id"], isTusOverwrite(meta)
+}
+
+func tusFinalizeUploadErrorResponse(err error) tusd.HTTPResponse {
+	code := http.StatusInternalServerError
+	if strings.HasPrefix(err.Error(), "quota:") {
+		code = http.StatusUnprocessableEntity
+	}
+	var conflictErr *files.UploadConflictError
+	if errors.As(err, &conflictErr) {
+		code = http.StatusConflict
+	}
+	return tusUploadErrorResponse(code, err.Error())
+}
+
+func tusUploadErrorResponse(statusCode int, message string) tusd.HTTPResponse {
+	return tusd.HTTPResponse{
+		StatusCode: statusCode,
+		Body:       `{"error":"` + message + `"}`,
+		Header:     tusd.HTTPHeader{contentTypeHeader: jsonContentType},
+	}
+}
+
+func (s *Server) tusTrackPatchUploadMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch {
+			s.trackTusPatchUpload(r)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) trackTusPatchUpload(r *http.Request) {
+	actor := mw.UserFromContext(r.Context())
+	if actor == nil {
+		return
+	}
+	contentLength := r.Header.Get("Content-Length")
+	if contentLength == "" {
+		return
+	}
+	bytes, err := strconv.ParseInt(contentLength, 10, 64)
+	if err != nil || bytes <= 0 {
+		return
+	}
+	go s.ioTracker.TrackUpload(context.Background(), actor.ID.String(), bytes)
 }
 
 func (s *Server) notImplemented(w http.ResponseWriter) {

@@ -101,12 +101,12 @@ export function TextEditor({ item, onClose }: Props) {
       const result = await res.json()
       return result
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       const newContent = editorRef.current?.getValue() ?? ''
       originalContent.current = newContent
       setDirty(false)
       setServerUpdatedAt(result?.data?.updated_at ?? new Date().toISOString())
-      void qc.invalidateQueries({ queryKey: ['files'] })
+      await qc.invalidateQueries({ queryKey: ['files'] })
       toast.success(t('editor.saved'))
     },
     onError: (err) => {

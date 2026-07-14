@@ -163,7 +163,7 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
     const onTime  = () => setProgress(audio.currentTime)
     const onDur   = () => setDuration(audio.duration)
     const initWebAudio = () => {
-      if (audioCtxRef.current) { void audioCtxRef.current.resume(); return }
+      if (audioCtxRef.current) { audioCtxRef.current.resume().catch(() => undefined); return }
       const ctx = new AudioContext()
       const source = ctx.createMediaElementSource(audio)
       const bassF = ctx.createBiquadFilter()

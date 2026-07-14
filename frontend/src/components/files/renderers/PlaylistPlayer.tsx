@@ -56,7 +56,7 @@ export function PlaylistPlayer({ fileId }: Readonly<PlaylistPlayerProps>) {
     audio.src = current.preview_url
     audio.load()
     if (wasPlaying) {
-      void audio.play().catch(() => setIsPlaying(false))
+      audio.play().catch(() => setIsPlaying(false))
     }
     setProgress(0)
     setDuration(0)
@@ -108,7 +108,7 @@ export function PlaylistPlayer({ fileId }: Readonly<PlaylistPlayerProps>) {
     const audio = audioRef.current
     if (!audio || !current) return
     if (audio.paused) {
-      void audio.play().catch(() => setIsPlaying(false))
+      audio.play().catch(() => setIsPlaying(false))
     } else {
       audio.pause()
     }

@@ -48,7 +48,7 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
       // Best effort
     }
     qc.setQueryData(['me'], null)
-    void qc.clear()
+    await qc.clear()
     window.location.href = '/login'
   }
 

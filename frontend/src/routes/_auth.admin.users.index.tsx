@@ -971,7 +971,7 @@ function UserRow({
 
 /** Parse a human-readable size string like "1GB", "500 MB", "2.5TB" ÔåÆ bytes, or null on failure. */
 function parseQuotaInput(s: string): number | null {
-  const m = s.trim().match(/^(\d+(?:\.\d+)?|\.\d+)\s*(KB|MB|GB|TB|PB|B)?$/i)
+  const m = /^(\d+(?:\.\d+)?|\.\d+)\s*(KB|MB|GB|TB|PB|B)?$/i.exec(s.trim())
   if (!m) return null
   const n = Number.parseFloat(m[1])
   const unit = (m[2] ?? 'B').toUpperCase()
@@ -1120,3 +1120,4 @@ function EditUserDialog({ user, onClose, onSaved }: Readonly<{ user: User; onClo
     </div>
   )
 }
+

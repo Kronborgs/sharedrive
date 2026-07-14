@@ -37,6 +37,206 @@ func NewHandler(db *pgxpool.Pool, mailer Mailer, appURL string) *Handler {
 	return &Handler{db: db, mailer: mailer, appURL: appURL}
 }
 
+const (
+	shareErrInternal = "internal error"
+	shareErrNotFound = "share not found"
+)
+
+type shareRecipient struct {
+	email        string
+	role         string
+	userNotFound bool
+}
+
+func isValidGranteeType(granteeType string) bool {
+	switch granteeType {
+	case "user", "group", "link":
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *Handler) resolveShareRecipient(ctx context.Context, req *createShareRequest) (shareRecipient, int, string) {
+	if req.GranteeType != "user" || req.GranteeID != "" {
+		return shareRecipient{}, 0, ""
+	}
+	if req.GranteeEmail == "" {
+		return shareRecipient{}, http.StatusBadRequest, "grantee_email is required for user shares"
+	}
+
+	var recipient shareRecipient
+	err := h.db.QueryRow(ctx,
+		`SELECT id, email, role FROM users WHERE email = lower($1) AND is_active = true`,
+		req.GranteeEmail,
+	).Scan(&req.GranteeID, &recipient.email, &recipient.role)
+	if err == nil {
+		return recipient, 0, ""
+	}
+
+	log.Debug().Str("grantee_email", req.GranteeEmail).Msg("share: grantee not found, creating pending share")
+	recipient.userNotFound = true
+	return recipient, 0, ""
+}
+
+func (h *Handler) lookupShareFileName(ctx context.Context, resourceID string, ownerID uuid.UUID) (string, error) {
+	var fileName string
+	err := h.db.QueryRow(ctx,
+		`SELECT name FROM files
+         WHERE id = $1 AND deleted_at IS NULL
+           AND (
+             owner_id = $2
+             OR EXISTS (
+               SELECT 1 FROM files p
+               WHERE p.id = (SELECT parent_id FROM files WHERE id = $1 AND deleted_at IS NULL)
+                 AND p.owner_id = $2
+             )
+           )`,
+		resourceID, ownerID,
+	).Scan(&fileName)
+	return fileName, err
+}
+
+func (h *Handler) shareExists(ctx context.Context, query string, args ...any) bool {
+	var exists bool
+	_ = h.db.QueryRow(ctx, query, args...).Scan(&exists)
+	return exists
+}
+
+func (h *Handler) shareConflictMessage(ctx context.Context, req createShareRequest, recipient shareRecipient) string {
+	switch {
+	case req.GranteeType == "user" && !recipient.userNotFound:
+		if h.shareExists(ctx,
+			`SELECT EXISTS(SELECT 1 FROM shares WHERE resource_id=$1 AND grantee_id=$2 AND revoked_at IS NULL)`,
+			req.ResourceID, req.GranteeID,
+		) {
+			return "This user already has access to this file"
+		}
+	case req.GranteeType == "group":
+		if h.shareExists(ctx,
+			`SELECT EXISTS(SELECT 1 FROM shares WHERE resource_id=$1 AND grantee_id=$2 AND revoked_at IS NULL)`,
+			req.ResourceID, req.GranteeID,
+		) {
+			return "This group already has access to this file"
+		}
+	case recipient.userNotFound:
+		if h.shareExists(ctx,
+			`SELECT EXISTS(SELECT 1 FROM shares WHERE resource_id=$1 AND pending_email=lower($2) AND revoked_at IS NULL)`,
+			req.ResourceID, req.GranteeEmail,
+		) {
+			return "An invite has already been sent to this email"
+		}
+	}
+	return ""
+}
+
+func shareInviteExpiry(expiresAt *time.Time) time.Time {
+	defaultExpiry := time.Now().Add(7 * 24 * time.Hour)
+	if expiresAt == nil {
+		return defaultExpiry
+	}
+	cap := time.Now().Add(30 * 24 * time.Hour)
+	if expiresAt.After(cap) {
+		return cap
+	}
+	return *expiresAt
+}
+
+func (h *Handler) insertInvitationToken(ctx context.Context, email, inviteHash string, ownerID uuid.UUID, expiresAt time.Time) error {
+	_, err := h.db.Exec(ctx,
+		`INSERT INTO invitation_tokens (email, token_hash, created_by, expires_at)
+         VALUES (lower($1), $2, $3, $4)
+         ON CONFLICT DO NOTHING`,
+		email, inviteHash, ownerID, expiresAt,
+	)
+	return err
+}
+
+func (h *Handler) createPendingShare(ctx context.Context, req createShareRequest, ownerID uuid.UUID, ownerEmail, fileName string) (string, error) {
+	inviteToken := uuid.New().String()
+	inviteHash := hashTokenSHA256(inviteToken)
+	if err := h.insertInvitationToken(ctx, req.GranteeEmail, inviteHash, ownerID, shareInviteExpiry(req.ExpiresAt)); err != nil {
+		return "", err
+	}
+
+	var shareID string
+	err := h.db.QueryRow(ctx,
+		`INSERT INTO shares (resource_id, owner_id, grantee_type, grantee_id,
+                             can_view, can_upload, can_edit, can_delete, can_reshare,
+                             created_by, expires_at, pending_email)
+         VALUES ($1, $2, 'pending', NULL, $3, $4, $5, $6, $7, $8, $9, lower($10))
+         RETURNING id`,
+		req.ResourceID, ownerID,
+		req.CanView, req.CanUpload, req.CanEdit, req.CanDelete, req.CanReshare,
+		ownerID, req.ExpiresAt, req.GranteeEmail,
+	).Scan(&shareID)
+	if err != nil {
+		return "", err
+	}
+
+	if h.mailer != nil {
+		inviteLink := h.appURL + "/accept-invite?token=" + inviteToken
+		go func() {
+			if err := h.mailer.SendShareInvite(context.Background(), req.GranteeEmail, ownerEmail, fileName, inviteLink); err != nil {
+				log.Warn().Err(err).Str("to", req.GranteeEmail).Msg("share: failed to send share-invite email")
+			}
+		}()
+	}
+	return shareID, nil
+}
+
+func buildShareTarget(req createShareRequest) (*string, any, error) {
+	if req.GranteeType != "link" {
+		return nil, req.GranteeID, nil
+	}
+
+	token, err := generateToken()
+	if err != nil {
+		return nil, nil, err
+	}
+	return &token, nil, nil
+}
+
+func (h *Handler) insertShare(ctx context.Context, req createShareRequest, ownerID uuid.UUID, granteeIDArg any, linkToken *string) (string, error) {
+	var id string
+	err := h.db.QueryRow(ctx,
+		`INSERT INTO shares (resource_id, owner_id, grantee_type, grantee_id,
+                             can_view, can_upload, can_edit, can_delete, can_reshare,
+                             created_by, expires_at, token)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         RETURNING id`,
+		req.ResourceID, ownerID, req.GranteeType, granteeIDArg,
+		req.CanView, req.CanUpload, req.CanEdit, req.CanDelete, req.CanReshare,
+		ownerID, req.ExpiresAt, linkToken,
+	).Scan(&id)
+	return id, err
+}
+
+func (h *Handler) notifyShareRecipient(ctx context.Context, recipient shareRecipient, ownerID uuid.UUID, ownerEmail, fileName string) {
+	if recipient.email == "" || h.mailer == nil {
+		return
+	}
+
+	if recipient.role == "guest" {
+		inviteToken := uuid.New().String()
+		inviteHash := hashTokenSHA256(inviteToken)
+		_ = h.insertInvitationToken(ctx, recipient.email, inviteHash, ownerID, time.Now().Add(7*24*time.Hour))
+		inviteLink := h.appURL + "/accept-invite?token=" + inviteToken
+		go func() {
+			if err := h.mailer.SendShareInvite(context.Background(), recipient.email, ownerEmail, fileName, inviteLink); err != nil {
+				log.Warn().Err(err).Str("to", recipient.email).Msg("failed to send share invite email to guest")
+			}
+		}()
+		return
+	}
+
+	go func() {
+		if err := h.mailer.SendShareNotification(context.Background(), recipient.email, ownerEmail, fileName, h.appURL); err != nil {
+			log.Warn().Err(err).Str("to", recipient.email).Msg("failed to send share notification email")
+		}
+	}()
+}
+
 type Share struct {
 	ID               string     `json:"id"`
 	ResourceID       string     `json:"resource_id"`
@@ -110,7 +310,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.db.Query(ctx, query, args...)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 		return
 	}
 	defer rows.Close()
@@ -124,13 +324,13 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			&s.ExpiresAt, &s.CreatedAt,
 			&s.GranteeEmail, &s.GranteeGroupName, &s.PendingEmail, &s.Token,
 		); err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 			return
 		}
 		out = append(out, s)
 	}
 	if err := rows.Err(); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 		return
 	}
 	if out == nil {
@@ -147,221 +347,62 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+
 	var req createShareRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if req.GranteeType != "user" && req.GranteeType != "group" && req.GranteeType != "link" {
+	if !isValidGranteeType(req.GranteeType) {
 		httputil.RespondError(w, http.StatusBadRequest, "grantee_type must be 'user', 'group', or 'link'")
 		return
 	}
 
-	// For user shares: look up UUID by email if grantee_id not provided.
-	var granteeEmail string
-	var granteeRole string
-	var userNotFound bool
-	if req.GranteeType == "user" && req.GranteeID == "" {
-		if req.GranteeEmail == "" {
-			httputil.RespondError(w, http.StatusBadRequest, "grantee_email is required for user shares")
-			return
-		}
-		err := h.db.QueryRow(ctx,
-			`SELECT id, email, role FROM users WHERE email = lower($1) AND is_active = true`,
-			req.GranteeEmail,
-		).Scan(&req.GranteeID, &granteeEmail, &granteeRole)
-		if err != nil {
-			// User not found — create a pending share + invitation instead of failing.
-			log.Debug().Str("grantee_email", req.GranteeEmail).Msg("share: grantee not found, creating pending share")
-			userNotFound = true
-		}
+	recipient, status, message := h.resolveShareRecipient(ctx, &req)
+	if status != 0 {
+		httputil.RespondError(w, status, message)
+		return
 	}
-	if req.GranteeType != "link" && !userNotFound && req.GranteeID == "" {
+	if req.GranteeType != "link" && !recipient.userNotFound && req.GranteeID == "" {
 		httputil.RespondError(w, http.StatusBadRequest, "grantee_id is required")
 		return
 	}
 
-	// Verify the resource belongs to this user, also fetch file name for notification.
-	var fileName string
-	err := h.db.QueryRow(ctx,
-		`SELECT name FROM files
-		 WHERE id = $1 AND deleted_at IS NULL
-		   AND (
-		     owner_id = $2
-		     OR EXISTS (
-		       SELECT 1 FROM files p
-		       WHERE p.id = (SELECT parent_id FROM files WHERE id = $1 AND deleted_at IS NULL)
-		         AND p.owner_id = $2
-		     )
-		   )`,
-		req.ResourceID, u.ID,
-	).Scan(&fileName)
+	fileName, err := h.lookupShareFileName(ctx, req.ResourceID, u.ID)
 	if err != nil {
 		log.Debug().Err(err).Str("resource_id", req.ResourceID).Msg("share: file lookup failed")
 		httputil.RespondError(w, http.StatusNotFound, "file not found")
 		return
 	}
 
-	// Duplicate check: reject if an active share already exists for this resource + grantee.
-	if req.GranteeType == "user" && !userNotFound {
-		var exists bool
-		_ = h.db.QueryRow(ctx,
-			`SELECT EXISTS(SELECT 1 FROM shares WHERE resource_id=$1 AND grantee_id=$2 AND revoked_at IS NULL)`,
-			req.ResourceID, req.GranteeID,
-		).Scan(&exists)
-		if exists {
-			httputil.RespondError(w, http.StatusConflict, "This user already has access to this file")
-			return
-		}
-	} else if req.GranteeType == "group" {
-		var exists bool
-		_ = h.db.QueryRow(ctx,
-			`SELECT EXISTS(SELECT 1 FROM shares WHERE resource_id=$1 AND grantee_id=$2 AND revoked_at IS NULL)`,
-			req.ResourceID, req.GranteeID,
-		).Scan(&exists)
-		if exists {
-			httputil.RespondError(w, http.StatusConflict, "This group already has access to this file")
-			return
-		}
-	} else if userNotFound {
-		// Pending share — check for existing pending share with same email.
-		var exists bool
-		_ = h.db.QueryRow(ctx,
-			`SELECT EXISTS(SELECT 1 FROM shares WHERE resource_id=$1 AND pending_email=lower($2) AND revoked_at IS NULL)`,
-			req.ResourceID, req.GranteeEmail,
-		).Scan(&exists)
-		if exists {
-			httputil.RespondError(w, http.StatusConflict, "An invite has already been sent to this email")
-			return
-		}
+	if conflict := h.shareConflictMessage(ctx, req, recipient); conflict != "" {
+		httputil.RespondError(w, http.StatusConflict, conflict)
+		return
 	}
-
-	// Pending share: grantee has no account yet → create invitation + pending share.
-	if userNotFound {
-		inviteToken := uuid.New().String()
-		inviteHash := hashTokenSHA256(inviteToken)
-
-		// Invitation expiry: use share expiry if set (capped at 30 days), otherwise 7 days.
-		inviteExpiry := "now() + interval '7 days'"
-		var inviteExpiryArg any
-		if req.ExpiresAt != nil {
-			cap := time.Now().Add(30 * 24 * time.Hour)
-			exp := *req.ExpiresAt
-			if exp.After(cap) {
-				exp = cap
-			}
-			inviteExpiryArg = exp
-			inviteExpiry = "$4"
-		}
-
-		var execErr error
-		if inviteExpiryArg != nil {
-			_, execErr = h.db.Exec(ctx,
-				`INSERT INTO invitation_tokens (email, token_hash, created_by, expires_at)
-				 VALUES (lower($1), $2, $3, $4)
-				 ON CONFLICT DO NOTHING`,
-				req.GranteeEmail, inviteHash, u.ID, inviteExpiryArg,
-			)
-		} else {
-			_, execErr = h.db.Exec(ctx,
-				`INSERT INTO invitation_tokens (email, token_hash, created_by, expires_at)
-				 VALUES (lower($1), $2, $3, `+inviteExpiry+`)
-				 ON CONFLICT DO NOTHING`,
-				req.GranteeEmail, inviteHash, u.ID,
-			)
-		}
-		if execErr != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-
-		var shareID string
-		err = h.db.QueryRow(ctx,
-			`INSERT INTO shares (resource_id, owner_id, grantee_type, grantee_id,
-			                     can_view, can_upload, can_edit, can_delete, can_reshare,
-			                     created_by, expires_at, pending_email)
-			 VALUES ($1, $2, 'pending', NULL, $3, $4, $5, $6, $7, $8, $9, lower($10))
-			 RETURNING id`,
-			req.ResourceID, u.ID,
-			req.CanView, req.CanUpload, req.CanEdit, req.CanDelete, req.CanReshare,
-			u.ID, req.ExpiresAt, req.GranteeEmail,
-		).Scan(&shareID)
+	if recipient.userNotFound {
+		shareID, err := h.createPendingShare(ctx, req, u.ID, u.Email, fileName)
 		if err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 			return
 		}
-
-		if h.mailer != nil {
-			inviteLink := h.appURL + "/accept-invite?token=" + inviteToken
-			go func() {
-				if err := h.mailer.SendShareInvite(context.Background(), req.GranteeEmail, u.Email, fileName, inviteLink); err != nil {
-					log.Warn().Err(err).Str("to", req.GranteeEmail).Msg("share: failed to send share-invite email")
-				}
-			}()
-		}
-
 		httputil.Respond(w, http.StatusCreated, map[string]any{"id": shareID, "pending": true})
 		return
 	}
 
-	// For link shares, generate a secure random token.
-	var linkToken *string
-	var granteeIDArg any
-	if req.GranteeType == "link" {
-		t, err := generateToken()
-		if err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		linkToken = &t
-		granteeIDArg = nil
-	} else {
-		granteeIDArg = req.GranteeID
-	}
-
-	var id string
-	err = h.db.QueryRow(ctx,
-		`INSERT INTO shares (resource_id, owner_id, grantee_type, grantee_id,
-		                     can_view, can_upload, can_edit, can_delete, can_reshare,
-		                     created_by, expires_at, token)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		 RETURNING id`,
-		req.ResourceID, u.ID, req.GranteeType, granteeIDArg,
-		req.CanView, req.CanUpload, req.CanEdit, req.CanDelete, req.CanReshare,
-		u.ID, req.ExpiresAt, linkToken,
-	).Scan(&id)
+	linkToken, granteeIDArg, err := buildShareTarget(req)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 		return
 	}
 
-	// Send email notification to the grantee for user shares.
-	if req.GranteeType == "user" && granteeEmail != "" && h.mailer != nil {
-		sharerName := u.Email
-		if granteeRole == "guest" {
-			// Guest users have no password — generate a fresh invitation token so they
-			// can sign in via the accept-invite flow just like a brand-new user.
-			inviteToken := uuid.New().String()
-			inviteHash := hashTokenSHA256(inviteToken)
-			_, _ = h.db.Exec(ctx,
-				`INSERT INTO invitation_tokens (email, token_hash, created_by, expires_at)
-				 VALUES (lower($1), $2, $3, now() + interval '7 days')
-				 ON CONFLICT DO NOTHING`,
-				granteeEmail, inviteHash, u.ID,
-			)
-			inviteLink := h.appURL + "/accept-invite?token=" + inviteToken
-			go func() {
-				if err := h.mailer.SendShareInvite(context.Background(), granteeEmail, sharerName, fileName, inviteLink); err != nil {
-					log.Warn().Err(err).Str("to", granteeEmail).Msg("failed to send share invite email to guest")
-				}
-			}()
-		} else {
-			go func() {
-				if err := h.mailer.SendShareNotification(context.Background(), granteeEmail, sharerName, fileName, h.appURL); err != nil {
-					log.Warn().Err(err).Str("to", granteeEmail).Msg("failed to send share notification email")
-				}
-			}()
-		}
+	id, err := h.insertShare(ctx, req, u.ID, granteeIDArg, linkToken)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
+		return
+	}
+
+	if req.GranteeType == "user" {
+		h.notifyShareRecipient(ctx, recipient, u.ID, u.Email, fileName)
 	}
 
 	resp := map[string]any{"id": id}
@@ -435,7 +476,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 
 	tag, err := h.db.Exec(ctx, q, args...)
 	if err != nil || tag.RowsAffected() == 0 {
-		httputil.RespondError(w, http.StatusNotFound, "share not found")
+		httputil.RespondError(w, http.StatusNotFound, shareErrNotFound)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
@@ -456,7 +497,7 @@ func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 		shareID, u.ID,
 	)
 	if err != nil || tag.RowsAffected() == 0 {
-		httputil.RespondError(w, http.StatusNotFound, "share not found")
+		httputil.RespondError(w, http.StatusNotFound, shareErrNotFound)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
@@ -506,7 +547,7 @@ func (h *Handler) SharedWithMe(w http.ResponseWriter, r *http.Request) {
 		u.ID,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 		return
 	}
 	defer rows.Close()
@@ -520,14 +561,14 @@ func (h *Handler) SharedWithMe(w http.ResponseWriter, r *http.Request) {
 			&r.Share.ExpiresAt, &r.Share.CreatedAt,
 			&r.Item.Name, &r.Item.IsFolder, &r.Item.SizeBytes, &r.Item.MimeType, &r.Item.CreatedAt,
 		); err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 			return
 		}
 		r.Item.ID = r.Share.ResourceID
 		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 		return
 	}
 	if out == nil {
@@ -579,7 +620,7 @@ func (h *Handler) MyShares(w http.ResponseWriter, r *http.Request) {
 		u.ID,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 		return
 	}
 	defer rows.Close()
@@ -598,7 +639,7 @@ func (h *Handler) MyShares(w http.ResponseWriter, r *http.Request) {
 			&item.Name, &item.IsFolder, &item.SizeBytes, &item.MimeType, &item.CreatedAt,
 			&item.ParentID,
 		); err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 			return
 		}
 		item.ID = s.ResourceID
@@ -609,7 +650,7 @@ func (h *Handler) MyShares(w http.ResponseWriter, r *http.Request) {
 		grouped[s.ResourceID].Shares = append(grouped[s.ResourceID].Shares, s)
 	}
 	if err := rows.Err(); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 		return
 	}
 
@@ -664,7 +705,7 @@ func (h *Handler) SharedByLink(w http.ResponseWriter, r *http.Request) {
 		&p.Item.Name, &p.Item.SizeBytes, &p.Item.MimeType, &isFolder,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusNotFound, "share not found")
+		httputil.RespondError(w, http.StatusNotFound, shareErrNotFound)
 		return
 	}
 	p.Item.ID = p.Share.ResourceID
@@ -759,7 +800,7 @@ func (h *Handler) SharedFolderChildren(w http.ResponseWriter, r *http.Request) {
 		folderID,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 		return
 	}
 	defer rows.Close()
@@ -768,13 +809,13 @@ func (h *Handler) SharedFolderChildren(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var c childItem
 		if err := rows.Scan(&c.ID, &c.Name, &c.IsFolder, &c.SizeBytes, &c.MimeType); err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 			return
 		}
 		children = append(children, c)
 	}
 	if err := rows.Err(); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, shareErrInternal)
 		return
 	}
 

@@ -48,6 +48,8 @@ export const Route = createFileRoute('/_auth/backup/')({
   component: BackupPage,
 })
 
+type TranslateFn = (key: string, params?: Record<string, unknown>) => string
+
 // ── file tree node (recursive) ───────────────────────────────────────────────
 
 function FileTreeNode({
@@ -94,6 +96,32 @@ function FileTreeNode({
   // When this item is explicitly selected, its children inherit from it.
   // Otherwise propagate the ancestor's ID downward.
   const ancestorIDForChildren = isExplicit ? item.id : nearestSelectedAncestorID
+  const expandControl = item.is_folder ? (
+    <button
+      type="button"
+      onClick={() => setExpanded(e => !e)}
+      className="p-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-200 transition-colors shrink-0"
+    >
+      {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+    </button>
+  ) : (
+    <span className="w-4 shrink-0" />
+  )
+  const itemIcon = getFileTreeItemIcon(item.is_folder, isChecked, isIndeterminate)
+  const itemNameClassName = getFileTreeNameClass(isChecked, isIndeterminate)
+  const childrenContent = getFileTreeChildrenContent({
+    expanded,
+    isFolder: item.is_folder,
+    loadingChildren,
+    children,
+    depth,
+    t,
+    selectedIDs,
+    onToggle,
+    ancestorIDs,
+    allChecked,
+    ancestorIDForChildren,
+  })
 
   return (
     <div>
@@ -101,17 +129,7 @@ function FileTreeNode({
         className={`flex items-center gap-1 py-1 rounded-md px-1 transition-colors ${rowClassName}`}
         style={{ paddingLeft: `${depth * 14 + 4}px` }}
       >
-        {item.is_folder ? (
-          <button
-            type="button"
-            onClick={() => setExpanded(e => !e)}
-            className="p-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-200 transition-colors shrink-0"
-          >
-            {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-          </button>
-        ) : (
-          <span className="w-4 shrink-0" />
-        )}
+        {expandControl}
         <label className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
           <span className={`flex items-center justify-center w-4 h-4 rounded shrink-0 border transition-colors ${labelClassName}`}>
             {isChecked && (
@@ -131,21 +149,13 @@ function FileTreeNode({
             onChange={() => onToggle(item.id, inheritedSelected ? nearestSelectedAncestorID : undefined)}
             className="sr-only"
           />
-          {item.is_folder
-            ? <Folder size={12} className={isChecked || isIndeterminate ? 'text-brand-500 shrink-0' : 'text-zinc-400 shrink-0'} />
-            : <FileIcon size={12} className={isChecked ? 'text-brand-400 shrink-0' : 'text-zinc-400 shrink-0'} />}
-          <span className={`text-xs truncate ${isChecked ? 'text-brand-700 dark:text-brand-300 font-medium' : isIndeterminate ? 'text-brand-600/70 dark:text-brand-400/70' : 'text-zinc-700 dark:text-slate-300'}`}>
+          {itemIcon}
+          <span className={`text-xs truncate ${itemNameClassName}`}>
             {item.name}
           </span>
         </label>
       </div>
-      {expanded && item.is_folder && (
-        loadingChildren
-          ? <p className="text-xs text-zinc-400 py-0.5" style={{ paddingLeft: `${(depth + 1) * 14 + 20}px` }}>{t('backup.pickerLoading')}</p>
-          : (children ?? []).map(c => (
-              <FileTreeNode key={c.id} item={c} depth={depth + 1} selectedIDs={selectedIDs} onToggle={onToggle} ancestorIDs={ancestorIDs} allChecked={allChecked} nearestSelectedAncestorID={ancestorIDForChildren} />
-            ))
-      )}
+      {childrenContent}
     </div>
   )
 }
@@ -200,6 +210,7 @@ function FolderPicker({
   const items = rootItems ?? []
   // allChecked = true when in "all files" mode (no explicit selection)
   const allChecked = selectedIDs.length === 0 && !manualMode
+  const selectionLabel = getFolderPickerSelectionLabel(allChecked, manualMode, selectedIDs.length, t)
 
   const handleAllFilesToggle = () => {
     if (allChecked) {
@@ -240,7 +251,7 @@ function FolderPicker({
         className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 transition-colors"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        {allChecked ? t('backup.allFiles') : manualMode && selectedIDs.length === 0 ? t('backup.nothingSelected') : t('backup.nItemsSelected', { count: selectedIDs.length })}
+        {selectionLabel}
       </button>
 
       {open && (
@@ -1107,24 +1118,12 @@ function BackupPage() {
                   <ArrowUpToLine size={13} className="text-brand-500" />
                   {t('backup.buddyStoresForYou')}
                 </div>
-                {buddyConfig?.peer_configured && (pushedArchives && pushedArchives.length > 0) ? (
-                  <>
-                    <p className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
-                      {formatBytes(pushedArchives.reduce((s, a) => s + a.size_bytes, 0))}
-                    </p>
-                    <p className="text-xs text-zinc-400">{pushedArchives.length} {pushedArchives.length !== 1 ? t('backup.archives') : t('backup.archive')}</p>
-                  </>
-                ) : buddyConfig?.peer_configured && buddyConfig.last_push_at ? (
-                  <>
-                    <p className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
-                      {formatBytes(buddyConfig.last_push_bytes ?? 0)}
-                    </p>
-                    <p className="text-xs text-zinc-400">
-                      {t('backup.lastAutoAt', { when: new Date(buddyConfig.last_push_at).toLocaleDateString() })}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-sm text-zinc-400 dark:text-slate-500">{t('backup.noArchivesYet')}</p>
+                {renderPushedArchiveSummary(
+                  buddyConfig?.peer_configured ?? false,
+                  pushedArchives,
+                  buddyConfig?.last_push_at,
+                  buddyConfig?.last_push_bytes ?? 0,
+                  t,
                 )}
               </div>
               {/* Tunnel status card — only when peer is configured */}
@@ -1134,43 +1133,13 @@ function BackupPage() {
                     <Network size={13} className="text-brand-500" />
                     Reverse tunnel
                   </div>
-                  {tunnelStatus?.connected_to_peer ? (
-                    <>
-                      <p className="text-sm font-semibold text-green-600 dark:text-green-400 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
-                        {t('backup.tunnelActive')}
-                      </p>
-                      {!tunnelStatus.peer_connected_here && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{t('backup.tunnelWrongDirection')}</p>
-                      )}
-                      <button
-                        onClick={() => tunnelDisconnectMutation.mutate()}
-                        disabled={tunnelDisconnectMutation.isPending}
-                        className="text-xs text-red-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                      >
-                        {t('backup.tunnelDisconnect')}
-                      </button>
-                    </>
-                  ) : tunnelStatus?.peer_connected_here ? (
-                    <>
-                      <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
-                        {t('backup.tunnelPeerConnected')}
-                      </p>
-                      <p className="text-xs text-zinc-400">{t('backup.tunnelPeerConnectedDesc')}</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-sm text-zinc-400 dark:text-slate-500">{t('backup.tunnelInactive')}</p>
-                      <button
-                        onClick={() => tunnelConnectMutation.mutate()}
-                        disabled={tunnelConnectMutation.isPending}
-                        className="text-xs text-brand-600 dark:text-brand-400 hover:underline transition-colors flex items-center gap-1"
-                      >
-                        {tunnelConnectMutation.isPending && <RefreshCw size={10} className="animate-spin" />}
-                        {t('backup.tunnelActivateCgnat')}
-                      </button>
-                    </>
+                  {renderTunnelStatusContent(
+                    tunnelStatus,
+                    tunnelConnectMutation.isPending,
+                    tunnelDisconnectMutation.isPending,
+                    () => tunnelConnectMutation.mutate(),
+                    () => tunnelDisconnectMutation.mutate(),
+                    t,
                   )}
                 </div>
               )}
@@ -1614,37 +1583,15 @@ function BackupPage() {
                 <p className="text-sm text-zinc-500 dark:text-slate-400">
                   {t('backup.pushedDesc')}
                 </p>
-                {pushedArchives && pushedArchives.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-slate-400 pb-1 border-b border-zinc-100 dark:border-[#2d3148]">
-                      <span>{pushedArchives.length} {pushedArchives.length !== 1 ? t('backup.archives') : t('backup.archive')}</span>
-                      <span className="font-medium">{formatBytes(pushedArchives.reduce((s, a) => s + a.size_bytes, 0))} total</span>
-                    </div>
-                    <div className="space-y-1">
-                      {pushedArchives.map(a => (
-                        <div
-                          key={a.filename}
-                          className="flex items-center gap-2 rounded-lg border border-zinc-100 dark:border-[#2d3148] px-3 py-2 text-xs"
-                        >
-                          <span className="flex-1 font-mono text-zinc-700 dark:text-slate-300 truncate">{a.filename}</span>
-                          <span className="text-zinc-400 shrink-0">{formatBytes(a.size_bytes)}</span>
-                          <span className="text-zinc-400 shrink-0">{new Date(a.received_at).toLocaleDateString()}</span>
-                          <button
-                            onClick={() => { if (confirm(t('backup.confirmDeleteAtPeer'))) deletePushedMutation.mutate(a.filename) }}
-                            disabled={deletePushedMutation.isPending}
-                            className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors disabled:opacity-50"
-                            title={t('backup.deleteAtPeer')}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : pushedArchives ? (
-                  <p className="text-xs text-zinc-400">{t('backup.noPushed')}</p>
-                ) : (
-                  <p className="text-xs text-zinc-400">{t('backup.fetchFromPeer')}</p>
+                {renderPushedArchivesContent(
+                  pushedArchives,
+                  deletePushedMutation.isPending,
+                  filename => {
+                    if (confirm(t('backup.confirmDeleteAtPeer'))) {
+                      deletePushedMutation.mutate(filename)
+                    }
+                  },
+                  t,
                 )}
               </section>
             )}
@@ -1659,44 +1606,11 @@ function BackupPage() {
                   {t('backup.receivedDesc')}
               </p>
 
-              {!buddyConfig?.has_receive_token ? (
-                <p className="text-xs text-zinc-400 dark:text-slate-500">{t('backup.receiveTokenNeeded')}</p>
-              ) : buddyReceived && buddyReceived.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-slate-400 pb-1 border-b border-zinc-100 dark:border-[#2d3148]">
-                    <span>{buddyReceived.length} {buddyReceived.length !== 1 ? t('backup.archives') : t('backup.archive')}</span>
-                    <span className="font-medium">{formatBytes(buddyReceived.reduce((s, a) => s + a.size_bytes, 0))} total</span>
-                  </div>
-                  <div className="space-y-1">
-                  {buddyReceived.map(a => (
-                    <div
-                      key={a.filename}
-                      className="flex items-center gap-2 rounded-lg border border-zinc-100 dark:border-[#2d3148] px-3 py-2 text-xs"
-                    >
-                      <span className="flex-1 font-mono text-zinc-700 dark:text-slate-300 truncate">{a.filename}</span>
-                      <span className="text-zinc-400 shrink-0">{formatBytes(a.size_bytes)}</span>
-                      <span className="text-zinc-400 shrink-0">{new Date(a.received_at).toLocaleDateString()}</span>
-                      <a
-                        href={`/api/v1/backup/buddy/received/${encodeURIComponent(a.filename)}`}
-                        download={a.filename}
-                        className="shrink-0 p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-                        title="Download"
-                      >
-                        <Download size={12} />
-                      </a>
-                      <button
-                        onClick={() => deleteBuddyMutation.mutate(a.filename)}
-                        className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-zinc-400">{t('backup.noReceived')}</p>
+              {renderReceivedArchivesContent(
+                buddyConfig?.has_receive_token ?? false,
+                buddyReceived,
+                filename => deleteBuddyMutation.mutate(filename),
+                t,
               )}
             </section>
           </div>
@@ -1714,51 +1628,23 @@ function BackupPage() {
             {t('backup.tokenDesc')}
           </p>
 
-          {isLoading ? (
-            <p className="text-sm text-zinc-400">{t('backup.tokenLoading')}</p>
-          ) : status?.has_password ? (
-            <div className="space-y-3">
-              <p className="text-sm text-zinc-600 dark:text-slate-400">
-                {t('backup.tokenActive')}
-                {status.created_at && <> Created {new Date(status.created_at).toLocaleDateString()}.</>}
-                {status.last_used_at && <> Last used {new Date(status.last_used_at).toLocaleDateString()}.</>}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    if (confirm(t('backup.rotateTokenConfirm'))) {
-                      generateMutation.mutate()
-                    }
-                  }}
-                  disabled={generateMutation.isPending}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-[#2d3148] text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw size={12} /> {t('backup.tokenRotate')}
-                </button>
-                <button
-                  onClick={() => {
-                    if (confirm(t('backup.revokeTokenConfirm'))) {
-                      revokeMutation.mutate()
-                    }
-                  }}
-                  disabled={revokeMutation.isPending}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
-                >
-                  <Trash2 size={12} /> {t('backup.tokenRevoke')}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-zinc-500 dark:text-slate-400">{t('backup.tokenNone')}</p>
-              <button
-                onClick={() => generateMutation.mutate()}
-                disabled={generateMutation.isPending}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
-              >
-                {t('backup.tokenGenerate')}
-              </button>
-            </div>
+          {renderTokenStatusContent(
+            isLoading,
+            status,
+            generateMutation.isPending,
+            revokeMutation.isPending,
+            () => {
+              if (confirm(t('backup.rotateTokenConfirm'))) {
+                generateMutation.mutate()
+              }
+            },
+            () => {
+              if (confirm(t('backup.revokeTokenConfirm'))) {
+                revokeMutation.mutate()
+              }
+            },
+            () => generateMutation.mutate(),
+            t,
           )}
 
           {newToken && (
@@ -1793,6 +1679,69 @@ function getFileTreeRowClass(isChecked: boolean, isIndeterminate: boolean): stri
   return 'hover:bg-zinc-100 dark:hover:bg-[#2d3148]/50'
 }
 
+function getFileTreeItemIcon(isFolder: boolean, isChecked: boolean, isIndeterminate: boolean) {
+  if (isFolder) {
+    return <Folder size={12} className={isChecked || isIndeterminate ? 'text-brand-500 shrink-0' : 'text-zinc-400 shrink-0'} />
+  }
+
+  return <FileIcon size={12} className={isChecked ? 'text-brand-400 shrink-0' : 'text-zinc-400 shrink-0'} />
+}
+
+function getFileTreeNameClass(isChecked: boolean, isIndeterminate: boolean): string {
+  if (isChecked) return 'text-brand-700 dark:text-brand-300 font-medium'
+  if (isIndeterminate) return 'text-brand-600/70 dark:text-brand-400/70'
+  return 'text-zinc-700 dark:text-slate-300'
+}
+
+function getFileTreeChildrenContent({
+  expanded,
+  isFolder,
+  loadingChildren,
+  children,
+  depth,
+  t,
+  selectedIDs,
+  onToggle,
+  ancestorIDs,
+  allChecked,
+  ancestorIDForChildren,
+}: Readonly<{
+  expanded: boolean
+  isFolder: boolean
+  loadingChildren: boolean
+  children: FileItem[] | undefined
+  depth: number
+  t: TranslateFn
+  selectedIDs: string[]
+  onToggle: (id: string, nearestAncestorID?: string) => void
+  ancestorIDs: Set<string>
+  allChecked: boolean
+  ancestorIDForChildren?: string
+}>) {
+  if (!expanded || !isFolder) return null
+
+  if (loadingChildren) {
+    return (
+      <p className="text-xs text-zinc-400 py-0.5" style={{ paddingLeft: `${(depth + 1) * 14 + 20}px` }}>
+        {t('backup.pickerLoading')}
+      </p>
+    )
+  }
+
+  return (children ?? []).map(child => (
+    <FileTreeNode
+      key={child.id}
+      item={child}
+      depth={depth + 1}
+      selectedIDs={selectedIDs}
+      onToggle={onToggle}
+      ancestorIDs={ancestorIDs}
+      allChecked={allChecked}
+      nearestSelectedAncestorID={ancestorIDForChildren}
+    />
+  ))
+}
+
 function getFileTreeLabelClass(isExplicit: boolean, inheritedSelected: boolean, isIndeterminate: boolean): string {
   if (isExplicit) return 'bg-brand-600 border-brand-600'
   if (inheritedSelected) return 'bg-brand-400 border-brand-400'
@@ -1800,8 +1749,269 @@ function getFileTreeLabelClass(isExplicit: boolean, inheritedSelected: boolean, 
   return 'border-zinc-300 dark:border-[#4a5070] bg-white dark:bg-[#1a1d27]'
 }
 
+function getFolderPickerSelectionLabel(allChecked: boolean, manualMode: boolean, selectedCount: number, t: TranslateFn): string {
+  if (allChecked) return t('backup.allFiles')
+  if (manualMode && selectedCount === 0) return t('backup.nothingSelected')
+  return t('backup.nItemsSelected', { count: selectedCount })
+}
+
 function getBackupTabClass(isActive: boolean, hasToken: boolean): string {
   if (isActive) return 'border-brand-500 text-brand-600 dark:text-brand-400'
   if (!hasToken) return 'border-transparent text-zinc-300 dark:text-slate-600 cursor-not-allowed'
   return 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200 cursor-pointer'
 }
+
+function getArchiveCountLabel(count: number, t: TranslateFn): string {
+  return `${count} ${count !== 1 ? t('backup.archives') : t('backup.archive')}`
+}
+
+function renderPushedArchiveSummary(
+  peerConfigured: boolean,
+  pushedArchives: BuddyArchive[] | undefined,
+  lastPushAt: string | null | undefined,
+  lastPushBytes: number,
+  t: TranslateFn,
+) {
+  if (peerConfigured && pushedArchives && pushedArchives.length > 0) {
+    return (
+      <>
+        <p className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
+          {formatBytes(pushedArchives.reduce((sum, archive) => sum + archive.size_bytes, 0))}
+        </p>
+        <p className="text-xs text-zinc-400">{getArchiveCountLabel(pushedArchives.length, t)}</p>
+      </>
+    )
+  }
+
+  if (peerConfigured && lastPushAt) {
+    return (
+      <>
+        <p className="text-lg font-semibold text-zinc-900 dark:text-slate-100">
+          {formatBytes(lastPushBytes)}
+        </p>
+        <p className="text-xs text-zinc-400">
+          {t('backup.lastAutoAt', { when: new Date(lastPushAt).toLocaleDateString() })}
+        </p>
+      </>
+    )
+  }
+
+  return <p className="text-sm text-zinc-400 dark:text-slate-500">{t('backup.noArchivesYet')}</p>
+}
+
+function renderTunnelStatusContent(
+  tunnelStatus: BuddyTunnelStatus | undefined,
+  connectPending: boolean,
+  disconnectPending: boolean,
+  onConnect: () => void,
+  onDisconnect: () => void,
+  t: TranslateFn,
+) {
+  if (tunnelStatus?.connected_to_peer) {
+    return (
+      <>
+        <p className="text-sm font-semibold text-green-600 dark:text-green-400 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+          {t('backup.tunnelActive')}
+        </p>
+        {!tunnelStatus.peer_connected_here && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{t('backup.tunnelWrongDirection')}</p>
+        )}
+        <button
+          onClick={onDisconnect}
+          disabled={disconnectPending}
+          className="text-xs text-red-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+        >
+          {t('backup.tunnelDisconnect')}
+        </button>
+      </>
+    )
+  }
+
+  if (tunnelStatus?.peer_connected_here) {
+    return (
+      <>
+        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
+          {t('backup.tunnelPeerConnected')}
+        </p>
+        <p className="text-xs text-zinc-400">{t('backup.tunnelPeerConnectedDesc')}</p>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <p className="text-sm text-zinc-400 dark:text-slate-500">{t('backup.tunnelInactive')}</p>
+      <button
+        onClick={onConnect}
+        disabled={connectPending}
+        className="text-xs text-brand-600 dark:text-brand-400 hover:underline transition-colors flex items-center gap-1"
+      >
+        {connectPending && <RefreshCw size={10} className="animate-spin" />}
+        {t('backup.tunnelActivateCgnat')}
+      </button>
+    </>
+  )
+}
+
+function renderPushedArchivesContent(
+  pushedArchives: BuddyArchive[] | undefined,
+  deletePending: boolean,
+  onDelete: (filename: string) => void,
+  t: TranslateFn,
+) {
+  if (pushedArchives && pushedArchives.length > 0) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-slate-400 pb-1 border-b border-zinc-100 dark:border-[#2d3148]">
+          <span>{getArchiveCountLabel(pushedArchives.length, t)}</span>
+          <span className="font-medium">{formatBytes(pushedArchives.reduce((sum, archive) => sum + archive.size_bytes, 0))} total</span>
+        </div>
+        <div className="space-y-1">
+          {pushedArchives.map(archive => (
+            <div
+              key={archive.filename}
+              className="flex items-center gap-2 rounded-lg border border-zinc-100 dark:border-[#2d3148] px-3 py-2 text-xs"
+            >
+              <span className="flex-1 font-mono text-zinc-700 dark:text-slate-300 truncate">{archive.filename}</span>
+              <span className="text-zinc-400 shrink-0">{formatBytes(archive.size_bytes)}</span>
+              <span className="text-zinc-400 shrink-0">{new Date(archive.received_at).toLocaleDateString()}</span>
+              <button
+                onClick={() => onDelete(archive.filename)}
+                disabled={deletePending}
+                className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors disabled:opacity-50"
+                title={t('backup.deleteAtPeer')}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (pushedArchives) {
+    return <p className="text-xs text-zinc-400">{t('backup.noPushed')}</p>
+  }
+
+  return <p className="text-xs text-zinc-400">{t('backup.fetchFromPeer')}</p>
+}
+
+function renderReceivedArchivesContent(
+  hasReceiveToken: boolean,
+  buddyReceived: BuddyArchive[] | undefined,
+  onDelete: (filename: string) => void,
+  t: TranslateFn,
+) {
+  if (!hasReceiveToken) {
+    return <p className="text-xs text-zinc-400 dark:text-slate-500">{t('backup.receiveTokenNeeded')}</p>
+  }
+
+  if (buddyReceived && buddyReceived.length > 0) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-slate-400 pb-1 border-b border-zinc-100 dark:border-[#2d3148]">
+          <span>{getArchiveCountLabel(buddyReceived.length, t)}</span>
+          <span className="font-medium">{formatBytes(buddyReceived.reduce((sum, archive) => sum + archive.size_bytes, 0))} total</span>
+        </div>
+        <div className="space-y-1">
+          {buddyReceived.map(archive => (
+            <div
+              key={archive.filename}
+              className="flex items-center gap-2 rounded-lg border border-zinc-100 dark:border-[#2d3148] px-3 py-2 text-xs"
+            >
+              <span className="flex-1 font-mono text-zinc-700 dark:text-slate-300 truncate">{archive.filename}</span>
+              <span className="text-zinc-400 shrink-0">{formatBytes(archive.size_bytes)}</span>
+              <span className="text-zinc-400 shrink-0">{new Date(archive.received_at).toLocaleDateString()}</span>
+              <a
+                href={`/api/v1/backup/buddy/received/${encodeURIComponent(archive.filename)}`}
+                download={archive.filename}
+                className="shrink-0 p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
+                title="Download"
+              >
+                <Download size={12} />
+              </a>
+              <button
+                onClick={() => onDelete(archive.filename)}
+                className="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
+                title="Delete"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return <p className="text-xs text-zinc-400">{t('backup.noReceived')}</p>
+}
+
+function renderTokenStatusContent(
+  isLoading: boolean,
+  status: BackupPasswordStatus | undefined,
+  generatePending: boolean,
+  revokePending: boolean,
+  onRotate: () => void,
+  onRevoke: () => void,
+  onGenerate: () => void,
+  t: TranslateFn,
+) {
+  if (isLoading) {
+    return <p className="text-sm text-zinc-400">{t('backup.tokenLoading')}</p>
+  }
+
+  if (status?.has_password) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-zinc-600 dark:text-slate-400">
+          {t('backup.tokenActive')}
+          {status.created_at && <> Created {new Date(status.created_at).toLocaleDateString()}.</>}
+          {status.last_used_at && <> Last used {new Date(status.last_used_at).toLocaleDateString()}.</>}
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={onRotate}
+            disabled={generatePending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 dark:border-[#2d3148] text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={12} /> {t('backup.tokenRotate')}
+          </button>
+          <button
+            onClick={onRevoke}
+            disabled={revokePending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+          >
+            <Trash2 size={12} /> {t('backup.tokenRevoke')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-zinc-500 dark:text-slate-400">{t('backup.tokenNone')}</p>
+      <button
+        onClick={onGenerate}
+        disabled={generatePending}
+        className="px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+      >
+        {t('backup.tokenGenerate')}
+      </button>
+    </div>
+  )
+}
+
+
+
+
+
+
+
+
+
+

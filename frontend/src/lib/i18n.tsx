@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 export type Locale = 'da' | 'en'
 
@@ -1101,12 +1101,12 @@ function getInitialLocale(): Locale {
 }
 
 export function I18nProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [locale, setLocaleState] = useState<Locale>(getInitialLocale)
+  const [locale, setLocale] = useState<Locale>(getInitialLocale)
 
-  const setLocale = useCallback((l: Locale) => {
-    setLocaleState(l)
-    try { localStorage.setItem(STORAGE_KEY, l) } catch { /* ignore */ }
-  }, [])
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, locale) } catch { /* ignore */ }
+  }, [locale])
+
 
   const t = useCallback((key: TranslationKey, vars?: Record<string, string | number>): string => {
     const entry = translations[key]
@@ -1120,8 +1120,10 @@ export function I18nProvider({ children }: Readonly<{ children: ReactNode }>) {
     return text
   }, [locale])
 
+  const value = useMemo(() => ({ locale, setLocale, t }), [locale, t])
+
   return (
-    <I18nContext.Provider value={{ locale, setLocale, t }}>
+    <I18nContext.Provider value={value}>
       {children}
     </I18nContext.Provider>
   )

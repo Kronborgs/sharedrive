@@ -49,10 +49,100 @@ function BlockedIPsPage() {
   })
 
   const tierLabel: Record<string, string> = {
-    '60m':    '60-minute lockout',
-    '6h':     '6-hour lockout',
-    '24h':    '24-hour lockout',
-    'manual': 'Manual block (admin unblock required)',
+    '60m': '60-minute lockout',
+    '6h': '6-hour lockout',
+    '24h': '24-hour lockout',
+    manual: 'Manual block (admin unblock required)',
+  }
+
+  const renderBlockedContent = () => {
+    if (loadingBlocked) {
+      return <div className="p-6 text-sm text-muted text-center">{t('blocked.loading')}</div>
+    }
+    if (blocked?.length === 0) {
+      return <div className="p-6 text-sm text-muted text-center">{t('blocked.noLockouts')}</div>
+    }
+    return (
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-zinc-100 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117]">
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('blocked.colIp')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('blocked.colTier')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('blocked.colAttempts')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('blocked.colExpires')}</th>
+            <th className="px-4 py-3" />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
+          {blocked?.map(b => {
+            const tierClass = b.tier === 'manual'
+              ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+              : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+            const expiresText = b.ttl_seconds == null
+              ? t('blocked.neverManual')
+              : t('blocked.inNMin', { n: String(Math.ceil(b.ttl_seconds / 60)) })
+
+            return (
+              <tr key={b.ip} className="hover:bg-zinc-50 dark:hover:bg-[#0f1117]">
+                <td className="px-4 py-3 font-mono text-sm">{b.ip}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-xs px-2 py-0.5 rounded font-medium ${tierClass}`}>
+                    {tierLabel[b.tier] ?? b.tier}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 dark:text-red-400">
+                    {b.attempt_count}
+                    <span className="font-normal text-muted">{t('blocked.attempts')}</span>
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-xs text-muted">{expiresText}</td>
+                <td className="px-4 py-3 text-right">
+                  <button
+                    onClick={() => unblock.mutate(b.ip)}
+                    disabled={unblock.isPending}
+                    className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
+                  >
+                    {t('blocked.unblock')}
+                  </button>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    )
+  }
+
+  const renderWhitelistContent = () => {
+    if (loadingWhitelist) {
+      return <div className="p-6 text-sm text-muted text-center">{t('blocked.loading')}</div>
+    }
+    if (whitelist?.length === 0) {
+      return <div className="p-6 text-sm text-muted text-center">{t('blocked.noWhitelist')}</div>
+    }
+    return (
+      <table className="w-full text-sm">
+        <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
+          {whitelist?.map(entry => (
+            <tr key={entry.id} className="hover:bg-zinc-50 dark:hover:bg-[#0f1117]">
+              <td className="px-4 py-3 font-mono">{entry.ip_cidr}</td>
+              <td className="px-4 py-3 text-muted text-xs">{entry.description || '—'}</td>
+              <td className="px-4 py-3 text-xs text-muted">{formatDate(entry.created_at)}</td>
+              <td className="px-4 py-3 text-right">
+                <button
+                  onClick={() => removeWhitelist.mutate(entry.id)}
+                  disabled={removeWhitelist.isPending}
+                  className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
+                >
+                  {t('blocked.remove')}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )
   }
 
   return (
@@ -67,59 +157,7 @@ function BlockedIPsPage() {
           <h2 className="text-sm font-medium text-zinc-900 dark:text-slate-100">{t('blocked.activeLockouts')}</h2>
           <span className="text-xs text-muted">{blocked?.length ?? 0} active</span>
         </div>
-        {loadingBlocked ? (
-          <div className="p-6 text-sm text-muted text-center">{t('blocked.loading')}</div>
-        ) : blocked?.length === 0 ? (
-          <div className="p-6 text-sm text-muted text-center">{t('blocked.noLockouts')}</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-zinc-100 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117]">
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('blocked.colIp')}</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('blocked.colTier')}</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('blocked.colAttempts')}</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('blocked.colExpires')}</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
-              {blocked?.map(b => (
-                <tr key={b.ip} className="hover:bg-zinc-50 dark:hover:bg-[#0f1117]">
-                  <td className="px-4 py-3 font-mono text-sm">{b.ip}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${
-                      b.tier === 'manual'
-                        ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                        : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                    }`}>
-                      {tierLabel[b.tier] ?? b.tier}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 dark:text-red-400">
-                      {b.attempt_count}
-                      <span className="font-normal text-muted">{t('blocked.attempts')}</span>
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted">
-                    {b.ttl_seconds == null
-                      ? t('blocked.neverManual')
-                      : t('blocked.inNMin', { n: String(Math.ceil(b.ttl_seconds / 60)) })}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => unblock.mutate(b.ip)}
-                      disabled={unblock.isPending}
-                      className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
-                    >
-                      {t('blocked.unblock')}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {renderBlockedContent()}
       </section>
 
       {/* IP Whitelist */}
@@ -154,32 +192,7 @@ function BlockedIPsPage() {
           </button>
         </div>
 
-        {loadingWhitelist ? (
-          <div className="p-6 text-sm text-muted text-center">{t('blocked.loading')}</div>
-        ) : whitelist?.length === 0 ? (
-          <div className="p-6 text-sm text-muted text-center">{t('blocked.noWhitelist')}</div>
-        ) : (
-          <table className="w-full text-sm">
-            <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
-              {whitelist?.map(entry => (
-                <tr key={entry.id} className="hover:bg-zinc-50 dark:hover:bg-[#0f1117]">
-                  <td className="px-4 py-3 font-mono">{entry.ip_cidr}</td>
-                  <td className="px-4 py-3 text-muted text-xs">{entry.description || '—'}</td>
-                  <td className="px-4 py-3 text-xs text-muted">{formatDate(entry.created_at)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => removeWhitelist.mutate(entry.id)}
-                      disabled={removeWhitelist.isPending}
-                      className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
-                    >
-                      {t('blocked.remove')}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {renderWhitelistContent()}
       </section>
     </div>
   )

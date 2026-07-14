@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react'
+import React, { createContext, useCallback, useContext, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiClientError } from '@/lib/api'
 import type { User } from '@/types/api'
@@ -33,15 +33,15 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     staleTime: 30_000,
   })
 
-  const refetch = async () => {
+  const refetch = useCallback(async () => {
     await qc.invalidateQueries({ queryKey: ['me'] })
-  }
+  }, [qc])
 
-  const setUser = (u: User | null) => {
+  const setUser = useCallback((u: User | null) => {
     qc.setQueryData<User | null>(['me'], u)
-  }
+  }, [qc])
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await api.post('/api/v1/auth/logout')
     } catch {
@@ -50,10 +50,18 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     qc.setQueryData(['me'], null)
     await qc.clear()
     window.location.href = '/login'
-  }
+  }, [qc])
+
+  const value = useMemo(() => ({
+    user: user ?? null,
+    isLoading,
+    refetch,
+    logout,
+    setUser,
+  }), [user, isLoading, refetch, logout, setUser])
 
   return (
-    <AuthContext.Provider value={{ user: user ?? null, isLoading, refetch, logout, setUser }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )

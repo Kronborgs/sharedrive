@@ -3,19 +3,20 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
+  api,
   fetchPlaylistTracks,
   updatePlaylistTracks,
   fetchPersistedPlaylistState,
   savePersistedPlaylistState,
+  type PlaylistTrack,
 } from '@/lib/api'
-import { api } from '@/lib/api'
-import type { PlaylistTrack } from '@/lib/api'
 
 export type { PlaylistTrack }
 
@@ -408,37 +409,64 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
     setActivePlaylistName(null)
   }, [])
 
+  const value = useMemo(() => ({
+    activePlaylistId,
+    activePlaylistName,
+    tracks,
+    isLoadingTracks,
+    currentIndex,
+    isPlaying,
+    progress,
+    duration,
+    volume,
+    bass,
+    treble,
+    shuffle,
+    setPlaylist,
+    clearPlaylist,
+    jumpTo,
+    togglePlay,
+    next,
+    prev,
+    seek,
+    setVolume,
+    setBass,
+    setTreble,
+    toggleShuffle,
+    removeTrack,
+    addTracks,
+    playlistMaxTracks,
+  }), [
+    activePlaylistId,
+    activePlaylistName,
+    tracks,
+    isLoadingTracks,
+    currentIndex,
+    isPlaying,
+    progress,
+    duration,
+    volume,
+    bass,
+    treble,
+    shuffle,
+    setPlaylist,
+    clearPlaylist,
+    jumpTo,
+    togglePlay,
+    next,
+    prev,
+    seek,
+    setVolume,
+    setBass,
+    setTreble,
+    toggleShuffle,
+    removeTrack,
+    addTracks,
+    playlistMaxTracks,
+  ])
+
   return (
-    <PlaylistContext.Provider
-      value={{
-        activePlaylistId,
-        activePlaylistName,
-        tracks,
-        isLoadingTracks,
-        currentIndex,
-        isPlaying,
-        progress,
-        duration,
-        volume,
-        bass,
-        treble,
-        shuffle,
-        setPlaylist,
-        clearPlaylist,
-        jumpTo,
-        togglePlay,
-        next,
-        prev,
-        seek,
-        setVolume,
-        setBass,
-        setTreble,
-        toggleShuffle,
-        removeTrack,
-        addTracks,
-        playlistMaxTracks,
-      }}
-    >
+    <PlaylistContext.Provider value={value}>
       {children}
     </PlaylistContext.Provider>
   )

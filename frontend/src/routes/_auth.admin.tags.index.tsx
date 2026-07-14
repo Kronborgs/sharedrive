@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import type { Tag } from '@/types/api'
-import { Pencil, Trash2, Plus } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { ignorePromise } from '@/lib/ignore-promise'
 
@@ -16,6 +16,29 @@ const PRESET_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
   '#14b8a6', '#06b6d4', '#3b82f6', '#64748b',
 ]
+
+function ColorPicker({
+  selectedColor,
+  onSelect,
+}: Readonly<{
+  selectedColor: string
+  onSelect: (color: string) => void
+}>) {
+  return (
+    <div className="flex gap-1">
+      {PRESET_COLORS.map(color => (
+        <button
+          key={color}
+          type="button"
+          onClick={() => onSelect(color)}
+          className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${selectedColor === color ? 'border-white dark:border-slate-200 scale-110' : 'border-transparent'}`}
+          style={{ backgroundColor: color }}
+          title={color}
+        />
+      ))}
+    </div>
+  )
+}
 
 function TagsPage() {
   const qc = useQueryClient()
@@ -42,13 +65,24 @@ function TagsPage() {
 
   const update = useMutation({
     mutationFn: () => api.patch(`/api/v1/admin/tags/${editId}`, { name: editName, color: editColor }),
-    onSuccess: () => { ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'tags'] })); setEditId(null) },
+    onSuccess: () => {
+      ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'tags'] }))
+      setEditId(null)
+    },
   })
 
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/admin/tags/${id}`),
-    onSuccess: () => { ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'tags'] })) },
+    onSuccess: () => {
+      ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'tags'] }))
+    },
   })
+
+  const startEdit = (tag: Tag) => {
+    setEditId(tag.id)
+    setEditName(tag.name)
+    setEditColor(tag.color)
+  }
 
   const renderTags = () => {
     if (isLoading) {
@@ -64,7 +98,10 @@ function TagsPage() {
             {editId === tag.id ? (
               <form
                 className="flex flex-wrap gap-2 flex-1 items-center"
-                onSubmit={e => { e.preventDefault(); update.mutate(undefined) }}
+                onSubmit={e => {
+                  e.preventDefault()
+                  update.mutate(undefined)
+                }}
               >
                 <input
                   autoFocus
@@ -72,18 +109,7 @@ function TagsPage() {
                   onChange={e => setEditName(e.target.value)}
                   className="flex-1 rounded-lg border border-brand-400 bg-zinc-50 dark:bg-[#0f1117] px-3 py-1 text-sm text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
-                <div className="flex gap-1">
-                  {PRESET_COLORS.map(c => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setEditColor(c)}
-                      className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${editColor === c ? 'border-white dark:border-slate-200 scale-110' : 'border-transparent'}`}
-                      style={{ backgroundColor: c }}
-                      title={c}
-                    />
-                  ))}
-                </div>
+                <ColorPicker selectedColor={editColor} onSelect={setEditColor} />
                 <button type="submit" className="px-3 py-1 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm">Save</button>
                 <button type="button" onClick={() => setEditId(null)} className="px-3 py-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted">Cancel</button>
               </form>
@@ -95,11 +121,7 @@ function TagsPage() {
                   <div className="text-xs text-muted">{tag.color}</div>
                 </div>
                 <button
-                  onClick={() => {
-                    setEditId(tag.id)
-                    setEditName(tag.name)
-                    setEditColor(tag.color)
-                  }}
+                  onClick={() => startEdit(tag)}
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
                   title="Edit tag"
                 >
@@ -119,6 +141,7 @@ function TagsPage() {
       </ul>
     )
   }
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('tags.title')}</h1>
@@ -127,9 +150,11 @@ function TagsPage() {
       </p>
 
       <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
-        {/* Create form */}
         <form
-          onSubmit={e => { e.preventDefault(); create.mutate(undefined) }}
+          onSubmit={e => {
+            e.preventDefault()
+            create.mutate(undefined)
+          }}
           className="px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148] flex flex-wrap gap-2 items-center"
         >
           <input
@@ -138,18 +163,7 @@ function TagsPage() {
             placeholder={t('tags.placeholder')}
             className="flex-1 min-w-[140px] rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
-          <div className="flex gap-1">
-            {PRESET_COLORS.map(c => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setColor(c)}
-                className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${color === c ? 'border-white dark:border-slate-200 scale-110' : 'border-transparent'}`}
-                style={{ backgroundColor: c }}
-                title={c}
-              />
-            ))}
-          </div>
+          <ColorPicker selectedColor={color} onSelect={setColor} />
           <button
             type="submit"
             disabled={!name.trim() || create.isPending}

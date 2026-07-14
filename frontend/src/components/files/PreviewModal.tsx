@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
 import { X, Download, AlertTriangle, Loader2, Printer, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import type { FileItem } from '@/types/api'
 import { PDFRenderer } from './renderers/PDFRenderer'
@@ -301,6 +301,35 @@ function ImageRenderer({ url, name, onDelete }: Readonly<{ url: string; name: st
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [objectUrl])
 
+  let previewContent: ReactElement | null = null
+  if (error) {
+    previewContent = (
+      <div className="flex flex-col items-center gap-3 text-muted">
+        <AlertTriangle size={40} className="text-amber-400 dark:text-amber-500" />
+        <span className="text-sm font-medium">{t('preview.imageLoadFailed')}</span>
+        <span className="text-xs text-zinc-400 dark:text-zinc-500">{t('preview.imageMayBeCorrupt')}</span>
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className="mt-2 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors"
+          >
+            <Trash2 size={14} />
+            {t('preview.deleteCorrupted')}
+          </button>
+        )}
+      </div>
+    )
+  } else if (objectUrl) {
+    previewContent = (
+      <img
+        src={objectUrl}
+        alt={name}
+        className={`max-w-full max-h-full object-contain transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        onLoad={() => setLoaded(true)}
+        onError={() => { setLoaded(true); setError(true) }}
+      />
+    )
+  }
   return (
     <div className="flex items-center justify-center h-full bg-zinc-50 dark:bg-[#0f1117] p-4 overflow-auto relative">
       {!loaded && !error && (
@@ -308,30 +337,7 @@ function ImageRenderer({ url, name, onDelete }: Readonly<{ url: string; name: st
           <Loader2 size={28} className="animate-spin text-brand-500" />
         </div>
       )}
-      {error ? (
-        <div className="flex flex-col items-center gap-3 text-muted">
-          <AlertTriangle size={40} className="text-amber-400 dark:text-amber-500" />
-          <span className="text-sm font-medium">{t('preview.imageLoadFailed')}</span>
-          <span className="text-xs text-zinc-400 dark:text-zinc-500">{t('preview.imageMayBeCorrupt')}</span>
-          {onDelete && (
-            <button
-              onClick={onDelete}
-              className="mt-2 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors"
-            >
-              <Trash2 size={14} />
-              {t('preview.deleteCorrupted')}
-            </button>
-          )}
-        </div>
-      ) : objectUrl ? (
-        <img
-          src={objectUrl}
-          alt={name}
-          className={`max-w-full max-h-full object-contain transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
-          onLoad={() => setLoaded(true)}
-          onError={() => { setLoaded(true); setError(true) }}
-        />
-      ) : null}
+      {previewContent}
     </div>
   )
 }

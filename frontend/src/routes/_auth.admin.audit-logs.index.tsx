@@ -124,6 +124,50 @@ export function AuditLogsPage() {
   const setEvent = (e: string) => ignorePromise(navigate({ search: prev => ({ ...prev, event: e, page: 1 }) }))
   const setUser = (u: string) => ignorePromise(navigate({ search: prev => ({ ...prev, user: u, page: 1 }) }))
 
+  const renderTableContent = () => {
+    if (isLoading) {
+      return <div className="p-8 text-center text-sm text-muted">{t('audit.loading')}</div>
+    }
+    if (logs.length === 0) {
+      return <div className="p-8 text-center text-sm text-muted">{t('audit.noEvents')}</div>
+    }
+    return (
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-zinc-100 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117]">
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase w-36">{t('audit.colTime')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('audit.colEvent')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('audit.colActor')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('audit.colTarget')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase hidden md:table-cell">{t('audit.colIp')}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
+          {logs.map(log => (
+            <tr key={log.id} className="hover:bg-zinc-50 dark:hover:bg-[#0f1117]">
+              <td className="px-4 py-2.5 text-xs text-muted whitespace-nowrap" title={formatDate(log.created_at)}>
+                {formatRelative(log.created_at)}
+              </td>
+              <td className="px-4 py-2.5">
+                <span className={`font-mono text-xs ${eventColor(log.event_type)}`}>
+                  {log.event_type}
+                </span>
+              </td>
+              <td className="px-4 py-2.5 text-xs text-muted max-w-[160px] truncate" title={log.actor_email ?? undefined}>
+                {log.actor_email ?? <em>system</em>}
+              </td>
+              <td className="px-4 py-2.5 text-xs text-muted max-w-[160px] truncate" title={log.target_email ?? undefined}>
+                {log.target_email ?? '—'}
+              </td>
+              <td className="px-4 py-2.5 text-xs text-muted font-mono hidden md:table-cell">
+                {log.ip_address ?? '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )
+  }
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('audit.title')}</h1>
@@ -170,46 +214,7 @@ export function AuditLogsPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
-        {isLoading ? (
-          <div className="p-8 text-center text-sm text-muted">{t('audit.loading')}</div>
-        ) : logs.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted">{t('audit.noEvents')}</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-zinc-100 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117]">
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase w-36">{t('audit.colTime')}</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('audit.colEvent')}</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('audit.colActor')}</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('audit.colTarget')}</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase hidden md:table-cell">{t('audit.colIp')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
-              {logs.map(log => (
-                <tr key={log.id} className="hover:bg-zinc-50 dark:hover:bg-[#0f1117]">
-                  <td className="px-4 py-2.5 text-xs text-muted whitespace-nowrap" title={formatDate(log.created_at)}>
-                    {formatRelative(log.created_at)}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <span className={`font-mono text-xs ${eventColor(log.event_type)}`}>
-                      {log.event_type}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted max-w-[160px] truncate" title={log.actor_email ?? undefined}>
-                    {log.actor_email ?? <em>system</em>}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted max-w-[160px] truncate" title={log.target_email ?? undefined}>
-                    {log.target_email ?? '—'}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted font-mono hidden md:table-cell">
-                    {log.ip_address ?? '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {renderTableContent()}
       </div>
 
       {/* Pagination */}

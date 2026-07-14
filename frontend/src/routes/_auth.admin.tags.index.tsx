@@ -50,6 +50,75 @@ function TagsPage() {
     onSuccess: () => { ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'tags'] })) },
   })
 
+  const renderTags = () => {
+    if (isLoading) {
+      return <div className="p-8 text-center text-sm text-muted">{t('tags.loading')}</div>
+    }
+    if (tags?.length === 0) {
+      return <div className="p-8 text-center text-sm text-muted">{t('tags.noTags')}</div>
+    }
+    return (
+      <ul className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
+        {tags?.map(tag => (
+          <li key={tag.id} className="flex items-center gap-3 px-4 py-3">
+            {editId === tag.id ? (
+              <form
+                className="flex flex-wrap gap-2 flex-1 items-center"
+                onSubmit={e => { e.preventDefault(); update.mutate(undefined) }}
+              >
+                <input
+                  autoFocus
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  className="flex-1 rounded-lg border border-brand-400 bg-zinc-50 dark:bg-[#0f1117] px-3 py-1 text-sm text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <div className="flex gap-1">
+                  {PRESET_COLORS.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setEditColor(c)}
+                      className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${editColor === c ? 'border-white dark:border-slate-200 scale-110' : 'border-transparent'}`}
+                      style={{ backgroundColor: c }}
+                      title={c}
+                    />
+                  ))}
+                </div>
+                <button type="submit" className="px-3 py-1 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm">Save</button>
+                <button type="button" onClick={() => setEditId(null)} className="px-3 py-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted">Cancel</button>
+              </form>
+            ) : (
+              <>
+                <span className="w-4 h-4 rounded-full" style={{ backgroundColor: tag.color }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-zinc-900 dark:text-slate-100">{tag.name}</div>
+                  <div className="text-xs text-muted">{tag.color}</div>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditId(tag.id)
+                    setEditName(tag.name)
+                    setEditColor(tag.color)
+                  }}
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+                  title="Edit tag"
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  onClick={() => remove.mutate(tag.id)}
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  title="Delete tag"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    )
+  }
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('tags.title')}</h1>
@@ -91,70 +160,7 @@ function TagsPage() {
           </button>
         </form>
 
-        {isLoading ? (
-          <div className="p-8 text-center text-sm text-muted">{t('tags.loading')}</div>
-        ) : tags?.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted">{t('tags.noTags')}</div>
-        ) : (
-          <ul className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
-            {tags?.map(tag => (
-              <li key={tag.id} className="flex items-center gap-3 px-4 py-3">
-                {editId === tag.id ? (
-                  <form
-                    className="flex flex-wrap gap-2 flex-1 items-center"
-                    onSubmit={e => { e.preventDefault(); update.mutate(undefined) }}
-                  >
-                    <input
-                      autoFocus
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      className="flex-1 rounded-lg border border-brand-400 bg-zinc-50 dark:bg-[#0f1117] px-3 py-1 text-sm text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    />
-                    <div className="flex gap-1">
-                      {PRESET_COLORS.map(c => (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => setEditColor(c)}
-                          className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${editColor === c ? 'border-white dark:border-slate-200 scale-110' : 'border-transparent'}`}
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
-                    </div>
-                    <button type="submit" disabled={!editName.trim()} className="px-3 py-1 rounded-lg bg-brand-600 text-white text-sm font-medium">{t('tags.editTitle')}</button>
-                    <button type="button" onClick={() => setEditId(null)} className="px-3 py-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted">{t('users.cancel')}</button>
-                  </form>
-                ) : (
-                  <>
-                    <span
-                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium text-white"
-                      style={{ backgroundColor: tag.color }}
-                    >
-                      {tag.name}
-                    </span>
-                    <span className="text-xs text-muted">{tag.color}</span>
-                    <div className="ml-auto flex items-center gap-1">
-                      <button
-                        onClick={() => { setEditId(tag.id); setEditName(tag.name); setEditColor(tag.color) }}
-                        className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-                        title={t('tags.editTitle')}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        onClick={() => { if (confirm(t('tags.deleteConfirm', { name: tag.name }))) remove.mutate(tag.id) }}
-                        className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        title={t('tags.deleteTitle')}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+        {renderTags()}
       </div>
     </div>
   )

@@ -82,6 +82,42 @@ function BackupPage() {
     onError: (err: Error) => toast.error(err.message),
   })
 
+  const renderBackups = () => {
+    if (isLoading) {
+      return <div className="p-6 text-sm text-muted text-center">{t('adminBackup.loading')}</div>
+    }
+    if (!backups?.length) {
+      return <div className="p-6 text-sm text-muted text-center">{t('adminBackup.noPrevious')}</div>
+    }
+    return (
+      <ul className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
+        {backups.map((b) => (
+          <li key={b.filename} className="flex items-center gap-3 px-4 py-3 text-sm">
+            <div className="flex-1 min-w-0">
+              <p className="text-zinc-900 dark:text-slate-100">{formatDate(b.created_at)}</p>
+              <p className="text-xs text-muted">{formatBytes(b.size_bytes)} · version {b.version}</p>
+            </div>
+            <a
+              href={`/api/v1/admin/backup/${encodeURIComponent(b.filename)}/download`}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+              title={t('adminBackup.downloadTitle')}
+            >
+              <Download size={14} />
+            </a>
+            <button
+              onClick={() => {
+                if (confirm('Delete this backup export permanently?')) deleteBackup.mutate(b.filename)
+              }}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              title={t('adminBackup.deleteTitle')}
+            >
+              <Trash2 size={14} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    )
+  }
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('adminBackup.title')}</h1>
@@ -107,41 +143,7 @@ function BackupPage() {
         <div className="px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148]">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('adminBackup.previousExports')}</h2>
         </div>
-        {isLoading ? (
-          <div className="p-6 text-sm text-muted text-center">{t('adminBackup.loading')}</div>
-        ) : !backups?.length ? (
-          <div className="p-6 text-sm text-muted text-center">{t('adminBackup.noPrevious')}</div>
-        ) : (
-          <ul className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
-            {backups.map((b) => (
-              <li key={b.filename} className="flex items-center gap-3 px-4 py-3 text-sm">
-                <div className="flex-1 min-w-0">
-                  <p className="text-zinc-900 dark:text-slate-100">{formatDate(b.created_at)}</p>
-                  <p className="text-xs text-muted">{formatBytes(b.size_bytes)} · version {b.version}</p>
-                </div>
-                <a
-                  href={`/api/v1/admin/backup/${encodeURIComponent(b.filename)}/download`}
-                  className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
-                  title={t('adminBackup.downloadTitle')}
-                >
-                  <Download size={14} />
-                </a>
-                <button
-                  onClick={() => {
-                    if (confirm(t('adminBackup.deleteConfirm', { name: b.filename }))) {
-                      deleteBackup.mutate(b.filename)
-                    }
-                  }}
-                  disabled={deleteBackup.isPending}
-                  className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40"
-                  title={t('adminBackup.deleteTitle')}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        {renderBackups()}
       </section>
 
       {/* Restore */}

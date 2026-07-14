@@ -370,83 +370,100 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body callbackBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		log.Warn().Err(err).Str("file_id", fileID).Msg("onlyoffice: invalid callback body")
-		ooReply(w, 1)
+	body, ok := decodeOnlyOfficeCallback(w, r, fileID)
+	if !ok {
 		return
 	}
 
 	log.Debug().Str("file_id", fileID).Int("status", body.Status).Msg("onlyoffice: callback received")
-
-	// Verify JWT from OnlyOffice when secret is set
-	if jwtSecret != "" {
-		tok := body.Token
-		if tok == "" {
-			// Also check Authorization header
-			auth := r.Header.Get("Authorization")
-			tok = strings.TrimPrefix(auth, "Bearer ")
-		}
-		if tok == "" {
-			log.Warn().Str("file_id", fileID).Msg("onlyoffice: JWT secret configured but callback sent no token — check OO JWT settings")
-			ooReply(w, 1)
-			return
-		}
-		if _, err := verifyJWT(tok, jwtSecret); err != nil {
-			log.Warn().Err(err).Str("file_id", fileID).Msg("onlyoffice: callback JWT verification failed — secret mismatch?")
-			ooReply(w, 1)
-			return
-		}
+	if !verifyOnlyOfficeCallbackJWT(w, r, fileID, body, jwtSecret) {
+		return
+	}
+	if !shouldPersistOnlyOfficeCallback(body) {
+		ooReply(w, 0)
+		return
+	}
+	if !h.persistOnlyOfficeCallback(ctx, w, fileID, body.URL) {
+		return
 	}
 
-	// Status 2 = ready to save, Status 6 = force-save
-	if body.Status == 2 || body.Status == 6 {
-		if body.URL == "" {
-			ooReply(w, 0)
-			return
-		}
-
-		// Fetch the updated document from the OnlyOffice storage URL.
-		fetchCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-		defer cancel()
-		req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, body.URL, nil) //nolint:gosec
-		if err != nil {
-			log.Error().Err(err).Str("file_id", fileID).Msg("onlyoffice: failed to build fetch request")
-			ooReply(w, 1)
-			return
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			log.Error().Err(err).Str("url", body.URL).Str("file_id", fileID).Msg("onlyoffice: failed to fetch saved document")
-			ooReply(w, 1)
-			return
-		}
-		defer resp.Body.Close()
-
-		// Write via storage — this transparently (re-)encrypts the file if
-		// FILE_ENCRYPT_KEY is configured.
-		written, err := h.storage.Write(fileID, resp.Body)
-		if err != nil {
-			log.Error().Err(err).Str("file_id", fileID).Msg("onlyoffice: storage write error")
-			ooReply(w, 1)
-			return
-		}
-
-		// Update size in DB
-		_, _ = h.db.Exec(ctx,
-			`UPDATE files SET size = $1, updated_at = now() WHERE id = $2::uuid`,
-			written, fileID,
-		)
-
-		// Invalidate the cached docKey so the next editor session gets a fresh
-		// key pointing at the newly saved content.
-		h.invalidateDocKey(ctx, fileID)
-
-		log.Info().Str("file_id", fileID).Int64("bytes", written).Msg("onlyoffice: document saved")
-	}
-
-	// Always return {"error":0} so OO knows we handled it
 	ooReply(w, 0)
+}
+
+func decodeOnlyOfficeCallback(w http.ResponseWriter, r *http.Request, fileID string) (callbackBody, bool) {
+	var body callbackBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		log.Warn().Err(err).Str("file_id", fileID).Msg("onlyoffice: invalid callback body")
+		ooReply(w, 1)
+		return callbackBody{}, false
+	}
+	return body, true
+}
+
+func verifyOnlyOfficeCallbackJWT(w http.ResponseWriter, r *http.Request, fileID string, body callbackBody, jwtSecret string) bool {
+	if jwtSecret == "" {
+		return true
+	}
+	tok := callbackJWTToken(r, body)
+	if tok == "" {
+		log.Warn().Str("file_id", fileID).Msg("onlyoffice: JWT secret configured but callback sent no token — check OO JWT settings")
+		ooReply(w, 1)
+		return false
+	}
+	if _, err := verifyJWT(tok, jwtSecret); err != nil {
+		log.Warn().Err(err).Str("file_id", fileID).Msg("onlyoffice: callback JWT verification failed — secret mismatch?")
+		ooReply(w, 1)
+		return false
+	}
+	return true
+}
+
+func callbackJWTToken(r *http.Request, body callbackBody) string {
+	if body.Token != "" {
+		return body.Token
+	}
+	return strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+}
+
+func shouldPersistOnlyOfficeCallback(body callbackBody) bool {
+	if body.Status != 2 && body.Status != 6 {
+		return false
+	}
+	return body.URL != ""
+}
+
+func (h *Handler) persistOnlyOfficeCallback(ctx context.Context, w http.ResponseWriter, fileID, sourceURL string) bool {
+	fetchCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, sourceURL, nil) //nolint:gosec
+	if err != nil {
+		log.Error().Err(err).Str("file_id", fileID).Msg("onlyoffice: failed to build fetch request")
+		ooReply(w, 1)
+		return false
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Error().Err(err).Str("url", sourceURL).Str("file_id", fileID).Msg("onlyoffice: failed to fetch saved document")
+		ooReply(w, 1)
+		return false
+	}
+	defer resp.Body.Close()
+
+	written, err := h.storage.Write(fileID, resp.Body)
+	if err != nil {
+		log.Error().Err(err).Str("file_id", fileID).Msg("onlyoffice: storage write error")
+		ooReply(w, 1)
+		return false
+	}
+
+	_, _ = h.db.Exec(ctx,
+		`UPDATE files SET size = $1, updated_at = now() WHERE id = $2::uuid`,
+		written, fileID,
+	)
+	h.invalidateDocKey(ctx, fileID)
+	log.Info().Str("file_id", fileID).Int64("bytes", written).Msg("onlyoffice: document saved")
+	return true
 }
 
 // ─── GET /api/v1/onlyoffice/download/{fileId} ────────────────────────────────

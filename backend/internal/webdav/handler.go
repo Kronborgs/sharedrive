@@ -80,98 +80,134 @@ func (c *cappedMemLS) Refresh(now time.Time, token string, duration time.Duratio
 }
 
 func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Always advertise DAV capability — Windows WebClient reads these headers
-	// from the OPTIONS response before it ever sends credentials.
-	w.Header().Set("MS-Author-Via", "DAV")
-	w.Header().Set("DAV", "1, 2")
-
-	// OPTIONS answered without auth so Windows WebClient / macOS Finder can
-	// discover WebDAV support before prompting for a password.
-	if r.Method == http.MethodOptions {
-		w.Header().Set("Allow", "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK")
-		w.WriteHeader(http.StatusOK)
+	setDAVHeaders(w)
+	if handleDAVOptions(w, r) {
 		return
 	}
 
-	// Extract the user ID from the URL: /dav/{userID}[/...]
-	// The userID segment makes each user's DAV root distinct and lets Windows
-	// resolve the network location to a concrete path.
-	trimmed := strings.TrimPrefix(r.URL.Path, "/dav/")
-	urlUserID := strings.SplitN(trimmed, "/", 2)[0]
-	if urlUserID == "" {
+	urlUserID, ok := extractDAVUserID(r.URL.Path)
+	if !ok {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
 	}
 
+	userID, resourceID, email, ok := s.authenticateDAVRequest(w, r, urlUserID)
+	if !ok {
+		return
+	}
+	if !s.authorizeDAVResource(w, r, userID, resourceID) {
+		return
+	}
+
+	s.logDAVRootMount(r, userID, email)
+	s.newDAVHandler(userID).ServeHTTP(w, r)
+}
+
+func setDAVHeaders(w http.ResponseWriter) {
+	w.Header().Set("MS-Author-Via", "DAV")
+	w.Header().Set("DAV", "1, 2")
+}
+
+func handleDAVOptions(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodOptions {
+		return false
+	}
+	w.Header().Set("Allow", "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK")
+	w.WriteHeader(http.StatusOK)
+	return true
+}
+
+func extractDAVUserID(requestPath string) (string, bool) {
+	trimmed := strings.TrimPrefix(requestPath, "/dav/")
+	urlUserID := strings.SplitN(trimmed, "/", 2)[0]
+	if urlUserID == "" {
+		return "", false
+	}
+	return urlUserID, true
+}
+
+func (s *AuthDAVServer) authenticateDAVRequest(w http.ResponseWriter, r *http.Request, urlUserID string) (string, *string, string, bool) {
 	email, password, ok := r.BasicAuth()
 	if !ok || email == "" || password == "" {
 		w.Header().Set("WWW-Authenticate", `Basic realm="Sharedrive"`)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
+		return "", nil, "", false
 	}
 
-	// Rate-limit: fast-reject if the IP has already exhausted its failure budget,
-	// then count only *failed* authentication attempts (not every request).
-	// This prevents brute-force while allowing legitimate WebDAV sessions —
-	// which send credentials on every request — to run without consuming the budget.
 	ip := middleware.ClientIP(r)
-	if s.limiter != nil {
-		count, _ := s.limiter.Count(r.Context(), "ip_webdav_auth:", ip, 15*time.Minute)
-		if count >= 20 {
-			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
-			return
-		}
+	if s.authRateLimited(w, r, ip) {
+		return "", nil, "", false
 	}
 
 	userID, resourceID, err := ValidateAppPassword(r.Context(), s.db, email, password)
 	if err != nil || userID != urlUserID {
-		// Only failed attempts consume the brute-force budget.
-		if s.limiter != nil {
-			s.limiter.Allow(r.Context(), "ip_webdav_auth:", ip, 20, 15*time.Minute)
-		}
-		s.auditSvc.Log(r.Context(), audit.Event{
-			Type:       audit.EventWebDAVLoginFailed,
-			ActorEmail: email,
-			IPAddress:  middleware.ClientIP(r),
-			Metadata:   map[string]any{"reason": "invalid credentials"},
-		})
-		w.Header().Set("WWW-Authenticate", `Basic realm="Sharedrive"`)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		s.handleDAVAuthFailure(w, r, email, ip)
+		return "", nil, "", false
+	}
+
+	return userID, resourceID, email, true
+}
+
+func (s *AuthDAVServer) authRateLimited(w http.ResponseWriter, r *http.Request, ip string) bool {
+	if s.limiter == nil {
+		return false
+	}
+	count, _ := s.limiter.Count(r.Context(), "ip_webdav_auth:", ip, 15*time.Minute)
+	if count < 20 {
+		return false
+	}
+	http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+	return true
+}
+
+func (s *AuthDAVServer) handleDAVAuthFailure(w http.ResponseWriter, r *http.Request, email, ip string) {
+	if s.limiter != nil {
+		s.limiter.Allow(r.Context(), "ip_webdav_auth:", ip, 20, 15*time.Minute)
+	}
+	s.auditSvc.Log(r.Context(), audit.Event{
+		Type:       audit.EventWebDAVLoginFailed,
+		ActorEmail: email,
+		IPAddress:  middleware.ClientIP(r),
+		Metadata:   map[string]any{"reason": "invalid credentials"},
+	})
+	w.Header().Set("WWW-Authenticate", `Basic realm="Sharedrive"`)
+	http.Error(w, "Unauthorized", http.StatusUnauthorized)
+}
+
+func (s *AuthDAVServer) authorizeDAVResource(w http.ResponseWriter, r *http.Request, userID string, resourceID *string) bool {
+	if resourceID == nil || *resourceID == "" {
+		return true
+	}
+	allowedPath, err := s.resolveIDToPath(r.Context(), *resourceID, userID)
+	if err != nil {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return false
+	}
+	davPrefix := "/dav/" + userID
+	reqPath := strings.TrimPrefix(r.URL.Path, davPrefix)
+	if strings.HasPrefix(reqPath, allowedPath) || reqPath == strings.TrimSuffix(allowedPath, "/") {
+		return true
+	}
+	http.Error(w, "Forbidden", http.StatusForbidden)
+	return false
+}
+
+func (s *AuthDAVServer) logDAVRootMount(r *http.Request, userID, email string) {
+	davRoot := "/dav/" + userID
+	if r.Method != "PROPFIND" || (r.URL.Path != davRoot && r.URL.Path != davRoot+"/") {
 		return
 	}
+	uid, _ := uuid.Parse(userID)
+	s.auditSvc.Log(r.Context(), audit.Event{
+		Type:       audit.EventWebDAVLoginSuccess,
+		ActorID:    &uid,
+		ActorEmail: email,
+		IPAddress:  middleware.ClientIP(r),
+	})
+}
 
-	// If this app password is scoped to a specific resource, resolve its full
-	// path and enforce that the request targets only that file/folder subtree.
-	if resourceID != nil && *resourceID != "" {
-		allowedPath, err := s.resolveIDToPath(r.Context(), *resourceID, userID)
-		if err != nil {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		// Strip the DAV prefix to get the relative path being requested.
-		davPrefix := "/dav/" + userID
-		reqPath := strings.TrimPrefix(r.URL.Path, davPrefix)
-		if !strings.HasPrefix(reqPath, allowedPath) && reqPath != strings.TrimSuffix(allowedPath, "/") {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-	}
-
-	// Log successful WebDAV login only when Windows/macOS mounts the root of the
-	// share (PROPFIND on /dav/<userID> or /dav/<userID>/). Sub-directory listings
-	// also use PROPFIND but we don't want one audit entry per file/folder.
-	davRoot := "/dav/" + userID
-	if r.Method == "PROPFIND" && (r.URL.Path == davRoot || r.URL.Path == davRoot+"/") {
-		uid, _ := uuid.Parse(userID)
-		s.auditSvc.Log(r.Context(), audit.Event{
-			Type:       audit.EventWebDAVLoginSuccess,
-			ActorID:    &uid,
-			ActorEmail: email,
-			IPAddress:  middleware.ClientIP(r),
-		})
-	}
-
-	h := &gowebdav.Handler{
+func (s *AuthDAVServer) newDAVHandler(userID string) *gowebdav.Handler {
+	return &gowebdav.Handler{
 		Prefix:     "/dav/" + userID,
 		FileSystem: &userFS{db: s.db, filesRoot: s.filesRoot, storage: s.storage, userID: userID, ioTracker: s.ioTracker},
 		LockSystem: s.locks,
@@ -184,7 +220,6 @@ func (s *AuthDAVServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		},
 	}
-	h.ServeHTTP(w, r)
 }
 
 // resolveIDToPath walks the parent chain for a file/folder ID and returns its

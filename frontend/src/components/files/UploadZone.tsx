@@ -266,13 +266,85 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     staleTime: 5 * 60 * 1000, // 5 min
   })
 
-  const update = (id: string, patch: Partial<UploadEntry>) => {
+  const update = useCallback((id: string, patch: Partial<UploadEntry>) => {
     setUploads(prev => {
       const next = prev.map(u => u.id === id ? { ...u, ...patch } : u)
       uploadsRef.current = next
       return next
     })
-  }
+  }, [])
+
+  const removeUploadEntry = useCallback((id: string) => {
+    setUploads(prev => {
+      const next = prev.filter(u => u.id !== id)
+      uploadsRef.current = next
+      return next
+    })
+  }, [])
+
+  const getUploadToken = useCallback(async (directBase: string | false | undefined, effectiveFolderId: string | null) => {
+    if (!directBase) {
+      return undefined
+    }
+    try {
+      const res = await api.post<{ token: string }>('/api/v1/upload-token', { folder_id: effectiveFolderId ?? '' })
+      return res.token
+    } catch (err) {
+      console.warn('[UploadZone] Failed to fetch upload token; falling back to cookie auth:', err)
+      return undefined
+    }
+  }, [])
+
+  const handleTusUploadError = useCallback((entryId: string, error: tus.DetailedError) => {
+    let msg = 'Upload failed'
+    if (error.originalResponse != null) {
+      try {
+        const body = error.originalResponse.getBody()
+        const data = JSON.parse(body) as { error?: string | { message?: string } }
+        if (data.error) {
+          msg = typeof data.error === 'string' ? data.error : (data.error.message ?? 'Upload failed')
+        }
+      } catch {
+        // ignore
+      }
+    }
+    tusUploads.current.delete(entryId)
+    update(entryId, { status: 'error', error: msg })
+  }, [update])
+
+  const handleTusUploadProgress = useCallback((entryId: string, bytesUploaded: number, bytesTotal: number) => {
+    const progress = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0
+    const now = Date.now()
+    const samples = speedSamples.current.get(entryId) ?? []
+    samples.push({ time: now, bytes: bytesUploaded })
+    while (samples.length > SPEED_WINDOW) samples.shift()
+    speedSamples.current.set(entryId, samples)
+
+    let speed: number | undefined
+    let eta: number | undefined
+    if (samples.length >= 2) {
+      const oldest = samples[0]
+      const newest = samples[samples.length - 1]
+      const elapsed = (newest.time - oldest.time) / 1000
+      if (elapsed > 0) {
+        speed = (newest.bytes - oldest.bytes) / elapsed
+        if (speed > 0 && bytesTotal > bytesUploaded) {
+          eta = (bytesTotal - bytesUploaded) / speed
+        }
+      }
+    }
+
+    update(entryId, { progress, speed, eta, bytesUploaded })
+  }, [update])
+
+  const handleTusUploadSuccess = useCallback((entryId: string, effectiveFolderId: string | null) => {
+    speedSamples.current.delete(entryId)
+    tusUploads.current.delete(entryId)
+    update(entryId, { status: 'done', progress: 100 })
+    ignorePromise(qc.invalidateQueries({ queryKey: queryKey ?? ['files', effectiveFolderId] }))
+    ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
+    setTimeout(() => removeUploadEntry(entryId), 2000)
+  }, [qc, queryKey, removeUploadEntry, update])
 
   const startUpload = useCallback((files: Array<File | UploadRequest>, targetFolderId: string | null = folderId) => {
     // Determine TUS endpoint: prefer direct_upload_url (bypasses Cloudflare) if set
@@ -307,17 +379,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     // When using the direct upload subdomain, fetch a short-lived upload token so
     // authentication works cross-subdomain (session cookie may not be forwarded).
     const startEntries = async () => {
-      let uploadToken: string | undefined
-      if (directBase) {
-        try {
-          const res = await api.post<{ token: string }>('/api/v1/upload-token', { folder_id: effectiveFolderId ?? '' })
-          uploadToken = res.token
-        } catch (err) {
-          // Uploads will still work via cookie auth on the main domain.
-          // Log a warning so auth failures are visible.
-          console.warn('[UploadZone] Failed to fetch upload token; falling back to cookie auth:', err)
-        }
-      }
+      const uploadToken = await getUploadToken(directBase, effectiveFolderId)
 
       for (const entry of entries) {
         update(entry.id, { status: 'uploading' })
@@ -336,62 +398,9 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
             folder_id: effectiveFolderId ?? '',
             overwrite: entry.overwrite ? '1' : '0',
           },
-          onError: (error) => {
-            let msg = 'Upload failed'
-            const det = error as tus.DetailedError
-            if (det.originalResponse != null) {
-              try {
-                const body = det.originalResponse.getBody()
-                const data = JSON.parse(body) as { error?: string | { message?: string } }
-                if (data.error) {
-                  msg = typeof data.error === 'string' ? data.error : (data.error.message ?? 'Upload failed')
-                }
-              } catch { /* ignore */ }
-            }
-            tusUploads.current.delete(entry.id)
-            update(entry.id, { status: 'error', error: msg })
-          },
-          onProgress: (bytesUploaded, bytesTotal) => {
-            const progress = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0
-
-            // Rolling-window speed calculation
-            const now = Date.now()
-            const samples = speedSamples.current.get(entry.id) ?? []
-            samples.push({ time: now, bytes: bytesUploaded })
-            // Keep only the last SPEED_WINDOW samples
-            while (samples.length > SPEED_WINDOW) samples.shift()
-            speedSamples.current.set(entry.id, samples)
-
-            let speed: number | undefined
-            let eta: number | undefined
-            if (samples.length >= 2) {
-              const oldest = samples[0]
-              const newest = samples[samples.length - 1]
-              const elapsed = (newest.time - oldest.time) / 1000
-              if (elapsed > 0) {
-                speed = (newest.bytes - oldest.bytes) / elapsed
-                if (speed > 0 && bytesTotal > bytesUploaded) {
-                  eta = (bytesTotal - bytesUploaded) / speed
-                }
-              }
-            }
-
-            update(entry.id, { progress, speed, eta, bytesUploaded })
-          },
-          onSuccess: () => {
-            speedSamples.current.delete(entry.id)
-            tusUploads.current.delete(entry.id)
-            update(entry.id, { status: 'done', progress: 100 })
-            ignorePromise(qc.invalidateQueries({ queryKey: queryKey ?? ['files', effectiveFolderId] }))
-            ignorePromise(qc.invalidateQueries({ queryKey: ['me'] }))
-            setTimeout(() => {
-              setUploads(prev => {
-                const next = prev.filter(u => u.id !== entry.id)
-                uploadsRef.current = next
-                return next
-              })
-            }, 2000)
-          },
+          onError: (error) => handleTusUploadError(entry.id, error as tus.DetailedError),
+          onProgress: (bytesUploaded, bytesTotal) => handleTusUploadProgress(entry.id, bytesUploaded, bytesTotal),
+          onSuccess: () => handleTusUploadSuccess(entry.id, effectiveFolderId),
         })
         tusUploads.current.set(entry.id, upload)
 
@@ -405,7 +414,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     }
 
     ignorePromise(startEntries())
-  }, [folderId, qc, settings])
+  }, [folderId, getUploadToken, handleTusUploadError, handleTusUploadProgress, handleTusUploadSuccess, settings, update])
 
   const dismiss = useCallback((id: string) => {
     const tusUpload = tusUploads.current.get(id)
@@ -495,3 +504,5 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
 
   return { uploads, startUpload, startFolderUpload, prepareFolderUpload, dismiss, directUpload: !!(settings?.direct_upload_url?.trim()) }
 }
+
+

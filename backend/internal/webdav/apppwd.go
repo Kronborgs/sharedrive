@@ -19,6 +19,8 @@ import (
 	"github.com/yourname/privatedrive/internal/middleware"
 )
 
+const appPasswordErrInternal = "internal error"
+
 // AppPasswordHandler provides HTTP handlers for app-password management.
 type AppPasswordHandler struct {
 	db *pgxpool.Pool
@@ -44,7 +46,7 @@ func (h *AppPasswordHandler) List(w http.ResponseWriter, r *http.Request) {
 		u.ID,
 	)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, appPasswordErrInternal)
 		return
 	}
 	defer rows.Close()
@@ -57,7 +59,7 @@ func (h *AppPasswordHandler) List(w http.ResponseWriter, r *http.Request) {
 		out = append(out, p)
 	}
 	if err := rows.Err(); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, appPasswordErrInternal)
 		return
 	}
 	if out == nil {
@@ -112,12 +114,12 @@ func (h *AppPasswordHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	rawToken, err := generateRawToken()
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, appPasswordErrInternal)
 		return
 	}
 	hash, err := argon2id.CreateHash(rawToken, argon2id.DefaultParams)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, appPasswordErrInternal)
 		return
 	}
 
@@ -128,7 +130,7 @@ func (h *AppPasswordHandler) Create(w http.ResponseWriter, r *http.Request) {
 		 RETURNING id`,
 		u.ID, req.Name, hash, req.Scope, req.ResourceID, resourceLabel,
 	).Scan(&id); err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+		httputil.RespondError(w, http.StatusInternalServerError, appPasswordErrInternal)
 		return
 	}
 

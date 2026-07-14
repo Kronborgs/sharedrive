@@ -16,6 +16,11 @@ import (
 
 // ─── Blank document generators ───────────────────────────────────────────────
 
+const (
+	contentTypesPath = "[Content_Types].xml"
+	relsRootPath     = "_rels/.rels"
+)
+
 type zipEntry struct{ name, content string }
 
 func buildZip(entries []zipEntry) ([]byte, error) {
@@ -38,13 +43,13 @@ func buildZip(entries []zipEntry) ([]byte, error) {
 
 func blankDocx() ([]byte, error) {
 	return buildZip([]zipEntry{
-		{"[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		{contentTypesPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 			`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
 			`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
 			`<Default Extension="xml" ContentType="application/xml"/>` +
 			`<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
 			`</Types>`},
-		{"_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		{relsRootPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
 			`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>` +
 			`</Relationships>`},
@@ -58,14 +63,14 @@ func blankDocx() ([]byte, error) {
 
 func blankXlsx() ([]byte, error) {
 	return buildZip([]zipEntry{
-		{"[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		{contentTypesPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 			`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
 			`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
 			`<Default Extension="xml" ContentType="application/xml"/>` +
 			`<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
 			`<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
 			`</Types>`},
-		{"_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		{relsRootPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
 			`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
 			`</Relationships>`},
@@ -93,7 +98,7 @@ func blankPptx() ([]byte, error) {
 		`</p:spTree>`
 
 	return buildZip([]zipEntry{
-		{"[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		{contentTypesPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 			`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
 			`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
 			`<Default Extension="xml" ContentType="application/xml"/>` +
@@ -102,7 +107,7 @@ func blankPptx() ([]byte, error) {
 			`<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>` +
 			`<Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>` +
 			`</Types>`},
-		{"_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		{relsRootPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
 			`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>` +
 			`</Relationships>`},

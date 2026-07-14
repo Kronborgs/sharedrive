@@ -278,7 +278,7 @@ func (h *Handler) GetEditorConfig(w http.ResponseWriter, r *http.Request) {
 
 	f, err := h.lookupFile(ctx, fileID, actor.ID.String())
 	if err != nil {
-		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		httputil.RespondError(w, http.StatusNotFound, onlyOfficeErrFileNotFound)
 		return
 	}
 
@@ -339,6 +339,8 @@ func (h *Handler) GetEditorConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 // ─── POST /api/v1/onlyoffice/callback/{fileId} ───────────────────────────────
+
+const onlyOfficeErrFileNotFound = "file not found"
 
 type callbackBody struct {
 	Status int    `json:"status"`
@@ -495,7 +497,7 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 		fileID,
 	).Scan(&name)
 	if err != nil {
-		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		httputil.RespondError(w, http.StatusNotFound, onlyOfficeErrFileNotFound)
 		return
 	}
 
@@ -550,7 +552,7 @@ func (h *Handler) MakeDownloadToken(w http.ResponseWriter, r *http.Request) {
 		fileID, actor.ID.String(),
 	).Scan(&exists)
 	if !exists {
-		httputil.RespondError(w, http.StatusNotFound, "file not found")
+		httputil.RespondError(w, http.StatusNotFound, onlyOfficeErrFileNotFound)
 		return
 	}
 

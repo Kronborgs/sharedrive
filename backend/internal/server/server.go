@@ -85,7 +85,22 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler 
 	conv := initPreviewConverter(cfg)
 	ioTracker := files.NewIOTracker(rdb)
 
-	s := newServerDependencies(cfg, db, rdb, authHandler, auditSvc, version, buildDate, storage, fileSvc, trashSvc, conv, ioTracker)
+	deps := serverDependencies{
+		cfg:         cfg,
+		db:          db,
+		rdb:         rdb,
+		authHandler: authHandler,
+		auditSvc:    auditSvc,
+		version:     version,
+		buildDate:   buildDate,
+		storage:     storage,
+		fileSvc:     fileSvc,
+		trashSvc:    trashSvc,
+		conv:        conv,
+		ioTracker:   ioTracker,
+	}
+
+	s := newServerDependencies(deps)
 	s.backupHandler.SetMailer(smtp.New(cfg, db))
 	s.router = s.buildRouter()
 	startServerBackgroundTasks(s, db, rdb, cfg, storage)
@@ -105,27 +120,42 @@ func initPreviewConverter(cfg *config.Config) *preview.Converter {
 	return conv
 }
 
-func newServerDependencies(cfg *config.Config, db *pgxpool.Pool, rdb *goredis.Client, authHandler *auth.Handler, auditSvc audit.Logger, version, buildDate string, storage *files.Storage, fileSvc *files.Service, trashSvc *files.TrashService, conv *preview.Converter, ioTracker *files.IOTracker) *Server {
+type serverDependencies struct {
+	cfg         *config.Config
+	db          *pgxpool.Pool
+	rdb         *goredis.Client
+	authHandler *auth.Handler
+	auditSvc    audit.Logger
+	version     string
+	buildDate   string
+	storage     *files.Storage
+	fileSvc     *files.Service
+	trashSvc    *files.TrashService
+	conv        *preview.Converter
+	ioTracker   *files.IOTracker
+}
+
+func newServerDependencies(deps serverDependencies) *Server {
 	return &Server{
-		cfg:            cfg,
-		db:             db,
-		redis:          rdb,
-		version:        version,
-		buildDate:      buildDate,
-		authHandler:    authHandler,
-		onboarding:     onboarding.New(db, cfg),
-		userHandler:    user.NewHandler(db, auditSvc, smtp.New(cfg, db), cfg.AppBaseURL, authHandler.TOTPService()),
-		fileSvc:        fileSvc,
-		filesHandler:   files.NewHandler(fileSvc, trashSvc, auditSvc, rdb, conv, ratelimit.New(rdb), ioTracker),
-		sharesHandler:  shares.NewHandler(db, smtp.New(cfg, db), cfg.AppBaseURL),
-		adminHandler:   admin.NewHandler(db, cfg, ioTracker, rdb),
-		sseHandler:     admin.NewSSEHandler(db),
-		supportHandler: admin.NewSupportAccessHandler(db),
-		appPwdHandler:  webdav.NewAppPasswordHandler(db),
-		backupHandler:  backup.NewHandler(db, storage, cfg.BackupWrapKey, backupsRoot(cfg.BackupsRoot), buddyStorageRoot(cfg.BackupsRoot, cfg.FilesRoot), auditSvc, ratelimit.New(rdb)),
-		ooHandler:      onlyoffice.NewHandler(db, storage, cfg.AppBaseURL, rdb),
-		auditSvc:       auditSvc,
-		ioTracker:      ioTracker,
+		cfg:            deps.cfg,
+		db:             deps.db,
+		redis:          deps.rdb,
+		version:        deps.version,
+		buildDate:      deps.buildDate,
+		authHandler:    deps.authHandler,
+		onboarding:     onboarding.New(deps.db, deps.cfg),
+		userHandler:    user.NewHandler(deps.db, deps.auditSvc, smtp.New(deps.cfg, deps.db), deps.cfg.AppBaseURL, deps.authHandler.TOTPService()),
+		fileSvc:        deps.fileSvc,
+		filesHandler:   files.NewHandler(deps.fileSvc, deps.trashSvc, deps.auditSvc, deps.rdb, deps.conv, ratelimit.New(deps.rdb), deps.ioTracker),
+		sharesHandler:  shares.NewHandler(deps.db, smtp.New(deps.cfg, deps.db), deps.cfg.AppBaseURL),
+		adminHandler:   admin.NewHandler(deps.db, deps.cfg, deps.ioTracker, deps.rdb),
+		sseHandler:     admin.NewSSEHandler(deps.db),
+		supportHandler: admin.NewSupportAccessHandler(deps.db),
+		appPwdHandler:  webdav.NewAppPasswordHandler(deps.db),
+		backupHandler:  backup.NewHandler(deps.db, deps.storage, deps.cfg.BackupWrapKey, backupsRoot(deps.cfg.BackupsRoot), buddyStorageRoot(deps.cfg.BackupsRoot, deps.cfg.FilesRoot), deps.auditSvc, ratelimit.New(deps.rdb)),
+		ooHandler:      onlyoffice.NewHandler(deps.db, deps.storage, deps.cfg.AppBaseURL, deps.rdb),
+		auditSvc:       deps.auditSvc,
+		ioTracker:      deps.ioTracker,
 	}
 }
 

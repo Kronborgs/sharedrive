@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { useForm, type UseFormRegister } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ONLYOFFICE_GROUPS, TEXT_EDITOR_GROUPS } from '@/lib/file-types'
 import { useI18n } from '@/lib/i18n'
 import { ignorePromise } from '@/lib/ignore-promise'
@@ -74,6 +74,27 @@ function toGB(g: number) { return Math.round(g * 1024 * 1024 * 1024) }
 function MB(n: number) { return n / (1024 * 1024) }
 function toMB(m: number) { return Math.round(m * 1024 * 1024) }
 
+function buildSettingsPayload(values: FormValues, smtpPassword: string): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    ...values,
+    default_quota_bytes: toGB(values.default_quota_bytes),
+    max_upload_bytes: toMB(values.max_upload_bytes),
+    direct_upload_url: values.direct_upload_url,
+  }
+  if (smtpPassword) {
+    body.smtp_password = smtpPassword
+  }
+  return body
+}
+
+function buildOnlyOfficePayload(ooURL: string, ooSecret: string): Record<string, string> {
+  const body: Record<string, string> = { onlyoffice_url: ooURL }
+  if (ooSecret) {
+    body.onlyoffice_jwt_secret = ooSecret
+  }
+  return body
+}
+
 function SettingsPage() {
   const qc = useQueryClient()
   const [tab, setTab] = useState<Tab>('general')
@@ -107,22 +128,16 @@ function SettingsPage() {
     onError: () => setOoTestResult({ ok: false, msg: t('settings.testFailed') }),
   })
 
-  if (data && !ooURLLoaded) {
+  useEffect(() => {
+    if (!data || ooURLLoaded) {
+      return
+    }
     setOoURL(data.onlyoffice_url ?? '')
     setOoURLLoaded(true)
-  }
+  }, [data, ooURLLoaded])
 
   const save = useMutation({
-    mutationFn: (values: FormValues) => {
-      const body: Record<string, unknown> = {
-        ...values,
-        default_quota_bytes: toGB(values.default_quota_bytes),
-        max_upload_bytes: toMB(values.max_upload_bytes),
-        direct_upload_url: values.direct_upload_url,
-      }
-      if (smtpPassword) body.smtp_password = smtpPassword
-      return api.patch('/api/v1/admin/settings', body)
-    },
+    mutationFn: (values: FormValues) => api.patch('/api/v1/admin/settings', buildSettingsPayload(values, smtpPassword)),
     onSuccess: () => {
       toast.success(t('settings.saved'))
       setSmtpPassword('')
@@ -146,9 +161,7 @@ function SettingsPage() {
   const saveOnlyOffice = async () => {
     setOoSaving(true)
     try {
-      const body: Record<string, string> = { onlyoffice_url: ooURL }
-      if (ooSecret) body.onlyoffice_jwt_secret = ooSecret
-      await api.patch('/api/v1/admin/settings', body)
+      await api.patch('/api/v1/admin/settings', buildOnlyOfficePayload(ooURL, ooSecret))
       toast.success(t('settings.ooSaved'))
       setOoSecret('')
       ignorePromise(qc.invalidateQueries({ queryKey: ['admin', 'settings'] }))
@@ -449,3 +462,4 @@ function Toggle({
     </label>
   )
 }
+

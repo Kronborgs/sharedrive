@@ -50,22 +50,10 @@ func (s *RestoreService) Restore(ctx context.Context, r io.ReaderAt, size int64,
 		index[f.Name] = f
 	}
 
-	// Decode metadata.json to get the file tree.
-	metaEntry, ok := index["metadata.json"]
-	if !ok {
-		return nil, fmt.Errorf("restore: archive missing metadata.json")
-	}
-	metaEntry.SetPassword(zipPwd)
-	metaRC, err := metaEntry.Open()
+	records, err := loadArchiveRecords(index, zipPwd)
 	if err != nil {
-		return nil, fmt.Errorf("restore: open metadata.json: %w", err)
+		return nil, err
 	}
-	var records []archiveFileRecord
-	if err := json.NewDecoder(metaRC).Decode(&records); err != nil {
-		metaRC.Close()
-		return nil, fmt.Errorf("restore: decode metadata.json: %w", err)
-	}
-	metaRC.Close()
 
 	// Folders first, then files, oldest-first — parent rows must exist before
 	// their children are inserted (foreign key constraint on parent_id).
@@ -157,6 +145,26 @@ func (s *RestoreService) restoreRecord(
 		}
 	}
 	return true, nil
+}
+
+func loadArchiveRecords(index map[string]*yzip.File, zipPwd string) ([]archiveFileRecord, error) {
+	metaEntry, ok := index["metadata.json"]
+	if !ok {
+		return nil, fmt.Errorf("restore: archive missing metadata.json")
+	}
+
+	metaEntry.SetPassword(zipPwd)
+	metaRC, err := metaEntry.Open()
+	if err != nil {
+		return nil, fmt.Errorf("restore: open metadata.json: %w", err)
+	}
+	defer metaRC.Close()
+
+	var records []archiveFileRecord
+	if err := json.NewDecoder(metaRC).Decode(&records); err != nil {
+		return nil, fmt.Errorf("restore: decode metadata.json: %w", err)
+	}
+	return records, nil
 }
 
 func nilIfEmpty(s string) *string {

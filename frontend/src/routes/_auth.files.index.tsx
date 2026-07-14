@@ -1,4 +1,4 @@
-﻿import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth-context'
@@ -326,17 +326,122 @@ function FilesPage() {
     }
   }, [qc, setPlaylist])
 
+  const handleBackupContextAction = useCallback(async (item: FileItem) => {
+    try {
+      const [pwStatus, bkConfig, autoCfg] = await Promise.all([
+        api.get<BackupPasswordStatus>('/api/v1/backup/password'),
+        api.get<BackupConfig>('/api/v1/backup/config'),
+        api.get<AutoBackupConfig>('/api/v1/backup/auto'),
+      ])
+      if (!pwStatus.has_password || !bkConfig.tertiary_enabled) {
+        toast.info('Set up backup first')
+        ignorePromise(navigate({ to: '/backup' }))
+        return
+      }
+      const targetId = item.is_folder ? item.id : (item.parent_id ?? item.id)
+      const existing = autoCfg.folder_ids ?? []
+      if (existing.includes(targetId)) {
+        toast.info(`"${item.name}" is already in auto backup`)
+        return
+      }
+      const newIds = [...existing, targetId]
+      await api.put('/api/v1/backup/auto', {
+        enabled: true,
+        interval_hours: autoCfg.interval_hours || 24,
+        retention_days: autoCfg.retention_days || 30,
+        folder_ids: newIds,
+      })
+      ignorePromise(qc.invalidateQueries({ queryKey: ['backup', 'auto'] }))
+      toast.success(`"${item.name}" added to auto backup`)
+    } catch (err) {
+      console.error('Add to backup failed:', err)
+      toast.error(t('toast.moveFailed'))
+    }
+  }, [navigate, qc, t])
+
+  const handlePlaylistContextAction = useCallback(async (item: FileItem) => {
+    try {
+      const contents = await api.get<FileItem[]>(`/api/v1/files?parent_id=${item.id}`)
+      const audio = contents.filter(isAudioFile)
+      const existingM3u = contents.find(
+        f => !f.is_folder && f.name.toLowerCase().endsWith('.m3u')
+      ) ?? null
+      if (audio.length === 0) {
+        toast.info(t('toast.noAudioFiles'))
+        return
+      }
+      if (activePlaylistId) {
+        const result = await addTracks(audio.map(f => f.id))
+        if (result.added > 0)
+          toast.success(`${result.added} ${result.added === 1 ? 'nummer' : 'numre'} tilføjet til playlist`)
+        else
+          toast.info('Alle numre er allerede i playlisten eller den er fuld (max 50)')
+        return
+      }
+      if (audio.length <= 50) {
+        await doCreateFolderPlaylist(item, audio, existingM3u, 'all')
+      } else {
+        setFolderPlaylistJob({ folder: item, audioFiles: audio, existingM3u })
+      }
+    } catch {
+      toast.error(t('toast.couldNotReadFolder'))
+    }
+  }, [activePlaylistId, addTracks, doCreateFolderPlaylist, t])
+
+  const handleAddToQueueContextAction = useCallback(async (item: FileItem) => {
+    try {
+      const result = await addTracks([item.id])
+      if (result.added > 0) {
+        toast.success(`„${item.name}“ tilføjet til køen`)
+      } else if (result.skipped > 0) {
+        toast.info('Nummeret er allerede i køen eller køen er fuld (max 50)')
+      }
+    } catch {
+      toast.error(t('toast.moveFailed'))
+    }
+  }, [addTracks, t])
+
+  const handleAddToPlayerContextAction = useCallback(async (item: FileItem) => {
+    try {
+      const m3uTracks = await fetchPlaylistTracks(item.id)
+      const trackIds = m3uTracks.map(tr => tr.id)
+      if (trackIds.length === 0) {
+        toast.info('M3U filen indeholder ingen tilgængelige numre')
+        return
+      }
+      const result = await addTracks(trackIds)
+      if (result.added > 0) {
+        toast.success(`${result.added} ${result.added === 1 ? 'nummer' : 'numre'} tilføjet til musikafspilleren`)
+      } else {
+        toast.info(`Alle numre er allerede i afspilleren eller den er fuld (max ${playlistMaxTracks})`)
+      }
+    } catch {
+      toast.error('Kunne ikke læse playlisten')
+    }
+  }, [addTracks, fetchPlaylistTracks, playlistMaxTracks])
+
   const handleContextMenuAction = useCallback((action: ContextAction, item: FileItem) => {
     switch (action) {
-      case 'open': handleOpen(item); break
+      case 'open':
+        handleOpen(item)
+        break
       case 'download':
         if (item.is_folder) setDownloadIds([item.id])
         else window.open(`/api/v1/files/${item.id}/download`, '_blank')
         break
-      case 'share': setShareItem(item); break
-      case 'rename': setRenameId(item.id); setRenameName(item.name); break
-      case 'move': setMoveItem(item); break
-      case 'copy': setDuplicateItem(item); break
+      case 'share':
+        setShareItem(item)
+        break
+      case 'rename':
+        setRenameId(item.id)
+        setRenameName(item.name)
+        break
+      case 'move':
+        setMoveItem(item)
+        break
+      case 'copy':
+        setDuplicateItem(item)
+        break
       case 'trash': {
         const msg = item.is_folder
           ? `Flytte mappen "${item.name}" og alt dens indhold til papirkurven?`
@@ -344,90 +449,19 @@ function FilesPage() {
         if (confirm(msg)) trash.mutate(item.id)
         break
       }
-      case 'backup': {
-        const addToBackup = async () => {
-          try {
-            const [pwStatus, bkConfig, autoCfg] = await Promise.all([
-              api.get<BackupPasswordStatus>('/api/v1/backup/password'),
-              api.get<BackupConfig>('/api/v1/backup/config'),
-              api.get<AutoBackupConfig>('/api/v1/backup/auto'),
-            ])
-            if (!pwStatus.has_password || !bkConfig.tertiary_enabled) {
-              toast.info('Set up backup first')
-              ignorePromise(navigate({ to: '/backup' }))
-              return
-            }
-            const targetId = item.is_folder ? item.id : (item.parent_id ?? item.id)
-            const existing = autoCfg.folder_ids ?? []
-            if (existing.includes(targetId)) {
-              toast.info(`"${item.name}" is already in auto backup`)
-              return
-            }
-            const newIds = [...existing, targetId]
-            await api.put('/api/v1/backup/auto', {
-              enabled: true,
-              interval_hours: autoCfg.interval_hours || 24,
-              retention_days: autoCfg.retention_days || 30,
-              folder_ids: newIds,
-            })
-            ignorePromise(qc.invalidateQueries({ queryKey: ['backup', 'auto'] }))
-            toast.success(`"${item.name}" added to auto backup`)
-          } catch (err) {
-            console.error('Add to backup failed:', err)
-            toast.error(t('toast.moveFailed'))
-          }
+      case 'backup':
+        ignorePromise(handleBackupContextAction(item))
+        break
+      case 'playlist':
+        if (item.is_folder) {
+          ignorePromise(handlePlaylistContextAction(item))
         }
-        ignorePromise(addToBackup())
         break
-      }
-      case 'playlist': {
-        if (!item.is_folder) break
-        ignorePromise((async () => {
-          try {
-            const contents = await api.get<FileItem[]>(`/api/v1/files?parent_id=${item.id}`)
-            const audio = contents.filter(isAudioFile)
-            const existingM3u = contents.find(
-              f => !f.is_folder && f.name.toLowerCase().endsWith('.m3u')
-            ) ?? null
-            if (audio.length === 0) {
-              toast.info(t('toast.noAudioFiles'))
-              return
-            }
-            if (activePlaylistId) {
-              const result = await addTracks(audio.map(f => f.id))
-              if (result.added > 0)
-                toast.success(`${result.added} ${result.added === 1 ? 'nummer' : 'numre'} tilføjet til playlist`)
-              else
-                toast.info('Alle numre er allerede i playlisten eller den er fuld (max 50)')
-              return
-            }
-            if (audio.length <= 50) {
-              await doCreateFolderPlaylist(item, audio, existingM3u, 'all')
-            } else {
-              setFolderPlaylistJob({ folder: item, audioFiles: audio, existingM3u })
-            }
-          } catch {
-            toast.error(t('toast.couldNotReadFolder'))
-          }
-        })())
+      case 'addtoqueue':
+        if (!item.is_folder) {
+          ignorePromise(handleAddToQueueContextAction(item))
+        }
         break
-      }
-      case 'addtoqueue': {
-        if (item.is_folder) break
-        ignorePromise((async () => {
-          try {
-            const result = await addTracks([item.id])
-            if (result.added > 0) {
-              toast.success(`„${item.name}“ tilføjet til køen`)
-            } else if (result.skipped > 0) {
-              toast.info('Nummeret er allerede i køen eller køen er fuld (max 50)')
-            }
-          } catch {
-            toast.error(t('toast.moveFailed'))
-          }
-        })())
-        break
-      }
       case 'playInPlayer': {
         if (item.is_folder) break
         const displayName = item.name.replace(/\.m3u$/i, '')
@@ -435,30 +469,13 @@ function FilesPage() {
         toast.success(`Indlæser "${displayName}"`)
         break
       }
-      case 'addToPlayer': {
-        if (item.is_folder) break
-        ignorePromise((async () => {
-          try {
-            const m3uTracks = await fetchPlaylistTracks(item.id)
-            const trackIds = m3uTracks.map(tr => tr.id)
-            if (trackIds.length === 0) {
-              toast.info('M3U filen indeholder ingen tilgængelige numre')
-              return
-            }
-            const result = await addTracks(trackIds)
-            if (result.added > 0) {
-              toast.success(`${result.added} ${result.added === 1 ? 'nummer' : 'numre'} tilføjet til musikafspilleren`)
-            } else {
-              toast.info(`Alle numre er allerede i afspilleren eller den er fuld (max ${playlistMaxTracks})`)
-            }
-          } catch {
-            toast.error('Kunne ikke læse playlisten')
-          }
-        })())
+      case 'addToPlayer':
+        if (!item.is_folder) {
+          ignorePromise(handleAddToPlayerContextAction(item))
+        }
         break
-      }
     }
-  }, [handleOpen, trash, navigate, qc, doCreateFolderPlaylist, addTracks, activePlaylistId, setPlaylist, playlistMaxTracks])
+  }, [handleOpen, trash, handleBackupContextAction, handlePlaylistContextAction, handleAddToQueueContextAction, handleAddToPlayerContextAction, setPlaylist])
 
   const items = files ?? []
 
@@ -1094,3 +1111,4 @@ function FilesPage() {
     </DropZone>
   )
 }
+

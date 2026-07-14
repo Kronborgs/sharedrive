@@ -110,6 +110,40 @@ func Load() (*Config, error) {
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
+	bindExplicitEnvKeys(v)
+
+	// Attempt to load .env file (fail silently if absent in production)
+	envFile := v.GetString("ENV_FILE")
+	if envFile == "" {
+		envFile = ".env"
+	}
+	v.SetConfigFile(envFile)
+	v.SetConfigType("dotenv")
+	_ = v.ReadInConfig() // not fatal — env vars may be set directly
+
+	setDefaults(v)
+
+	cfg := &Config{}
+	if err := v.Unmarshal(cfg); err != nil {
+		return nil, fmt.Errorf("config unmarshal: %w", err)
+	}
+
+	applyDirectEnvOverrides(cfg)
+
+	cfg.CORSOrigins = parseCommaSeparatedList(v.GetString("CORS_ORIGINS"))
+	if len(cfg.CORSOrigins) == 0 {
+		cfg.CORSOrigins = []string{"http://localhost:5173"}
+	}
+	cfg.TrustedProxies = parseCommaSeparatedList(v.GetString("TRUSTED_PROXIES"))
+
+	applyDerivedValues(v, cfg)
+	if err := validateRequiredConfig(cfg); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+func bindExplicitEnvKeys(v *viper.Viper) {
 	// Bind every env var that has no SetDefault — otherwise viper's Unmarshal
 	// won't discover them via AutomaticEnv alone (it only iterates known keys).
 	for _, key := range []string{
@@ -128,17 +162,9 @@ func Load() (*Config, error) {
 	} {
 		_ = v.BindEnv(key)
 	}
+}
 
-	// Attempt to load .env file (fail silently if absent in production)
-	envFile := v.GetString("ENV_FILE")
-	if envFile == "" {
-		envFile = ".env"
-	}
-	v.SetConfigFile(envFile)
-	v.SetConfigType("dotenv")
-	_ = v.ReadInConfig() // not fatal — env vars may be set directly
-
-	// ── Defaults ──────────────────────────────────────────────────────────
+func setDefaults(v *viper.Viper) {
 	v.SetDefault("APP_HOST", "0.0.0.0")
 	v.SetDefault("APP_PORT", 8080)
 	v.SetDefault("GO_ENV", "production")
@@ -167,66 +193,57 @@ func Load() (*Config, error) {
 	v.SetDefault("DEFAULT_QUOTA_BYTES", int64(10*1024*1024*1024)) // 10 GB
 	v.SetDefault("CLOUDFLARE_NETWORK_NAME", "cloudflare-net")
 	v.SetDefault("GOTENBERG_URL", "http://localhost:3000")
+}
 
-	cfg := &Config{}
-	if err := v.Unmarshal(cfg); err != nil {
-		return nil, fmt.Errorf("config unmarshal: %w", err)
-	}
+type stringEnvOverride struct {
+	target *string
+	key    string
+}
 
+func applyDirectEnvOverrides(cfg *Config) {
 	// Override with direct env reads — viper's AutomaticEnv+Unmarshal does not
 	// reliably populate fields that have no SetDefault when using uppercase keys.
-	envStrings := map[*string]string{
-		&cfg.SessionSecret:     "SESSION_SECRET",
-		&cfg.BackupHMACSecret:  "BACKUP_HMAC_SECRET",
-		&cfg.TOTPEncryptKey:    "TOTP_ENCRYPT_KEY",
-		&cfg.DeviceTrustSecret: "DEVICE_TRUST_SECRET",
-		&cfg.PostgresPassword:  "POSTGRES_PASSWORD",
-		&cfg.PostgresHost:      "POSTGRES_HOST",
-		&cfg.PostgresDB:        "POSTGRES_DB",
-		&cfg.PostgresUser:      "POSTGRES_USER",
-		&cfg.RedisAddr:         "REDIS_ADDR",
-		&cfg.AppBaseURL:        "APP_BASE_URL",
-		&cfg.SMTPHost:          "SMTP_HOST",
-		&cfg.SMTPUser:          "SMTP_USER",
-		&cfg.SMTPPassword:      "SMTP_PASSWORD",
-		&cfg.SMTPFrom:          "SMTP_FROM",
-		&cfg.BackupsRoot:       "BACKUPS_ROOT",
-		&cfg.FileEncryptKey:    "FILE_ENCRYPT_KEY",
+	overrides := []stringEnvOverride{
+		{target: &cfg.SessionSecret, key: "SESSION_SECRET"},
+		{target: &cfg.BackupHMACSecret, key: "BACKUP_HMAC_SECRET"},
+		{target: &cfg.TOTPEncryptKey, key: "TOTP_ENCRYPT_KEY"},
+		{target: &cfg.DeviceTrustSecret, key: "DEVICE_TRUST_SECRET"},
+		{target: &cfg.PostgresPassword, key: "POSTGRES_PASSWORD"},
+		{target: &cfg.PostgresHost, key: "POSTGRES_HOST"},
+		{target: &cfg.PostgresDB, key: "POSTGRES_DB"},
+		{target: &cfg.PostgresUser, key: "POSTGRES_USER"},
+		{target: &cfg.RedisAddr, key: "REDIS_ADDR"},
+		{target: &cfg.AppBaseURL, key: "APP_BASE_URL"},
+		{target: &cfg.SMTPHost, key: "SMTP_HOST"},
+		{target: &cfg.SMTPUser, key: "SMTP_USER"},
+		{target: &cfg.SMTPPassword, key: "SMTP_PASSWORD"},
+		{target: &cfg.SMTPFrom, key: "SMTP_FROM"},
+		{target: &cfg.BackupsRoot, key: "BACKUPS_ROOT"},
+		{target: &cfg.FileEncryptKey, key: "FILE_ENCRYPT_KEY"},
 	}
-	for ptr, key := range envStrings {
-		if val := os.Getenv(key); val != "" {
-			*ptr = val
+	for _, override := range overrides {
+		if val := os.Getenv(override.key); val != "" {
+			*override.target = val
 		}
 	}
+}
 
-	// Parse comma-separated CORS origins
-	originsRaw := v.GetString("CORS_ORIGINS")
-	for _, o := range strings.Split(originsRaw, ",") {
-		o = strings.TrimSpace(o)
-		if o != "" {
-			cfg.CORSOrigins = append(cfg.CORSOrigins, o)
+func parseCommaSeparatedList(raw string) []string {
+	values := make([]string, 0)
+	for _, part := range strings.Split(raw, ",") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			values = append(values, trimmed)
 		}
 	}
-	if len(cfg.CORSOrigins) == 0 {
-		cfg.CORSOrigins = []string{"http://localhost:5173"}
-	}
+	return values
+}
 
-	// Parse comma-separated trusted proxy CIDRs
-	proxyRaw := v.GetString("TRUSTED_PROXIES")
-	for _, p := range strings.Split(proxyRaw, ",") {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			cfg.TrustedProxies = append(cfg.TrustedProxies, p)
-		}
-	}
-
-	// Parse durations from plain-int env vars
+func applyDerivedValues(v *viper.Viper, cfg *Config) {
 	lockoutMin := v.GetInt("RL_USER_LOCKOUT_DURATION_MIN")
 	cfg.RLUserLockoutDuration = time.Duration(lockoutMin) * time.Minute
 	cfg.SessionDuration = 7 * 24 * time.Hour
 	cfg.DeviceTrustDuration = 30 * 24 * time.Hour
-
-	// Derived convenience fields
 	cfg.SessionIdleTimeout = cfg.SessionDuration
 	cfg.BaseURL = cfg.AppBaseURL
 	// Cookie domain: explicit config value, or empty for host-only cookies (most secure).
@@ -241,8 +258,9 @@ func Load() (*Config, error) {
 	if cfg.RateLimitLoginAttempts == 0 {
 		cfg.RateLimitLoginAttempts = 10
 	}
+}
 
-	// ── Required secrets validation ────────────────────────────────────────
+func validateRequiredConfig(cfg *Config) error {
 	required := map[string]string{
 		"SESSION_SECRET":      cfg.SessionSecret,
 		"BACKUP_HMAC_SECRET":  cfg.BackupHMACSecret,
@@ -252,11 +270,10 @@ func Load() (*Config, error) {
 	}
 	for name, val := range required {
 		if strings.TrimSpace(val) == "" {
-			return nil, fmt.Errorf("required config %s is not set", name)
+			return fmt.Errorf("required config %s is not set", name)
 		}
 	}
-
-	return cfg, nil
+	return nil
 }
 
 // IsDev returns true when running in development mode.

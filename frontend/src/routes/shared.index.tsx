@@ -38,13 +38,14 @@ function SharedPage() {
   const [teItem, setTeItem] = useState<FileItem | null>(null)
   const [newDocOpen, setNewDocOpen] = useState(false)
 
+  const passwordQuery = submittedPassword
+    ? `?password=${encodeURIComponent(submittedPassword)}`
+    : ''
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['shared', token, submittedPassword],
     queryFn: ({ signal }) =>
-      api.get<SharedPayload>(
-        `/api/v1/public/shared/${token}${submittedPassword ? `?password=${encodeURIComponent(submittedPassword)}` : ''}`,
-        signal,
-      ),
+      api.get<SharedPayload>(`/api/v1/public/shared/${token}${passwordQuery}`, signal),
     enabled: !!token,
     retry: false,
   })

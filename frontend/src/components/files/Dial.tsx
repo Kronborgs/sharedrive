@@ -346,11 +346,12 @@ export function RetroButton({
   const r = size / 2
   const [pressed, setPressed] = useState(false)
   const isDown = (active || pressed) && !disabled
-  const rimShadow = isDown
-    ? `inset 3px 3px 8px #0d0f18, inset -2px -2px 6px #2b2f45, 0 0 8px ${color}55`
-    : disabled
-      ? 'none'
-      : '3px 3px 8px #0d0f18, -2px -2px 6px #2b2f45'
+  let rimShadow = '3px 3px 8px #0d0f18, -2px -2px 6px #2b2f45'
+  if (disabled) {
+    rimShadow = 'none'
+  } else if (isDown) {
+    rimShadow = `inset 3px 3px 8px #0d0f18, inset -2px -2px 6px #2b2f45, 0 0 8px ${color}55`
+  }
   let iconColor = '#8b90a8'
   if (disabled) {
     iconColor = '#3a3d4a'

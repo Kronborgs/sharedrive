@@ -92,7 +92,7 @@ export function STLRenderer({ url }: Readonly<STLRendererProps>) {
       geometryRef.current = null
       materialRef.current = null
       renderer.dispose()
-      if (el.contains(renderer.domElement)) el.removeChild(renderer.domElement)
+      if (el.contains(renderer.domElement)) renderer.domElement.remove()
     }
   }, [url])
 

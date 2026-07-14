@@ -134,17 +134,21 @@ function FileRow({
     e.preventDefault()
     onContextMenu(item, e.clientX, e.clientY)
   }
+  let rowStateClass = 'hover:bg-zinc-50 dark:hover:bg-[#2d3148]/50'
+  if (selected) {
+    rowStateClass = 'bg-brand-50 dark:bg-brand-900/20'
+  }
+  if (highlight) {
+    rowStateClass = 'bg-brand-100 dark:bg-brand-800/40'
+  }
+
 
   return (
     <tr
       ref={rowRef}
       className={cn(
         'group border-b border-zinc-50 dark:border-[#2d3148]/50 cursor-pointer transition-colors duration-500',
-        highlight
-          ? 'bg-brand-100 dark:bg-brand-800/40'
-          : selected
-          ? 'bg-brand-50 dark:bg-brand-900/20'
-          : 'hover:bg-zinc-50 dark:hover:bg-[#2d3148]/50',
+        rowStateClass,
       )}
       onClick={e => {
         if ((e.target as HTMLElement).closest('button,input')) return

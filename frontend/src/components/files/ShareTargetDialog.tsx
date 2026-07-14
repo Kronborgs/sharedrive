@@ -57,13 +57,11 @@ export function ShareTargetDialog({
 
   // Folder listing for the picker
   const pickerFolderId = trail[trail.length - 1].id
+  const pickerQuery = pickerFolderId ? `parent_id=${pickerFolderId}` : ''
   const { data: pickerItems, isLoading: pickerLoading } = useQuery({
     queryKey: ['share-target-picker', pickerFolderId],
     queryFn: ({ signal }) =>
-      api.get<FileItem[]>(
-        `/api/v1/files?${pickerFolderId ? `parent_id=${pickerFolderId}` : ''}`,
-        signal,
-      ),
+      api.get<FileItem[]>(`/api/v1/files?${pickerQuery}`, signal),
     enabled: folderPickerOpen,
   })
   const folders = (pickerItems ?? []).filter(f => f.is_folder)

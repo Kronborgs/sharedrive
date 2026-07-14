@@ -48,7 +48,7 @@ export const Route = createFileRoute('/_auth/backup/')({
   component: BackupPage,
 })
 
-type TranslateFn = (key: string, params?: Record<string, unknown>) => string
+type TranslateFn = ReturnType<typeof useI18n>['t']
 
 // ── file tree node (recursive) ───────────────────────────────────────────────
 
@@ -1628,24 +1628,24 @@ function BackupPage() {
             {t('backup.tokenDesc')}
           </p>
 
-          {renderTokenStatusContent(
+          {renderTokenStatusContent({
             isLoading,
             status,
-            generateMutation.isPending,
-            revokeMutation.isPending,
-            () => {
+            generatePending: generateMutation.isPending,
+            revokePending: revokeMutation.isPending,
+            onRotate: () => {
               if (confirm(t('backup.rotateTokenConfirm'))) {
                 generateMutation.mutate()
               }
             },
-            () => {
+            onRevoke: () => {
               if (confirm(t('backup.revokeTokenConfirm'))) {
                 revokeMutation.mutate()
               }
             },
-            () => generateMutation.mutate(),
+            onGenerate: () => generateMutation.mutate(),
             t,
-          )}
+          })}
 
           {newToken && (
             <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
@@ -1950,16 +1950,25 @@ function renderReceivedArchivesContent(
   return <p className="text-xs text-zinc-400">{t('backup.noReceived')}</p>
 }
 
-function renderTokenStatusContent(
-  isLoading: boolean,
-  status: BackupPasswordStatus | undefined,
-  generatePending: boolean,
-  revokePending: boolean,
-  onRotate: () => void,
-  onRevoke: () => void,
-  onGenerate: () => void,
-  t: TranslateFn,
-) {
+function renderTokenStatusContent({
+  isLoading,
+  status,
+  generatePending,
+  revokePending,
+  onRotate,
+  onRevoke,
+  onGenerate,
+  t,
+}: Readonly<{
+  isLoading: boolean
+  status: BackupPasswordStatus | undefined
+  generatePending: boolean
+  revokePending: boolean
+  onRotate: () => void
+  onRevoke: () => void
+  onGenerate: () => void
+  t: TranslateFn
+}>) {
   if (isLoading) {
     return <p className="text-sm text-zinc-400">{t('backup.tokenLoading')}</p>
   }
@@ -2005,6 +2014,8 @@ function renderTokenStatusContent(
     </div>
   )
 }
+
+
 
 
 

@@ -10,15 +10,27 @@ variables:
 
 workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Kør ved almindelige pushes, inklusive tags
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+
+    # Kør ved merge requests
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+    # Opret ellers ingen pipeline
+    - when: never
 
 default:
   interruptible: true
 
+
+# ------------------------------------------------------------
+# TEST
+# ------------------------------------------------------------
+
 backend:test:
   stage: test
   image: golang:${GO_VERSION}
+
   cache:
     key:
       files:
@@ -26,37 +38,58 @@ backend:test:
     paths:
       - .cache/go-build
       - go/pkg/mod
+
   variables:
     GOCACHE: $CI_PROJECT_DIR/.cache/go-build
     GOMODCACHE: $CI_PROJECT_DIR/go/pkg/mod
+
   before_script:
     - cd backend
+
   script:
     - go test ./... -timeout 60s -coverprofile=coverage.out
+
   artifacts:
     paths:
       - backend/coverage.out
     expire_in: 1 day
 
+
+# ------------------------------------------------------------
+# SONAR
+# ------------------------------------------------------------
+
 sonar:scan:
   stage: sonar
+
   image:
     name: sonarsource/sonar-scanner-cli:latest
     entrypoint: [""]
+
   needs:
     - job: backend:test
       artifacts: true
+
   variables:
     GIT_DEPTH: "0"
+
   script:
-    - sonar-scanner -Dsonar.token=$SONAR_TOKEN
+    - sonar-scanner -Dsonar.token="$SONAR_TOKEN"
+
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - when: never
+
+
+# ------------------------------------------------------------
+# BUILD BACKEND
+# ------------------------------------------------------------
 
 backend:build:
   stage: build
   image: golang:${GO_VERSION}
+
   cache:
     key:
       files:
@@ -64,63 +97,152 @@ backend:build:
     paths:
       - .cache/go-build
       - go/pkg/mod
+
   variables:
     GOCACHE: $CI_PROJECT_DIR/.cache/go-build
     GOMODCACHE: $CI_PROJECT_DIR/go/pkg/mod
     CGO_ENABLED: "0"
+
   before_script:
     - cd backend
+
   script:
     - mkdir -p bin
     - go build -o bin/server ./cmd/server
+
   artifacts:
     paths:
       - backend/bin/server
     expire_in: 7 days
 
+
+# ------------------------------------------------------------
+# BUILD FRONTEND
+# ------------------------------------------------------------
+
 frontend:build:
   stage: build
   image: node:${NODE_VERSION}
+
   cache:
     key:
       files:
         - frontend/package-lock.json
     paths:
       - frontend/node_modules/
+
   before_script:
     - cd frontend
     - npm install
+
   script:
     - npm run type-check
     - npm run build
+
   artifacts:
     paths:
       - frontend/dist/
     expire_in: 7 days
 
+
+# ------------------------------------------------------------
+# BUILD OG PUSH DOCKER-IMAGE
+# ------------------------------------------------------------
+
 docker:publish:
   stage: publish
   image: docker:27
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
   script:
     - apk add --no-cache bash git
+
     - bash scripts/generate-changelog.sh 30
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-    - docker build --pull -t "$CI_REGISTRY_IMAGE:latest" -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" .
-    - docker push "$CI_REGISTRY_IMAGE:latest"
-    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+
+    - echo "$CI_REGISTRY_PASSWORD" |
+      docker login
+      -u "$CI_REGISTRY_USER"
+      --password-stdin
+      "$CI_REGISTRY"
+
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        VERSION="${CI_COMMIT_TAG#v}"
+
+        echo "Bygger release-image version ${VERSION}"
+
+        docker build --pull \
+          -t "$CI_REGISTRY_IMAGE:${VERSION}" \
+          -t "$CI_REGISTRY_IMAGE:latest" \
+          .
+
+        docker push "$CI_REGISTRY_IMAGE:${VERSION}"
+        docker push "$CI_REGISTRY_IMAGE:latest"
+      else
+        echo "Bygger master-image ${CI_COMMIT_SHORT_SHA}"
+
+        docker build --pull \
+          -t "$CI_REGISTRY_IMAGE:latest" \
+          -t "$CI_REGISTRY_IMAGE:${CI_COMMIT_SHORT_SHA}" \
+          .
+
+        docker push "$CI_REGISTRY_IMAGE:latest"
+        docker push "$CI_REGISTRY_IMAGE:${CI_COMMIT_SHORT_SHA}"
+      fi
+
+  rules:
+    # Kør automatisk ved versions-tags som v2.0.0
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+
+    # Kør automatisk på standardbranchen
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+    - when: never
+
+
+# ------------------------------------------------------------
+# PUSH MASTER ELLER VERSIONSTAG TIL GITHUB
+# ------------------------------------------------------------
 
 publish_to_github:
   stage: publish
+
   image:
     name: alpine/git:latest
     entrypoint: [""]
-  script:
+
+  before_script:
     - git config --global user.name "GitLab CI"
     - git config --global user.email "gitlab-ci@kronborgs.dk"
-    - git remote add github "https://oauth2:${GITHUB_TOKEN}@github.com/Kronborgs/sharedrive.git"
-    - git push github HEAD:master --force
+
+    - git remote remove github 2>/dev/null || true
+
+    - git remote add github
+      "https://oauth2:${GITHUB_TOKEN}@github.com/Kronborgs/sharedrive.git"
+
+  script:
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        echo "Sender tag ${CI_COMMIT_TAG} til GitHub"
+
+        git show-ref --tags
+
+        git push github \
+          "refs/tags/${CI_COMMIT_TAG}:refs/tags/${CI_COMMIT_TAG}"
+      else
+        echo "Sender master til GitHub"
+
+        git push github \
+          HEAD:refs/heads/master \
+          --force
+      fi
+
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    # Vis manuel knap i en versions-tag-pipeline
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
       when: manual
+
+    # Vis manuel knap i pipeline for standardbranchen
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+
+    - when: never

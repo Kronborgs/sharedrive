@@ -351,7 +351,12 @@ export function RetroButton({
     : disabled
       ? 'none'
       : '3px 3px 8px #0d0f18, -2px -2px 6px #2b2f45'
-  const iconColor = disabled ? '#3a3d4a' : (isDown ? color : '#8b90a8')
+  let iconColor = '#8b90a8'
+  if (disabled) {
+    iconColor = '#3a3d4a'
+  } else if (isDown) {
+    iconColor = color
+  }
 
   return (
     <button

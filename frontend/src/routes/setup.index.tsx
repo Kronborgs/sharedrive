@@ -146,7 +146,7 @@ function SetupPage() {
   )
 }
 
-function StepIndicator({ index, currentStep }: { index: number; currentStep: number }) {
+function StepIndicator({ index, currentStep }: Readonly<{ index: number; currentStep: number }>) {
   let className = 'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors '
   if (index < currentStep) {
     className += 'bg-brand-600 text-white'
@@ -159,7 +159,7 @@ function StepIndicator({ index, currentStep }: { index: number; currentStep: num
   return <div className={className} />
 }
 
-function StepGlyph({ index, currentStep }: { index: number; currentStep: number }) {
+function StepGlyph({ index, currentStep }: Readonly<{ index: number; currentStep: number }>) {
   if (index < currentStep) {
     return <Check size={12} />
   }

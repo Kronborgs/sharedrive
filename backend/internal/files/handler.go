@@ -1151,7 +1151,7 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Disposition", contentDisposition("inline", f.Name))
-	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Cache-Control", cachePrivateNoStore)
 
 	const textPreviewLimit = 1 * 1024 * 1024 // 1 MB
 	if isTextMIME(mime) && f.SizeBytes > textPreviewLimit {
@@ -1204,7 +1204,7 @@ func (h *Handler) PreviewPDF(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", contentDisposition("inline", f.Name+".pdf"))
-	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Cache-Control", cachePrivateNoStore)
 	http.ServeContent(w, r, f.Name+".pdf", f.UpdatedAt, pdfFile)
 
 	auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)

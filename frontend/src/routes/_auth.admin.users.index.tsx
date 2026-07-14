@@ -668,20 +668,21 @@ function GroupsPanel({ groups, qc }: Readonly<{ groups: Group[]; qc: ReturnType<
   const [editName, setEditName] = useState('')
   const [editColor, setEditColor] = useState('')
   const { t } = useI18n()
+  const invalidateGroups = () => qc.invalidateQueries({ queryKey: ['admin', 'groups'] })
 
   const create = useMutation({
     mutationFn: () => api.post<Group>('/api/v1/admin/groups', { name, color }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['admin', 'groups'] }); setName('') },
+    onSuccess: async () => { await invalidateGroups(); setName('') },
   })
 
   const update = useMutation({
     mutationFn: () => api.patch(`/api/v1/admin/groups/${editId}`, { name: editName, color: editColor }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['admin', 'groups'] }); setEditId(null) },
+    onSuccess: async () => { await invalidateGroups(); setEditId(null) },
   })
 
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/admin/groups/${id}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin', 'groups'] }),
+    onSuccess: async () => { await invalidateGroups() },
   })
 
   return (
@@ -789,6 +790,18 @@ function UserRow({
     ? Math.min(100, (user.quota_used_bytes / user.quota_bytes) * 100)
     : 0
   const { t } = useI18n()
+  let quotaBarColorClass = 'bg-brand-500'
+  if (percent > 90) {
+    quotaBarColorClass = 'bg-red-500'
+  } else if (percent > 70) {
+    quotaBarColorClass = 'bg-amber-500'
+  }
+  let demoteTitle = t('users.demoteToUser')
+  if (isLastAdmin) {
+    demoteTitle = t('users.cannotDemoteLastAdmin')
+  } else if (isSelf) {
+    demoteTitle = t('users.cannotDemoteSelf')
+  }
 
   return (
     <tr className="hover:bg-zinc-50 dark:hover:bg-[#0f1117] transition-colors">
@@ -815,9 +828,7 @@ function UserRow({
           </div>
           <div className="h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all ${
-                percent > 90 ? 'bg-red-500' : percent > 70 ? 'bg-amber-500' : 'bg-brand-500'
-              }`}
+              className={`h-full rounded-full transition-all ${quotaBarColorClass}`}
               style={{ width: `${percent}%` }}
             />
           </div>
@@ -899,7 +910,7 @@ function UserRow({
               }}
               disabled={isLastAdmin || isSelf}
               className="p-1.5 rounded-lg text-purple-500 hover:text-zinc-500 dark:hover:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title={isLastAdmin ? t('users.cannotDemoteLastAdmin') : isSelf ? t('users.cannotDemoteSelf') : t('users.demoteToUser')}
+              title={demoteTitle}
             >
               <ShieldCheck size={14} />
             </button>
@@ -1003,6 +1014,12 @@ function EditUserDialog({ user, onClose, onSaved }: Readonly<{ user: User; onClo
   const parsedUpload  = uploadInput.trim() === '' ? null : parseQuotaInput(uploadInput)
   const uploadIsValid = uploadInput.trim() === '' || (parsedUpload !== null && parsedUpload > 0)
   const uploadBytes   = parsedUpload
+  let quotaInputBorderClass = 'border-zinc-300 dark:border-[#2d3148]'
+  if (!isValid) {
+    quotaInputBorderClass = 'border-red-400 dark:border-red-500'
+  } else if (overLimit) {
+    quotaInputBorderClass = 'border-amber-400 dark:border-amber-500'
+  }
 
   const save = useMutation({
     mutationFn: () => api.patch(`/api/v1/admin/users/${user.id}`, {
@@ -1029,13 +1046,7 @@ function EditUserDialog({ user, onClose, onSaved }: Readonly<{ user: User; onClo
               value={quotaInput}
               onChange={e => setQuotaInput(e.target.value)}
               placeholder={t('users.quotaPlaceholder')}
-              className={`w-full px-3 py-2 rounded-lg border text-sm text-zinc-900 dark:text-slate-100 bg-white dark:bg-[#0f1117] ${
-                !isValid
-                  ? 'border-red-400 dark:border-red-500'
-                  : overLimit
-                  ? 'border-amber-400 dark:border-amber-500'
-                  : 'border-zinc-300 dark:border-[#2d3148]'
-              }`}
+              className={`w-full px-3 py-2 rounded-lg border text-sm text-zinc-900 dark:text-slate-100 bg-white dark:bg-[#0f1117] ${quotaInputBorderClass}`}
             />
             <div className="mt-1 space-y-0.5">
               {isValid && (

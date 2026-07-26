@@ -2,7 +2,7 @@
 // Provides app-shell caching for PWA installability and offline resilience.
 // Does NOT cache private user file data — only static assets and the app shell.
 
-const CACHE_NAME = 'sharedrive-shell-v1'
+const CACHE_NAME = 'sharedrive-shell-v2'
 
 // App shell: the minimal set of assets needed to render the UI.
 // Vite-built assets have content hashes in filenames, so they are safe to

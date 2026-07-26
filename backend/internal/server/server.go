@@ -951,7 +951,7 @@ func (s *Server) tusPreUploadCreateCallback(hook tusd.HookEvent) (tusd.HTTPRespo
 	if response != nil {
 		return *response, tusd.FileInfoChanges{}, nil
 	}
-	if response := s.tusValidateUploadSize(ctx, actor, hook.Upload.Size, meta["folder_id"], overwrite, conflict); response != nil {
+	if response := s.tusValidateUploadSize(ctx, actor, hook.Upload.Size, tusFolderID(meta), overwrite, conflict); response != nil {
 		return *response, tusd.FileInfoChanges{}, nil
 	}
 
@@ -968,7 +968,7 @@ func (s *Server) tusFindUploadConflict(ctx context.Context, meta map[string]stri
 		return nil, nil
 	}
 
-	found, err := s.fileSvc.FindNameConflict(ctx, name, meta["folder_id"])
+	found, err := s.fileSvc.FindNameConflict(ctx, name, tusFolderID(meta))
 	if err != nil {
 		log.Error().Err(err).Msg("tusHandler: precreate conflict lookup")
 		response := tusd.HTTPResponse{StatusCode: http.StatusInternalServerError}
@@ -1056,7 +1056,17 @@ func normalizeTusFinalizeMeta(meta map[string]string) (string, string, string, b
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
-	return name, mimeType, meta["folder_id"], isTusOverwrite(meta)
+	return name, mimeType, tusFolderID(meta), isTusOverwrite(meta)
+}
+
+// tusFolderID accepts both metadata names used by Sharedrive clients.
+// Current clients send folder_id. Older installed PWAs used parent_id and can
+// remain active until Android refreshes the service worker and hashed assets.
+func tusFolderID(meta map[string]string) string {
+	if folderID := strings.TrimSpace(meta["folder_id"]); folderID != "" {
+		return folderID
+	}
+	return strings.TrimSpace(meta["parent_id"])
 }
 
 func tusFinalizeUploadErrorResponse(err error) tusd.HTTPResponse {

@@ -39,6 +39,8 @@ type UploadConflictError struct {
 	Existing *File
 }
 
+var ErrInvalidUploadFolderID = errors.New("invalid upload folder id")
+
 func (e *UploadConflictError) Error() string {
 	if e == nil || e.Existing == nil {
 		return "upload conflict"
@@ -700,18 +702,23 @@ type UploadParams struct {
 	ContentLength int64
 }
 
-func parseUploadParentID(folderIDStr string) *uuid.UUID {
+func parseUploadParentID(folderIDStr string) (*uuid.UUID, error) {
+	folderIDStr = strings.TrimSpace(folderIDStr)
 	if folderIDStr == "" {
-		return nil
+		return nil, nil
 	}
-	if id, err := uuid.Parse(folderIDStr); err == nil {
-		return &id
+	id, err := uuid.Parse(folderIDStr)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidUploadFolderID, err)
 	}
-	return nil
+	return &id, nil
 }
 
 func (s *Service) authorizeUpload(ctx context.Context, params UploadParams) (*uuid.UUID, error) {
-	parentID := parseUploadParentID(params.FolderID)
+	parentID, err := parseUploadParentID(params.FolderID)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.AuthorizeParentWrite(ctx, params.OwnerID, parentID); err != nil {
 		return nil, err
 	}

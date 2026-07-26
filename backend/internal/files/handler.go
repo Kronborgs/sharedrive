@@ -483,10 +483,14 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	actor := middleware.UserFromContext(r.Context())
 	ctx := r.Context()
 
-	// Read folder_id from URL query string ONLY — calling r.FormValue here
+	// Read the folder from the URL query string ONLY — calling r.FormValue here
 	// would trigger ParseMultipartForm internally, consuming the body before
-	// MaxBytesReader is applied.  folder_id from the body is re-read below.
-	folderIDQuery := r.URL.Query().Get("folder_id")
+	// MaxBytesReader is applied. The multipart body is re-read below.
+	// folder_id is canonical; parent_id remains supported for older clients.
+	folderIDQuery := strings.TrimSpace(r.URL.Query().Get("folder_id"))
+	if folderIDQuery == "" {
+		folderIDQuery = strings.TrimSpace(r.URL.Query().Get("parent_id"))
+	}
 	maxBytes := h.svc.GetEffectiveMaxUpload(ctx, actor.ID.String(), actor.Role, folderIDQuery)
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes+1024*1024) // +1 MB form overhead
 
@@ -495,8 +499,15 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// folder_id may have been in the multipart body rather than the URL.
-	folderID := r.FormValue("folder_id")
+	// The folder may have been in the multipart body rather than the URL.
+	// Prefer canonical folder_id and fall back to legacy parent_id, then query.
+	folderID := strings.TrimSpace(r.FormValue("folder_id"))
+	if folderID == "" {
+		folderID = strings.TrimSpace(r.FormValue("parent_id"))
+	}
+	if folderID == "" {
+		folderID = folderIDQuery
+	}
 	// If the effective limit changes (guest → folder owner), re-check against file size.
 	if folderID != folderIDQuery {
 		maxBytes = h.svc.GetEffectiveMaxUpload(ctx, actor.ID.String(), actor.Role, folderID)
@@ -523,6 +534,10 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	f, err := h.svc.Upload(r.Context(), UploadParams{OwnerID: actor.ID.String(), Name: header.Filename, MimeType: mimeType, FolderID: folderID, Overwrite: overwrite, ContentLength: header.Size}, fileData)
 	if err != nil {
+		if errors.Is(err, ErrInvalidUploadFolderID) {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid folder_id")
+			return
+		}
 		if strings.HasPrefix(err.Error(), "quota:") {
 			httputil.RespondError(w, http.StatusUnprocessableEntity, err.Error())
 			return

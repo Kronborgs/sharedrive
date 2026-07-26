@@ -374,7 +374,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       try {
         const formData = new FormData()
         formData.append('file', request.file)
-        if (targetFolderId) formData.append('parent_id', targetFolderId)
+        if (targetFolderId) formData.append('folder_id', targetFolderId)
         if (request.overwrite) formData.append('overwrite', '1')
         update(entry.id, { status: 'uploading' })
         await api.post<FileItem>('/api/v1/files/upload', formData)

@@ -515,9 +515,9 @@ function FilesPage() {
     }
 
     for (const [key, filesForFolder] of grouped) {
-      await beginUploadWithConflictCheck(filesForFolder, key === '' ? folderId : key)
+      await beginUploadWithConflictCheck(filesForFolder, key === '' ? null : key)
     }
-  }, [beginUploadWithConflictCheck, folderId, prepareFolderUpload])
+  }, [beginUploadWithConflictCheck, prepareFolderUpload])
 
   const sorted = [...items.filter(f => f.is_folder), ...items.filter(f => !f.is_folder)]
 
@@ -1135,7 +1135,6 @@ function FilesPage() {
     </DropZone>
   )
 }
-
 
 
 

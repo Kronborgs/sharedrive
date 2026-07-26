@@ -72,7 +72,9 @@ export function useUploadDuplicateWorkflow({
   const beginUploadWithConflictCheck = useCallback(async (incomingFiles: File[], targetFolderId?: string | null) => {
     if (incomingFiles.length === 0) return
 
-    const effectiveTargetFolderId = targetFolderId ?? folderId
+    // `null` is an explicit request to upload to root; `undefined` means use
+    // the folder currently open in the file browser.
+    const effectiveTargetFolderId = targetFolderId === undefined ? folderId : targetFolderId
     const requests = incomingFiles.map(file => ({ file, overwrite: false }))
     const duplicateHitsByName = await fetchDuplicateHitsByName([...new Set(incomingFiles.map(file => file.name))])
     const partitioned = partitionUploadRequests(requests, duplicateHitsByName, effectiveTargetFolderId)
@@ -139,7 +141,7 @@ export function useUploadDuplicateWorkflow({
       toast.info(t('upload.allConflictsSkipped'))
       return
     }
-    checkGlobalDuplicates(nextResolved, uploadConflictTargetFolderId ?? folderId)
+    checkGlobalDuplicates(nextResolved, uploadConflictTargetFolderId)
   }, [
     checkGlobalDuplicates,
     closeUploadConflictDialog,
@@ -164,7 +166,7 @@ export function useUploadDuplicateWorkflow({
       const nextName = uploadDuplicateRenames[entry.id] ?? entry.incoming.file.name
       return renameUploadRequest(entry.incoming, nextName)
     })
-    const targetFolder = uploadDuplicateTargetFolderId ?? folderId
+    const targetFolder = uploadDuplicateTargetFolderId
     closeUploadDuplicateDialog()
     startUpload([...uploadDuplicatePending, ...renamedQueue], targetFolder)
   }, [

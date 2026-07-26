@@ -277,7 +277,8 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       ignorePromise(qc.invalidateQueries({ queryKey }))
       return
     }
-    const fallbackKey = ['files', folderId ?? 'root']
+    // Match the FilesPage query key exactly; root is keyed by `null`.
+    const fallbackKey = ['files', folderId]
     ignorePromise(qc.invalidateQueries({ queryKey: fallbackKey }))
   }, [folderId, qc, queryKey])
 
@@ -299,7 +300,9 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     const metadata: Record<string, string> = {
       filename: request.file.name,
     }
-    if (targetFolderId) metadata.parent_id = targetFolderId
+    // The TUS server contract uses `folder_id` (the multipart endpoint uses
+    // `parent_id`). Sending `parent_id` here silently finalized uploads at root.
+    if (targetFolderId) metadata.folder_id = targetFolderId
     if (request.overwrite) metadata.overwrite = '1'
 
     return new tus.Upload(request.file, {
@@ -342,7 +345,9 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   }, [refreshFolder, systemSettings?.upload_endpoint, update])
 
   const startUpload = useCallback(async (requests: UploadRequest[], overrideFolderId?: string | null) => {
-    const targetFolderId = overrideFolderId ?? folderId
+    // `null` explicitly means the root folder. Only fall back to the currently
+    // open folder when no override was supplied at all.
+    const targetFolderId = overrideFolderId === undefined ? folderId : overrideFolderId
     const newEntries = requests.map(request => ({
       id: crypto.randomUUID(),
       file: request.file,

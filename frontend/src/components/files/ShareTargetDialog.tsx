@@ -51,8 +51,13 @@ export function ShareTargetDialog({
     enabled: !!currentFolderId,
   })
   useEffect(() => {
-    if (folderCrumbs && folderCrumbs.length > 0)
+    if (folderCrumbs && folderCrumbs.length > 0) {
       setTargetFolderName(folderCrumbs[folderCrumbs.length - 1].name)
+      setTrail([
+        { id: null, name: 'My Files' },
+        ...folderCrumbs.map(crumb => ({ id: crumb.id, name: crumb.name })),
+      ])
+    }
   }, [folderCrumbs])
 
   // Folder listing for the picker
@@ -82,7 +87,13 @@ export function ShareTargetDialog({
     setTargetFolderId(id)
     setTargetFolderName(name)
     setFolderPickerOpen(false)
-    setTrail([{ id: null, name: 'My Files' }])
+  }
+
+  function browseTo(nextTrail: BreadcrumbEntry[]) {
+    const destination = nextTrail[nextTrail.length - 1]
+    setTrail(nextTrail)
+    setTargetFolderId(destination.id)
+    setTargetFolderName(destination.name)
   }
 
   return (
@@ -142,7 +153,7 @@ export function ShareTargetDialog({
                   <span key={entry.id ?? entry.name} className="flex items-center gap-0.5 shrink-0">
                     {idx > 0 && <ChevronRight size={11} className="text-zinc-300 dark:text-slate-600" />}
                     <button
-                      onClick={() => setTrail(prev => prev.slice(0, idx + 1))}
+                      onClick={() => browseTo(trail.slice(0, idx + 1))}
                       className="flex items-center gap-1 text-[11px] text-zinc-600 dark:text-slate-400 hover:text-zinc-900 dark:hover:text-slate-100 transition-colors"
                     >
                       {idx === 0 && <Home size={11} />}
@@ -166,7 +177,7 @@ export function ShareTargetDialog({
                 {folderBrowserEmptyState ?? folders.map(f => (
                   <button
                     key={f.id}
-                    onClick={() => setTrail(prev => [...prev, { id: f.id, name: f.name }])}
+                    onClick={() => browseTo([...trail, { id: f.id, name: f.name }])}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors border-b border-zinc-50 dark:border-[#2d3148]/40 last:border-0"
                   >
                     <Folder size={13} className="text-amber-500 shrink-0" />

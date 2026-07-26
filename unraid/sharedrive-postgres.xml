@@ -10,7 +10,7 @@
   <Project>https://github.com/Kronborgs/sharedrive</Project>
   <Overview>PostgreSQL 16 database for Sharedrive. Deploy this container before starting the main sharedrive container. The database credentials here must match those set in your sharedrive .env file.</Overview>
   <Category>Cloud: Tools:</Category>
-  <WebUI/>http://[IP]:[PORT:8080]/ </WebUI>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Kronborgs/sharedrive/master/unraid/sharedrive-postgres.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Kronborgs/sharedrive/master/pics/sharedrive_postgres.png</Icon>
   <ExtraParams/>

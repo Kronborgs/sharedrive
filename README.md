@@ -2,6 +2,8 @@
 
 Privacy-first self-hosted file sharing and personal cloud platform for secure storage, syncing, and sharing, WebDAV, collaborative document editing, built-in text/code editor, granular sharing, TOTP 2FA, full admin dashboard — packaged as a single Docker container.
 
+[GitLab CI/CD pipeline and release documentation](docs/PIPELINE.md)
+
 ![Admin Dashboard](pics/dashboard.png)
 
 *Admin dashboard — disk usage, 30-day stats, live bandwidth per user (updates every 3 s), and real-time activity feed.*

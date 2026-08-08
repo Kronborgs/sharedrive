@@ -28,6 +28,10 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 - **Guest installation support** — new guest links open inside the Notes app scope and legacy `/guest/notes/...` links redirect automatically, allowing invited users to install the focused Notes web app.
 - **PWA cache refresh** — the service-worker shell cache was versioned to deliver the corrected manifests while continuing to exclude private API and note data from caching.
 
+#### Music playback
+- **Android lock-screen media controls** — the persistent playlist player now integrates with the browser Media Session API, exposing track metadata, play, pause, previous, next, and seek controls on supported Android lock screens, Bluetooth headsets, and car media systems.
+- **More reliable background track changes** — UI controls, Media Session actions, and automatic next-track playback now use the same playback path, including defensive AudioContext resume and rejected-play handling when Android suspends the app.
+
 #### Reliability and maintainability
 - **Collaboration-safe drafts** — local checklist rows and unsaved note fields survive background refreshes without creating blank persisted items or false conflict states.
 - **Frontend quality pass** — Notes control flow, React Effect Events, optional chaining, and dialog accessibility were tightened to satisfy TypeScript, ESLint, and SonarQube analysis.
@@ -193,6 +197,7 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 ### M3U Playlists
 - Create M3U playlists directly from selected audio files in the file manager
 - **Persistent sidebar player** — plays in the background while navigating; collapses to a mini-bar; expands to show track list with per-track remove button and Bass / Volume / Treble neumorphic dials
+- **Android media controls** — supported browsers expose track details, play/pause, previous/next, and seeking through the Android lock screen, notification shade, Bluetooth headsets, and compatible car controls
 - **Retro transport controls** — Play, Pause, Previous, and Next are neumorphic press-down buttons styled after a vintage tape deck; physically depress on click and glow when active
 - **LED display** — VFD-style panel shows a cyan track-number counter and an amber scrolling track-name ticker; click to expand/collapse the track list
 - **Mobile bottom bar** — floating mini-player on small screens; tap to expand full sheet with track list and controls
@@ -457,6 +462,32 @@ Both apps use separate manifest identities and non-overlapping scopes. Installin
 If an in-app install action is not shown, the app may already be installed or the browser may not currently consider installation available. Use the browser's **Install app** or **Add to Home Screen** action as a fallback.
 
 > **Required:** The site must be served over HTTPS.
+
+### Android lock-screen and background music
+
+The Sharedrive playlist player uses the standard browser Media Session API. On supported Android browsers this provides media metadata and controls on the lock screen and notification shade, as well as commands from Bluetooth headsets and compatible car systems. Start playback once while Sharedrive is open before locking the phone.
+
+Android may restrict an installed web app in the background unless battery use and notifications are allowed. The exact labels vary by Android version and by the browser used to install Sharedrive. In the settings below, select **Sharedrive** when it is listed as its own app; otherwise select the installing browser, such as **Chrome**.
+
+**Standard Android:**
+
+1. Open **Settings → Apps → See all apps → Sharedrive** (or the installing browser).
+2. Open **App battery usage** or **Battery**, enable **Allow background usage**, and select **Unrestricted** when that option is available.
+3. Open **Notifications** and allow notifications. Make sure media/player notifications are not disabled.
+4. Open **Settings → Notifications → Notifications on lock screen** and allow notification content and controls to be shown.
+5. Check that **Battery Saver** is off while testing uninterrupted playback.
+
+**Nothing Phone (2) / Nothing OS:**
+
+1. Open **Settings → Apps → See all apps → Sharedrive** (or **Chrome** if Sharedrive is not listed separately).
+2. Select **App battery usage**, enable **Allow background usage**, then choose **Unrestricted** if Nothing OS offers the option.
+3. Return to **App info → Notifications** and enable notifications for the app, including any playback or media category shown.
+4. Open **Settings → Notifications → Notifications on lock screen** and choose to show notifications and their content.
+5. Disable **Battery Saver** and any per-app battery restriction while testing playback with the screen off.
+
+After changing these settings, close and reopen Sharedrive, start a track, confirm that the media notification appears, and then lock the screen. If controls still do not appear, verify that the browser itself is allowed to show notifications and is up to date.
+
+> **Platform limitation:** Media Session requests lock-screen controls but cannot override Android, Nothing OS, browser autoplay rules, battery management, or lost audio focus. A phone may still pause playback when another app takes audio focus or the operating system force-stops the browser.
 
 ### Share files from Android directly to Sharedrive
 

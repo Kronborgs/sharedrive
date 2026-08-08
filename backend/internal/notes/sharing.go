@@ -560,9 +560,6 @@ func (handler *Handler) guestAccess(w http.ResponseWriter, request *http.Request
 		guestUnavailable(w)
 		return guestAccess{}, false
 	}
-	if request.Method != http.MethodGet && !handler.allow(w, request, ratelimit.KeyGuestNoteMutation, access.SessionID.String(), 120, time.Minute) {
-		return guestAccess{}, false
-	}
 	var access guestAccess
 	err = handler.sharing.db.QueryRow(request.Context(), `SELECT ngs.id, ns.id, ns.note_id, n.owner_id,
 		ns.recipient_email, ns.permission, ns.expires_at, ngs.expires_at
@@ -578,6 +575,9 @@ func (handler *Handler) guestAccess(w http.ResponseWriter, request *http.Request
 		&access.Permission, &access.ShareExpires, &access.SessionExpiry)
 	if err != nil {
 		guestUnavailable(w)
+		return guestAccess{}, false
+	}
+	if request.Method != http.MethodGet && !handler.allow(w, request, ratelimit.KeyGuestNoteMutation, access.SessionID.String(), 120, time.Minute) {
 		return guestAccess{}, false
 	}
 	handler.sharing.db.Exec(request.Context(), `UPDATE note_guest_sessions SET last_accessed_at = NOW()

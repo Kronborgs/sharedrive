@@ -17,6 +17,7 @@ import {
   savePersistedPlaylistState,
   type PlaylistTrack,
 } from '@/lib/api'
+import { ignorePromise } from '@/lib/ignore-promise'
 
 export type { PlaylistTrack }
 
@@ -420,13 +421,13 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
   // ── Controls ──────────────────────────────────────────────────────────────────
 
   const jumpTo = useCallback((i: number) => {
-    void playTrackAtIndex(i)
+    ignorePromise(playTrackAtIndex(i))
   }, [playTrackAtIndex])
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current!
     if (audio.paused) {
-      void startPlayback()
+      ignorePromise(startPlayback())
     } else {
       audio.pause()
     }
@@ -439,10 +440,10 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
       if (len <= 1) return
       let nextIndex = secureRandomInt(len - 1)
       if (nextIndex >= current) nextIndex += 1
-      void playTrackAtIndex(nextIndex)
+      ignorePromise(playTrackAtIndex(nextIndex))
       return
     }
-    if (current < len - 1) void playTrackAtIndex(current + 1)
+    if (current < len - 1) ignorePromise(playTrackAtIndex(current + 1))
   }, [playTrackAtIndex])
 
   const prev = useCallback(() => {
@@ -452,7 +453,7 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
       return
     }
     const current = currentIndexRef.current
-    if (current > 0) void playTrackAtIndex(current - 1)
+    if (current > 0) ignorePromise(playTrackAtIndex(current - 1))
   }, [playTrackAtIndex])
 
   const seekToTime = useCallback((time: number) => {
@@ -472,7 +473,7 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
         console.warn('[playlist] Media Session action unavailable', { action, error })
       }
     }
-    setHandler('play', () => { if (audioRef.current!.paused) void startPlayback() })
+    setHandler('play', () => { if (audioRef.current!.paused) ignorePromise(startPlayback()) })
     setHandler('pause', () => { if (!audioRef.current!.paused) audioRef.current!.pause() })
     setHandler('nexttrack', next)
     setHandler('previoustrack', prev)

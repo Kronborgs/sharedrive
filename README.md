@@ -12,7 +12,7 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 
 ## Changelog
 
-### v1.2.6 — 8 August 2026
+### v2.1.1 — 8 August 2026
 
 #### Notes and checklists
 - **Integrated Notes workspace** — create plain-text notes and checklists without leaving Sharedrive. Notes support debounced autosave, search across titles/content/checklist items, pinning, archive, trash, restore, and permanent deletion.

@@ -413,6 +413,9 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Get("/api/v1/public/shared/{token}", s.handleSharedByLink)
 	r.Get("/notes/invite/{token}", s.notesHandler.AcceptInvitation)
 	r.Get("/api/v1/public/notes/invitations/{token}/accept", s.notesHandler.AcceptInvitation)
+	r.Get("/guest/notes/{id}", func(w http.ResponseWriter, request *http.Request) {
+		http.Redirect(w, request, "/notes/guest/"+chi.URLParam(request, "id"), http.StatusPermanentRedirect)
+	})
 
 	// Note guest sessions are separate from authenticated user sessions.
 	r.Get("/api/v1/guest/notes/{id}", s.notesHandler.GuestGet)

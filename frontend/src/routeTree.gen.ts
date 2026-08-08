@@ -27,6 +27,7 @@ import { Route as AuthFilesIndexRouteImport } from './routes/_auth.files.index'
 import { Route as AuthBackupIndexRouteImport } from './routes/_auth.backup.index'
 import { Route as AuthAdminIndexRouteImport } from './routes/_auth.admin.index'
 import { Route as AuthActivityIndexRouteImport } from './routes/_auth.activity.index'
+import { Route as NotesGuestIdRouteImport } from './routes/notes.guest.$id'
 import { Route as GuestNotesIdRouteImport } from './routes/guest.notes.$id'
 import { Route as AuthNotesTrashRouteImport } from './routes/_auth.notes.trash'
 import { Route as AuthNotesArchiveRouteImport } from './routes/_auth.notes.archive'
@@ -129,6 +130,11 @@ const AuthActivityIndexRoute = AuthActivityIndexRouteImport.update({
   path: '/activity/',
   getParentRoute: () => AuthRoute,
 } as any)
+const NotesGuestIdRoute = NotesGuestIdRouteImport.update({
+  id: '/notes/guest/$id',
+  path: '/notes/guest/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GuestNotesIdRoute = GuestNotesIdRouteImport.update({
   id: '/guest/notes/$id',
   path: '/guest/notes/$id',
@@ -204,6 +210,7 @@ export interface FileRoutesByFullPath {
   '/notes/archive': typeof AuthNotesArchiveRoute
   '/notes/trash': typeof AuthNotesTrashRoute
   '/guest/notes/$id': typeof GuestNotesIdRoute
+  '/notes/guest/$id': typeof NotesGuestIdRoute
   '/activity/': typeof AuthActivityIndexRoute
   '/admin/': typeof AuthAdminIndexRoute
   '/backup/': typeof AuthBackupIndexRoute
@@ -234,6 +241,7 @@ export interface FileRoutesByTo {
   '/notes/archive': typeof AuthNotesArchiveRoute
   '/notes/trash': typeof AuthNotesTrashRoute
   '/guest/notes/$id': typeof GuestNotesIdRoute
+  '/notes/guest/$id': typeof NotesGuestIdRoute
   '/activity': typeof AuthActivityIndexRoute
   '/admin': typeof AuthAdminIndexRoute
   '/backup': typeof AuthBackupIndexRoute
@@ -267,6 +275,7 @@ export interface FileRoutesById {
   '/_auth/notes/archive': typeof AuthNotesArchiveRoute
   '/_auth/notes/trash': typeof AuthNotesTrashRoute
   '/guest/notes/$id': typeof GuestNotesIdRoute
+  '/notes/guest/$id': typeof NotesGuestIdRoute
   '/_auth/activity/': typeof AuthActivityIndexRoute
   '/_auth/admin/': typeof AuthAdminIndexRoute
   '/_auth/backup/': typeof AuthBackupIndexRoute
@@ -300,6 +309,7 @@ export interface FileRouteTypes {
     | '/notes/archive'
     | '/notes/trash'
     | '/guest/notes/$id'
+    | '/notes/guest/$id'
     | '/activity/'
     | '/admin/'
     | '/backup/'
@@ -330,6 +340,7 @@ export interface FileRouteTypes {
     | '/notes/archive'
     | '/notes/trash'
     | '/guest/notes/$id'
+    | '/notes/guest/$id'
     | '/activity'
     | '/admin'
     | '/backup'
@@ -362,6 +373,7 @@ export interface FileRouteTypes {
     | '/_auth/notes/archive'
     | '/_auth/notes/trash'
     | '/guest/notes/$id'
+    | '/notes/guest/$id'
     | '/_auth/activity/'
     | '/_auth/admin/'
     | '/_auth/backup/'
@@ -390,6 +402,7 @@ export interface RootRouteChildren {
   SetupIndexRoute: typeof SetupIndexRoute
   SharedIndexRoute: typeof SharedIndexRoute
   GuestNotesIdRoute: typeof GuestNotesIdRoute
+  NotesGuestIdRoute: typeof NotesGuestIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -519,6 +532,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/activity/'
       preLoaderRoute: typeof AuthActivityIndexRouteImport
       parentRoute: typeof AuthRoute
+    }
+    '/notes/guest/$id': {
+      id: '/notes/guest/$id'
+      path: '/notes/guest/$id'
+      fullPath: '/notes/guest/$id'
+      preLoaderRoute: typeof NotesGuestIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/guest/notes/$id': {
       id: '/guest/notes/$id'
@@ -676,6 +696,7 @@ const rootRouteChildren: RootRouteChildren = {
   SetupIndexRoute: SetupIndexRoute,
   SharedIndexRoute: SharedIndexRoute,
   GuestNotesIdRoute: GuestNotesIdRoute,
+  NotesGuestIdRoute: NotesGuestIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

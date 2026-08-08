@@ -28,7 +28,7 @@ import (
 
 const (
 	guestCookieName         = "note_guest_session"
-	guestUnavailablePath    = "/guest/notes/unavailable"
+	guestUnavailablePath    = "/notes/guest/unavailable"
 	originNotAllowedMessage = "request origin is not allowed"
 	permissionDeniedMessage = "permission denied"
 	guestSessionTTL         = 24 * time.Hour
@@ -391,7 +391,7 @@ func (handler *Handler) AcceptInvitation(w http.ResponseWriter, request *http.Re
 	http.SetCookie(w, &http.Cookie{Name: guestCookieName, Value: sessionToken, Path: "/api/v1/guest",
 		HttpOnly: true, Secure: handler.sharing.secureCookie, SameSite: http.SameSiteLaxMode,
 		Expires: sessionExpiry, MaxAge: int(time.Until(sessionExpiry).Seconds())})
-	http.Redirect(w, request, "/guest/notes/"+noteID.String(), http.StatusSeeOther)
+	http.Redirect(w, request, "/notes/guest/"+noteID.String(), http.StatusSeeOther)
 }
 
 func (handler *Handler) GuestGet(w http.ResponseWriter, request *http.Request) {

@@ -6,6 +6,7 @@ import { ApiClientError, api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { convertNoteToChecklist, createGuestItem, createNoteItem, deleteGuestItem, deleteNoteItem, getGuestNote, getNote, reorderGuestItems, reorderNoteItems, updateGuestItem, updateGuestNote, updateNote, updateNoteItem, type GuestNote, type Note, type NoteItem, type NoteUpdate } from '@/lib/notes'
 import { NoteShareDialog } from '@/components/notes/NoteShareDialog'
+import { NotesInstallButton } from '@/components/notes/NotesInstallButton'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict'
 
@@ -39,7 +40,7 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
     savedSignature.current = signature(serverNote)
   }, [serverNote])
 
-  const saveDraft = useEffectEvent(async (nextDraft: Note) => {
+  const saveDraft = async (nextDraft: Note) => {
     setSaveState('saving')
     try {
       const update = changedNoteFields(nextDraft, baseline.current)
@@ -57,12 +58,13 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
       setSaveState(error instanceof ApiClientError && error.status === 409 ? 'conflict' : 'error')
       throw error
     }
-  })
+  }
+  const autoSaveDraft = useEffectEvent(saveDraft)
 
   useEffect(() => {
     if (!draft || !canEdit || signature(draft) === savedSignature.current) return
     const timeout = window.setTimeout(() => {
-      saveDraft(draft).catch(() => setSaveState('error'))
+      autoSaveDraft(draft).catch(() => setSaveState('error'))
     }, 700)
     return () => window.clearTimeout(timeout)
   }, [draft, canEdit])
@@ -165,6 +167,7 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
       </header>
 
       {guestData && <p className="mb-5 border-l-4 border-emerald-600 bg-emerald-50 px-4 py-3 text-sm text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-100">{t('notes.guestAs' as never)}: <strong>{guestData.recipient_email}</strong></p>}
+      {guest && <NotesInstallButton className="notes-secondary-button mb-5" />}
       {saveState === 'conflict' && <p className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/30 dark:text-red-200">{t('notes.conflict' as never)}</p>}
 
       <p className="mb-3 text-xs text-muted">{lastEditedLabel(draft, t)}</p>
@@ -182,7 +185,9 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
             <div key={item.id} className="group flex min-h-11 items-center gap-2 border-b border-zinc-100 dark:border-zinc-800">
               <label className="flex shrink-0 items-center"><span className="sr-only">{item.content}</span><input type="checkbox" checked={item.is_checked} disabled={!canCheck || isDraftItem(item) || pendingItemIDs.current.has(item.id)} onChange={event => { pendingItemIDs.current.add(item.id); dirtyItemIDs.current.add(item.id); itemMutation.mutate({ action: 'update', itemId: item.id, checked: event.target.checked }) }} className="size-5 accent-brand-600" /></label>
               <input value={item.content} readOnly={!canEdit} maxLength={2000} onChange={event => {
-                if (!isDraftItem(item)) dirtyItemIDs.current.add(item.id)
+                if (!isDraftItem(item)) {
+                  dirtyItemIDs.current.add(item.id)
+                }
                 setDraft(current => current ? updateItemContent(current, item.id, event.target.value) : current)
               }} onBlur={() => canEdit && commitItem(item, index)} onKeyDown={event => {
                 if (event.key === 'Enter' && canEdit) { event.preventDefault(); commitItem(item, index); addDraftItem(index + 1) }
@@ -210,11 +215,11 @@ function signature(note: Note) {
 
 function changedNoteFields(note: Note, previous: Note | null): NoteUpdate {
   const update: NoteUpdate = { version: note.version }
-  if (!previous || note.title !== previous.title) update.title = note.title
-  if (!previous || note.content !== previous.content) update.content = note.content
-  if (!previous || note.is_pinned !== previous.is_pinned) update.is_pinned = note.is_pinned
-  if (!previous || note.is_archived !== previous.is_archived) update.is_archived = note.is_archived
-  if (!previous || note.hide_completed !== previous.hide_completed) update.hide_completed = note.hide_completed
+  if (note.title !== previous?.title) update.title = note.title
+  if (note.content !== previous?.content) update.content = note.content
+  if (note.is_pinned !== previous?.is_pinned) update.is_pinned = note.is_pinned
+  if (note.is_archived !== previous?.is_archived) update.is_archived = note.is_archived
+  if (note.hide_completed !== previous?.hide_completed) update.hide_completed = note.hide_completed
   return update
 }
 

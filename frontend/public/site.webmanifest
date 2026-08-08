@@ -4,7 +4,7 @@
   "short_name": "Sharedrive",
   "description": "Self-hosted private file drive",
   "start_url": "/files",
-  "scope": "/",
+  "scope": "/files",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#0d1117",
@@ -39,14 +39,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "Ny note",
-      "short_name": "Ny note",
-      "url": "/notes?new=text",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ],
   "share_target": {

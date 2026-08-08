@@ -1,10 +1,10 @@
 {
-  "id": "/notes",
+  "id": "/notes-app",
   "name": "Sharedrive Noter",
   "short_name": "Noter",
   "description": "Noter og huskelister i Sharedrive",
-  "start_url": "/notes",
-  "scope": "/",
+  "start_url": "/notes/",
+  "scope": "/notes/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "any",

@@ -1,20 +1,20 @@
 import { useDeferredValue, useEffect, useEffectEvent, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Archive, Download, FileText, Pin, Plus, Search, Trash2 } from 'lucide-react'
+import { Archive, FileText, Pin, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { api } from '@/lib/api'
 import { createNote, listNotes, type Note } from '@/lib/notes'
+import { NotesInstallButton } from '@/components/notes/NotesInstallButton'
 
 type NotesView = 'active' | 'archive' | 'trash'
 
 export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
-  const { locale, t } = useI18n()
+  const { t } = useI18n()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
-  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(() => getInstallPrompt())
   const deferredSearch = useDeferredValue(search)
   const params = new URLSearchParams()
   if (deferredSearch) params.set('search', deferredSearch)
@@ -36,15 +36,6 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
     if (requestedType !== 'text' && requestedType !== 'checklist') return
     window.history.replaceState({}, '', window.location.pathname)
     runShortcut()
-  }, [])
-  useEffect(() => {
-    const refreshInstallPrompt = () => setInstallPrompt(getInstallPrompt())
-    window.addEventListener('pwa-install-available', refreshInstallPrompt)
-    window.addEventListener('pwa-install-changed', refreshInstallPrompt)
-    return () => {
-      window.removeEventListener('pwa-install-available', refreshInstallPrompt)
-      window.removeEventListener('pwa-install-changed', refreshInstallPrompt)
-    }
   }, [])
   const noteAction = useMutation({
     mutationFn: ({ note, action }: { note: Note; action: 'restore' | 'delete' }) => runNoteAction(note, action, view),
@@ -68,12 +59,7 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
         </div>
         {view === 'active' && (
           <div className="flex flex-wrap gap-2">
-            {installPrompt && !isStandalone() && <button className="notes-secondary-button" onClick={() => {
-              installPrompt.prompt().then(() => {
-                clearInstallPrompt()
-                setInstallPrompt(null)
-              }).catch(() => undefined)
-            }}><Download size={17} />{locale === 'da' ? 'Installér Noter' : 'Install Notes'}</button>}
+            <NotesInstallButton />
             <button className="notes-primary-button" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
               <Plus size={17} /> {t('notes.newNote' as never)}
             </button>
@@ -122,22 +108,6 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
       </div>
     </section>
   )
-}
-
-interface InstallPromptEvent extends Event {
-  prompt: () => Promise<void>
-}
-
-function getInstallPrompt() {
-  return (window as Window & { __pwaInstallPrompt?: InstallPromptEvent }).__pwaInstallPrompt ?? null
-}
-
-function clearInstallPrompt() {
-  delete (window as Window & { __pwaInstallPrompt?: InstallPromptEvent }).__pwaInstallPrompt
-}
-
-function isStandalone() {
-  return window.matchMedia('(display-mode: standalone)').matches
 }
 
 function runNoteAction(note: Note, action: 'restore' | 'delete', view: NotesView) {

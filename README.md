@@ -1,6 +1,6 @@
 # Sharedrive
 
-Privacy-first self-hosted file sharing and personal cloud platform for secure storage, syncing, and sharing, WebDAV, collaborative document editing, built-in text/code editor, granular sharing, TOTP 2FA, full admin dashboard — packaged as a single Docker container.
+Privacy-first, self-hosted file sharing and personal cloud platform with secure storage, resumable uploads, WebDAV, collaborative document editing, built-in notes and checklists, granular sharing, TOTP 2FA, backups, and a full admin dashboard — packaged as a single Docker container.
 
 [GitLab CI/CD pipeline and release documentation](docs/PIPELINE.md)
 
@@ -11,6 +11,29 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 ---
 
 ## Changelog
+
+### v1.2.6 — 8 August 2026
+
+#### Notes and checklists
+- **Integrated Notes workspace** — create plain-text notes and checklists without leaving Sharedrive. Notes support debounced autosave, search across titles/content/checklist items, pinning, archive, trash, restore, and permanent deletion.
+- **Checklist editing** — add, remove, check, and reorder items; hide completed items; empty draft rows are discarded instead of being stored. Existing text notes can be converted safely into checklists.
+- **Lightweight collaboration** — open notes refresh every two seconds and merge remote field and checklist changes while preserving local drafts. Optimistic version checks prevent stale writes, conflicts are surfaced in the editor, and the latest editor is shown by name.
+- **Secure accountless sharing** — invite any email address through the existing SMTP setup with `view`, `check`, or `edit` access. Invitations can have no expiry or a chosen expiry date, can be resent, changed, or revoked immediately, and never include note content in the email.
+- **Guest Notes experience** — invitation tokens are exchanged for short-lived HttpOnly guest sessions. Guests get a focused responsive editor without needing a Sharedrive account; permissions, expiry, revocation, note state, rate limits, and request origin are revalidated on every operation.
+- **Backup and audit integration** — full user backups include notes, checklist items, and active share configuration. Note creation, updates, deletion, sharing, guest sessions, and guest edits are included in the existing immutable audit trail.
+
+#### Installable web apps
+- **Separate Sharedrive and Notes PWAs** — Sharedrive (`/files`) and Sharedrive Notes (`/notes/`) now have distinct app identities, scopes, names, and icons, so both can be installed side-by-side from the same server.
+- **One-click install actions** — "Install Sharedrive" appears in the My Files toolbar and "Install Notes" appears in Notes and guest Notes when the browser offers installation. The actions disappear automatically in standalone mode or after installation.
+- **Guest installation support** — new guest links open inside the Notes app scope and legacy `/guest/notes/...` links redirect automatically, allowing invited users to install the focused Notes web app.
+- **PWA cache refresh** — the service-worker shell cache was versioned to deliver the corrected manifests while continuing to exclude private API and note data from caching.
+
+#### Reliability and maintainability
+- **Collaboration-safe drafts** — local checklist rows and unsaved note fields survive background refreshes without creating blank persisted items or false conflict states.
+- **Frontend quality pass** — Notes control flow, React Effect Events, optional chaining, and dialog accessibility were tightened to satisfy TypeScript, ESLint, and SonarQube analysis.
+- **Validated release** — backend tests, frontend type checking, linting, production builds, manifest parsing, and browser checks cover both PWA identities and the guest installation flow.
+
+---
 
 ### v1.2.0 — 14 May 2026
 
@@ -182,7 +205,23 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 
 ### Notes
 
-Sharedrive includes integrated plain-text notes and checklists with autosave, search, pinning, archive, trash, and secure accountless email sharing. Guest links are exchanged for short-lived HttpOnly sessions with `view`, `check`, or `edit` permission. See [Notes MVP](docs/NOTES.md) for API, security, limits, PWA, and backup details.
+Sharedrive includes a database-backed Notes workspace designed as a simple, self-hosted alternative to lightweight note and checklist services.
+
+- **Plain-text notes and checklists** — escaped text only, with ordered and checkable list items
+- **Fast organization** — search titles, note content, and checklist items; pin important notes; archive completed work
+- **Safe deletion** — soft-delete to a dedicated trash view, restore later, or permanently delete
+- **Autosave and conflict protection** — debounced field-level updates use optimistic versions and report stale-write conflicts instead of silently overwriting data
+- **Lightweight collaboration** — two-second refresh, field/item-aware merging, local draft preservation, and latest-editor attribution without requiring WebSockets or a CRDT service
+- **Text-to-checklist conversion** — convert an existing text note into a checklist while preserving its saved state
+- **Accountless email invitations** — share one note through the configured SMTP service with `view`, `check`, or `edit` permission
+- **Invitation controls** — no-expiry default or a selected expiry date, resend, permission changes, and immediate revocation
+- **Secure guest sessions** — invitation tokens are removed from the address bar and exchanged for short-lived HttpOnly cookies; guest APIs are origin-checked, rate-limited, audited, and marked `no-store`
+- **Responsive guest editor** — invited users can read, check, or edit from desktop or mobile without creating an account
+- **Backup support** — full per-user archives include notes, checklist items, and note shares; ephemeral guest sessions are intentionally excluded
+- **Separate Notes PWA** — install Sharedrive Notes from the Notes workspace or directly from an invited guest note, with its own icon and app identity
+- **Danish and English UI** — follows the existing Sharedrive language setting
+
+See [Notes architecture and security](docs/NOTES.md) for the data model, API, limits, invitation flow, and backup format.
 
 ### Backup & Restore
 - **Per-user encrypted backup** — HMAC-SHA256 signed gzip JSON export (metadata only, no blobs)
@@ -197,6 +236,7 @@ Sharedrive includes integrated plain-text notes and checklists with autosave, se
 - Backup exports include real folder structure and filenames for easy inspection
 - Archives are `.zip` files compatible with 7-Zip and standard tooling
 - Full restore available from Admin → Backup or during first-run wizard
+- **Notes included** — full user archives contain notes, checklist items, and share configuration; short-lived guest sessions are excluded and must be re-established from an active invitation
 
 
 - Soft-delete with automatic ownership transfer (guest-uploaded files land in the folder owner's trash)
@@ -251,12 +291,13 @@ Sharedrive includes integrated plain-text notes and checklists with autosave, se
 ### Infrastructure
 - Single Go binary serves the embedded React SPA, REST API, TUS upload endpoint, and WebDAV
 - **Gotenberg built-in** — Office-to-PDF conversion runs inside the same container; no separate service needed
-- **Full PWA support** — installable as a home screen app on Android and iOS:
-  - Standalone display (no browser chrome), correct splash and icons
+- **Two installable PWAs** — Sharedrive Files and Sharedrive Notes can be installed side-by-side on supported desktop and mobile browsers, each with its own name, icon, start URL, and non-overlapping scope
+  - **In-app install actions** — install Sharedrive from the My Files toolbar; install Notes from the Notes workspace or a guest note
+  - Standalone display (no browser chrome), dedicated splash screens and icons
   - **Web Share Target** — share photos, files, or documents from any Android app (Gallery, Files, Camera, WhatsApp…) directly into Sharedrive; a folder picker lets you choose the destination before uploading
   - **Offline upload resilience** — uploads pause automatically when connectivity is lost and resume the moment the connection returns
   - **Offline indicator** — amber banner shown across all pages when the device is offline
-  - **Install prompt** — a dismissible hint on touch devices explains the share feature and offers a one-tap install shortcut
+  - **Private data stays private** — the shared service worker caches only the application shell and static assets; authenticated file and Notes APIs are never cached
 - **Cloudflare Tunnel ready** — designed for reverse-proxy-free deployments on Unraid or any Docker Compose host
 - PostgreSQL for all metadata; Redis for rate limiting and ephemeral state (ephemeral — no volume needed)
 - **Internationalization (i18n)** — full English and Danish translations; language toggle in the sidebar
@@ -390,15 +431,30 @@ docker buildx build \
 
 ---
 
-## Android PWA — Install & Share
+## Installable Web Apps — Sharedrive & Notes
 
-Sharedrive is a full Progressive Web App (PWA) that can be installed on Android (and iOS) as a standalone home screen app.
+Sharedrive provides two focused Progressive Web Apps that can be installed side-by-side from the same deployment:
 
-### Install on Android
+| App | Start URL | Purpose |
+|---|---|---|
+| **Sharedrive** | `/files` | File manager, uploads, previews, file sharing, and the Android Share Target |
+| **Sharedrive Notes** | `/notes/` | Notes, checklists, and focused accountless guest access |
 
-1. Open Sharedrive in **Chrome** on your Android device
-2. Tap the browser menu (⋮) → **"Install app"** or **"Add to Home Screen"**
-3. The app opens without browser chrome — it behaves like a native app
+Both apps use separate manifest identities and non-overlapping scopes. Installing Notes does not replace the Sharedrive file app or its icon.
+
+### Install Sharedrive
+
+1. Open **My Files** at `/files` in a supported browser.
+2. Select **Install Sharedrive** in the file toolbar.
+3. Confirm the browser installation prompt.
+
+### Install Sharedrive Notes
+
+1. Open the Notes workspace at `/notes/`, or open a valid guest invitation.
+2. Select **Install Notes** in the Notes header or guest editor.
+3. Confirm the browser installation prompt.
+
+If an in-app install action is not shown, the app may already be installed or the browser may not currently consider installation available. Use the browser's **Install app** or **Add to Home Screen** action as a fallback.
 
 > **Required:** The site must be served over HTTPS.
 

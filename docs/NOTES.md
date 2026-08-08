@@ -1,13 +1,14 @@
-# Notes MVP
+# Sharedrive Notes
 
 Sharedrive Notes is an integrated database-backed notes and checklist module. It uses the existing Go server, PostgreSQL connection, authenticated layout, SMTP settings, audit logger, Redis rate limiter, PWA shell, and encrypted per-user backup format.
 
 ## Features
 
-- Plain-text notes and checklists with a fixed type
+- Plain-text notes and checklists, including safe text-to-checklist conversion
 - Search across title, text content, and checklist items
 - Pinning, archive, soft-delete, restore, and permanent delete
 - Debounced autosave with optimistic locking through `notes.version`
+- Two-second refresh with field/item-aware merging and latest-editor attribution
 - Danish and English UI
 - Responsive owner and guest views
 - Accountless email sharing with `view`, `check`, or `edit` permission
@@ -23,6 +24,8 @@ Migration `0046_notes.sql` creates:
 - `note_shares`: normalized recipient, permission, expiry, revocation, and SHA-256 invitation-token hash
 - `note_guest_sessions`: short-lived SHA-256 session-token hashes
 
+Migration `0047_note_last_editor.sql` removes legacy blank checklist items and adds latest-editor attribution to notes.
+
 Deleting a note permanently cascades to its items, shares, and guest sessions. Moving a note to trash suspends guest access. Restoring it reactivates shares that have not expired or been revoked.
 
 ## API
@@ -34,6 +37,7 @@ GET    /api/v1/notes
 POST   /api/v1/notes
 GET    /api/v1/notes/{id}
 PATCH  /api/v1/notes/{id}
+POST   /api/v1/notes/{id}/checklist
 DELETE /api/v1/notes/{id}
 POST   /api/v1/notes/{id}/restore
 DELETE /api/v1/notes/{id}/permanent
@@ -71,7 +75,7 @@ List filters are `search`, `type`, `archived`, `deleted`, `pinned`, `limit`, and
 3. The server validates the invitation, share, owner, expiry, revocation, and note state.
 4. A separate 32-byte guest-session token is created. Only its SHA-256 hash is stored.
 5. The raw session token is sent in `note_guest_session`, an HttpOnly, SameSite=Lax cookie. It is Secure when `GO_ENV=production`, expires after at most 24 hours, and has path `/api/v1/guest`.
-6. The server responds with HTTP 303 to `/guest/notes/{noteId}`, removing the invitation token from the address bar.
+6. The server responds with HTTP 303 to `/notes/guest/{noteId}`, removing the invitation token from the address bar and keeping the guest inside the Notes PWA scope. Legacy `/guest/notes/{noteId}` URLs redirect to the new path.
 7. Every guest request re-reads the session, share permission/expiry/revocation, note state, and requested note ID.
 
 Invitation tokens are reusable exchanges while the share is active. Resending rotates the invitation token and invalidates the previous link. Revocation also revokes all current sessions. Permission and expiry changes apply to existing sessions immediately.
@@ -98,10 +102,14 @@ Rate limiting uses the existing Redis sliding-window limiter. If Redis itself is
 
 Full per-user `.shdbak` archives use format version 3 and include `notes.json` with notes, items, and shares. Invitation-token hashes are retained so active links can continue after restore. Short-lived `note_guest_sessions` are deliberately excluded and guests must exchange their invitation again. Selective folder-only exports do not include notes.
 
+## Progressive Web App
+
+Sharedrive Files and Sharedrive Notes are separately installable PWAs on the same origin. Files uses app identity and scope `/files`; Notes uses app identity `/notes-app` and scope `/notes/`. Notes has dedicated icons and can be installed from the owner workspace or a guest note. Both identities share the root service worker, which caches only shell/static assets and excludes all `/api/` responses.
+
 ## Known MVP Limits
 
-- No labels, reminders, attachments, rich text, collections, or note-type conversion
-- No offline editing, WebSocket collaboration, CRDT, or version history
+- No labels, reminders, attachments, rich text, collections, or checklist-to-text conversion
+- No offline editing, WebSocket push, CRDT, or version history; lightweight collaboration uses polling and local/server merging
 - No guest reshare or manage permission
-- Autosave detects conflicts but does not merge them
+- Concurrent edits are merged at note-field and checklist-item level where possible; unresolved stale writes still surface as conflicts
 - SMTP email is plain text and follows the recipient language selected by the owner UI

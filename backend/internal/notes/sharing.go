@@ -430,7 +430,7 @@ func (handler *Handler) GuestUpdate(w http.ResponseWriter, request *http.Request
 	}
 	input.IsPinned = nil
 	input.IsArchived = nil
-	note, err := handler.service.Update(request.Context(), access.OwnerID, access.NoteID, input)
+	note, err := handler.service.Update(withEditor(request.Context(), access.Email), access.OwnerID, access.NoteID, input)
 	if err != nil {
 		handler.respondError(w, err)
 		return
@@ -441,7 +441,7 @@ func (handler *Handler) GuestUpdate(w http.ResponseWriter, request *http.Request
 
 func (handler *Handler) GuestCreateItem(w http.ResponseWriter, request *http.Request) {
 	handler.guestItemMutation(w, request, true, func(access guestAccess, input ItemInput, _ uuid.UUID) (Note, error) {
-		return handler.service.CreateItem(request.Context(), access.OwnerID, access.NoteID, input)
+		return handler.service.CreateItem(withEditor(request.Context(), access.Email), access.OwnerID, access.NoteID, input)
 	})
 }
 
@@ -450,7 +450,7 @@ func (handler *Handler) GuestUpdateItem(w http.ResponseWriter, request *http.Req
 		if access.Permission == "check" && (input.Content != nil || input.IsChecked == nil || input.Position != nil) {
 			return Note{}, errors.New(permissionDeniedMessage)
 		}
-		return handler.service.UpdateItem(request.Context(), access.OwnerID, access.NoteID, itemID, input)
+		return handler.service.UpdateItem(withEditor(request.Context(), access.Email), access.OwnerID, access.NoteID, itemID, input)
 	})
 }
 
@@ -473,7 +473,7 @@ func (handler *Handler) GuestDeleteItem(w http.ResponseWriter, request *http.Req
 		handler.respondError(w, ErrInvalid)
 		return
 	}
-	note, err := handler.service.DeleteItem(request.Context(), access.OwnerID, access.NoteID, itemID, int64(queryInt(request, "version", 0)))
+	note, err := handler.service.DeleteItem(withEditor(request.Context(), access.Email), access.OwnerID, access.NoteID, itemID, int64(queryInt(request, "version", 0)))
 	if err != nil {
 		handler.respondError(w, err)
 		return
@@ -500,7 +500,7 @@ func (handler *Handler) GuestReorderItems(w http.ResponseWriter, request *http.R
 	if !decodeJSON(w, request, &input) {
 		return
 	}
-	note, err := handler.service.ReorderItems(request.Context(), access.OwnerID, access.NoteID, input)
+	note, err := handler.service.ReorderItems(withEditor(request.Context(), access.Email), access.OwnerID, access.NoteID, input)
 	if err != nil {
 		handler.respondError(w, err)
 		return

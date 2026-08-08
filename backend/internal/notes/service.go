@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -17,18 +18,36 @@ type Service struct {
 	audit audit.Logger
 }
 
+type editorContextKey struct{}
+
+func withEditor(ctx context.Context, label string) context.Context {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, editorContextKey{}, label)
+}
+
+func editorFromContext(ctx context.Context) *string {
+	label, _ := ctx.Value(editorContextKey{}).(string)
+	if label == "" {
+		return nil
+	}
+	return &label
+}
+
 func NewService(db *pgxpool.Pool, auditLogger audit.Logger) *Service {
 	return &Service{db: db, audit: auditLogger}
 }
 
 const noteColumns = `id, owner_id, type, title, content, color, is_pinned,
- is_archived, hide_completed, deleted_at, version, created_at, updated_at`
+ is_archived, hide_completed, deleted_at, version, created_at, updated_at, last_edited_by`
 
 func scanNote(row pgx.Row) (Note, error) {
 	var note Note
 	err := row.Scan(&note.ID, &note.OwnerID, &note.Type, &note.Title, &note.Content, &note.Color,
 		&note.IsPinned, &note.IsArchived, &note.HideCompleted, &note.DeletedAt, &note.Version,
-		&note.CreatedAt, &note.UpdatedAt)
+		&note.CreatedAt, &note.UpdatedAt, &note.LastEditedBy)
 	return note, err
 }
 
@@ -123,8 +142,8 @@ func (service *Service) Create(ctx context.Context, ownerID uuid.UUID, input Cre
 	}
 	defer tx.Rollback(ctx)
 
-	note, err := scanNote(tx.QueryRow(ctx, `INSERT INTO notes (owner_id, type, title, content, color)
-		VALUES ($1, $2, $3, $4, $5) RETURNING `+noteColumns, ownerID, input.Type, input.Title, input.Content, input.Color))
+	note, err := scanNote(tx.QueryRow(ctx, `INSERT INTO notes (owner_id, type, title, content, color, last_edited_by)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+noteColumns, ownerID, input.Type, input.Title, input.Content, input.Color, editorFromContext(ctx)))
 	if err != nil {
 		return Note{}, err
 	}
@@ -155,13 +174,14 @@ func (service *Service) Update(ctx context.Context, ownerID, noteID uuid.UUID, i
 	color := input.Color
 	clearColor := input.ClearColor
 	note, err := scanNote(service.db.QueryRow(ctx, `UPDATE notes SET
-		title = COALESCE($4, title), content = COALESCE($5, content),
-		color = CASE WHEN $6 THEN NULL ELSE COALESCE($7, color) END,
-		is_pinned = COALESCE($8, is_pinned), is_archived = COALESCE($9, is_archived),
-		hide_completed = COALESCE($10, hide_completed), version = version + 1, updated_at = NOW()
-		WHERE id = $1 AND owner_id = $2 AND version = $3 AND deleted_at IS NULL
-		RETURNING `+noteColumns, noteID, ownerID, input.Version, input.Title, input.Content,
-		clearColor, color, input.IsPinned, input.IsArchived, input.HideCompleted))
+		title = COALESCE($3, title), content = COALESCE($4, content),
+		color = CASE WHEN $5 THEN NULL ELSE COALESCE($6, color) END,
+		is_pinned = COALESCE($7, is_pinned), is_archived = COALESCE($8, is_archived),
+		hide_completed = COALESCE($9, hide_completed), last_edited_by = COALESCE($10, last_edited_by),
+		version = version + 1, updated_at = NOW()
+		WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL
+		RETURNING `+noteColumns, noteID, ownerID, input.Title, input.Content,
+		clearColor, color, input.IsPinned, input.IsArchived, input.HideCompleted, editorFromContext(ctx)))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Note{}, service.mutationError(ctx, ownerID, noteID)
 	}
@@ -169,6 +189,55 @@ func (service *Service) Update(ctx context.Context, ownerID, noteID uuid.UUID, i
 		return Note{}, err
 	}
 	note.Items, err = service.listItems(ctx, note.ID)
+	if err == nil {
+		service.log(ownerID, note, audit.EventNoteUpdated)
+	}
+	return note, err
+}
+
+func (service *Service) ConvertToChecklist(ctx context.Context, ownerID, noteID uuid.UUID) (Note, error) {
+	tx, err := service.db.Begin(ctx)
+	if err != nil {
+		return Note{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var noteType, content string
+	err = tx.QueryRow(ctx, `SELECT type, content FROM notes
+		WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL FOR UPDATE`, noteID, ownerID).Scan(&noteType, &content)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Note{}, ErrNotFound
+	}
+	if err != nil {
+		return Note{}, err
+	}
+	if noteType == TypeChecklist {
+		if err := tx.Rollback(ctx); err != nil {
+			return Note{}, err
+		}
+		return service.Get(ctx, ownerID, noteID, false)
+	}
+
+	position := 0
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO note_items (note_id, content, position) VALUES ($1, $2, $3)`, noteID, line, position); err != nil {
+			return Note{}, err
+		}
+		position++
+	}
+	if _, err := tx.Exec(ctx, `UPDATE notes SET type = $3, content = '', last_edited_by = COALESCE($4, last_edited_by),
+		version = version + 1, updated_at = NOW() WHERE id = $1 AND owner_id = $2`,
+		noteID, ownerID, TypeChecklist, editorFromContext(ctx)); err != nil {
+		return Note{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Note{}, err
+	}
+	note, err := service.Get(ctx, ownerID, noteID, false)
 	if err == nil {
 		service.log(ownerID, note, audit.EventNoteUpdated)
 	}
@@ -214,7 +283,7 @@ func (service *Service) PermanentDelete(ctx context.Context, ownerID, noteID uui
 }
 
 func (service *Service) CreateItem(ctx context.Context, ownerID, noteID uuid.UUID, input ItemInput) (Note, error) {
-	if input.Version < 1 || input.Content == nil || len([]rune(*input.Content)) > MaxItemLength {
+	if input.Version < 1 || input.Content == nil || strings.TrimSpace(*input.Content) == "" || len([]rune(*input.Content)) > MaxItemLength {
 		return Note{}, ErrInvalid
 	}
 	return service.mutateItems(ctx, ownerID, noteID, input.Version, func(tx pgx.Tx) error {
@@ -296,7 +365,7 @@ func (service *Service) ReorderItems(ctx context.Context, ownerID, noteID uuid.U
 	})
 }
 
-func (service *Service) mutateItems(ctx context.Context, ownerID, noteID uuid.UUID, version int64, mutation func(pgx.Tx) error) (Note, error) {
+func (service *Service) mutateItems(ctx context.Context, ownerID, noteID uuid.UUID, _ int64, mutation func(pgx.Tx) error) (Note, error) {
 	tx, err := service.db.Begin(ctx)
 	if err != nil {
 		return Note{}, err
@@ -311,13 +380,11 @@ func (service *Service) mutateItems(ctx context.Context, ownerID, noteID uuid.UU
 	if err != nil {
 		return Note{}, err
 	}
-	if currentVersion != version {
-		return Note{}, ErrConflict
-	}
 	if err := mutation(tx); err != nil {
 		return Note{}, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE notes SET version = version + 1, updated_at = NOW() WHERE id = $1`, noteID); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE notes SET version = version + 1,
+		last_edited_by = COALESCE($2, last_edited_by), updated_at = NOW() WHERE id = $1`, noteID, editorFromContext(ctx)); err != nil {
 		return Note{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

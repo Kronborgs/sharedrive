@@ -1,11 +1,11 @@
 import { useDeferredValue, useEffect, useEffectEvent, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Archive, CheckSquare, FileText, Pin, Plus, Search, Trash2 } from 'lucide-react'
+import { Archive, FileText, Pin, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { api } from '@/lib/api'
-import { createNote, listNotes, type Note, type NoteType } from '@/lib/notes'
+import { createNote, listNotes, type Note } from '@/lib/notes'
 
 type NotesView = 'active' | 'archive' | 'trash'
 
@@ -25,16 +25,16 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
     queryFn: ({ signal }) => listNotes(params, signal),
   })
   const createMutation = useMutation({
-    mutationFn: (type: NoteType) => createNote(type),
+    mutationFn: () => createNote('text'),
     onSuccess: note => navigate({ to: '/notes/$id', params: { id: note.id } }).catch(() => undefined),
     onError: () => toast.error(t('notes.createFailed' as never)),
   })
-  const runShortcut = useEffectEvent((type: NoteType) => createMutation.mutate(type))
+  const runShortcut = useEffectEvent(() => createMutation.mutate())
   useEffect(() => {
     const requestedType = new URLSearchParams(window.location.search).get('new')
     if (requestedType !== 'text' && requestedType !== 'checklist') return
     window.history.replaceState({}, '', window.location.pathname)
-    runShortcut(requestedType)
+    runShortcut()
   }, [])
   const noteAction = useMutation({
     mutationFn: ({ note, action }: { note: Note; action: 'restore' | 'delete' }) => runNoteAction(note, action, view),
@@ -58,17 +58,14 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
         </div>
         {view === 'active' && (
           <div className="flex flex-wrap gap-2">
-            <button className="notes-primary-button" onClick={() => createMutation.mutate('text')} disabled={createMutation.isPending}>
+            <button className="notes-primary-button" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
               <Plus size={17} /> {t('notes.newNote' as never)}
-            </button>
-            <button className="notes-secondary-button" onClick={() => createMutation.mutate('checklist')} disabled={createMutation.isPending}>
-              <CheckSquare size={17} /> {t('notes.newChecklist' as never)}
             </button>
           </div>
         )}
       </header>
 
-      <label className="mb-6 flex max-w-xl items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 shadow-sm focus-within:border-amber-500 dark:border-[#2d3148] dark:bg-[#1a1d27]">
+      <label className="mb-6 flex max-w-xl items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 shadow-sm focus-within:border-brand-500 dark:border-[#2d3148] dark:bg-[#1a1d27]">
         <Search size={18} className="text-zinc-400" />
         <span className="sr-only">{t('notes.search' as never)}</span>
         <input value={search} onChange={event => setSearch(event.target.value)} placeholder={t('notes.search' as never)} className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
@@ -77,17 +74,17 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
       {notesQuery.isLoading && <p className="text-sm text-muted">{t('files.loading')}</p>}
       {!notesQuery.isLoading && notes.length === 0 && (
         <div className="border-y border-dashed border-zinc-300 py-16 text-center dark:border-zinc-700">
-          <FileText className="mx-auto mb-3 text-amber-500" size={30} />
+          <FileText className="mx-auto mb-3 text-brand-500" size={30} />
           <p className="text-sm text-muted">{t('notes.empty' as never)}</p>
         </div>
       )}
       <div className="notes-grid">
         {notes.map(note => (
-          <article key={note.id} className="notes-card" style={{ borderTopColor: note.color || (note.type === 'checklist' ? '#4d8c68' : '#d89a2b') }}>
+          <article key={note.id} className="notes-card border-t-brand-500">
             <button className="min-h-32 w-full text-left" onClick={() => { navigate({ to: '/notes/$id', params: { id: note.id }, search: { deleted: view === 'trash' || undefined } }).catch(() => undefined) }}>
               <div className="mb-3 flex items-start justify-between gap-3">
                 <h2 className="line-clamp-2 font-semibold text-zinc-900 dark:text-zinc-100">{note.title || t('notes.untitled' as never)}</h2>
-                {note.is_pinned && <Pin size={15} className="shrink-0 fill-amber-400 text-amber-600" aria-label={t('notes.pinned' as never)} />}
+                {note.is_pinned && <Pin size={15} className="shrink-0 fill-brand-400 text-brand-600" aria-label={t('notes.pinned' as never)} />}
               </div>
               {note.type === 'text' ? (
                 <p className="line-clamp-5 whitespace-pre-wrap text-sm leading-6 text-zinc-600 dark:text-slate-300">{note.content}</p>

@@ -55,7 +55,7 @@ func (handler *Handler) Create(w http.ResponseWriter, request *http.Request) {
 		return
 	}
 	user := middleware.UserFromContext(request.Context())
-	note, err := handler.service.Create(request.Context(), user.ID, input)
+	note, err := handler.service.Create(authenticatedEditorContext(request), user.ID, input)
 	if err != nil {
 		handler.respondError(w, err)
 		return
@@ -83,7 +83,13 @@ func (handler *Handler) Update(w http.ResponseWriter, request *http.Request) {
 		return
 	}
 	handler.withNote(w, request, func(ownerID, noteID uuid.UUID) (Note, error) {
-		return handler.service.Update(request.Context(), ownerID, noteID, input)
+		return handler.service.Update(authenticatedEditorContext(request), ownerID, noteID, input)
+	})
+}
+
+func (handler *Handler) ConvertToChecklist(w http.ResponseWriter, request *http.Request) {
+	handler.withNote(w, request, func(ownerID, noteID uuid.UUID) (Note, error) {
+		return handler.service.ConvertToChecklist(authenticatedEditorContext(request), ownerID, noteID)
 	})
 }
 
@@ -105,7 +111,7 @@ func (handler *Handler) CreateItem(w http.ResponseWriter, request *http.Request)
 		return
 	}
 	handler.withNote(w, request, func(ownerID, noteID uuid.UUID) (Note, error) {
-		return handler.service.CreateItem(request.Context(), ownerID, noteID, input)
+		return handler.service.CreateItem(authenticatedEditorContext(request), ownerID, noteID, input)
 	})
 }
 
@@ -120,7 +126,7 @@ func (handler *Handler) UpdateItem(w http.ResponseWriter, request *http.Request)
 		return
 	}
 	handler.withNote(w, request, func(ownerID, noteID uuid.UUID) (Note, error) {
-		return handler.service.UpdateItem(request.Context(), ownerID, noteID, itemID, input)
+		return handler.service.UpdateItem(authenticatedEditorContext(request), ownerID, noteID, itemID, input)
 	})
 }
 
@@ -132,7 +138,7 @@ func (handler *Handler) DeleteItem(w http.ResponseWriter, request *http.Request)
 	}
 	version := queryInt(request, "version", 0)
 	handler.withNote(w, request, func(ownerID, noteID uuid.UUID) (Note, error) {
-		return handler.service.DeleteItem(request.Context(), ownerID, noteID, itemID, int64(version))
+		return handler.service.DeleteItem(authenticatedEditorContext(request), ownerID, noteID, itemID, int64(version))
 	})
 }
 
@@ -142,8 +148,20 @@ func (handler *Handler) ReorderItems(w http.ResponseWriter, request *http.Reques
 		return
 	}
 	handler.withNote(w, request, func(ownerID, noteID uuid.UUID) (Note, error) {
-		return handler.service.ReorderItems(request.Context(), ownerID, noteID, input)
+		return handler.service.ReorderItems(authenticatedEditorContext(request), ownerID, noteID, input)
 	})
+}
+
+func authenticatedEditorContext(request *http.Request) context.Context {
+	user := middleware.UserFromContext(request.Context())
+	if user == nil {
+		return request.Context()
+	}
+	label := user.DisplayName
+	if label == "" {
+		label = user.Email
+	}
+	return withEditor(request.Context(), label)
 }
 
 func (handler *Handler) withNote(w http.ResponseWriter, request *http.Request, action func(uuid.UUID, uuid.UUID) (Note, error)) {

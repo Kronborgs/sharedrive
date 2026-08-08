@@ -47,12 +47,6 @@
       "short_name": "Ny note",
       "url": "/notes?new=text",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Ny huskeliste",
-      "short_name": "Huskeliste",
-      "url": "/notes?new=checklist",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ],
   "share_target": {

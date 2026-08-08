@@ -38,6 +38,7 @@ type Note struct {
 	Version       int64      `json:"version"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	LastEditedBy  *string    `json:"last_edited_by,omitempty"`
 	Items         []Item     `json:"items"`
 }
 

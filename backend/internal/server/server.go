@@ -506,6 +506,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/notes", s.notesHandler.Create)
 		r.Get(noteByIDRoute, s.notesHandler.Get)
 		r.Patch(noteByIDRoute, s.notesHandler.Update)
+		r.Post("/api/v1/notes/{id}/checklist", s.notesHandler.ConvertToChecklist)
 		r.Delete(noteByIDRoute, s.notesHandler.Delete)
 		r.Post("/api/v1/notes/{id}/restore", s.notesHandler.Restore)
 		r.Delete("/api/v1/notes/{id}/permanent", s.notesHandler.PermanentDelete)

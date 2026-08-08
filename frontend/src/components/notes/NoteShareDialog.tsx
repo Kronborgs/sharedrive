@@ -13,10 +13,11 @@ export function NoteShareDialog({ note, onClose }: Readonly<{ note: Note; onClos
   const [email, setEmail] = useState('')
   const [permission, setPermission] = useState<NotePermission>('view')
   const [expiresAt, setExpiresAt] = useState('')
+  const [expiryMode, setExpiryMode] = useState<'never' | 'date'>('never')
   const shares = useQuery({ queryKey: ['note-shares', note.id], queryFn: ({ signal }) => listNoteShares(note.id, signal) })
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['note-shares', note.id] }).catch(() => undefined)
   const create = useMutation({
-    mutationFn: () => api.post<NoteShare>(`/api/v1/notes/${note.id}/shares`, { recipient_email: email, permission, expires_at: expiresAt ? new Date(expiresAt).toISOString() : null, language: locale }),
+    mutationFn: () => api.post<NoteShare>(`/api/v1/notes/${note.id}/shares`, { recipient_email: email, permission, expires_at: expiryMode === 'date' && expiresAt ? new Date(expiresAt).toISOString() : null, language: locale }),
     onSuccess: () => { setEmail(''); refresh(); toast.success(t('notes.invitationSent' as never)) },
     onError: () => toast.error(t('notes.invitationFailed' as never)),
   })
@@ -54,7 +55,8 @@ export function NoteShareDialog({ note, onClose }: Readonly<{ note: Note; onClos
         <form className="grid gap-3 border-b border-zinc-200 pb-5 dark:border-zinc-800 sm:grid-cols-[1fr_150px]" onSubmit={event => { event.preventDefault(); create.mutate() }}>
           <label className="sm:col-span-2"><span className="mb-1 block text-xs font-medium">{t('shared.recipientEmail')}</span><input required type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="recipient@example.com" className="notes-input" /></label>
           <label><span className="mb-1 block text-xs font-medium">{t('notes.permission' as never)}</span><select value={permission} onChange={event => setPermission(event.target.value as NotePermission)} className="notes-input"><option value="view">{t('notes.canView' as never)}</option>{note.type === 'checklist' && <option value="check">{t('notes.canCheck' as never)}</option>}<option value="edit">{t('notes.canEdit' as never)}</option></select></label>
-          <label><span className="mb-1 block text-xs font-medium">{t('notes.expires' as never)}</span><input type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} className="notes-input" /></label>
+          <label><span className="mb-1 block text-xs font-medium">{t('notes.expires' as never)}</span><select value={expiryMode} onChange={event => setExpiryMode(event.target.value as 'never' | 'date')} className="notes-input"><option value="never">{t('notes.neverExpires' as never)}</option><option value="date">{t('notes.chooseExpiry' as never)}</option></select></label>
+          {expiryMode === 'date' && <label className="sm:col-span-2"><span className="mb-1 block text-xs font-medium">{t('notes.expiryDate' as never)}</span><input required type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} className="notes-input" /></label>}
           <button disabled={create.isPending} className="notes-primary-button sm:col-span-2 sm:w-fit" type="submit"><Mail size={16} />{t('notes.sendInvitation' as never)}</button>
         </form>
 
@@ -69,7 +71,7 @@ export function NoteShareDialog({ note, onClose }: Readonly<{ note: Note; onClos
                   <div className="flex items-center gap-1">
                     <select aria-label={t('notes.permission' as never)} value={share.permission} onChange={event => update.mutate({ share, nextPermission: event.target.value as NotePermission })} className="rounded-md border bg-transparent px-2 py-1.5 text-xs"><option value="view">{t('notes.canView' as never)}</option>{note.type === 'checklist' && <option value="check">{t('notes.canCheck' as never)}</option>}<option value="edit">{t('notes.canEdit' as never)}</option></select>
                     <button className="notes-icon-button" title={t('notes.resend' as never)} onClick={() => resend.mutate(share)}><RefreshCw size={15} /></button>
-                    <button className="notes-icon-button text-red-600" title={t('notes.revoke' as never)} onClick={() => revoke.mutate(share)}><ShieldX size={15} /></button>
+                    <button className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30" title={t('notes.revoke' as never)} onClick={() => revoke.mutate(share)}><ShieldX size={15} />{t('notes.removeAccess' as never)}</button>
                   </div>
                 </div>
               </li>

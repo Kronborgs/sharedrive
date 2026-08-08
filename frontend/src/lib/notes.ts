@@ -27,6 +27,7 @@ export interface Note {
   version: number
   created_at: string
   updated_at: string
+  last_edited_by?: string
   items: NoteItem[]
 }
 
@@ -73,6 +74,10 @@ export function createNote(type: NoteType) {
 
 export function updateNote(id: string, update: NoteUpdate) {
   return api.patch<Note>(`/api/v1/notes/${id}`, update)
+}
+
+export function convertNoteToChecklist(id: string) {
+  return api.post<Note>(`/api/v1/notes/${id}/checklist`)
 }
 
 export function createNoteItem(id: string, version: number, content = '', position?: number) {

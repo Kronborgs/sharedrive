@@ -1,0 +1,48 @@
+{
+  "id": "/notes",
+  "name": "Sharedrive Noter",
+  "short_name": "Noter",
+  "description": "Noter og huskelister i Sharedrive",
+  "start_url": "/notes",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/notes-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/notes-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/notes-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/notes-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Ny note",
+      "short_name": "Ny note",
+      "url": "/notes?new=text",
+      "icons": [{ "src": "/notes-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

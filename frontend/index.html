@@ -11,7 +11,14 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
 
     <!-- PWA / Web App Manifest -->
-    <link rel="manifest" href="/site.webmanifest" />
+    <script>
+      const isNotesApp = location.pathname === '/notes' || location.pathname.startsWith('/notes/')
+      const manifest = document.createElement('link')
+      manifest.id = 'app-manifest'
+      manifest.rel = 'manifest'
+      manifest.href = isNotesApp ? '/notes.webmanifest' : '/site.webmanifest'
+      document.head.appendChild(manifest)
+    </script>
     <meta name="theme-color" content="#1a8cd8" />
     <meta name="mobile-web-app-capable" content="yes" />
 

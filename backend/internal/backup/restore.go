@@ -54,6 +54,10 @@ func (s *RestoreService) Restore(ctx context.Context, r io.ReaderAt, size int64,
 	if err != nil {
 		return nil, err
 	}
+	noteRecords, err := loadArchiveNotes(index, zipPwd)
+	if err != nil {
+		return nil, err
+	}
 
 	// Folders first, then files, oldest-first — parent rows must exist before
 	// their children are inserted (foreign key constraint on parent_id).
@@ -81,6 +85,12 @@ func (s *RestoreService) Restore(ctx context.Context, r io.ReaderAt, size int64,
 		} else {
 			result.FilesRestored++
 			result.BytesRestored += rec.SizeBytes
+		}
+	}
+	for _, record := range noteRecords {
+		if err := s.restoreNote(ctx, ownerID, record); err != nil {
+			log.Warn().Err(err).Str("note_id", record.ID).Msg("restore: skipping note")
+			result.Skipped++
 		}
 	}
 	return result, nil
@@ -165,6 +175,66 @@ func loadArchiveRecords(index map[string]*yzip.File, zipPwd string) ([]archiveFi
 		return nil, fmt.Errorf("restore: decode metadata.json: %w", err)
 	}
 	return records, nil
+}
+
+func loadArchiveNotes(index map[string]*yzip.File, zipPwd string) ([]archiveNoteRecord, error) {
+	entry, ok := index["notes.json"]
+	if !ok {
+		return []archiveNoteRecord{}, nil
+	}
+	entry.SetPassword(zipPwd)
+	reader, err := entry.Open()
+	if err != nil {
+		return nil, fmt.Errorf("restore: open notes.json: %w", err)
+	}
+	defer reader.Close()
+	var records []archiveNoteRecord
+	if err := json.NewDecoder(reader).Decode(&records); err != nil {
+		return nil, fmt.Errorf("restore: decode notes.json: %w", err)
+	}
+	return records, nil
+}
+
+func (s *RestoreService) restoreNote(ctx context.Context, ownerID uuid.UUID, record archiveNoteRecord) error {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `INSERT INTO notes (id, owner_id, type, title, content, color, is_pinned,
+		is_archived, hide_completed, deleted_at, version, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (id) DO NOTHING`,
+		record.ID, ownerID, record.Type, record.Title, record.Content, record.Color, record.IsPinned,
+		record.IsArchived, record.HideCompleted, record.DeletedAt, record.Version, record.CreatedAt, record.UpdatedAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		var existingOwner uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT owner_id FROM notes WHERE id = $1`, record.ID).Scan(&existingOwner); err != nil {
+			return err
+		}
+		if existingOwner != ownerID {
+			return fmt.Errorf("note id belongs to another user")
+		}
+	}
+	for _, item := range record.Items {
+		if _, err := tx.Exec(ctx, `INSERT INTO note_items (id, note_id, content, is_checked, position, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING`, item.ID, record.ID,
+			item.Content, item.IsChecked, item.Position, item.CreatedAt, item.UpdatedAt); err != nil {
+			return err
+		}
+	}
+	for _, share := range record.Shares {
+		if _, err := tx.Exec(ctx, `INSERT INTO note_shares (id, note_id, created_by, recipient_email,
+			permission, invitation_token_hash, expires_at, revoked_at, last_sent_at, last_opened_at, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING`, share.ID,
+			record.ID, ownerID, share.RecipientEmail, share.Permission, share.InvitationTokenHash,
+			share.ExpiresAt, share.RevokedAt, share.LastSentAt, share.LastOpenedAt, share.CreatedAt, share.UpdatedAt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func nilIfEmpty(s string) *string {

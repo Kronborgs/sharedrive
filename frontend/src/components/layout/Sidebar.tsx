@@ -20,6 +20,7 @@ import {
   Music,
   X,
   Plus,
+	StickyNote,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
@@ -44,6 +45,7 @@ interface NavItem {
 
 const mainNav: NavItem[] = [
   { to: '/files',    labelKey: 'nav.myFiles',   icon: <Files size={16} />,   exact: true },
+	{ to: '/notes',    labelKey: 'nav.notes',     icon: <StickyNote size={16} /> },
   { to: '/shares',   labelKey: 'nav.shared',    icon: <Share2 size={16} /> },
   { to: '/recent',   labelKey: 'nav.recent',    icon: <Clock size={16} /> },
   { to: '/activity', labelKey: 'nav.activity',  icon: <History size={16} /> },

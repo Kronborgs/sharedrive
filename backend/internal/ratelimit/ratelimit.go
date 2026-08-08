@@ -14,6 +14,10 @@ const (
 	KeyIPDownload   = "ip_dl:"
 	KeyUserZipDL    = "user_zip:"
 	KeyIPZipDL      = "ip_zip:"
+	KeyUserNoteInvite    = "user_note_invite:"
+	KeyNoteShareResend   = "note_share_resend:"
+	KeyIPNoteInviteAccept = "ip_note_invite_accept:"
+	KeyGuestNoteMutation = "guest_note_mutation:"
 )
 
 // Limiter implements a sliding-window counter using a Redis sorted set.

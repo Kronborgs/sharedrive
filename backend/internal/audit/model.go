@@ -50,6 +50,19 @@ const (
 	EventShareModified = "SHARE_MODIFIED"
 	EventShareRevoked  = "SHARE_REVOKED"
 
+	// Note events
+	EventNoteCreated          = "NOTE_CREATED"
+	EventNoteUpdated          = "NOTE_UPDATED"
+	EventNoteDeleted          = "NOTE_DELETED"
+	EventNoteRestored         = "NOTE_RESTORED"
+	EventNotePermanentDeleted = "NOTE_PERMANENTLY_DELETED"
+	EventNoteShareCreated     = "NOTE_SHARE_CREATED"
+	EventNoteShareModified    = "NOTE_SHARE_MODIFIED"
+	EventNoteShareRevoked     = "NOTE_SHARE_REVOKED"
+	EventNoteGuestAccessed    = "NOTE_GUEST_ACCESSED"
+	EventNoteGuestUpdated     = "NOTE_GUEST_UPDATED"
+	EventNoteGuestSessionCreated = "NOTE_GUEST_SESSION_CREATED"
+
 	// WebDAV events
 	EventWebDAVLoginSuccess = "WEBDAV_LOGIN_SUCCESS"
 	EventWebDAVLoginFailed  = "WEBDAV_LOGIN_FAILED"

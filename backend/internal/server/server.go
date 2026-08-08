@@ -31,6 +31,7 @@ import (
 	"github.com/yourname/privatedrive/internal/embed"
 	"github.com/yourname/privatedrive/internal/files"
 	mw "github.com/yourname/privatedrive/internal/middleware"
+	"github.com/yourname/privatedrive/internal/notes"
 	"github.com/yourname/privatedrive/internal/onboarding"
 	"github.com/yourname/privatedrive/internal/onlyoffice"
 	"github.com/yourname/privatedrive/internal/preview"
@@ -67,6 +68,7 @@ type Server struct {
 	fileSvc        *files.Service
 	filesHandler   *files.Handler
 	sharesHandler  *shares.Handler
+	notesHandler   *notes.Handler
 	adminHandler   *admin.Handler
 	sseHandler     *admin.SSEHandler
 	supportHandler *admin.SupportAccessHandler
@@ -148,6 +150,11 @@ func newServerDependencies(deps serverDependencies) *Server {
 		fileSvc:        deps.fileSvc,
 		filesHandler:   files.NewHandler(deps.fileSvc, deps.trashSvc, deps.auditSvc, deps.rdb, deps.conv, ratelimit.New(deps.rdb), deps.ioTracker),
 		sharesHandler:  shares.NewHandler(deps.db, smtp.New(deps.cfg, deps.db), deps.cfg.AppBaseURL),
+		notesHandler: notes.NewHandler(
+			notes.NewService(deps.db, deps.auditSvc),
+			notes.NewSharingService(deps.db, smtp.New(deps.cfg, deps.db), deps.auditSvc,
+				ratelimit.New(deps.rdb), deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production"),
+		),
 		adminHandler:   admin.NewHandler(deps.db, deps.cfg, deps.ioTracker, deps.rdb),
 		sseHandler:     admin.NewSSEHandler(deps.db),
 		supportHandler: admin.NewSupportAccessHandler(deps.db),
@@ -323,9 +330,9 @@ func (s *Server) buildRouter() *chi.Mux {
 
 	// ── Global middleware ──────────────────────────────────────────────────
 	r.Use(chimiddleware.Recoverer)
-	r.Use(chimiddleware.RequestLogger(&chimiddleware.DefaultLogFormatter{
+	r.Use(chimiddleware.RequestLogger(redactingLogFormatter{base: &chimiddleware.DefaultLogFormatter{
 		Logger: &log.Logger, NoColor: true,
-	}))
+	}}))
 	r.Use(mw.RequestID)
 	r.Use(mw.RealIP)
 	r.Use(mw.SecurityHeaders(mw.InlineScriptHashes(embed.DistFS),
@@ -403,6 +410,17 @@ func (s *Server) buildRouter() *chi.Mux {
 
 	// ── Public shared-link endpoint (no auth) ─────────────────────────────
 	r.Get("/api/v1/public/shared/{token}", s.handleSharedByLink)
+	r.Get("/notes/invite/{token}", s.notesHandler.AcceptInvitation)
+	r.Get("/api/v1/public/notes/invitations/{token}/accept", s.notesHandler.AcceptInvitation)
+
+	// Note guest sessions are separate from authenticated user sessions.
+	r.Get("/api/v1/guest/notes/{id}", s.notesHandler.GuestGet)
+	r.Patch("/api/v1/guest/notes/{id}", s.notesHandler.GuestUpdate)
+	r.Post("/api/v1/guest/notes/{id}/items", s.notesHandler.GuestCreateItem)
+	r.Patch("/api/v1/guest/notes/{id}/items/{itemId}", s.notesHandler.GuestUpdateItem)
+	r.Delete("/api/v1/guest/notes/{id}/items/{itemId}", s.notesHandler.GuestDeleteItem)
+	r.Post("/api/v1/guest/notes/{id}/items/reorder", s.notesHandler.GuestReorderItems)
+	r.Post("/api/v1/guest/logout", s.notesHandler.GuestLogout)
 
 	// ── Public OnlyOffice endpoints for link-share (guest) access ─────────
 	r.Get("/api/v1/public/onlyoffice/config/{fileId}", s.ooHandler.PublicGetEditorConfig)
@@ -481,6 +499,24 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/shares", s.handleCreateShare)
 		r.Patch("/api/v1/shares/{id}", s.handleUpdateShare)
 		r.Delete("/api/v1/shares/{id}", s.handleRevokeShare)
+
+		// Notes
+		r.Get("/api/v1/notes", s.notesHandler.List)
+		r.Post("/api/v1/notes", s.notesHandler.Create)
+		r.Get("/api/v1/notes/{id}", s.notesHandler.Get)
+		r.Patch("/api/v1/notes/{id}", s.notesHandler.Update)
+		r.Delete("/api/v1/notes/{id}", s.notesHandler.Delete)
+		r.Post("/api/v1/notes/{id}/restore", s.notesHandler.Restore)
+		r.Delete("/api/v1/notes/{id}/permanent", s.notesHandler.PermanentDelete)
+		r.Post("/api/v1/notes/{id}/items", s.notesHandler.CreateItem)
+		r.Patch("/api/v1/notes/{id}/items/{itemId}", s.notesHandler.UpdateItem)
+		r.Delete("/api/v1/notes/{id}/items/{itemId}", s.notesHandler.DeleteItem)
+		r.Post("/api/v1/notes/{id}/items/reorder", s.notesHandler.ReorderItems)
+		r.Get("/api/v1/notes/{id}/shares", s.notesHandler.ListShares)
+		r.Post("/api/v1/notes/{id}/shares", s.notesHandler.CreateShare)
+		r.Patch("/api/v1/notes/{id}/shares/{shareId}", s.notesHandler.UpdateShare)
+		r.Delete("/api/v1/notes/{id}/shares/{shareId}", s.notesHandler.RevokeShare)
+		r.Post("/api/v1/notes/{id}/shares/{shareId}/resend", s.notesHandler.ResendShare)
 
 		// Backup
 		r.Get("/api/v1/backup/config", s.backupHandler.GetConfig)
@@ -605,6 +641,28 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Mount("/", s.spaHandler())
 
 	return r
+}
+
+type redactingLogFormatter struct {
+	base chimiddleware.LogFormatter
+}
+
+func (formatter redactingLogFormatter) NewLogEntry(request *http.Request) chimiddleware.LogEntry {
+	if !strings.HasPrefix(request.URL.Path, "/notes/invite/") &&
+		!strings.HasPrefix(request.URL.Path, "/api/v1/public/notes/invitations/") {
+		return formatter.base.NewLogEntry(request)
+	}
+	clone := request.Clone(request.Context())
+	clonedURL := *request.URL
+	if strings.HasPrefix(request.URL.Path, "/notes/invite/") {
+		clonedURL.Path = "/notes/invite/[redacted]"
+	} else {
+		clonedURL.Path = "/api/v1/public/notes/invitations/[redacted]/accept"
+	}
+	clonedURL.RawPath = ""
+	clone.URL = &clonedURL
+	clone.RequestURI = clonedURL.RequestURI()
+	return formatter.base.NewLogEntry(clone)
 }
 
 // spaHandler serves the embedded React SPA for all non-API routes.

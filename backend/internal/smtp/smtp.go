@@ -143,6 +143,27 @@ func (m *Mailer) SendShareInvite(_ context.Context, toEmail, sharerName, fileNam
 	return m.send(toEmail, fmt.Sprintf("%s shared \"%s\" with you on PrivateDrive", sharerName, fileName), body)
 }
 
+// SendNoteInvitation invites an accountless guest to a single note without including note content.
+func (m *Mailer) SendNoteInvitation(_ context.Context, toEmail, ownerName, noteTitle, permission, inviteLink, language string, expiresAt *time.Time) error {
+	permissionText := map[string]string{"view": "Can view", "check": "Can check items", "edit": "Can edit"}[permission]
+	expiryText := ""
+	if expiresAt != nil {
+		expiryText = fmt.Sprintf("\nAccess expires: %s\n", expiresAt.UTC().Format("02 Jan 2006 15:04 UTC"))
+	}
+	subject := fmt.Sprintf("%s shared a note with you on Sharedrive", ownerName)
+	body := fmt.Sprintf("Hi,\n\n%s shared the note \"%s\" with you.\nPermission: %s\n%s\nOpen note:\n%s\n\nYou do not need an account. Do not forward this private link.\n", ownerName, noteTitle, permissionText, expiryText, inviteLink)
+	if language == "da" {
+		permissionText = map[string]string{"view": "Kan se", "check": "Kan afkrydse", "edit": "Kan redigere"}[permission]
+		expiryText = ""
+		if expiresAt != nil {
+			expiryText = fmt.Sprintf("\nAdgangen udløber: %s\n", expiresAt.Local().Format("02-01-2006 15:04"))
+		}
+		subject = fmt.Sprintf("%s har delt en note med dig på Sharedrive", ownerName)
+		body = fmt.Sprintf("Hej,\n\n%s har delt noten \"%s\" med dig.\nRettighed: %s\n%s\nÅbn noten:\n%s\n\nDu behøver ikke en konto. Videresend ikke dette private link.\n", ownerName, noteTitle, permissionText, expiryText, inviteLink)
+	}
+	return m.send(toEmail, subject, body)
+}
+
 // SendBackupFailure notifies a user that one of their automatic backups has been
 // failing for more than 24 hours.
 // backupType is a short human-readable label ("Server backup" or "Buddy backup").

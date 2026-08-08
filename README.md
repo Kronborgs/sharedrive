@@ -180,6 +180,10 @@ Privacy-first self-hosted file sharing and personal cloud platform for secure st
 - Playlist files are editable (add/remove tracks, max 50)
 - **Upload folder** — select an entire local folder from the Files toolbar; Sharedrive recreates the folder hierarchy on the server and uploads each file into the correct subfolder
 
+### Notes
+
+Sharedrive includes integrated plain-text notes and checklists with autosave, search, pinning, archive, trash, and secure accountless email sharing. Guest links are exchanged for short-lived HttpOnly sessions with `view`, `check`, or `edit` permission. See [Notes MVP](docs/NOTES.md) for API, security, limits, PWA, and backup details.
+
 ### Backup & Restore
 - **Per-user encrypted backup** — HMAC-SHA256 signed gzip JSON export (metadata only, no blobs)
 - **Selective export** — choose exactly which folders/files to include using a tree picker

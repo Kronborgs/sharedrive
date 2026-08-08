@@ -195,6 +195,17 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 		zw.Close() //nolint:errcheck
 		return fmt.Errorf("export: metadata: %w", err)
 	}
+	if len(folderIDs) == 0 {
+		noteRecords, noteErr := s.queryNoteRecords(ctx, userID)
+		if noteErr != nil {
+			zw.Close() //nolint:errcheck
+			return noteErr
+		}
+		if err := zw.AddJSON("notes.json", noteRecords); err != nil {
+			zw.Close() //nolint:errcheck
+			return fmt.Errorf("export: notes: %w", err)
+		}
+	}
 
 	for _, record := range records {
 		if record.IsFolder {
@@ -217,4 +228,72 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 		return fmt.Errorf("export: close zip: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) queryNoteRecords(ctx context.Context, userID uuid.UUID) ([]archiveNoteRecord, error) {
+	rows, err := s.db.Query(ctx, `SELECT id, type, title, content, color, is_pinned, is_archived,
+		hide_completed, deleted_at, version, created_at, updated_at
+		FROM notes WHERE owner_id = $1 ORDER BY created_at`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("export: query notes: %w", err)
+	}
+	defer rows.Close()
+	records := make([]archiveNoteRecord, 0)
+	for rows.Next() {
+		var record archiveNoteRecord
+		if err := rows.Scan(&record.ID, &record.Type, &record.Title, &record.Content, &record.Color,
+			&record.IsPinned, &record.IsArchived, &record.HideCompleted, &record.DeletedAt,
+			&record.Version, &record.CreatedAt, &record.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("export: scan note: %w", err)
+		}
+		record.Items, err = s.queryNoteItems(ctx, record.ID)
+		if err != nil {
+			return nil, err
+		}
+		record.Shares, err = s.queryNoteShares(ctx, record.ID)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (s *Service) queryNoteItems(ctx context.Context, noteID string) ([]archiveNoteItem, error) {
+	rows, err := s.db.Query(ctx, `SELECT id, content, is_checked, position, created_at, updated_at
+		FROM note_items WHERE note_id = $1 ORDER BY position`, noteID)
+	if err != nil {
+		return nil, fmt.Errorf("export: query note items: %w", err)
+	}
+	defer rows.Close()
+	items := make([]archiveNoteItem, 0)
+	for rows.Next() {
+		var item archiveNoteItem
+		if err := rows.Scan(&item.ID, &item.Content, &item.IsChecked, &item.Position, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Service) queryNoteShares(ctx context.Context, noteID string) ([]archiveNoteShare, error) {
+	rows, err := s.db.Query(ctx, `SELECT id, recipient_email, permission, invitation_token_hash,
+		expires_at, revoked_at, last_sent_at, last_opened_at, created_at, updated_at
+		FROM note_shares WHERE note_id = $1 ORDER BY created_at`, noteID)
+	if err != nil {
+		return nil, fmt.Errorf("export: query note shares: %w", err)
+	}
+	defer rows.Close()
+	shares := make([]archiveNoteShare, 0)
+	for rows.Next() {
+		var share archiveNoteShare
+		if err := rows.Scan(&share.ID, &share.RecipientEmail, &share.Permission, &share.InvitationTokenHash,
+			&share.ExpiresAt, &share.RevokedAt, &share.LastSentAt, &share.LastOpenedAt,
+			&share.CreatedAt, &share.UpdatedAt); err != nil {
+			return nil, err
+		}
+		shares = append(shares, share)
+	}
+	return shares, rows.Err()
 }

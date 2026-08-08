@@ -92,6 +92,36 @@ function saveCache(p: Cached | null) {
 
 const PlaylistContext = createContext<PlaylistContextValue | null>(null)
 
+function setMediaPlaybackState(state: MediaSessionPlaybackState) {
+  if (!('mediaSession' in navigator)) return
+  navigator.mediaSession.playbackState = state
+}
+
+function updateMediaMetadata(track: PlaylistTrack | undefined, playlistName: string | null) {
+  if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return
+  navigator.mediaSession.metadata = track
+    ? new MediaMetadata({ title: track.name, album: playlistName ?? undefined })
+    : null
+}
+
+function updateMediaPosition(audio: HTMLAudioElement) {
+  if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return
+  const duration = audio.duration
+  const position = audio.currentTime
+  const playbackRate = audio.playbackRate
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(position) || !Number.isFinite(playbackRate) || playbackRate <= 0) return
+
+  try {
+    navigator.mediaSession.setPositionState({
+      duration,
+      playbackRate,
+      position: Math.min(Math.max(position, 0), duration),
+    })
+  } catch (error) {
+    console.warn('[playlist] Media Session position unavailable', error)
+  }
+}
+
 export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(() => loadCache()?.id ?? null)
   const [activePlaylistName, setActivePlaylistName] = useState<string | null>(() => loadCache()?.name ?? null)
@@ -124,9 +154,11 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
   const shuffleRef      = useRef(loadCache()?.shuffle ?? false)
   const tracksRef       = useRef<PlaylistTrack[]>([])
   const currentIndexRef = useRef(0)
+  const playlistNameRef = useRef(activePlaylistName)
   useEffect(() => { shuffleRef.current = shuffleEnabled }, [shuffleEnabled])
   useEffect(() => { tracksRef.current = tracks }, [tracks])
   useEffect(() => { currentIndexRef.current = currentIndex }, [currentIndex])
+  useEffect(() => { playlistNameRef.current = activePlaylistName }, [activePlaylistName])
 
   // Index to restore when tracks first load (from cache or server state)
   const pendingIndexRef = useRef(loadCache()?.index ?? 0)
@@ -141,6 +173,7 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
 
   const prevIndexRef = useRef(-1)
   const isChangingTrackRef = useRef(false)
+  const playbackRequestRef = useRef(0)
 
   const ensureWebAudio = useCallback(() => {
     if (audioCtxRef.current) return audioCtxRef.current
@@ -164,44 +197,59 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
     return ctx
   }, [])
 
+  const startPlayback = useCallback(async () => {
+    const audio = audioRef.current!
+    const audioContext = audioCtxRef.current
+    if (audioContext && audioContext.state !== 'running') {
+      console.info('[playlist] Requesting AudioContext resume', { state: audioContext.state, visibility: document.visibilityState })
+      try {
+        await audioContext.resume()
+      } catch (error) {
+        console.error('[playlist] AudioContext resume failed', { state: audioContext.state, error })
+      }
+    }
+
+    try {
+      await audio.play()
+      return true
+    } catch (error) {
+      audio.autoplay = false
+      setIsPlaying(false)
+      setMediaPlaybackState(tracksRef.current.length > 0 ? 'paused' : 'none')
+      console.error('[playlist] audio.play() rejected', {
+        index: currentIndexRef.current,
+        src: audio.currentSrc || audio.src,
+        visibility: document.visibilityState,
+        error,
+      })
+      return false
+    }
+  }, [])
+
   const playTrackAtIndex = useCallback(async (index: number) => {
     const track = tracksRef.current[index]
     if (!track) return
 
+    const request = ++playbackRequestRef.current
     const audio = audioRef.current!
     prevIndexRef.current = index
     currentIndexRef.current = index
     isChangingTrackRef.current = true
     audio.autoplay = true
     audio.src = track.preview_url
+    audio.load()
+    updateMediaMetadata(track, playlistNameRef.current)
     setProgress(0)
     setDuration(0)
     setCurrentIndex(index)
 
-    const audioContext = audioCtxRef.current
-    if (audioContext && audioContext.state !== 'running') {
-      console.info('[playlist] Requesting AudioContext resume', { state: audioContext.state, visibility: document.visibilityState })
-      audioContext.resume().catch(error => {
-        console.error('[playlist] AudioContext resume failed', { state: audioContext.state, error })
-      })
+    const started = await startPlayback()
+    if (request !== playbackRequestRef.current) return
+    isChangingTrackRef.current = false
+    if (started) {
+      console.info('[playlist] Track started', { index, src: audio.currentSrc || audio.src })
     }
-
-    try {
-      await audio.play()
-      isChangingTrackRef.current = false
-      console.info('[playlist] Next track started', { index, src: audio.currentSrc || audio.src })
-    } catch (error) {
-      isChangingTrackRef.current = false
-      audio.autoplay = false
-      setIsPlaying(false)
-      console.error('[playlist] audio.play() rejected', {
-        index,
-        src: audio.currentSrc || audio.src,
-        visibility: document.visibilityState,
-        error,
-      })
-    }
-  }, [])
+  }, [startPlayback])
 
   // ── On mount: fetch authoritative state from server (cross-device sync) ──────
   useEffect(() => {
@@ -224,8 +272,14 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
   // Wire audio events once on mount
   useEffect(() => {
     const audio = audioRef.current!
-    const onTime  = () => setProgress(audio.currentTime)
-    const onDur   = () => setDuration(audio.duration)
+    const onTime  = () => {
+      setProgress(audio.currentTime)
+      updateMediaPosition(audio)
+    }
+    const onDur   = () => {
+      setDuration(audio.duration)
+      updateMediaPosition(audio)
+    }
     const onPlay  = () => {
       isChangingTrackRef.current = false
       audio.autoplay = true
@@ -236,14 +290,15 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
         })
       }
       setIsPlaying(true)
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
+      setMediaPlaybackState('playing')
+      updateMediaPosition(audio)
     }
     const onPause = () => {
       if (!audio.ended && !isChangingTrackRef.current) {
         audio.autoplay = false
         setIsPlaying(false)
+        setMediaPlaybackState(tracksRef.current.length > 0 ? 'paused' : 'none')
       }
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused'
     }
     const onEnded = () => {
       const len = tracksRef.current.length
@@ -274,6 +329,7 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
       if (next === null) {
         audio.autoplay = false
         setIsPlaying(false)
+        setMediaPlaybackState('paused')
         return
       }
       playTrackAtIndex(next).catch(error => {
@@ -282,12 +338,14 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
     }
     audio.addEventListener('timeupdate', onTime)
     audio.addEventListener('durationchange', onDur)
+    audio.addEventListener('ratechange', onDur)
     audio.addEventListener('play',  onPlay)
     audio.addEventListener('pause', onPause)
     audio.addEventListener('ended', onEnded)
     return () => {
       audio.removeEventListener('timeupdate', onTime)
       audio.removeEventListener('durationchange', onDur)
+      audio.removeEventListener('ratechange', onDur)
       audio.removeEventListener('play',  onPlay)
       audio.removeEventListener('pause', onPause)
       audio.removeEventListener('ended', onEnded)
@@ -311,6 +369,8 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
       .then(t => {
         const start = pendingIndexRef.current < t.length ? pendingIndexRef.current : 0
         pendingIndexRef.current = 0
+        tracksRef.current = t
+        currentIndexRef.current = start
         setTracks(t)
         setCurrentIndex(start)
         setProgress(0)
@@ -324,7 +384,7 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
       .finally(() => setIsLoadingTracks(false))
   }, [activePlaylistId])
 
-  // Load new src when currentIndex changes (but only after tracks are loaded)
+  // Keep the media source synchronized for non-playback changes such as track removal.
   useEffect(() => {
     if (tracks.length === 0) return
     if (currentIndex < 0 || currentIndex >= tracks.length) return
@@ -332,15 +392,10 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
     prevIndexRef.current = currentIndex
 
     const audio = audioRef.current!
-    const shouldAutoPlay = isPlaying
     audio.src = tracks[currentIndex].preview_url
     audio.load()
     setProgress(0)
     setDuration(0)
-    if (shouldAutoPlay) {
-      audio.play().catch(() => setIsPlaying(false))
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, tracks])
 
   // ── Persist state — local cache (instant) + server (debounced, cross-device) ─
@@ -365,36 +420,30 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
   // ── Controls ──────────────────────────────────────────────────────────────────
 
   const jumpTo = useCallback((i: number) => {
-    prevIndexRef.current = -1
-    setCurrentIndex(i)
-    setIsPlaying(true)
-  }, [])
+    void playTrackAtIndex(i)
+  }, [playTrackAtIndex])
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current!
     if (audio.paused) {
-      audio.play().catch(() => setIsPlaying(false))
+      void startPlayback()
     } else {
       audio.pause()
     }
-  }, [])
+  }, [startPlayback])
 
   const next = useCallback(() => {
-    setCurrentIndex(i => {
-      const len = tracksRef.current.length
-      if (shuffleRef.current) {
-        if (len <= 1) return i
-        let n = secureRandomInt(len - 1)
-        if (n >= i) n += 1
-        prevIndexRef.current = -1
-        return n
-      }
-      if (i >= len - 1) return i
-      prevIndexRef.current = -1
-      return i + 1
-    })
-    setIsPlaying(true)
-  }, [])
+    const current = currentIndexRef.current
+    const len = tracksRef.current.length
+    if (shuffleRef.current) {
+      if (len <= 1) return
+      let nextIndex = secureRandomInt(len - 1)
+      if (nextIndex >= current) nextIndex += 1
+      void playTrackAtIndex(nextIndex)
+      return
+    }
+    if (current < len - 1) void playTrackAtIndex(current + 1)
+  }, [playTrackAtIndex])
 
   const prev = useCallback(() => {
     const audio = audioRef.current!
@@ -402,12 +451,15 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
       audio.currentTime = 0
       return
     }
-    setCurrentIndex(i => {
-      if (i <= 0) return i
-      prevIndexRef.current = -1
-      return i - 1
-    })
-    setIsPlaying(true)
+    const current = currentIndexRef.current
+    if (current > 0) void playTrackAtIndex(current - 1)
+  }, [playTrackAtIndex])
+
+  const seekToTime = useCallback((time: number) => {
+    const audio = audioRef.current!
+    if (!Number.isFinite(time) || !Number.isFinite(audio.duration) || audio.duration <= 0) return
+    audio.currentTime = Math.min(Math.max(time, 0), audio.duration)
+    updateMediaPosition(audio)
   }, [])
 
   useEffect(() => {
@@ -420,31 +472,37 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
         console.warn('[playlist] Media Session action unavailable', { action, error })
       }
     }
-    setHandler('play', () => { if (audioRef.current!.paused) togglePlay() })
-    setHandler('pause', () => { if (!audioRef.current!.paused) togglePlay() })
+    setHandler('play', () => { if (audioRef.current!.paused) void startPlayback() })
+    setHandler('pause', () => { if (!audioRef.current!.paused) audioRef.current!.pause() })
     setHandler('nexttrack', next)
     setHandler('previoustrack', prev)
+    setHandler('seekto', details => {
+      if (details.seekTime !== undefined) seekToTime(details.seekTime)
+    })
+    setHandler('seekbackward', details => seekToTime(audioRef.current!.currentTime - (details.seekOffset ?? 10)))
+    setHandler('seekforward', details => seekToTime(audioRef.current!.currentTime + (details.seekOffset ?? 10)))
 
     return () => {
       setHandler('play', null)
       setHandler('pause', null)
       setHandler('nexttrack', null)
       setHandler('previoustrack', null)
+      setHandler('seekto', null)
+      setHandler('seekbackward', null)
+      setHandler('seekforward', null)
     }
-  }, [next, prev, togglePlay])
+  }, [next, prev, seekToTime, startPlayback])
 
   useEffect(() => {
-    if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return
     const track = tracks[currentIndex]
-    navigator.mediaSession.metadata = track
-      ? new MediaMetadata({ title: track.name, album: activePlaylistName ?? undefined })
-      : null
+    updateMediaMetadata(track, activePlaylistName)
+    if (!track) setMediaPlaybackState('none')
   }, [activePlaylistName, currentIndex, tracks])
 
   const seek = useCallback((ratio: number) => {
     const audio = audioRef.current!
-    if (audio.duration) audio.currentTime = ratio * audio.duration
-  }, [])
+    seekToTime(ratio * audio.duration)
+  }, [seekToTime])
 
   const setVolume = useCallback((v: number) => {
     audioRef.current!.volume = v

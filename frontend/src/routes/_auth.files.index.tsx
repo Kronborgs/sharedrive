@@ -15,6 +15,7 @@ import { DownloadDialog } from '@/components/files/DownloadDialog'
 import { FolderPickerDialog } from '@/components/files/FolderPickerDialog'
 import { ShareTargetDialog } from '@/components/files/ShareTargetDialog'
 import { ShareTargetHint } from '@/components/files/ShareTargetHint'
+import { PwaInstallButton } from '@/components/pwa/PwaInstallButton'
 import { UploadConflictDialog, UploadGlobalDuplicateDialog } from '@/components/files/UploadDuplicateDialogs'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { TextEditor } from '@/components/files/TextEditor'
@@ -759,6 +760,13 @@ function FilesPage() {
                     </button>
                   </>
                 )}
+
+                <PwaInstallButton
+                  className="flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-[#2d3148] dark:text-slate-300 dark:hover:bg-[#2d3148]"
+                  title="Installér Sharedrive"
+                  label={<span className="hidden sm:inline">Installér Sharedrive</span>}
+                  iconSize={12}
+                />
 
                 {/* Upload — always visible, label hidden on mobile */}
                 <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium cursor-pointer transition-colors">

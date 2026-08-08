@@ -140,6 +140,29 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
   }
 
   const prevIndexRef = useRef(-1)
+  const isChangingTrackRef = useRef(false)
+
+  const ensureWebAudio = useCallback(() => {
+    if (audioCtxRef.current) return audioCtxRef.current
+
+    const ctx = new AudioContext()
+    const source = ctx.createMediaElementSource(audioRef.current!)
+    const bassFilter = ctx.createBiquadFilter()
+    bassFilter.type = 'lowshelf'
+    bassFilter.frequency.value = 200
+    bassFilter.gain.value = bassValRef.current
+    const trebleFilter = ctx.createBiquadFilter()
+    trebleFilter.type = 'highshelf'
+    trebleFilter.frequency.value = 4000
+    trebleFilter.gain.value = trebleValRef.current
+    source.connect(bassFilter)
+    bassFilter.connect(trebleFilter)
+    trebleFilter.connect(ctx.destination)
+    audioCtxRef.current = ctx
+    bassFilterRef.current = bassFilter
+    trebleFilterRef.current = trebleFilter
+    return ctx
+  }, [])
 
   const playTrackAtIndex = useCallback(async (index: number) => {
     const track = tracksRef.current[index]
@@ -148,26 +171,28 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
     const audio = audioRef.current!
     prevIndexRef.current = index
     currentIndexRef.current = index
+    isChangingTrackRef.current = true
+    audio.autoplay = true
     audio.src = track.preview_url
-    audio.load()
     setProgress(0)
     setDuration(0)
     setCurrentIndex(index)
 
     const audioContext = audioCtxRef.current
-    if (audioContext?.state === 'suspended') {
-      console.info('[playlist] Resuming AudioContext', { visibility: document.visibilityState })
-      try {
-        await audioContext.resume()
-      } catch (error) {
+    if (audioContext && audioContext.state !== 'running') {
+      console.info('[playlist] Requesting AudioContext resume', { state: audioContext.state, visibility: document.visibilityState })
+      audioContext.resume().catch(error => {
         console.error('[playlist] AudioContext resume failed', { state: audioContext.state, error })
-      }
+      })
     }
 
     try {
       await audio.play()
+      isChangingTrackRef.current = false
       console.info('[playlist] Next track started', { index, src: audio.currentSrc || audio.src })
     } catch (error) {
+      isChangingTrackRef.current = false
+      audio.autoplay = false
       setIsPlaying(false)
       console.error('[playlist] audio.play() rejected', {
         index,
@@ -202,32 +227,21 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
     const audio = audioRef.current!
     const onTime  = () => setProgress(audio.currentTime)
     const onDur   = () => setDuration(audio.duration)
-    const initWebAudio = () => {
-      if (audioCtxRef.current) { audioCtxRef.current.resume().catch(() => undefined); return }
-      const ctx = new AudioContext()
-      const source = ctx.createMediaElementSource(audio)
-      const bassF = ctx.createBiquadFilter()
-      bassF.type = 'lowshelf'
-      bassF.frequency.value = 200
-      bassF.gain.value = bassValRef.current
-      const trebleF = ctx.createBiquadFilter()
-      trebleF.type = 'highshelf'
-      trebleF.frequency.value = 4000
-      trebleF.gain.value = trebleValRef.current
-      source.connect(bassF)
-      bassF.connect(trebleF)
-      trebleF.connect(ctx.destination)
-      audioCtxRef.current   = ctx
-      bassFilterRef.current  = bassF
-      trebleFilterRef.current = trebleF
-    }
     const onPlay  = () => {
-      initWebAudio()
+      isChangingTrackRef.current = false
+      audio.autoplay = true
+      const audioContext = audioCtxRef.current
+      if (audioContext && audioContext.state !== 'running') {
+        audioContext.resume().catch(error => {
+          console.error('[playlist] AudioContext resume failed during play', { state: audioContext.state, error })
+        })
+      }
       setIsPlaying(true)
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
     }
     const onPause = () => {
-      if (!audio.ended) {
+      if (!audio.ended && !isChangingTrackRef.current) {
+        audio.autoplay = false
         setIsPlaying(false)
       }
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused'
@@ -259,6 +273,7 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
       })
 
       if (next === null) {
+        audio.autoplay = false
         setIsPlaying(false)
         return
       }
@@ -439,15 +454,27 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
 
   const setBass = useCallback((v: number) => {
     bassValRef.current = v
-    if (bassFilterRef.current) bassFilterRef.current.gain.value = v
+    if (v !== 0 || audioCtxRef.current) {
+      const audioContext = ensureWebAudio()
+      bassFilterRef.current!.gain.value = v
+      if (audioContext.state !== 'running') {
+        audioContext.resume().catch(error => console.error('[playlist] AudioContext resume failed after bass change', error))
+      }
+    }
     setBassLevel(v)
-  }, [])
+  }, [ensureWebAudio])
 
   const setTreble = useCallback((v: number) => {
     trebleValRef.current = v
-    if (trebleFilterRef.current) trebleFilterRef.current.gain.value = v
+    if (v !== 0 || audioCtxRef.current) {
+      const audioContext = ensureWebAudio()
+      trebleFilterRef.current!.gain.value = v
+      if (audioContext.state !== 'running') {
+        audioContext.resume().catch(error => console.error('[playlist] AudioContext resume failed after treble change', error))
+      }
+    }
     setTrebleLevel(v)
-  }, [])
+  }, [ensureWebAudio])
 
   const toggleShuffle = useCallback(() => {
     setShuffleEnabled(v => {

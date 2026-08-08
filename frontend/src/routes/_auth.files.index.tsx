@@ -699,8 +699,8 @@ function FilesPage() {
             </>
           ) : (
             /* ── Normal toolbar ──────────────────────────────── */
-            <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 w-full">
-              <nav className="flex items-center gap-1 min-w-0 text-sm sm:flex-1">
+            <div className="flex w-full flex-col gap-1.5 lg:flex-row lg:items-center">
+              <nav className="flex min-w-0 items-center gap-1 text-sm lg:flex-1">
                 <button
                   onClick={() => ignorePromise(navigate({ to: '/files', search: {} }))}
                   className="flex items-center gap-1 text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors shrink-0"
@@ -720,20 +720,26 @@ function FilesPage() {
                   </span>
                 ))}
               </nav>
-              <div className="flex items-center gap-1 shrink-0 sm:ml-auto">
+              <PwaInstallButton
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-[#2d3148] dark:text-slate-300 dark:hover:bg-[#2d3148] lg:hidden"
+                title="Installér Sharedrive"
+                label="Installér Sharedrive"
+                iconSize={16}
+              />
+              <div className="flex shrink-0 items-center gap-1 lg:ml-auto">
                 {/* Folder actions — desktop only (hidden on mobile) */}
                 {folderId && currentFolderItem && (
                   <>
                     <button
                       onClick={() => setShareItem(currentFolderItem)}
-                      className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                      className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
                       <Share2 size={12} />
                       {t('action.share')}
                     </button>
                     <button
                       onClick={() => { setRenameId(folderId); setRenameName(currentFolderItem.name) }}
-                      className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                      className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
                       <Pencil size={12} />
                       {t('action.rename')}
@@ -753,7 +759,7 @@ function FilesPage() {
                           toast.error(t('toast.deleteFailed'))
                         }
                       }}
-                      className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                     >
                       <Trash2 size={12} />
                       {t('action.delete')}
@@ -762,21 +768,21 @@ function FilesPage() {
                 )}
 
                 <PwaInstallButton
-                  className="flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-[#2d3148] dark:text-slate-300 dark:hover:bg-[#2d3148]"
+                  className="hidden items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-[#2d3148] dark:text-slate-300 dark:hover:bg-[#2d3148] lg:flex"
                   title="Installér Sharedrive"
-                  label={<span className="hidden sm:inline">Installér Sharedrive</span>}
+                  label="Installér Sharedrive"
                   iconSize={12}
                 />
 
                 {/* Upload — always visible, label hidden on mobile */}
                 <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium cursor-pointer transition-colors">
                   <Upload size={12} />
-                  <span className="hidden sm:inline">{t('action.upload')}</span>
+                  <span className="hidden lg:inline">{t('action.upload')}</span>
                   <input type="file" multiple className="sr-only" onChange={e => e.target.files && beginUploadWithConflictCheck(Array.from(e.target.files))} />
                 </label>
 
                 {/* Upload folder — desktop only */}
-                <label className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors cursor-pointer">
+                <label className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors cursor-pointer">
                   <FolderUp size={12} />
                   {t('action.uploadFolder')}
                   <input type="file" className="sr-only" {...({ webkitdirectory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={e => e.target.files && beginFolderUploadWithConflictCheck(e.target.files)} />
@@ -785,14 +791,14 @@ function FilesPage() {
                 {/* New folder — desktop only */}
                 <button
                   onClick={() => { const n = window.prompt('Folder name:'); if (n?.trim()) createFolder.mutate(n.trim()) }}
-                  className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+                  className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                 >
                   <FolderPlus size={12} />
                   {t('action.newFolder')}
                 </button>
 
                 {/* New document dropdown — desktop only */}
-                <div className="relative hidden sm:block">
+                <div className="relative hidden lg:block">
                     <button
                       onClick={() => setNewDocOpen(v => !v)}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
@@ -837,8 +843,8 @@ function FilesPage() {
                     )}
                   </div>
 
-                {/* Mobile actions button — hidden on sm+ */}
-                <div className="sm:hidden" ref={mobileMenuRef}>
+                {/* Compact actions for phones and narrow tablets */}
+                <div className="lg:hidden" ref={mobileMenuRef}>
                   <button
                     onClick={() => setMobileActionsOpen(v => !v)}
                     className="flex items-center p-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
@@ -866,11 +872,11 @@ function FilesPage() {
             <button
               type="button"
               aria-label={t('action.close')}
-              className="fixed inset-0 z-40 bg-black/40 sm:hidden"
+              className="fixed inset-0 z-40 bg-black/40 lg:hidden"
               onClick={() => setMobileActionsOpen(false)}
             />
             {/* Sheet */}
-            <div className="fixed inset-x-0 bottom-0 z-50 sm:hidden rounded-t-2xl bg-white dark:bg-[#1a1d27] border-t border-zinc-200 dark:border-[#2d3148] shadow-2xl max-h-[75vh] flex flex-col">
+            <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[75vh] flex-col rounded-t-2xl border-t border-zinc-200 bg-white shadow-2xl dark:border-[#2d3148] dark:bg-[#1a1d27] lg:hidden">
               {/* Drag handle */}
               <div className="flex justify-center pt-3 pb-1 shrink-0">
                 <div className="w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-600" />

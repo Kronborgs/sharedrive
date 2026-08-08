@@ -137,7 +137,9 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
     const items = draft.items.filter(item => !isDraftItem(item))
     const index = items.findIndex(item => item.id === itemID)
     const target = index + direction
-    if (index < 0 || target < 0 || target >= items.length) return
+    if (index < 0 || target < 0 || target >= items.length) {
+      return
+    }
     ;[items[index], items[target]] = [items[target], items[index]]
     try {
       const itemIDs = items.map(item => item.id)

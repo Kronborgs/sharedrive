@@ -534,21 +534,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	f, err := h.svc.Upload(r.Context(), UploadParams{OwnerID: actor.ID.String(), Name: header.Filename, MimeType: mimeType, FolderID: folderID, Overwrite: overwrite, ContentLength: header.Size}, fileData)
 	if err != nil {
-		if errors.Is(err, ErrInvalidUploadFolderID) {
-			httputil.RespondError(w, http.StatusBadRequest, "invalid folder_id")
-			return
-		}
-		if strings.HasPrefix(err.Error(), "quota:") {
-			httputil.RespondError(w, http.StatusUnprocessableEntity, err.Error())
-			return
-		}
-		var conflictErr *UploadConflictError
-		if errors.As(err, &conflictErr) {
-			httputil.RespondError(w, http.StatusConflict, err.Error())
-			return
-		}
-		log.Error().Err(err).Msg("files.Upload")
-		httputil.RespondError(w, http.StatusInternalServerError, "upload failed")
+		respondUploadError(w, err)
 		return
 	}
 
@@ -556,6 +542,24 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	go h.ioTracker.TrackUpload(context.Background(), actor.ID.String(), f.SizeBytes)
 
 	httputil.Respond(w, http.StatusCreated, f)
+}
+
+func respondUploadError(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrInvalidUploadFolderID) {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid folder_id")
+		return
+	}
+	if strings.HasPrefix(err.Error(), "quota:") {
+		httputil.RespondError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	var conflictErr *UploadConflictError
+	if errors.As(err, &conflictErr) {
+		httputil.RespondError(w, http.StatusConflict, err.Error())
+		return
+	}
+	log.Error().Err(err).Msg("files.Upload")
+	httputil.RespondError(w, http.StatusInternalServerError, "upload failed")
 }
 
 // ── Utility helpers ─────────────────────────────────────────────────────────────────────

@@ -262,7 +262,9 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
         setIsPlaying(false)
         return
       }
-      void playTrackAtIndex(next)
+      playTrackAtIndex(next).catch(error => {
+        console.error('[playlist] Failed to advance after track ended', { nextIndex: next, error })
+      })
     }
     audio.addEventListener('timeupdate', onTime)
     audio.addEventListener('durationchange', onDur)

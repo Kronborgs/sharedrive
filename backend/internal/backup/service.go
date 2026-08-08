@@ -181,6 +181,19 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 	fileCount, folderCount := prepareArchiveRecords(records)
 
 	zw := NewWriter(w, zipPwd)
+	if err := s.addArchiveMetadata(ctx, zw, userID, records, folderIDs, fileCount, folderCount); err != nil {
+		zw.Close() //nolint:errcheck
+		return err
+	}
+	s.addArchiveBlobs(zw, records)
+
+	if err := zw.Close(); err != nil {
+		return fmt.Errorf("export: close zip: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) addArchiveMetadata(ctx context.Context, zw *Writer, userID uuid.UUID, records []archiveFileRecord, folderIDs []uuid.UUID, fileCount, folderCount int) error {
 	if err := zw.AddJSON("manifest.json", archiveManifest{
 		Version:     archiveVersion,
 		UserID:      userID.String(),
@@ -188,25 +201,24 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 		FileCount:   fileCount,
 		FolderCount: folderCount,
 	}); err != nil {
-		zw.Close() //nolint:errcheck
 		return fmt.Errorf("export: manifest: %w", err)
 	}
 	if err := zw.AddJSON("metadata.json", records); err != nil {
-		zw.Close() //nolint:errcheck
 		return fmt.Errorf("export: metadata: %w", err)
 	}
 	if len(folderIDs) == 0 {
 		noteRecords, noteErr := s.queryNoteRecords(ctx, userID)
 		if noteErr != nil {
-			zw.Close() //nolint:errcheck
 			return noteErr
 		}
 		if err := zw.AddJSON("notes.json", noteRecords); err != nil {
-			zw.Close() //nolint:errcheck
 			return fmt.Errorf("export: notes: %w", err)
 		}
 	}
+	return nil
+}
 
+func (s *Service) addArchiveBlobs(zw *Writer, records []archiveFileRecord) {
 	for _, record := range records {
 		if record.IsFolder {
 			continue
@@ -223,11 +235,6 @@ func (s *Service) Export(ctx context.Context, w io.Writer, userID uuid.UUID, raw
 		}
 		file.Close()
 	}
-
-	if err := zw.Close(); err != nil {
-		return fmt.Errorf("export: close zip: %w", err)
-	}
-	return nil
 }
 
 func (s *Service) queryNoteRecords(ctx context.Context, userID uuid.UUID) ([]archiveNoteRecord, error) {

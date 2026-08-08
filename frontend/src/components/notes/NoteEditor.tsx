@@ -1,8 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Archive, ArrowDown, ArrowLeft, ArrowUp, Check, EyeOff, Pin, Plus, Share2, Trash2, X } from 'lucide-react'
-import { toast } from 'sonner'
+import { Archive, ArrowDown, ArrowLeft, ArrowUp, EyeOff, Pin, Plus, Share2, Trash2, X } from 'lucide-react'
 import { ApiClientError, api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { createGuestItem, createNoteItem, deleteGuestItem, deleteNoteItem, getGuestNote, getNote, reorderGuestItems, reorderNoteItems, updateGuestItem, updateGuestNote, updateNote, updateNoteItem, type GuestNote, type Note } from '@/lib/notes'
@@ -18,7 +17,7 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [shareOpen, setShareOpen] = useState(false)
   const savedSignature = useRef('')
-  const query = useQuery({
+  const query = useQuery<Note | GuestNote>({
     queryKey: [guest ? 'guest-note' : 'note', id],
     queryFn: ({ signal }) => guest ? getGuestNote(id, signal) : getNote(id, includeDeleted, signal),
   })
@@ -42,7 +41,7 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
       savedSignature.current = signature(saved)
       setDraft(saved)
       setSaveState('saved')
-      void queryClient.invalidateQueries({ queryKey: ['notes'] })
+      queryClient.invalidateQueries({ queryKey: ['notes'] }).catch(() => undefined)
     } catch (error) {
       setSaveState(error instanceof ApiClientError && error.status === 409 ? 'conflict' : 'error')
     }
@@ -50,7 +49,9 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
 
   useEffect(() => {
     if (!draft || !canEdit || signature(draft) === savedSignature.current) return
-    const timeout = window.setTimeout(() => void saveDraft(draft), 700)
+    const timeout = window.setTimeout(() => {
+      saveDraft(draft).catch(() => setSaveState('error'))
+    }, 700)
     return () => window.clearTimeout(timeout)
   }, [draft, canEdit])
 
@@ -58,10 +59,10 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
     mutationFn: async ({ action, itemId, content, checked, position }: { action: 'create' | 'update' | 'delete'; itemId?: string; content?: string; checked?: boolean; position?: number }) => {
       if (!draft) throw new Error('note unavailable')
       if (guest) {
-    if (action === 'create') return createGuestItem(id, draft.version, content, position)
-    if (action === 'delete' && itemId) return deleteGuestItem(id, itemId, draft.version)
-    if (itemId) return updateGuestItem(id, itemId, { version: draft.version, content, is_checked: checked })
-    throw new Error('guest operation unavailable')
+        if (action === 'create') return createGuestItem(id, draft.version, content, position)
+        if (action === 'delete' && itemId) return deleteGuestItem(id, itemId, draft.version)
+        if (itemId) return updateGuestItem(id, itemId, { version: draft.version, content, is_checked: checked })
+        throw new Error('guest operation unavailable')
       }
       if (action === 'create') return createNoteItem(id, draft.version, content, position)
       if (action === 'delete' && itemId) return deleteNoteItem(id, itemId, draft.version)
@@ -77,7 +78,7 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
 
   const patchDraft = (patch: Partial<Note>) => setDraft(current => current ? { ...current, ...patch } : current)
   const moveItem = async (index: number, direction: -1 | 1) => {
-  	if (!draft || !canEdit) return
+    if (!draft || !canEdit) return
     const target = index + direction
     if (target < 0 || target >= draft.items.length) return
     const items = [...draft.items]
@@ -92,7 +93,13 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
   return (
     <section className="notes-editor mx-auto max-w-4xl animate-fade-in">
       <header className="mb-4 flex items-center justify-between gap-3 border-b border-zinc-200 pb-3 dark:border-zinc-800">
-        <button className="notes-icon-button" title={t('action.close')} onClick={() => guest ? history.back() : void navigate({ to: includeDeleted ? '/notes/trash' : '/notes' })}><ArrowLeft size={19} /></button>
+        <button className="notes-icon-button" title={t('action.close')} onClick={() => {
+          if (guest) {
+            history.back()
+            return
+          }
+          navigate({ to: includeDeleted ? '/notes/trash' : '/notes' }).catch(() => undefined)
+        }}><ArrowLeft size={19} /></button>
         <div className="flex items-center gap-1.5">
           <span className={`mr-2 text-xs ${saveState === 'error' || saveState === 'conflict' ? 'text-red-600' : 'text-muted'}`} aria-live="polite">{saveLabel(saveState, t)}</span>
           {!guest && !includeDeleted && <button className="notes-icon-button" title={t('notes.pinned' as never)} onClick={() => patchDraft({ is_pinned: !draft.is_pinned })}><Pin size={18} className={draft.is_pinned ? 'fill-amber-400 text-amber-600' : ''} /></button>}
@@ -113,11 +120,11 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
           {draft.items.filter(item => !draft.hide_completed || !item.is_checked).map((item, index) => (
             <div key={item.id} className="group flex min-h-11 items-center gap-2 border-b border-zinc-100 dark:border-zinc-800">
               <label className="flex shrink-0 items-center"><span className="sr-only">{item.content}</span><input type="checkbox" checked={item.is_checked} disabled={!canCheck} onChange={event => itemMutation.mutate({ action: 'update', itemId: item.id, checked: event.target.checked })} className="size-5 accent-emerald-700" /></label>
-              <input value={item.content} readOnly={!canEdit} maxLength={2000} onChange={event => setDraft(current => current ? { ...current, items: current.items.map(candidate => candidate.id === item.id ? { ...candidate, content: event.target.value } : candidate) } : current)} onBlur={() => canEdit && itemMutation.mutate({ action: 'update', itemId: item.id, content: item.content })} onKeyDown={event => {
+              <input value={item.content} readOnly={!canEdit} maxLength={2000} onChange={event => setDraft(current => current ? updateItemContent(current, item.id, event.target.value) : current)} onBlur={() => canEdit && itemMutation.mutate({ action: 'update', itemId: item.id, content: item.content })} onKeyDown={event => {
                 if (event.key === 'Enter' && canEdit) { event.preventDefault(); itemMutation.mutate({ action: 'create', content: '', position: index + 1 }) }
                 if (event.key === 'Backspace' && item.content === '' && canEdit) itemMutation.mutate({ action: 'delete', itemId: item.id })
               }} className={`min-w-0 flex-1 bg-transparent py-2 outline-none ${item.is_checked ? 'line-through opacity-55' : ''}`} />
-              {canEdit && <div className="flex opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100"><button className="notes-icon-button" title={t('notes.moveUp' as never)} onClick={() => void moveItem(index, -1)}><ArrowUp size={15} /></button><button className="notes-icon-button" title={t('notes.moveDown' as never)} onClick={() => void moveItem(index, 1)}><ArrowDown size={15} /></button><button className="notes-icon-button text-red-600" title={t('action.delete')} onClick={() => itemMutation.mutate({ action: 'delete', itemId: item.id })}><X size={16} /></button></div>}
+              {canEdit && <div className="flex opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100"><button className="notes-icon-button" title={t('notes.moveUp' as never)} onClick={() => { moveItem(index, -1).catch(() => setSaveState('error')) }}><ArrowUp size={15} /></button><button className="notes-icon-button" title={t('notes.moveDown' as never)} onClick={() => { moveItem(index, 1).catch(() => setSaveState('error')) }}><ArrowDown size={15} /></button><button className="notes-icon-button text-red-600" title={t('action.delete')} onClick={() => itemMutation.mutate({ action: 'delete', itemId: item.id })}><X size={16} /></button></div>}
             </div>
           ))}
 		  {canEdit && <button className="mt-4 flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-900 dark:text-emerald-400" onClick={() => itemMutation.mutate({ action: 'create', content: '' })}><Plus size={17} />{t('notes.addItem' as never)}</button>}
@@ -134,6 +141,13 @@ function signature(note: Note) {
   return JSON.stringify([note.title, note.content, note.is_pinned, note.is_archived, note.hide_completed])
 }
 
+function updateItemContent(note: Note, itemID: string, content: string): Note {
+  return {
+    ...note,
+    items: note.items.map(item => item.id === itemID ? { ...item, content } : item),
+  }
+}
+
 function saveLabel(state: SaveState, t: ReturnType<typeof useI18n>['t']) {
   if (state === 'saving') return t('notes.saving' as never)
   if (state === 'saved') return t('notes.saved' as never)
@@ -141,5 +155,3 @@ function saveLabel(state: SaveState, t: ReturnType<typeof useI18n>['t']) {
   if (state === 'conflict') return t('notes.conflictShort' as never)
   return ''
 }
-
-void Check

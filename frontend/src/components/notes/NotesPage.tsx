@@ -26,7 +26,7 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
   })
   const createMutation = useMutation({
     mutationFn: (type: NoteType) => createNote(type),
-    onSuccess: note => void navigate({ to: '/notes/$id', params: { id: note.id } }),
+    onSuccess: note => navigate({ to: '/notes/$id', params: { id: note.id } }).catch(() => undefined),
     onError: () => toast.error(t('notes.createFailed' as never)),
   })
   const runShortcut = useEffectEvent((type: NoteType) => createMutation.mutate(type))
@@ -37,15 +37,12 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
     runShortcut(requestedType)
   }, [])
   const noteAction = useMutation({
-    mutationFn: ({ note, action }: { note: Note; action: 'restore' | 'delete' }) =>
-      action === 'restore'
-        ? api.post(`/api/v1/notes/${note.id}/restore`)
-        : api.delete(`/api/v1/notes/${note.id}${view === 'trash' ? '/permanent' : ''}`),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['notes'] }),
+    mutationFn: ({ note, action }: { note: Note; action: 'restore' | 'delete' }) => runNoteAction(note, action, view),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notes'] }).catch(() => undefined),
     onError: () => toast.error(t('notes.actionFailed' as never)),
   })
 
-  const title = view === 'archive' ? t('notes.archive' as never) : view === 'trash' ? t('notes.trash' as never) : t('notes.title' as never)
+  const title = notesViewTitle(view, t)
   const notes = notesQuery.data ?? []
 
   return (
@@ -87,7 +84,7 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
       <div className="notes-grid">
         {notes.map(note => (
           <article key={note.id} className="notes-card" style={{ borderTopColor: note.color || (note.type === 'checklist' ? '#4d8c68' : '#d89a2b') }}>
-            <button className="min-h-32 w-full text-left" onClick={() => void navigate({ to: '/notes/$id', params: { id: note.id }, search: view === 'trash' ? { deleted: true } : {} })}>
+            <button className="min-h-32 w-full text-left" onClick={() => { navigate({ to: '/notes/$id', params: { id: note.id }, search: { deleted: view === 'trash' || undefined } }).catch(() => undefined) }}>
               <div className="mb-3 flex items-start justify-between gap-3">
                 <h2 className="line-clamp-2 font-semibold text-zinc-900 dark:text-zinc-100">{note.title || t('notes.untitled' as never)}</h2>
                 {note.is_pinned && <Pin size={15} className="shrink-0 fill-amber-400 text-amber-600" aria-label={t('notes.pinned' as never)} />}
@@ -112,6 +109,20 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
       </div>
     </section>
   )
+}
+
+function runNoteAction(note: Note, action: 'restore' | 'delete', view: NotesView) {
+  if (action === 'restore') {
+    return api.post(`/api/v1/notes/${note.id}/restore`)
+  }
+  const suffix = view === 'trash' ? '/permanent' : ''
+  return api.delete(`/api/v1/notes/${note.id}${suffix}`)
+}
+
+function notesViewTitle(view: NotesView, t: ReturnType<typeof useI18n>['t']) {
+  if (view === 'archive') return t('notes.archive' as never)
+  if (view === 'trash') return t('notes.trash' as never)
+  return t('notes.title' as never)
 }
 
 function NotesTab({ href, active, label, icon }: Readonly<{ href: string; active: boolean; label: string; icon: React.ReactNode }>) {

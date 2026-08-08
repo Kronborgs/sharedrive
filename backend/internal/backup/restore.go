@@ -69,6 +69,12 @@ func (s *RestoreService) Restore(ctx context.Context, r io.ReaderAt, size int64,
 	})
 
 	result := &restoreResult{}
+	s.restoreFileRecords(ctx, index, records, ownerID, zipPwd, result)
+	s.restoreNoteRecords(ctx, noteRecords, ownerID, result)
+	return result, nil
+}
+
+func (s *RestoreService) restoreFileRecords(ctx context.Context, index map[string]*yzip.File, records []archiveFileRecord, ownerID uuid.UUID, zipPwd string, result *restoreResult) {
 	for _, rec := range records {
 		inserted, err := s.restoreRecord(ctx, index, &rec, ownerID, zipPwd)
 		if err != nil {
@@ -87,13 +93,15 @@ func (s *RestoreService) Restore(ctx context.Context, r io.ReaderAt, size int64,
 			result.BytesRestored += rec.SizeBytes
 		}
 	}
-	for _, record := range noteRecords {
+}
+
+func (s *RestoreService) restoreNoteRecords(ctx context.Context, records []archiveNoteRecord, ownerID uuid.UUID, result *restoreResult) {
+	for _, record := range records {
 		if err := s.restoreNote(ctx, ownerID, record); err != nil {
 			log.Warn().Err(err).Str("note_id", record.ID).Msg("restore: skipping note")
 			result.Skipped++
 		}
 	}
-	return result, nil
 }
 
 // restoreRecord inserts one file/folder DB row and (for files) copies its blob

@@ -11,6 +11,7 @@ import (
 	mail "github.com/wneessen/go-mail"
 
 	"github.com/yourname/privatedrive/internal/config"
+	"github.com/yourname/privatedrive/internal/notes"
 )
 
 // Mailer sends transactional email using wneessen/go-mail.
@@ -144,24 +145,24 @@ func (m *Mailer) SendShareInvite(_ context.Context, toEmail, sharerName, fileNam
 }
 
 // SendNoteInvitation invites an accountless guest to a single note without including note content.
-func (m *Mailer) SendNoteInvitation(_ context.Context, toEmail, ownerName, noteTitle, permission, inviteLink, language string, expiresAt *time.Time) error {
-	permissionText := map[string]string{"view": "Can view", "check": "Can check items", "edit": "Can edit"}[permission]
+func (m *Mailer) SendNoteInvitation(_ context.Context, invitation notes.NoteInvitation) error {
+	permissionText := map[string]string{"view": "Can view", "check": "Can check items", "edit": "Can edit"}[invitation.Permission]
 	expiryText := ""
-	if expiresAt != nil {
-		expiryText = fmt.Sprintf("\nAccess expires: %s\n", expiresAt.UTC().Format("02 Jan 2006 15:04 UTC"))
+	if invitation.ExpiresAt != nil {
+		expiryText = fmt.Sprintf("\nAccess expires: %s\n", invitation.ExpiresAt.UTC().Format("02 Jan 2006 15:04 UTC"))
 	}
-	subject := fmt.Sprintf("%s shared a note with you on Sharedrive", ownerName)
-	body := fmt.Sprintf("Hi,\n\n%s shared the note \"%s\" with you.\nPermission: %s\n%s\nOpen note:\n%s\n\nYou do not need an account. Do not forward this private link.\n", ownerName, noteTitle, permissionText, expiryText, inviteLink)
-	if language == "da" {
-		permissionText = map[string]string{"view": "Kan se", "check": "Kan afkrydse", "edit": "Kan redigere"}[permission]
+	subject := fmt.Sprintf("%s shared a note with you on Sharedrive", invitation.OwnerName)
+	body := fmt.Sprintf("Hi,\n\n%s shared the note \"%s\" with you.\nPermission: %s\n%s\nOpen note:\n%s\n\nYou do not need an account. Do not forward this private link.\n", invitation.OwnerName, invitation.NoteTitle, permissionText, expiryText, invitation.InviteLink)
+	if invitation.Language == "da" {
+		permissionText = map[string]string{"view": "Kan se", "check": "Kan afkrydse", "edit": "Kan redigere"}[invitation.Permission]
 		expiryText = ""
-		if expiresAt != nil {
-			expiryText = fmt.Sprintf("\nAdgangen udløber: %s\n", expiresAt.Local().Format("02-01-2006 15:04"))
+		if invitation.ExpiresAt != nil {
+			expiryText = fmt.Sprintf("\nAdgangen udløber: %s\n", invitation.ExpiresAt.Local().Format("02-01-2006 15:04"))
 		}
-		subject = fmt.Sprintf("%s har delt en note med dig på Sharedrive", ownerName)
-		body = fmt.Sprintf("Hej,\n\n%s har delt noten \"%s\" med dig.\nRettighed: %s\n%s\nÅbn noten:\n%s\n\nDu behøver ikke en konto. Videresend ikke dette private link.\n", ownerName, noteTitle, permissionText, expiryText, inviteLink)
+		subject = fmt.Sprintf("%s har delt en note med dig på Sharedrive", invitation.OwnerName)
+		body = fmt.Sprintf("Hej,\n\n%s har delt noten \"%s\" med dig.\nRettighed: %s\n%s\nÅbn noten:\n%s\n\nDu behøver ikke en konto. Videresend ikke dette private link.\n", invitation.OwnerName, invitation.NoteTitle, permissionText, expiryText, invitation.InviteLink)
 	}
-	return m.send(toEmail, subject, body)
+	return m.send(invitation.ToEmail, subject, body)
 }
 
 // SendBackupFailure notifies a user that one of their automatic backups has been

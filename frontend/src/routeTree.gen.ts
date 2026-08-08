@@ -22,10 +22,15 @@ import { Route as AuthTrashIndexRouteImport } from './routes/_auth.trash.index'
 import { Route as AuthSharesIndexRouteImport } from './routes/_auth.shares.index'
 import { Route as AuthSharedBrowseIndexRouteImport } from './routes/_auth.shared-browse.index'
 import { Route as AuthRecentIndexRouteImport } from './routes/_auth.recent.index'
+import { Route as AuthNotesIndexRouteImport } from './routes/_auth.notes.index'
 import { Route as AuthFilesIndexRouteImport } from './routes/_auth.files.index'
 import { Route as AuthBackupIndexRouteImport } from './routes/_auth.backup.index'
 import { Route as AuthAdminIndexRouteImport } from './routes/_auth.admin.index'
 import { Route as AuthActivityIndexRouteImport } from './routes/_auth.activity.index'
+import { Route as GuestNotesIdRouteImport } from './routes/guest.notes.$id'
+import { Route as AuthNotesTrashRouteImport } from './routes/_auth.notes.trash'
+import { Route as AuthNotesArchiveRouteImport } from './routes/_auth.notes.archive'
+import { Route as AuthNotesIdRouteImport } from './routes/_auth.notes.$id'
 import { Route as AuthAdminUsersIndexRouteImport } from './routes/_auth.admin.users.index'
 import { Route as AuthAdminTagsIndexRouteImport } from './routes/_auth.admin.tags.index'
 import { Route as AuthAdminStorageIndexRouteImport } from './routes/_auth.admin.storage.index'
@@ -99,6 +104,11 @@ const AuthRecentIndexRoute = AuthRecentIndexRouteImport.update({
   path: '/recent/',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthNotesIndexRoute = AuthNotesIndexRouteImport.update({
+  id: '/notes/',
+  path: '/notes/',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthFilesIndexRoute = AuthFilesIndexRouteImport.update({
   id: '/files/',
   path: '/files/',
@@ -117,6 +127,26 @@ const AuthAdminIndexRoute = AuthAdminIndexRouteImport.update({
 const AuthActivityIndexRoute = AuthActivityIndexRouteImport.update({
   id: '/activity/',
   path: '/activity/',
+  getParentRoute: () => AuthRoute,
+} as any)
+const GuestNotesIdRoute = GuestNotesIdRouteImport.update({
+  id: '/guest/notes/$id',
+  path: '/guest/notes/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthNotesTrashRoute = AuthNotesTrashRouteImport.update({
+  id: '/notes/trash',
+  path: '/notes/trash',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthNotesArchiveRoute = AuthNotesArchiveRouteImport.update({
+  id: '/notes/archive',
+  path: '/notes/archive',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthNotesIdRoute = AuthNotesIdRouteImport.update({
+  id: '/notes/$id',
+  path: '/notes/$id',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthAdminUsersIndexRoute = AuthAdminUsersIndexRouteImport.update({
@@ -170,10 +200,15 @@ export interface FileRoutesByFullPath {
   '/reset-password/': typeof ResetPasswordIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/shared/': typeof SharedIndexRoute
+  '/notes/$id': typeof AuthNotesIdRoute
+  '/notes/archive': typeof AuthNotesArchiveRoute
+  '/notes/trash': typeof AuthNotesTrashRoute
+  '/guest/notes/$id': typeof GuestNotesIdRoute
   '/activity/': typeof AuthActivityIndexRoute
   '/admin/': typeof AuthAdminIndexRoute
   '/backup/': typeof AuthBackupIndexRoute
   '/files/': typeof AuthFilesIndexRoute
+  '/notes/': typeof AuthNotesIndexRoute
   '/recent/': typeof AuthRecentIndexRoute
   '/shared-browse/': typeof AuthSharedBrowseIndexRoute
   '/shares/': typeof AuthSharesIndexRoute
@@ -195,10 +230,15 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordIndexRoute
   '/setup': typeof SetupIndexRoute
   '/shared': typeof SharedIndexRoute
+  '/notes/$id': typeof AuthNotesIdRoute
+  '/notes/archive': typeof AuthNotesArchiveRoute
+  '/notes/trash': typeof AuthNotesTrashRoute
+  '/guest/notes/$id': typeof GuestNotesIdRoute
   '/activity': typeof AuthActivityIndexRoute
   '/admin': typeof AuthAdminIndexRoute
   '/backup': typeof AuthBackupIndexRoute
   '/files': typeof AuthFilesIndexRoute
+  '/notes': typeof AuthNotesIndexRoute
   '/recent': typeof AuthRecentIndexRoute
   '/shared-browse': typeof AuthSharedBrowseIndexRoute
   '/shares': typeof AuthSharesIndexRoute
@@ -223,10 +263,15 @@ export interface FileRoutesById {
   '/reset-password/': typeof ResetPasswordIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/shared/': typeof SharedIndexRoute
+  '/_auth/notes/$id': typeof AuthNotesIdRoute
+  '/_auth/notes/archive': typeof AuthNotesArchiveRoute
+  '/_auth/notes/trash': typeof AuthNotesTrashRoute
+  '/guest/notes/$id': typeof GuestNotesIdRoute
   '/_auth/activity/': typeof AuthActivityIndexRoute
   '/_auth/admin/': typeof AuthAdminIndexRoute
   '/_auth/backup/': typeof AuthBackupIndexRoute
   '/_auth/files/': typeof AuthFilesIndexRoute
+  '/_auth/notes/': typeof AuthNotesIndexRoute
   '/_auth/recent/': typeof AuthRecentIndexRoute
   '/_auth/shared-browse/': typeof AuthSharedBrowseIndexRoute
   '/_auth/shares/': typeof AuthSharesIndexRoute
@@ -251,10 +296,15 @@ export interface FileRouteTypes {
     | '/reset-password/'
     | '/setup/'
     | '/shared/'
+    | '/notes/$id'
+    | '/notes/archive'
+    | '/notes/trash'
+    | '/guest/notes/$id'
     | '/activity/'
     | '/admin/'
     | '/backup/'
     | '/files/'
+    | '/notes/'
     | '/recent/'
     | '/shared-browse/'
     | '/shares/'
@@ -276,10 +326,15 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/setup'
     | '/shared'
+    | '/notes/$id'
+    | '/notes/archive'
+    | '/notes/trash'
+    | '/guest/notes/$id'
     | '/activity'
     | '/admin'
     | '/backup'
     | '/files'
+    | '/notes'
     | '/recent'
     | '/shared-browse'
     | '/shares'
@@ -303,10 +358,15 @@ export interface FileRouteTypes {
     | '/reset-password/'
     | '/setup/'
     | '/shared/'
+    | '/_auth/notes/$id'
+    | '/_auth/notes/archive'
+    | '/_auth/notes/trash'
+    | '/guest/notes/$id'
     | '/_auth/activity/'
     | '/_auth/admin/'
     | '/_auth/backup/'
     | '/_auth/files/'
+    | '/_auth/notes/'
     | '/_auth/recent/'
     | '/_auth/shared-browse/'
     | '/_auth/shares/'
@@ -329,6 +389,7 @@ export interface RootRouteChildren {
   ResetPasswordIndexRoute: typeof ResetPasswordIndexRoute
   SetupIndexRoute: typeof SetupIndexRoute
   SharedIndexRoute: typeof SharedIndexRoute
+  GuestNotesIdRoute: typeof GuestNotesIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -424,6 +485,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRecentIndexRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/notes/': {
+      id: '/_auth/notes/'
+      path: '/notes'
+      fullPath: '/notes/'
+      preLoaderRoute: typeof AuthNotesIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/files/': {
       id: '/_auth/files/'
       path: '/files'
@@ -450,6 +518,34 @@ declare module '@tanstack/react-router' {
       path: '/activity'
       fullPath: '/activity/'
       preLoaderRoute: typeof AuthActivityIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/guest/notes/$id': {
+      id: '/guest/notes/$id'
+      path: '/guest/notes/$id'
+      fullPath: '/guest/notes/$id'
+      preLoaderRoute: typeof GuestNotesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_auth/notes/trash': {
+      id: '/_auth/notes/trash'
+      path: '/notes/trash'
+      fullPath: '/notes/trash'
+      preLoaderRoute: typeof AuthNotesTrashRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/notes/archive': {
+      id: '/_auth/notes/archive'
+      path: '/notes/archive'
+      fullPath: '/notes/archive'
+      preLoaderRoute: typeof AuthNotesArchiveRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/notes/$id': {
+      id: '/_auth/notes/$id'
+      path: '/notes/$id'
+      fullPath: '/notes/$id'
+      preLoaderRoute: typeof AuthNotesIdRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/admin/users/': {
@@ -512,10 +608,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthRouteChildren {
+  AuthNotesIdRoute: typeof AuthNotesIdRoute
+  AuthNotesArchiveRoute: typeof AuthNotesArchiveRoute
+  AuthNotesTrashRoute: typeof AuthNotesTrashRoute
   AuthActivityIndexRoute: typeof AuthActivityIndexRoute
   AuthAdminIndexRoute: typeof AuthAdminIndexRoute
   AuthBackupIndexRoute: typeof AuthBackupIndexRoute
   AuthFilesIndexRoute: typeof AuthFilesIndexRoute
+  AuthNotesIndexRoute: typeof AuthNotesIndexRoute
   AuthRecentIndexRoute: typeof AuthRecentIndexRoute
   AuthSharedBrowseIndexRoute: typeof AuthSharedBrowseIndexRoute
   AuthSharesIndexRoute: typeof AuthSharesIndexRoute
@@ -531,10 +631,14 @@ interface AuthRouteChildren {
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
+  AuthNotesIdRoute: AuthNotesIdRoute,
+  AuthNotesArchiveRoute: AuthNotesArchiveRoute,
+  AuthNotesTrashRoute: AuthNotesTrashRoute,
   AuthActivityIndexRoute: AuthActivityIndexRoute,
   AuthAdminIndexRoute: AuthAdminIndexRoute,
   AuthBackupIndexRoute: AuthBackupIndexRoute,
   AuthFilesIndexRoute: AuthFilesIndexRoute,
+  AuthNotesIndexRoute: AuthNotesIndexRoute,
   AuthRecentIndexRoute: AuthRecentIndexRoute,
   AuthSharedBrowseIndexRoute: AuthSharedBrowseIndexRoute,
   AuthSharesIndexRoute: AuthSharesIndexRoute,
@@ -571,6 +675,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordIndexRoute: ResetPasswordIndexRoute,
   SetupIndexRoute: SetupIndexRoute,
   SharedIndexRoute: SharedIndexRoute,
+  GuestNotesIdRoute: GuestNotesIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

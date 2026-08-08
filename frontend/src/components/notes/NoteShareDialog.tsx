@@ -14,7 +14,7 @@ export function NoteShareDialog({ note, onClose }: Readonly<{ note: Note; onClos
   const [permission, setPermission] = useState<NotePermission>('view')
   const [expiresAt, setExpiresAt] = useState('')
   const shares = useQuery({ queryKey: ['note-shares', note.id], queryFn: ({ signal }) => listNoteShares(note.id, signal) })
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: ['note-shares', note.id] })
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['note-shares', note.id] }).catch(() => undefined)
   const create = useMutation({
     mutationFn: () => api.post<NoteShare>(`/api/v1/notes/${note.id}/shares`, { recipient_email: email, permission, expires_at: expiresAt ? new Date(expiresAt).toISOString() : null, language: locale }),
     onSuccess: () => { setEmail(''); refresh(); toast.success(t('notes.invitationSent' as never)) },
@@ -44,8 +44,8 @@ export function NoteShareDialog({ note, onClose }: Readonly<{ note: Note; onClos
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="note-share-title" className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-lg bg-white p-5 shadow-2xl dark:bg-[#1a1d27] sm:rounded-lg">
+    <dialog open aria-labelledby="note-share-title" className="fixed inset-0 z-50 m-0 flex size-full max-h-none max-w-none items-end justify-center border-0 bg-black/50 p-0 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+      <section className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-lg bg-white p-5 text-zinc-900 shadow-2xl dark:bg-[#1a1d27] dark:text-zinc-100 sm:rounded-lg">
         <header className="mb-5 flex items-center justify-between">
           <div><h2 id="note-share-title" className="font-semibold">{t('notes.shareNote' as never)}</h2><p className="mt-1 max-w-md truncate text-xs text-muted">{note.title || t('notes.untitled' as never)}</p></div>
           <button ref={closeRef} className="notes-icon-button" onClick={onClose} title={t('action.close')}><X size={18} /></button>
@@ -77,6 +77,6 @@ export function NoteShareDialog({ note, onClose }: Readonly<{ note: Note; onClos
           </ul>
         </div>
       </section>
-    </div>
+    </dialog>
   )
 }

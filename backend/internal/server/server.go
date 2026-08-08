@@ -48,6 +48,7 @@ const (
 	backupPasswordRoute    = "/api/v1/backup/password"
 	backupBuddyConfigRoute = "/api/v1/backup/buddy/config"
 	adminUsersByIDRoute    = "/api/v1/admin/users/{id}"
+	noteByIDRoute          = "/api/v1/notes/{id}"
 	backupsDataRoot        = "/data/backups"
 	contentTypeHeader      = "Content-Type"
 	jsonContentType        = "application/json"
@@ -139,17 +140,17 @@ type serverDependencies struct {
 
 func newServerDependencies(deps serverDependencies) *Server {
 	return &Server{
-		cfg:            deps.cfg,
-		db:             deps.db,
-		redis:          deps.rdb,
-		version:        deps.version,
-		buildDate:      deps.buildDate,
-		authHandler:    deps.authHandler,
-		onboarding:     onboarding.New(deps.db, deps.cfg),
-		userHandler:    user.NewHandler(deps.db, deps.auditSvc, smtp.New(deps.cfg, deps.db), deps.cfg.AppBaseURL, deps.authHandler.TOTPService()),
-		fileSvc:        deps.fileSvc,
-		filesHandler:   files.NewHandler(deps.fileSvc, deps.trashSvc, deps.auditSvc, deps.rdb, deps.conv, ratelimit.New(deps.rdb), deps.ioTracker),
-		sharesHandler:  shares.NewHandler(deps.db, smtp.New(deps.cfg, deps.db), deps.cfg.AppBaseURL),
+		cfg:           deps.cfg,
+		db:            deps.db,
+		redis:         deps.rdb,
+		version:       deps.version,
+		buildDate:     deps.buildDate,
+		authHandler:   deps.authHandler,
+		onboarding:    onboarding.New(deps.db, deps.cfg),
+		userHandler:   user.NewHandler(deps.db, deps.auditSvc, smtp.New(deps.cfg, deps.db), deps.cfg.AppBaseURL, deps.authHandler.TOTPService()),
+		fileSvc:       deps.fileSvc,
+		filesHandler:  files.NewHandler(deps.fileSvc, deps.trashSvc, deps.auditSvc, deps.rdb, deps.conv, ratelimit.New(deps.rdb), deps.ioTracker),
+		sharesHandler: shares.NewHandler(deps.db, smtp.New(deps.cfg, deps.db), deps.cfg.AppBaseURL),
 		notesHandler: notes.NewHandler(
 			notes.NewService(deps.db, deps.auditSvc),
 			notes.NewSharingService(deps.db, smtp.New(deps.cfg, deps.db), deps.auditSvc,
@@ -503,9 +504,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		// Notes
 		r.Get("/api/v1/notes", s.notesHandler.List)
 		r.Post("/api/v1/notes", s.notesHandler.Create)
-		r.Get("/api/v1/notes/{id}", s.notesHandler.Get)
-		r.Patch("/api/v1/notes/{id}", s.notesHandler.Update)
-		r.Delete("/api/v1/notes/{id}", s.notesHandler.Delete)
+		r.Get(noteByIDRoute, s.notesHandler.Get)
+		r.Patch(noteByIDRoute, s.notesHandler.Update)
+		r.Delete(noteByIDRoute, s.notesHandler.Delete)
 		r.Post("/api/v1/notes/{id}/restore", s.notesHandler.Restore)
 		r.Delete("/api/v1/notes/{id}/permanent", s.notesHandler.PermanentDelete)
 		r.Post("/api/v1/notes/{id}/items", s.notesHandler.CreateItem)

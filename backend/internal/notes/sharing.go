@@ -27,13 +27,26 @@ import (
 )
 
 const (
-	guestCookieName = "note_guest_session"
-	guestSessionTTL = 24 * time.Hour
-	maxNoteShares   = 100
+	guestCookieName         = "note_guest_session"
+	guestUnavailablePath    = "/guest/notes/unavailable"
+	originNotAllowedMessage = "request origin is not allowed"
+	permissionDeniedMessage = "permission denied"
+	guestSessionTTL         = 24 * time.Hour
+	maxNoteShares           = 100
 )
 
 type NoteMailer interface {
-	SendNoteInvitation(ctx context.Context, toEmail, ownerName, noteTitle, permission, inviteLink, language string, expiresAt *time.Time) error
+	SendNoteInvitation(ctx context.Context, invitation NoteInvitation) error
+}
+
+type NoteInvitation struct {
+	ToEmail    string
+	OwnerName  string
+	NoteTitle  string
+	Permission string
+	InviteLink string
+	Language   string
+	ExpiresAt  *time.Time
 }
 
 type SharingService struct {
@@ -333,8 +346,10 @@ func (handler *Handler) sendInvitation(ctx context.Context, ownerName, noteTitle
 		language = "en"
 	}
 	inviteLink := handler.sharing.appURL + "/notes/invite/" + url.PathEscape(rawToken)
-	return handler.sharing.mailer.SendNoteInvitation(ctx, share.RecipientEmail, ownerName, noteTitle,
-		share.Permission, inviteLink, language, share.ExpiresAt)
+	return handler.sharing.mailer.SendNoteInvitation(ctx, NoteInvitation{
+		ToEmail: share.RecipientEmail, OwnerName: ownerName, NoteTitle: noteTitle,
+		Permission: share.Permission, InviteLink: inviteLink, Language: language, ExpiresAt: share.ExpiresAt,
+	})
 }
 
 func (handler *Handler) AcceptInvitation(w http.ResponseWriter, request *http.Request) {
@@ -353,12 +368,12 @@ func (handler *Handler) AcceptInvitation(w http.ResponseWriter, request *http.Re
 		  AND (ns.expires_at IS NULL OR ns.expires_at > NOW())
 		  AND n.deleted_at IS NULL AND u.is_active = TRUE`, tokenHash(rawToken)).Scan(&shareID, &noteID, &expiresAt, &recipientEmail)
 	if err != nil {
-		http.Redirect(w, request, "/guest/notes/unavailable", http.StatusSeeOther)
+		http.Redirect(w, request, guestUnavailablePath, http.StatusSeeOther)
 		return
 	}
 	sessionToken, sessionHash, err := secureToken()
 	if err != nil {
-		http.Redirect(w, request, "/guest/notes/unavailable", http.StatusSeeOther)
+		http.Redirect(w, request, guestUnavailablePath, http.StatusSeeOther)
 		return
 	}
 	sessionExpiry := time.Now().Add(guestSessionTTL)
@@ -368,7 +383,7 @@ func (handler *Handler) AcceptInvitation(w http.ResponseWriter, request *http.Re
 	_, err = handler.sharing.db.Exec(request.Context(), `INSERT INTO note_guest_sessions
 		(share_id, session_token_hash, expires_at) VALUES ($1, $2, $3)`, shareID, sessionHash, sessionExpiry)
 	if err != nil {
-		http.Redirect(w, request, "/guest/notes/unavailable", http.StatusSeeOther)
+		http.Redirect(w, request, guestUnavailablePath, http.StatusSeeOther)
 		return
 	}
 	handler.sharing.db.Exec(request.Context(), `UPDATE note_shares SET last_opened_at = NOW(), updated_at = NOW() WHERE id = $1`, shareID)
@@ -398,7 +413,7 @@ func (handler *Handler) GuestGet(w http.ResponseWriter, request *http.Request) {
 func (handler *Handler) GuestUpdate(w http.ResponseWriter, request *http.Request) {
 	noStore(w)
 	if !handler.validOrigin(request) {
-		httputil.RespondError(w, http.StatusForbidden, "request origin is not allowed")
+		httputil.RespondError(w, http.StatusForbidden, originNotAllowedMessage)
 		return
 	}
 	access, ok := handler.guestAccess(w, request)
@@ -406,7 +421,7 @@ func (handler *Handler) GuestUpdate(w http.ResponseWriter, request *http.Request
 		return
 	}
 	if access.Permission != "edit" {
-		httputil.RespondError(w, http.StatusForbidden, "permission denied")
+		httputil.RespondError(w, http.StatusForbidden, permissionDeniedMessage)
 		return
 	}
 	var input UpdateInput
@@ -433,7 +448,7 @@ func (handler *Handler) GuestCreateItem(w http.ResponseWriter, request *http.Req
 func (handler *Handler) GuestUpdateItem(w http.ResponseWriter, request *http.Request) {
 	handler.guestItemMutation(w, request, false, func(access guestAccess, input ItemInput, itemID uuid.UUID) (Note, error) {
 		if access.Permission == "check" && (input.Content != nil || input.IsChecked == nil || input.Position != nil) {
-			return Note{}, errors.New("permission denied")
+			return Note{}, errors.New(permissionDeniedMessage)
 		}
 		return handler.service.UpdateItem(request.Context(), access.OwnerID, access.NoteID, itemID, input)
 	})
@@ -442,7 +457,7 @@ func (handler *Handler) GuestUpdateItem(w http.ResponseWriter, request *http.Req
 func (handler *Handler) GuestDeleteItem(w http.ResponseWriter, request *http.Request) {
 	noStore(w)
 	if !handler.validOrigin(request) {
-		httputil.RespondError(w, http.StatusForbidden, "request origin is not allowed")
+		httputil.RespondError(w, http.StatusForbidden, originNotAllowedMessage)
 		return
 	}
 	access, ok := handler.guestAccess(w, request)
@@ -450,7 +465,7 @@ func (handler *Handler) GuestDeleteItem(w http.ResponseWriter, request *http.Req
 		return
 	}
 	if access.Permission != "edit" {
-		httputil.RespondError(w, http.StatusForbidden, "permission denied")
+		httputil.RespondError(w, http.StatusForbidden, permissionDeniedMessage)
 		return
 	}
 	itemID, err := uuid.Parse(chi.URLParam(request, "itemId"))
@@ -470,7 +485,7 @@ func (handler *Handler) GuestDeleteItem(w http.ResponseWriter, request *http.Req
 func (handler *Handler) GuestReorderItems(w http.ResponseWriter, request *http.Request) {
 	noStore(w)
 	if !handler.validOrigin(request) {
-		httputil.RespondError(w, http.StatusForbidden, "request origin is not allowed")
+		httputil.RespondError(w, http.StatusForbidden, originNotAllowedMessage)
 		return
 	}
 	access, ok := handler.guestAccess(w, request)
@@ -478,7 +493,7 @@ func (handler *Handler) GuestReorderItems(w http.ResponseWriter, request *http.R
 		return
 	}
 	if access.Permission != "edit" {
-		httputil.RespondError(w, http.StatusForbidden, "permission denied")
+		httputil.RespondError(w, http.StatusForbidden, permissionDeniedMessage)
 		return
 	}
 	var input ReorderInput
@@ -497,7 +512,7 @@ func (handler *Handler) GuestReorderItems(w http.ResponseWriter, request *http.R
 func (handler *Handler) guestItemMutation(w http.ResponseWriter, request *http.Request, editOnly bool, mutation func(guestAccess, ItemInput, uuid.UUID) (Note, error)) {
 	noStore(w)
 	if !handler.validOrigin(request) {
-		httputil.RespondError(w, http.StatusForbidden, "request origin is not allowed")
+		httputil.RespondError(w, http.StatusForbidden, originNotAllowedMessage)
 		return
 	}
 	access, ok := handler.guestAccess(w, request)
@@ -505,7 +520,7 @@ func (handler *Handler) guestItemMutation(w http.ResponseWriter, request *http.R
 		return
 	}
 	if editOnly && access.Permission != "edit" || !editOnly && access.Permission != "edit" && access.Permission != "check" {
-		httputil.RespondError(w, http.StatusForbidden, "permission denied")
+		httputil.RespondError(w, http.StatusForbidden, permissionDeniedMessage)
 		return
 	}
 	var input ItemInput
@@ -523,8 +538,8 @@ func (handler *Handler) guestItemMutation(w http.ResponseWriter, request *http.R
 	}
 	note, err := mutation(access, input, itemID)
 	if err != nil {
-		if err.Error() == "permission denied" {
-			httputil.RespondError(w, http.StatusForbidden, "permission denied")
+		if err.Error() == permissionDeniedMessage {
+			httputil.RespondError(w, http.StatusForbidden, permissionDeniedMessage)
 		} else {
 			handler.respondError(w, err)
 		}
@@ -537,7 +552,7 @@ func (handler *Handler) guestItemMutation(w http.ResponseWriter, request *http.R
 func (handler *Handler) GuestLogout(w http.ResponseWriter, request *http.Request) {
 	noStore(w)
 	if !handler.validOrigin(request) {
-		httputil.RespondError(w, http.StatusForbidden, "request origin is not allowed")
+		httputil.RespondError(w, http.StatusForbidden, originNotAllowedMessage)
 		return
 	}
 	if cookie, err := request.Cookie(guestCookieName); err == nil {

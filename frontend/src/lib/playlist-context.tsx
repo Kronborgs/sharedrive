@@ -219,7 +219,6 @@ export function PlaylistProvider({ children }: Readonly<{ children: ReactNode }>
         shuffleRef.current = state.shuffle
       })
       .catch(() => { /* server unavailable — local cache is fine */ })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Wire audio events once on mount

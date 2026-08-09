@@ -219,6 +219,66 @@ export interface PreparedFolderUpload {
   targetFolderId: string | null
 }
 
+async function getFolderChildren(
+  parentId: string | null,
+  childrenByParent: Map<string, FileItem[]>,
+): Promise<FileItem[]> {
+  const parentKey = parentId ?? ''
+  const cachedChildren = childrenByParent.get(parentKey)
+  if (cachedChildren) return cachedChildren
+
+  const query = parentId ? `?parent_id=${encodeURIComponent(parentId)}` : ''
+  const children = await api.get<FileItem[]>(`/api/v1/files${query}`)
+  childrenByParent.set(parentKey, children)
+  return children
+}
+
+async function findOrCreateChildFolder(
+  folderName: string,
+  parentId: string | null,
+  childrenByParent: Map<string, FileItem[]>,
+): Promise<string | undefined> {
+  const children = await getFolderChildren(parentId, childrenByParent)
+  const existing = children.find(item => item.name === folderName)
+  if (existing) return existing.is_folder ? existing.id : undefined
+
+  const folder = await api.post<FileItem>('/api/v1/files', {
+    name: folderName,
+    parent_id: parentId,
+  })
+  children.push(folder)
+  return folder.id
+}
+
+async function resolveFolderPath(
+  folderParts: string[],
+  rootFolderId: string | null,
+  folderIdsByPath: Map<string, string>,
+  childrenByParent: Map<string, FileItem[]>,
+): Promise<string | null | undefined> {
+  let parentPath = ''
+  let parentId = rootFolderId
+
+  for (const folderName of folderParts) {
+    const folderPath = parentPath ? `${parentPath}/${folderName}` : folderName
+    const cachedFolderId = folderIdsByPath.get(folderPath)
+    if (cachedFolderId) {
+      parentPath = folderPath
+      parentId = cachedFolderId
+      continue
+    }
+
+    const folderId = await findOrCreateChildFolder(folderName, parentId, childrenByParent)
+    if (!folderId) return undefined
+
+    folderIdsByPath.set(folderPath, folderId)
+    parentPath = folderPath
+    parentId = folderId
+  }
+
+  return parentId
+}
+
 export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   const qc = useQueryClient()
   const [uploads, setUploads] = useState<UploadEntry[]>([])
@@ -399,50 +459,14 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
 
   const prepareFolderUpload = useCallback(async (files: FileList | File[]): Promise<PreparedFolderUpload[]> => {
     const prepared: PreparedFolderUpload[] = []
-    const folderIdsByPath = new Map<string, string | null>([['', folderId]])
+    const folderIdsByPath = new Map<string, string>()
     const childrenByParent = new Map<string, FileItem[]>()
 
     for (const file of Array.from(files)) {
       const pathParts = (file.webkitRelativePath || file.name).split('/').filter(Boolean)
       const folderParts = pathParts.slice(0, -1)
-      let parentPath = ''
-      let parentId = folderId
-      let blocked = false
-
-      for (const folderName of folderParts) {
-        const folderPath = parentPath ? `${parentPath}/${folderName}` : folderName
-        const cachedFolderId = folderIdsByPath.get(folderPath)
-        if (cachedFolderId !== undefined) {
-          parentPath = folderPath
-          parentId = cachedFolderId
-          continue
-        }
-
-        const parentKey = parentId ?? ''
-        let children = childrenByParent.get(parentKey)
-        if (!children) {
-          const query = parentId ? `?parent_id=${encodeURIComponent(parentId)}` : ''
-          children = await api.get<FileItem[]>(`/api/v1/files${query}`)
-          childrenByParent.set(parentKey, children)
-        }
-
-        const existing = children.find(item => item.name === folderName)
-        if (existing && !existing.is_folder) {
-          blocked = true
-          break
-        }
-
-        const folder = existing ?? await api.post<FileItem>('/api/v1/files', {
-          name: folderName,
-          parent_id: parentId,
-        })
-        if (!existing) children.push(folder)
-        folderIdsByPath.set(folderPath, folder.id)
-        parentPath = folderPath
-        parentId = folder.id
-      }
-
-      if (!blocked) prepared.push({ file, targetFolderId: parentId })
+      const targetFolderId = await resolveFolderPath(folderParts, folderId, folderIdsByPath, childrenByParent)
+      if (targetFolderId !== undefined) prepared.push({ file, targetFolderId })
     }
 
     return prepared

@@ -404,6 +404,7 @@ const translations = {
   'upload.globalDuplicateRename': { da: 'Omdøb før upload', en: 'Rename before upload' },
   'upload.globalDuplicateLocations': { da: 'Findes i disse mapper', en: 'Found in these folders' },
   'upload.globalDuplicateContinue': { da: 'Upload alligevel', en: 'Upload anyway' },
+  'upload.globalDuplicateSkipConflicts': { da: 'Upload kun filer uden konflikter', en: 'Upload only files without conflicts' },
   'upload.globalDuplicateCancel': { da: 'Annullér upload', en: 'Cancel upload' },
 
   // ── Login / auth flow ─────────────────────────────────────────────────────

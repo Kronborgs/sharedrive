@@ -118,11 +118,13 @@ function FilesPage() {
     uploadDuplicateRenames,
     compareUpdatedLabel,
     beginUploadWithConflictCheck,
+    beginUploadRequestsWithConflictCheck,
     setUploadConflictApplyAll,
     closeUploadConflictDialog,
     resolveUploadConflict,
     setUploadDuplicateRenames,
     closeUploadDuplicateDialog,
+    skipUploadDuplicates,
     confirmUploadDuplicate,
   } = useUploadDuplicateWorkflow({
     folderId,
@@ -504,21 +506,14 @@ function FilesPage() {
 
 
   const beginFolderUploadWithConflictCheck = useCallback(async (fileList: FileList) => {
-    const prepared = await prepareFolderUpload(fileList)
-    if (prepared.length === 0) return
-
-    const grouped = new Map<string, File[]>()
-    for (const entry of prepared) {
-      const key = entry.targetFolderId ?? ''
-      const current = grouped.get(key)
-      if (current) current.push(entry.file)
-      else grouped.set(key, [entry.file])
+    try {
+      const prepared = await prepareFolderUpload(fileList)
+      if (prepared.length === 0) return
+      await beginUploadRequestsWithConflictCheck(prepared)
+    } catch {
+      toast.error(t('toast.createFolderFailed'))
     }
-
-    for (const [key, filesForFolder] of grouped) {
-      await beginUploadWithConflictCheck(filesForFolder, key === '' ? null : key)
-    }
-  }, [beginUploadWithConflictCheck, prepareFolderUpload])
+  }, [beginUploadRequestsWithConflictCheck, prepareFolderUpload, t])
 
   const sorted = [...items.filter(f => f.is_folder), ...items.filter(f => !f.is_folder)]
 
@@ -1130,6 +1125,7 @@ function FilesPage() {
         renames={uploadDuplicateRenames}
         onRename={(id, value) => setUploadDuplicateRenames(prev => ({ ...prev, [id]: value }))}
         onClose={closeUploadDuplicateDialog}
+        onSkipConflicts={skipUploadDuplicates}
         onConfirm={confirmUploadDuplicate}
         t={t}
       />

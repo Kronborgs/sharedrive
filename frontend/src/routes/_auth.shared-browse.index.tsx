@@ -375,6 +375,7 @@ function SharedBrowsePage() {
         renames={uploadDup.uploadDuplicateRenames}
         onRename={(id, value) => uploadDup.setUploadDuplicateRenames(prev => ({ ...prev, [id]: value }))}
         onClose={uploadDup.closeUploadDuplicateDialog}
+        onSkipConflicts={uploadDup.skipUploadDuplicates}
         onConfirm={uploadDup.confirmUploadDuplicate}
         t={t}
       />

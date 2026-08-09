@@ -211,6 +211,7 @@ interface SpeedSample { time: number; bytes: number }
 export interface UploadRequest {
   file: File
   overwrite?: boolean
+  targetFolderId?: string | null
 }
 
 export interface PreparedFolderUpload {
@@ -362,9 +363,12 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     for (let i = 0; i < newEntries.length; i += 1) {
       const entry = newEntries[i]
       const request = requests[i]
+      const requestTargetFolderId = request.targetFolderId === undefined
+        ? targetFolderId
+        : request.targetFolderId
 
       if (directUpload) {
-        const upload = await createTusUpload(request, targetFolderId, entry.id)
+        const upload = await createTusUpload(request, requestTargetFolderId, entry.id)
         tusUploads.current.set(entry.id, upload)
         update(entry.id, { status: 'uploading' })
         upload.start()
@@ -374,7 +378,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       try {
         const formData = new FormData()
         formData.append('file', request.file)
-        if (targetFolderId) formData.append('folder_id', targetFolderId)
+        if (requestTargetFolderId) formData.append('folder_id', requestTargetFolderId)
         if (request.overwrite) formData.append('overwrite', '1')
         update(entry.id, { status: 'uploading' })
         await api.post<FileItem>('/api/v1/files/upload', formData)
@@ -393,9 +397,55 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     removeUpload(id)
   }, [removeUpload])
 
-  const prepareFolderUpload = useCallback((files: FileList | File[]): PreparedFolderUpload[] => {
-    const input = Array.from(files)
-    return input.map(file => ({ file, targetFolderId: folderId }))
+  const prepareFolderUpload = useCallback(async (files: FileList | File[]): Promise<PreparedFolderUpload[]> => {
+    const prepared: PreparedFolderUpload[] = []
+    const folderIdsByPath = new Map<string, string | null>([['', folderId]])
+    const childrenByParent = new Map<string, FileItem[]>()
+
+    for (const file of Array.from(files)) {
+      const pathParts = (file.webkitRelativePath || file.name).split('/').filter(Boolean)
+      const folderParts = pathParts.slice(0, -1)
+      let parentPath = ''
+      let parentId = folderId
+      let blocked = false
+
+      for (const folderName of folderParts) {
+        const folderPath = parentPath ? `${parentPath}/${folderName}` : folderName
+        const cachedFolderId = folderIdsByPath.get(folderPath)
+        if (cachedFolderId !== undefined) {
+          parentPath = folderPath
+          parentId = cachedFolderId
+          continue
+        }
+
+        const parentKey = parentId ?? ''
+        let children = childrenByParent.get(parentKey)
+        if (!children) {
+          const query = parentId ? `?parent_id=${encodeURIComponent(parentId)}` : ''
+          children = await api.get<FileItem[]>(`/api/v1/files${query}`)
+          childrenByParent.set(parentKey, children)
+        }
+
+        const existing = children.find(item => item.name === folderName)
+        if (existing && !existing.is_folder) {
+          blocked = true
+          break
+        }
+
+        const folder = existing ?? await api.post<FileItem>('/api/v1/files', {
+          name: folderName,
+          parent_id: parentId,
+        })
+        if (!existing) children.push(folder)
+        folderIdsByPath.set(folderPath, folder.id)
+        parentPath = folderPath
+        parentId = folder.id
+      }
+
+      if (!blocked) prepared.push({ file, targetFolderId: parentId })
+    }
+
+    return prepared
   }, [folderId])
 
   return {

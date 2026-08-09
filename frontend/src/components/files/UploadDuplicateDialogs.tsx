@@ -39,9 +39,9 @@ export function UploadConflictDialog({
           <p className="text-sm text-muted mt-1">{t('upload.conflictSubtitle')}</p>
         </div>
         <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3">
-          <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 break-all">{current.incoming.name}</p>
+          <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 break-all">{current.incoming.file.name}</p>
           <p className="text-xs text-zinc-500 dark:text-slate-400 mt-1">
-            {compareUpdatedLabel(current.incoming, current.existing)}
+            {compareUpdatedLabel(current.incoming.file, current.existing)}
           </p>
           <p className="text-xs text-zinc-500 dark:text-slate-400 mt-1">
             {t('upload.conflictExistingUpdated', {
@@ -87,6 +87,7 @@ interface UploadGlobalDuplicateDialogProps {
   renames: Record<string, string>
   onRename: (id: string, value: string) => void
   onClose: () => void
+  onSkipConflicts: () => void
   onConfirm: () => void
   t: (...args: any[]) => string
 }
@@ -97,6 +98,7 @@ export function UploadGlobalDuplicateDialog({
   renames,
   onRename,
   onClose,
+  onSkipConflicts,
   onConfirm,
   t,
 }: Readonly<UploadGlobalDuplicateDialogProps>) {
@@ -137,13 +139,20 @@ export function UploadGlobalDuplicateDialog({
             </div>
           ))}
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
             className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300"
           >
             {t('upload.globalDuplicateCancel')}
+          </button>
+          <button
+            type="button"
+            onClick={onSkipConflicts}
+            className="px-3 py-1.5 rounded-lg border border-brand-600 text-sm font-medium text-brand-600 dark:text-brand-400"
+          >
+            {t('upload.globalDuplicateSkipConflicts')}
           </button>
           <button
             type="button"

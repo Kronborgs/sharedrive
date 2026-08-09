@@ -69,14 +69,14 @@ export function useUploadDuplicateWorkflow({
     startUpload(partitioned.immediate, targetFolderId)
   }, [startUpload])
 
-  const beginUploadWithConflictCheck = useCallback(async (incomingFiles: File[], targetFolderId?: string | null) => {
-    if (incomingFiles.length === 0) return
+  const beginUploadRequestsWithConflictCheck = useCallback(async (
+    requests: UploadRequest[],
+    targetFolderId?: string | null,
+  ) => {
+    if (requests.length === 0) return
 
-    // `null` is an explicit request to upload to root; `undefined` means use
-    // the folder currently open in the file browser.
     const effectiveTargetFolderId = targetFolderId === undefined ? folderId : targetFolderId
-    const requests = incomingFiles.map(file => ({ file, overwrite: false }))
-    const duplicateHitsByName = await fetchDuplicateHitsByName([...new Set(incomingFiles.map(file => file.name))])
+    const duplicateHitsByName = await fetchDuplicateHitsByName([...new Set(requests.map(request => request.file.name))])
     const partitioned = partitionUploadRequests(requests, duplicateHitsByName, effectiveTargetFolderId)
 
     if (partitioned.conflicts.length > 0) {
@@ -101,6 +101,12 @@ export function useUploadDuplicateWorkflow({
     startUpload(partitioned.immediate, effectiveTargetFolderId)
   }, [folderId, startUpload])
 
+  const beginUploadWithConflictCheck = useCallback(async (incomingFiles: File[], targetFolderId?: string | null) => {
+    if (incomingFiles.length === 0) return
+    const requests = incomingFiles.map(file => ({ file, overwrite: false }))
+    await beginUploadRequestsWithConflictCheck(requests, targetFolderId)
+  }, [beginUploadRequestsWithConflictCheck])
+
   const closeUploadConflictDialog = useCallback(() => {
     setUploadConflictOpen(false)
     setUploadConflictQueue([])
@@ -117,14 +123,14 @@ export function useUploadDuplicateWorkflow({
 
     const [current, ...rest] = uploadConflictQueue
     const nextResolved = choice === 'overwrite'
-      ? [...uploadConflictResolved, { file: current.incoming, overwrite: true }]
+      ? [...uploadConflictResolved, { ...current.incoming, overwrite: true }]
       : [...uploadConflictResolved]
 
     let nextQueue = rest
     if (uploadConflictApplyAll) {
       if (choice === 'overwrite') {
         for (const pair of rest) {
-          nextResolved.push({ file: pair.incoming, overwrite: true })
+          nextResolved.push({ ...pair.incoming, overwrite: true })
         }
       }
       nextQueue = []
@@ -179,6 +185,23 @@ export function useUploadDuplicateWorkflow({
     uploadDuplicateTargetFolderId,
   ])
 
+  const skipUploadDuplicates = useCallback(() => {
+    const pending = uploadDuplicatePending
+    const targetFolder = uploadDuplicateTargetFolderId
+    closeUploadDuplicateDialog()
+    if (pending.length === 0) {
+      toast.info(t('upload.allConflictsSkipped'))
+      return
+    }
+    startUpload(pending, targetFolder)
+  }, [
+    closeUploadDuplicateDialog,
+    startUpload,
+    t,
+    uploadDuplicatePending,
+    uploadDuplicateTargetFolderId,
+  ])
+
   return {
     uploadConflictOpen,
     uploadConflictQueue,
@@ -188,11 +211,13 @@ export function useUploadDuplicateWorkflow({
     uploadDuplicateRenames,
     compareUpdatedLabel,
     beginUploadWithConflictCheck,
+    beginUploadRequestsWithConflictCheck,
     setUploadConflictApplyAll,
     closeUploadConflictDialog,
     resolveUploadConflict,
     setUploadDuplicateRenames,
     closeUploadDuplicateDialog,
+    skipUploadDuplicates,
     confirmUploadDuplicate,
   }
 }

@@ -2,7 +2,7 @@ import { api } from '@/lib/api'
 import type { UploadRequest } from '@/components/files/UploadZone'
 
 export interface UploadConflictPair {
-  incoming: File
+  incoming: UploadRequest
   existing: NameDuplicateHit
 }
 
@@ -49,13 +49,16 @@ export function partitionUploadRequests(
 
   for (const request of requests) {
     const matches = duplicateHitsByName.get(request.file.name) ?? []
-    const sameFolderMatch = matches.find(match => match.parent_id === targetFolderId)
+    const requestTargetFolderId = request.targetFolderId === undefined
+      ? targetFolderId
+      : request.targetFolderId
+    const sameFolderMatch = matches.find(match => match.parent_id === requestTargetFolderId)
     if (sameFolderMatch && !request.overwrite) {
-      conflicts.push({ incoming: request.file, existing: sameFolderMatch })
+      conflicts.push({ incoming: request, existing: sameFolderMatch })
       continue
     }
 
-    const otherMatches = matches.filter(match => match.parent_id !== targetFolderId)
+    const otherMatches = matches.filter(match => match.parent_id !== requestTargetFolderId)
     if (otherMatches.length > 0) {
       globalDuplicates.push({ incoming: request, matches: otherMatches })
       continue

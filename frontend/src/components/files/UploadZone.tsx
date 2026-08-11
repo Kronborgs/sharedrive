@@ -207,6 +207,15 @@ function trimTrailingSlashes(input: string): string {
   return out
 }
 
+function isCrossOriginEndpoint(endpoint: string): boolean {
+  try {
+    const parsed = new URL(endpoint, window.location.origin)
+    return parsed.origin !== window.location.origin
+  } catch {
+    return false
+  }
+}
+
 interface SpeedSample { time: number; bytes: number }
 
 export interface UploadRequest {
@@ -346,19 +355,25 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
 
   const { data: systemSettings } = useQuery({
     queryKey: ['system', 'settings'],
-    queryFn: ({ signal }) => api.get<{ direct_uploads_enabled?: boolean; upload_endpoint?: string }>('/api/v1/system/settings', signal),
+    queryFn: ({ signal }) => api.get<{
+      direct_upload_url?: string
+      direct_uploads_enabled?: boolean
+      upload_endpoint?: string
+    }>('/api/v1/system/settings', signal),
     staleTime: 60_000,
   })
 
-  const directUpload = !!systemSettings?.direct_uploads_enabled
+  const configuredDirectUploadURL = trimTrailingSlashes(systemSettings?.direct_upload_url ?? '')
+  const configuredUploadEndpoint = trimTrailingSlashes(systemSettings?.upload_endpoint ?? '')
+  const uploadEndpoint = configuredUploadEndpoint || (configuredDirectUploadURL ? `${configuredDirectUploadURL}/upload/` : '/upload/')
+  const directUpload = systemSettings?.direct_uploads_enabled ?? !!configuredDirectUploadURL
 
   const createTusUpload = useCallback(async (
     request: UploadRequest,
     targetFolderId: string | null,
     entryId: string,
   ) => {
-    const endpointBase = trimTrailingSlashes(systemSettings?.upload_endpoint ?? '')
-    const endpoint = endpointBase || '/api/v1/files/upload/resumable'
+    const endpoint = uploadEndpoint
     const metadata: Record<string, string> = {
       filename: request.file.name,
     }
@@ -367,10 +382,20 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     if (targetFolderId) metadata.folder_id = targetFolderId
     if (request.overwrite) metadata.overwrite = '1'
 
+    let headers: Record<string, string> | undefined
+    if (isCrossOriginEndpoint(endpoint)) {
+      const tokenPayload = targetFolderId ? { folder_id: targetFolderId } : {}
+      const issued = await api.post<{ token: string }>('/api/v1/upload-token', tokenPayload)
+      if (issued?.token) {
+        headers = { 'X-Upload-Token': issued.token }
+      }
+    }
+
     return new tus.Upload(request.file, {
       endpoint,
       chunkSize: TUS_CHUNK_SIZE,
       metadata,
+      headers,
       retryDelays: [0, 1000, 3000, 5000],
       removeFingerprintOnSuccess: true,
       onError: (err) => {
@@ -404,7 +429,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
         refreshFolder()
       },
     })
-  }, [refreshFolder, systemSettings?.upload_endpoint, update])
+  }, [refreshFolder, update, uploadEndpoint])
 
   const startUpload = useCallback(async (requests: UploadRequest[], overrideFolderId?: string | null) => {
     // `null` explicitly means the root folder. Only fall back to the currently

@@ -110,7 +110,9 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
 
-  if (url.pathname === '/share-target' && event.request.method === 'POST') {
+  // Keep legacy '/share-target' for older installs while supporting the
+  // scoped Files-PWA action '/files/share-target'.
+  if ((url.pathname === '/files/share-target' || url.pathname === '/share-target') && event.request.method === 'POST') {
     event.respondWith(
       (async () => {
         const formData = await event.request.formData()

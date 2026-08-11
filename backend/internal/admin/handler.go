@@ -140,10 +140,18 @@ func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 			playlistMax = n
 		}
 	}
+	directUploadURL := strings.TrimSpace(kv["direct_upload_url"])
+	directUploadsEnabled := directUploadURL != ""
+	uploadEndpoint := ""
+	if directUploadsEnabled {
+		uploadEndpoint = strings.TrimRight(directUploadURL, "/") + "/upload/"
+	}
 	httputil.Respond(w, http.StatusOK, map[string]any{
-		"direct_upload_url":   kv["direct_upload_url"],
-		"onlyoffice_url":      kv["onlyoffice_url"],
-		"playlist_max_tracks": playlistMax,
+		"direct_upload_url":      directUploadURL,
+		"direct_uploads_enabled": directUploadsEnabled,
+		"upload_endpoint":        uploadEndpoint,
+		"onlyoffice_url":         kv["onlyoffice_url"],
+		"playlist_max_tracks":    playlistMax,
 	})
 }
 

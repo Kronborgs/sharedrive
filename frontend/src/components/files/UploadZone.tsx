@@ -8,8 +8,10 @@ import type { FileItem } from '@/types/api'
 import { ignorePromise } from '@/lib/ignore-promise'
 import { createClientId } from '@/lib/client-id'
 import {
+  createTusHeaders,
+  createTusMetadata,
   ensureDirectUploadAvailable,
-  isCrossOriginEndpoint,
+  performMultipartUpload,
   resolveUploadRouting,
   shouldFallbackToMultipart,
   type UploadRoutingSettings,
@@ -358,21 +360,11 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     targetFolderId: string | null,
     entryId: string,
   ) => {
-    try {
-      const formData = new FormData()
-      formData.append('file', request.file)
-      if (targetFolderId) formData.append('folder_id', targetFolderId)
-      if (request.overwrite) formData.append('overwrite', '1')
-      update(entryId, { status: 'uploading' })
-      await api.post<FileItem>('/api/v1/files/upload', formData)
-      update(entryId, { progress: 100, status: 'done' })
-      refreshFolder()
-    } catch (err) {
-      update(entryId, {
-        status: 'error',
-        error: err instanceof Error ? err.message : 'Upload failed',
-      })
-    }
+    await performMultipartUpload(request, targetFolderId, {
+      post: formData => api.post<FileItem>('/api/v1/files/upload', formData),
+      update: patch => update(entryId, patch),
+      refresh: refreshFolder,
+    })
   }, [refreshFolder, update])
 
   const createTusUpload = useCallback(async (
@@ -382,22 +374,13 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
   ) => {
     const endpoint = uploadEndpoint
     await ensureDirectUploadAvailable(endpoint, window.location.origin)
-    const metadata: Record<string, string> = {
-      filename: request.file.name,
-    }
-    // The TUS server contract uses `folder_id` (the multipart endpoint uses
-    // `parent_id`). Sending `parent_id` here silently finalized uploads at root.
-    if (targetFolderId) metadata.folder_id = targetFolderId
-    if (request.overwrite) metadata.overwrite = '1'
-
-    let headers: Record<string, string> | undefined
-    if (isCrossOriginEndpoint(endpoint, window.location.origin)) {
-      const tokenPayload = targetFolderId ? { folder_id: targetFolderId } : {}
-      const issued = await api.post<{ token: string }>('/api/v1/upload-token', tokenPayload)
-      if (issued?.token) {
-        headers = { 'X-Upload-Token': issued.token }
-      }
-    }
+    const metadata = createTusMetadata(request, targetFolderId)
+    const headers = await createTusHeaders(
+      endpoint,
+      window.location.origin,
+      targetFolderId,
+      payload => api.post<{ token: string }>('/api/v1/upload-token', payload),
+    )
 
     return new tus.Upload(request.file, {
       endpoint,

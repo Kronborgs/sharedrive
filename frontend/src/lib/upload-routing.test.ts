@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  createTusHeaders,
+  createTusMetadata,
   ensureDirectUploadAvailable,
   isCrossOriginEndpoint,
+  performMultipartUpload,
   resolveUploadRouting,
   shouldFallbackToMultipart,
 } from './upload-routing'
@@ -69,5 +72,70 @@ describe('shouldFallbackToMultipart', () => {
     expect(shouldFallbackToMultipart('https://upload.example.com/upload/', origin, 0)).toBe(true)
     expect(shouldFallbackToMultipart('https://upload.example.com/upload/', origin, 1)).toBe(false)
     expect(shouldFallbackToMultipart('/upload/', origin, 0)).toBe(false)
+  })
+})
+
+describe('createTusMetadata', () => {
+  it('adds folder and overwrite metadata when configured', () => {
+    const file = new File(['data'], 'report.txt')
+    expect(createTusMetadata({ file, overwrite: true }, 'folder-1')).toEqual({
+      filename: 'report.txt',
+      folder_id: 'folder-1',
+      overwrite: '1',
+    })
+    expect(createTusMetadata({ file }, null)).toEqual({ filename: 'report.txt' })
+  })
+})
+
+describe('createTusHeaders', () => {
+  const origin = 'https://drive.example.com'
+
+  it('only issues tokens for cross-origin uploads', async () => {
+    const issueToken = vi.fn().mockResolvedValue({ token: 'token-1' })
+    await expect(createTusHeaders('/upload/', origin, null, issueToken)).resolves.toBeUndefined()
+    expect(issueToken).not.toHaveBeenCalled()
+
+    await expect(createTusHeaders('https://upload.example.com/upload/', origin, 'folder-1', issueToken))
+      .resolves.toEqual({ 'X-Upload-Token': 'token-1' })
+    expect(issueToken).toHaveBeenCalledWith({ folder_id: 'folder-1' })
+  })
+
+  it('handles root uploads and missing tokens', async () => {
+    const issueToken = vi.fn().mockResolvedValue({})
+    await expect(createTusHeaders('https://upload.example.com/upload/', origin, null, issueToken))
+      .resolves.toBeUndefined()
+    expect(issueToken).toHaveBeenCalledWith({})
+  })
+})
+
+describe('performMultipartUpload', () => {
+  it('uploads form data and reports completion', async () => {
+    const post = vi.fn().mockResolvedValue({})
+    const update = vi.fn()
+    const refresh = vi.fn()
+    await performMultipartUpload({ file: new File(['data'], 'report.txt'), overwrite: true }, 'folder-1', {
+      post,
+      update,
+      refresh,
+    })
+
+    const formData = post.mock.calls[0][0] as FormData
+    expect(formData.get('folder_id')).toBe('folder-1')
+    expect(formData.get('overwrite')).toBe('1')
+    expect(update).toHaveBeenNthCalledWith(1, { status: 'uploading' })
+    expect(update).toHaveBeenNthCalledWith(2, { progress: 100, status: 'done' })
+    expect(refresh).toHaveBeenCalledOnce()
+  })
+
+  it('reports upload failures without refreshing', async () => {
+    const update = vi.fn()
+    const refresh = vi.fn()
+    await performMultipartUpload({ file: new File(['data'], 'report.txt') }, null, {
+      post: vi.fn().mockRejectedValue(new Error('network failed')),
+      update,
+      refresh,
+    })
+    expect(update).toHaveBeenLastCalledWith({ status: 'error', error: 'network failed' })
+    expect(refresh).not.toHaveBeenCalled()
   })
 })

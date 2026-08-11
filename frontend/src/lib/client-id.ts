@@ -1,3 +1,5 @@
+let fallbackSequence = 0
+
 export function createClientId(): string {
   const cryptoObj = globalThis.crypto
 
@@ -16,6 +18,7 @@ export function createClientId(): string {
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
   }
 
-  // Final fallback for very old browsers/webviews.
-  return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  // IDs are local UI keys, so a monotonic fallback is sufficient here.
+  fallbackSequence += 1
+  return `id-${Date.now()}-${fallbackSequence}`
 }

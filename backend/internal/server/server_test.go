@@ -1,6 +1,35 @@
 package server
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+)
+
+func TestShouldApplyGlobalBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		path   string
+		method string
+		want   bool
+	}{
+		{name: "JSON API", path: "/api/v1/notes", method: http.MethodPost, want: true},
+		{name: "multipart upload", path: filesUploadRoute, method: http.MethodPost, want: false},
+		{name: "TUS upload", path: "/upload/123", method: http.MethodPatch, want: false},
+		{name: "buddy receive", path: "/api/v1/backup/buddy/receive", method: http.MethodPost, want: false},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := shouldApplyGlobalBodyLimit(test.path, test.method); got != test.want {
+				t.Fatalf("shouldApplyGlobalBodyLimit(%q, %q) = %t, want %t", test.path, test.method, got, test.want)
+			}
+		})
+	}
+}
 
 func TestTusFolderID(t *testing.T) {
 	t.Parallel()

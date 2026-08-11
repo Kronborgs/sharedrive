@@ -140,12 +140,7 @@ func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 			playlistMax = n
 		}
 	}
-	directUploadURL := strings.TrimSpace(kv["direct_upload_url"])
-	directUploadsEnabled := directUploadURL != ""
-	uploadEndpoint := ""
-	if directUploadsEnabled {
-		uploadEndpoint = strings.TrimRight(directUploadURL, "/") + "/upload/"
-	}
+	directUploadURL, directUploadsEnabled, uploadEndpoint := directUploadPublicSettings(kv["direct_upload_url"])
 	httputil.Respond(w, http.StatusOK, map[string]any{
 		"direct_upload_url":      directUploadURL,
 		"direct_uploads_enabled": directUploadsEnabled,
@@ -153,6 +148,14 @@ func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 		"onlyoffice_url":         kv["onlyoffice_url"],
 		"playlist_max_tracks":    playlistMax,
 	})
+}
+
+func directUploadPublicSettings(rawURL string) (string, bool, string) {
+	directUploadURL := strings.TrimSpace(rawURL)
+	if directUploadURL == "" {
+		return "", false, ""
+	}
+	return directUploadURL, true, strings.TrimRight(directUploadURL, "/") + "/upload/"
 }
 
 type updateSettingsRequest struct {

@@ -7,6 +7,13 @@ import { api } from '@/lib/api'
 import type { FileItem } from '@/types/api'
 import { ignorePromise } from '@/lib/ignore-promise'
 import { createClientId } from '@/lib/client-id'
+import {
+  ensureDirectUploadAvailable,
+  isCrossOriginEndpoint,
+  resolveUploadRouting,
+  shouldFallbackToMultipart,
+  type UploadRoutingSettings,
+} from '@/lib/upload-routing'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
 
@@ -116,7 +123,7 @@ export function UploadProgress({ uploads, onDismiss, directUpload }: Readonly<Up
                 {u.file.name}
               </span>
               {u.status === 'error' && (
-                <button onClick={() => onDismiss(u.id)}>
+                <button type="button" onClick={() => onDismiss(u.id)}>
                   <X size={12} className="text-zinc-400" />
                 </button>
               )}
@@ -200,21 +207,6 @@ const TUS_CHUNK_SIZE = 50 * 1024 * 1024
 
 // Rolling window for speed calculation: keep last N samples over ~10 s
 const SPEED_WINDOW = 10
-
-function trimTrailingSlashes(input: string): string {
-  let out = input
-  while (out.endsWith('/')) out = out.slice(0, -1)
-  return out
-}
-
-function isCrossOriginEndpoint(endpoint: string): boolean {
-  try {
-    const parsed = new URL(endpoint, window.location.origin)
-    return parsed.origin !== window.location.origin
-  } catch {
-    return false
-  }
-}
 
 interface SpeedSample { time: number; bytes: number }
 
@@ -355,18 +347,33 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
 
   const { data: systemSettings } = useQuery({
     queryKey: ['system', 'settings'],
-    queryFn: ({ signal }) => api.get<{
-      direct_upload_url?: string
-      direct_uploads_enabled?: boolean
-      upload_endpoint?: string
-    }>('/api/v1/system/settings', signal),
+    queryFn: ({ signal }) => api.get<UploadRoutingSettings>('/api/v1/system/settings', signal),
     staleTime: 60_000,
   })
 
-  const configuredDirectUploadURL = trimTrailingSlashes(systemSettings?.direct_upload_url ?? '')
-  const configuredUploadEndpoint = trimTrailingSlashes(systemSettings?.upload_endpoint ?? '')
-  const uploadEndpoint = configuredUploadEndpoint || (configuredDirectUploadURL ? `${configuredDirectUploadURL}/upload/` : '/upload/')
-  const directUpload = systemSettings?.direct_uploads_enabled ?? !!configuredDirectUploadURL
+  const { endpoint: uploadEndpoint, directUpload } = resolveUploadRouting(systemSettings)
+
+  const uploadMultipart = useCallback(async (
+    request: UploadRequest,
+    targetFolderId: string | null,
+    entryId: string,
+  ) => {
+    try {
+      const formData = new FormData()
+      formData.append('file', request.file)
+      if (targetFolderId) formData.append('folder_id', targetFolderId)
+      if (request.overwrite) formData.append('overwrite', '1')
+      update(entryId, { status: 'uploading' })
+      await api.post<FileItem>('/api/v1/files/upload', formData)
+      update(entryId, { progress: 100, status: 'done' })
+      refreshFolder()
+    } catch (err) {
+      update(entryId, {
+        status: 'error',
+        error: err instanceof Error ? err.message : 'Upload failed',
+      })
+    }
+  }, [refreshFolder, update])
 
   const createTusUpload = useCallback(async (
     request: UploadRequest,
@@ -374,6 +381,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     entryId: string,
   ) => {
     const endpoint = uploadEndpoint
+    await ensureDirectUploadAvailable(endpoint, window.location.origin)
     const metadata: Record<string, string> = {
       filename: request.file.name,
     }
@@ -383,7 +391,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     if (request.overwrite) metadata.overwrite = '1'
 
     let headers: Record<string, string> | undefined
-    if (isCrossOriginEndpoint(endpoint)) {
+    if (isCrossOriginEndpoint(endpoint, window.location.origin)) {
       const tokenPayload = targetFolderId ? { folder_id: targetFolderId } : {}
       const issued = await api.post<{ token: string }>('/api/v1/upload-token', tokenPayload)
       if (issued?.token) {
@@ -399,6 +407,12 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
       retryDelays: [0, 1000, 3000, 5000],
       removeFingerprintOnSuccess: true,
       onError: (err) => {
+        const entry = uploadsRef.current.find(upload => upload.id === entryId)
+        if (shouldFallbackToMultipart(endpoint, window.location.origin, entry?.bytesUploaded ?? 0)) {
+          tusUploads.current.delete(entryId)
+          void uploadMultipart(request, targetFolderId, entryId)
+          return
+        }
         update(entryId, { status: 'error', error: err.message, speed: undefined, eta: undefined })
       },
       onProgress: (bytesUploaded, bytesTotal) => {
@@ -429,7 +443,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
         refreshFolder()
       },
     })
-  }, [refreshFolder, update, uploadEndpoint])
+  }, [refreshFolder, update, uploadEndpoint, uploadMultipart])
 
   const startUpload = useCallback(async (requests: UploadRequest[], overrideFolderId?: string | null) => {
     // `null` explicitly means the root folder. Only fall back to the currently
@@ -454,30 +468,20 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
         : request.targetFolderId
 
       if (directUpload) {
-        const upload = await createTusUpload(request, requestTargetFolderId, entry.id)
-        tusUploads.current.set(entry.id, upload)
-        update(entry.id, { status: 'uploading' })
-        upload.start()
+        try {
+          const upload = await createTusUpload(request, requestTargetFolderId, entry.id)
+          tusUploads.current.set(entry.id, upload)
+          update(entry.id, { status: 'uploading' })
+          upload.start()
+        } catch {
+          await uploadMultipart(request, requestTargetFolderId, entry.id)
+        }
         continue
       }
 
-      try {
-        const formData = new FormData()
-        formData.append('file', request.file)
-        if (requestTargetFolderId) formData.append('folder_id', requestTargetFolderId)
-        if (request.overwrite) formData.append('overwrite', '1')
-        update(entry.id, { status: 'uploading' })
-        await api.post<FileItem>('/api/v1/files/upload', formData)
-        update(entry.id, { progress: 100, status: 'done' })
-        refreshFolder()
-      } catch (err) {
-        update(entry.id, {
-          status: 'error',
-          error: err instanceof Error ? err.message : 'Upload failed',
-        })
-      }
+      await uploadMultipart(request, requestTargetFolderId, entry.id)
     }
-  }, [createTusUpload, directUpload, folderId, refreshFolder, syncRefs, update])
+  }, [createTusUpload, directUpload, folderId, syncRefs, update, uploadMultipart])
 
   const dismiss = useCallback((id: string) => {
     removeUpload(id)

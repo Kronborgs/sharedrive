@@ -360,10 +360,7 @@ func (s *Server) buildRouter() *chi.Mux {
 	// cap here would override the per-user limit set by the upload handlers.
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Body != nil &&
-				!strings.HasPrefix(r.URL.Path, "/upload/") &&
-				!(r.URL.Path == filesUploadRoute && r.Method == http.MethodPost) &&
-				r.URL.Path != "/api/v1/backup/buddy/receive" {
+			if r.Body != nil && shouldApplyGlobalBodyLimit(r.URL.Path, r.Method) {
 				r.Body = http.MaxBytesReader(w, r.Body, 4<<20) // 4 MB
 			}
 			next.ServeHTTP(w, r)
@@ -647,6 +644,12 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Mount("/", s.spaHandler())
 
 	return r
+}
+
+func shouldApplyGlobalBodyLimit(path, method string) bool {
+	return !strings.HasPrefix(path, "/upload/") &&
+		!(path == filesUploadRoute && method == http.MethodPost) &&
+		path != "/api/v1/backup/buddy/receive"
 }
 
 type redactingLogFormatter struct {

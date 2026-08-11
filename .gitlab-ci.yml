@@ -54,6 +54,29 @@ backend:test:
       - backend/coverage.out
     expire_in: 1 day
 
+frontend:test:
+  stage: test
+  image: node:${NODE_VERSION}
+
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - frontend/node_modules/
+
+  before_script:
+    - cd frontend
+    - npm ci
+
+  script:
+    - npm run test:coverage
+
+  artifacts:
+    paths:
+      - frontend/coverage/lcov.info
+    expire_in: 1 day
+
 
 # ------------------------------------------------------------
 # SONAR
@@ -68,6 +91,8 @@ sonar:scan:
 
   needs:
     - job: backend:test
+      artifacts: true
+    - job: frontend:test
       artifacts: true
 
   variables:

@@ -244,7 +244,7 @@ export function LedDisplay({ text, trackNum, onClick, expanded = false }: Readon
   const shouldScroll = text.length > 13
 
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       title={expanded ? 'Skjul liste' : 'Vis liste'}
       className="flex-1 min-w-0 outline-none focus:outline-none"
@@ -360,7 +360,7 @@ export function RetroButton({
   }
 
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       disabled={disabled}
       title={label}

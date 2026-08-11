@@ -89,7 +89,7 @@ export function PDFRenderer({ url, loadingText = 'Loading PDF…' }: Readonly<PD
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-center gap-3 px-4 py-2 border-b border-zinc-200 dark:border-[#2d3148] shrink-0 bg-zinc-50 dark:bg-[#1a1d27]">
-        <button
+        <button type="button"
           onClick={() => setScale(s => Math.max(0.5, s - 0.25))}
           className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-[#2d3148] transition-colors"
           title="Zoom out"
@@ -97,7 +97,7 @@ export function PDFRenderer({ url, loadingText = 'Loading PDF…' }: Readonly<PD
           <ZoomOut size={16} />
         </button>
         <span className="text-xs text-muted w-12 text-center">{Math.round(scale * 100)}%</span>
-        <button
+        <button type="button"
           onClick={() => setScale(s => Math.min(4, s + 0.25))}
           className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-[#2d3148] transition-colors"
           title="Zoom in"
@@ -105,7 +105,7 @@ export function PDFRenderer({ url, loadingText = 'Loading PDF…' }: Readonly<PD
           <ZoomIn size={16} />
         </button>
         <div className="w-px h-4 bg-zinc-300 dark:bg-[#2d3148]" />
-        <button
+        <button type="button"
           onClick={() => setPage(p => Math.max(1, p - 1))}
           disabled={page === 1}
           className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-40"
@@ -114,7 +114,7 @@ export function PDFRenderer({ url, loadingText = 'Loading PDF…' }: Readonly<PD
           <ChevronLeft size={16} />
         </button>
         <span className="text-xs text-muted">{page} / {totalPages}</span>
-        <button
+        <button type="button"
           onClick={() => setPage(p => Math.min(totalPages, p + 1))}
           disabled={page === totalPages || totalPages === 0}
           className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-40"

@@ -102,7 +102,7 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
   return (
     <header className="h-14 shrink-0 flex items-center gap-3 px-4 bg-white dark:bg-[#1a1d27] border-b border-zinc-200 dark:border-[#2d3148]">
       {/* Hamburger — mobile only */}
-      <button
+      <button type="button"
         onClick={onMenuToggle}
         aria-label="Toggle sidebar"
         className="p-2 rounded-lg text-zinc-500 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors md:hidden"
@@ -126,7 +126,7 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
           className="w-full pl-9 pr-8 py-1.5 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500/60"
         />
         {query && (
-          <button
+          <button type="button"
             onClick={() => { setQuery(''); setOpen(false); setResults([]) }}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 transition-colors"
           >
@@ -146,7 +146,7 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
             {!loading && results.map((item, idx) => {
               const isOwn = item.owner_id === user?.id
               return (
-                <button
+                <button type="button"
                   key={item.id}
                   onClick={() => openResult(item)}
                   onMouseEnter={() => setActiveIdx(idx)}
@@ -176,7 +176,7 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
 
       <div className="flex items-center gap-1 ml-auto">
         {/* Theme toggle */}
-        <button
+        <button type="button"
           onClick={handleTheme}
           aria-label="Toggle theme"
           className="p-2 rounded-lg text-zinc-500 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"

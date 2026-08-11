@@ -236,7 +236,7 @@ function SharedBrowsePage() {
         {/* Toolbar / breadcrumb */}
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-100 dark:border-[#2d3148] shrink-0">
           <nav className="flex items-center gap-1 flex-1 min-w-0 text-sm">
-            <button
+            <button type="button"
               onClick={() => ignorePromise(navigate({ to: '/shares' }))}
               className="flex items-center gap-1 text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors shrink-0"
             >
@@ -246,7 +246,7 @@ function SharedBrowsePage() {
             {rootId !== folderId && (
               <>
                 <ChevronRight size={13} className="text-zinc-300 dark:text-slate-600 shrink-0" />
-                <button
+                <button type="button"
                   onClick={() => ignorePromise(navigate({ to: '/shared-browse', search: { folder: rootId } }))}
                   className="text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors truncate max-w-[120px]"
                 >
@@ -268,7 +268,7 @@ function SharedBrowsePage() {
           )}
           {data?.can_edit && (
             <div className="relative">
-              <button
+              <button type="button"
                 onClick={() => setNewDocOpen(v => !v)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors shrink-0"
               >
@@ -282,7 +282,7 @@ function SharedBrowsePage() {
                     { type: 'cell' as const,  icon: '📊', labelKey: 'doc.excel' as const,      nameKey: 'doc.excelName' as const,      ext: '.xlsx' },
                     { type: 'slide' as const, icon: '📑', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx' },
                   ] as const).map(o => (
-                    <button
+                    <button type="button"
                       key={o.type}
                       onClick={() => { createDocument.mutate({ type: o.type, name: `${t(o.nameKey)}${o.ext}` }) }}
                       disabled={createDocument.isPending}
@@ -298,7 +298,7 @@ function SharedBrowsePage() {
                     { icon: '📋', labelKey: 'doc.markdown' as const,  nameKey: 'doc.markdownName' as const,  ext: '.md' },
                     { icon: '{ }', labelKey: 'doc.jsonFile' as const,  nameKey: 'doc.jsonFileName' as const,  ext: '.json' },
                   ] as const).map(o => (
-                    <button
+                    <button type="button"
                       key={o.ext}
                       onClick={() => { createTextFile.mutate({ name: `${t(o.nameKey)}${o.ext}` }) }}
                       disabled={createTextFile.isPending}

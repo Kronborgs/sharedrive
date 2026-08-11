@@ -217,7 +217,7 @@ function Step1({
           />
         </label>
         {restoreFile && (
-          <button
+          <button type="button"
             onClick={onRestore}
             disabled={restoring}
             className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"

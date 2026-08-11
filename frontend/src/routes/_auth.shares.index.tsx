@@ -250,7 +250,7 @@ function SharedPage() {
       <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('shared.sharedWithMe')}</h1>
 
       <div className="flex gap-1 border-b border-zinc-200 dark:border-[#2d3148]">
-        <button
+        <button type="button"
           onClick={() => setTab('received')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
             tab === 'received'
@@ -260,7 +260,7 @@ function SharedPage() {
         >
           {t('shared.sharedWithMe')}
         </button>
-        <button
+        <button type="button"
           onClick={() => setTab('sent')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
             tab === 'sent'

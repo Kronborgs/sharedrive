@@ -84,7 +84,7 @@ export function EPUBRenderer({ url }: Readonly<EPUBRendererProps>) {
     <div className="flex flex-col h-full">
       {/* Navigation bar */}
       <div className="flex items-center justify-center gap-4 px-4 py-2 border-b border-zinc-200 dark:border-[#2d3148] shrink-0 bg-zinc-50 dark:bg-[#1a1d27]">
-        <button
+        <button type="button"
           onClick={() => renditionRef.current?.prev()}
           disabled={!canPrev || loading}
           className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-40"
@@ -95,7 +95,7 @@ export function EPUBRenderer({ url }: Readonly<EPUBRendererProps>) {
         <span className="text-xs text-zinc-500 dark:text-slate-400">
           {loading ? 'Loading…' : 'Use arrow keys or buttons to navigate'}
         </span>
-        <button
+        <button type="button"
           onClick={() => renditionRef.current?.next()}
           disabled={!canNext || loading}
           className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-[#2d3148] transition-colors disabled:opacity-40"

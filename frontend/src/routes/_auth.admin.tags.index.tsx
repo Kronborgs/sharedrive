@@ -120,14 +120,14 @@ function TagsPage() {
                   <div className="text-sm text-zinc-900 dark:text-slate-100">{tag.name}</div>
                   <div className="text-xs text-muted">{tag.color}</div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => startEdit(tag)}
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
                   title="Edit tag"
                 >
                   <Pencil size={14} />
                 </button>
-                <button
+                <button type="button"
                   onClick={() => remove.mutate(tag.id)}
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   title="Delete tag"

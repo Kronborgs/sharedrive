@@ -201,7 +201,7 @@ function SharedPage() {
             {!item.is_folder && (
               <div className="flex items-center gap-2">
                 {ooEnabled && shouldOpenInOnlyOffice(item.name) && (
-                  <button
+                  <button type="button"
                     onClick={() => openInOO(item)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
                   >
@@ -209,7 +209,7 @@ function SharedPage() {
                   </button>
                 )}
                 {shouldOpenInTextEditor(item.name) && (
-                  <button
+                  <button type="button"
                     onClick={() => setTeItem(item)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
                   >
@@ -231,7 +231,7 @@ function SharedPage() {
             {/* New document button for editable folder shares */}
             {item.is_folder && share.can_edit && (
               <div className="relative">
-                <button
+                <button type="button"
                   onClick={() => setNewDocOpen(v => !v)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
                 >
@@ -245,7 +245,7 @@ function SharedPage() {
                       { type: 'cell', labelKey: 'doc.excel' as const, nameKey: 'doc.excelName' as const, ext: '.xlsx', icon: Table2 },
                       { type: 'slide', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx', icon: Presentation },
                     ].map(({ type, labelKey, nameKey, ext, icon: Icon }) => (
-                      <button
+                      <button type="button"
                         key={type}
                         onClick={() => createDocument.mutate({ type, name: `${t(nameKey)}${ext}`, parent_id: item.id })}
                         className="flex items-center gap-2 w-full px-3 py-2 text-sm text-zinc-700 dark:text-slate-200 hover:bg-zinc-50 dark:hover:bg-[#2d3148]/50 transition-colors"
@@ -260,7 +260,7 @@ function SharedPage() {
                       { labelKey: 'doc.markdown' as const, nameKey: 'doc.markdownName' as const, ext: '.md', icon: FileCode },
                       { labelKey: 'doc.jsonFile' as const, nameKey: 'doc.jsonFileName' as const, ext: '.json', icon: FileCode },
                     ].map(({ labelKey, nameKey, ext, icon: Icon }) => (
-                      <button
+                      <button type="button"
                         key={ext}
                         onClick={() => createTextFile.mutate({ name: `${t(nameKey)}${ext}`, parent_id: item.id })}
                         className="flex items-center gap-2 w-full px-3 py-2 text-sm text-zinc-700 dark:text-slate-200 hover:bg-zinc-50 dark:hover:bg-[#2d3148]/50 transition-colors"

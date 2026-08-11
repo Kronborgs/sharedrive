@@ -70,7 +70,7 @@ function NewUserDialog({ groups, defaultQuotaBytes, onClose, onCreated }: Readon
       <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-[#2d3148]">
           <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('users.newUser')}</h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-200 transition-colors">
+          <button type="button" onClick={onClose} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-200 transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -360,7 +360,7 @@ function AdminUsersPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 bg-zinc-100 dark:bg-[#0f1117] rounded-lg p-1">
           {(['users', 'guests', 'groups'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
+            <button type="button" key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
                 tab === t
                   ? 'bg-white dark:bg-[#1a1d27] text-zinc-900 dark:text-slate-100 shadow-sm'
@@ -369,7 +369,7 @@ function AdminUsersPage() {
           ))}
         </div>
         {tab === 'users' && (
-          <button onClick={() => setShowDialog(true)}
+          <button type="button" onClick={() => setShowDialog(true)}
             className="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors">
             {t('users.newUser')}
           </button>
@@ -560,7 +560,7 @@ function GuestsPanel({
               <div key={guest.id}>
                 <div className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-[#0f1117] transition-colors">
                   {/* Expand toggle */}
-                  <button
+                  <button type="button"
                     onClick={() => toggle(guest.id)}
                     className="text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 shrink-0"
                     title="Toggle shared items"
@@ -605,7 +605,7 @@ function GuestsPanel({
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 shrink-0">
-                    <button
+                    <button type="button"
                       onClick={() => {
                         if (confirm(t('users.confirmPromoteGuest', { name: guest.display_name || guest.email }))) {
                           promote.mutate(guest.id)
@@ -618,7 +618,7 @@ function GuestsPanel({
                       <UserCheck size={13} />
                       {t('users.promote')}
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => {
                         if (confirm(t('users.confirmRemoveGuest', { email: guest.email }))) {
                           deactivate.mutate(guest.id)
@@ -741,11 +741,11 @@ function GroupsPanel({ groups, qc }: Readonly<{ groups: Group[]; qc: ReturnType<
                     {g.description && <p className="text-xs text-muted">{g.description}</p>}
                   </div>
                   <div className="flex items-center gap-1">
-                    <button onClick={() => { setEditId(g.id); setEditName(g.name); setEditColor(g.color) }}
+                    <button type="button" onClick={() => { setEditId(g.id); setEditName(g.name); setEditColor(g.color) }}
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors" title="Edit">
                       <Pencil size={14} />
                     </button>
-                    <button onClick={() => { if (confirm(t('users.confirmDeleteGroup', { name: g.name }))) remove.mutate(g.id) }}
+                    <button type="button" onClick={() => { if (confirm(t('users.confirmDeleteGroup', { name: g.name }))) remove.mutate(g.id) }}
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete">
                       <Trash2 size={14} />
                     </button>
@@ -850,7 +850,7 @@ function UserRow({
         {(() => {
           if (user.totp_enabled) {
             return (
-              <button
+              <button type="button"
                 onClick={() => onRevokeTOTP(user.id)}
                 title={t('users.totpActiveRevoke')}
                 className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
@@ -867,7 +867,7 @@ function UserRow({
                   <ShieldCheck size={13} />
                   {t('users.required')}
                 </span>
-                <button
+                <button type="button"
                   onClick={() => onUnrequireTOTP(user.id)}
                   title={t('users.cancelTotpReq')}
                   className="text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors leading-none"
@@ -883,7 +883,7 @@ function UserRow({
                 <ShieldOff size={13} />
                 {t('users.off')}
               </span>
-              <button
+              <button type="button"
                 onClick={() => onRequireTOTP(user.id)}
                 title={t('users.forceTotpSetup')}
                 className="text-xs text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors underline underline-offset-2"
@@ -896,7 +896,7 @@ function UserRow({
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-1">
-          <button
+          <button type="button"
             onClick={() => onEdit(user)}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
             title={t('users.editQuota')}
@@ -904,7 +904,7 @@ function UserRow({
             <Pencil size={14} />
           </button>
           {user.role === 'admin' ? (
-            <button
+            <button type="button"
               onClick={() => {
                 if (confirm(t('users.confirmDemote', { name: user.display_name })))
                   onChangeRole('user')
@@ -916,7 +916,7 @@ function UserRow({
               <ShieldCheck size={14} />
             </button>
           ) : (
-            <button
+            <button type="button"
               onClick={() => {
                 if (confirm(t('users.confirmPromote', { name: user.display_name })))
                   onChangeRole('admin')
@@ -928,7 +928,7 @@ function UserRow({
             </button>
           )}
           {user.is_active ? (
-            <button
+            <button type="button"
               onClick={() => onLock(user.id)}
               disabled={isSelf}
               className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -937,7 +937,7 @@ function UserRow({
               <LockOpen size={14} />
             </button>
           ) : (
-            <button
+            <button type="button"
               onClick={() => onUnlock(user.id)}
               className="p-1.5 rounded-lg text-zinc-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
               title={t('users.unlockAccount')}
@@ -945,14 +945,14 @@ function UserRow({
               <Lock size={14} />
             </button>
           )}
-          <button
+          <button type="button"
             onClick={() => onForceReset(user.id)}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
             title="Force password reset on next login"
           >
             <KeyRound size={14} />
           </button>
-          <button
+          <button type="button"
             onClick={() => onDelete(user.id)}
             disabled={isSelf}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1037,7 +1037,7 @@ function EditUserDialog({ user, onClose, onSaved }: Readonly<{ user: User; onClo
       <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('users.editUser', { name: user.display_name })}</h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600"><X size={16} /></button>
+          <button type="button" onClick={onClose} className="text-zinc-400 hover:text-zinc-600"><X size={16} /></button>
         </div>
 
         <div className="space-y-4">
@@ -1107,8 +1107,8 @@ function EditUserDialog({ user, onClose, onSaved }: Readonly<{ user: User; onClo
         </div>
 
         <div className="flex justify-end gap-2 mt-6">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148]">{t('users.cancel')}</button>
-          <button
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148]">{t('users.cancel')}</button>
+          <button type="button"
             onClick={() => save.mutate()}
             disabled={save.isPending || !isValid || overLimit || !uploadIsValid}
             className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"

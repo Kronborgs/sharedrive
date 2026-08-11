@@ -132,7 +132,7 @@ export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, c
       {items.map(mi => (
         <div key={mi.action}>
           {mi.divider && <div className="my-1 border-t border-zinc-100 dark:border-[#2d3148]" />}
-          <button
+          <button type="button"
             onClick={() => { onAction(mi.action, item); onClose() }}
             className={cn(
               'w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors',

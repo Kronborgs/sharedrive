@@ -90,7 +90,7 @@ function SetupFlow({ onClose, onDone }: Readonly<{ onClose: () => void; onDone: 
             {t('totp.setupTitle')}
           </h2>
         </div>
-        <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148]">
+        <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148]">
           <X size={16} />
         </button>
       </div>
@@ -119,12 +119,12 @@ function SetupFlow({ onClose, onDone }: Readonly<{ onClose: () => void; onDone: 
                   <p className="text-xs text-zinc-500 dark:text-slate-500">{t('totp.orEnterManually')}</p>
                   <div className="flex items-center gap-2 bg-zinc-50 dark:bg-[#0f1117] rounded-lg px-3 py-2 border border-zinc-200 dark:border-[#2d3148]">
                     <code className="flex-1 text-xs font-mono text-zinc-800 dark:text-slate-200 break-all">{secret}</code>
-                    <button onClick={copySecret} className="shrink-0 text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400">
+                    <button type="button" onClick={copySecret} className="shrink-0 text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400">
                       {copiedSecret ? <Check size={14} /> : <Copy size={14} />}
                     </button>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setStep('verify')}
                   className="w-full py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
                 >
@@ -167,13 +167,13 @@ function SetupFlow({ onClose, onDone }: Readonly<{ onClose: () => void; onDone: 
               placeholder="000000"
             />
             <div className="flex gap-2">
-              <button
+              <button type="button"
                 onClick={() => setStep('qr')}
                 className="flex-1 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-600 dark:text-slate-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
               >
                 {t('totp.back')}
               </button>
-              <button
+              <button type="button"
                 onClick={() => void handleVerify()}
                 disabled={code.length !== 6 || loading}
                 className="flex-1 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
@@ -198,14 +198,14 @@ function SetupFlow({ onClose, onDone }: Readonly<{ onClose: () => void; onDone: 
               ))}
             </div>
             <div className="flex gap-2">
-              <button
+              <button type="button"
                 onClick={copyBackupCodes}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-600 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
               >
                 {copiedCode ? <Check size={14} /> : <Copy size={14} />}
                 {t('totp.copyAll')}
               </button>
-              <button
+              <button type="button"
                 onClick={onDone}
                 className="flex-1 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
               >
@@ -239,7 +239,7 @@ function DisableFlow({ onClose, onDone }: Readonly<{ onClose: () => void; onDone
     <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-2xl shadow-2xl w-full max-w-sm">
       <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 dark:border-[#2d3148]">
         <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('totp.disableTitle')}</h2>
-        <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148]">
+        <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148]">
           <X size={16} />
         </button>
       </div>
@@ -248,10 +248,10 @@ function DisableFlow({ onClose, onDone }: Readonly<{ onClose: () => void; onDone
           {t('totp.disableConfirm')}
         </p>
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-600 dark:text-slate-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors">
+          <button type="button" onClick={onClose} className="flex-1 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-600 dark:text-slate-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors">
             {t('totp.cancel')}
           </button>
-          <button
+          <button type="button"
             onClick={() => void handleDisable()}
             disabled={loading}
             className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"

@@ -104,7 +104,7 @@ function BackupPage() {
             >
               <Download size={14} />
             </a>
-            <button
+            <button type="button"
               onClick={() => {
                 if (confirm('Delete this backup export permanently?')) deleteBackup.mutate(b.filename)
               }}
@@ -128,7 +128,7 @@ function BackupPage() {
         <p className="text-sm text-muted">
           {t('adminBackup.exportDesc')}
         </p>
-        <button
+        <button type="button"
           onClick={() => createBackup.mutate()}
           disabled={createBackup.isPending}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
@@ -164,7 +164,7 @@ function BackupPage() {
             />
           </label>
           {restoreFile && (
-            <button
+            <button type="button"
               onClick={() => {
                 if (confirm(t('adminBackup.restoreConfirm'))) {
                   restoreBackup.mutate()

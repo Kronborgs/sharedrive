@@ -205,7 +205,7 @@ function SidebarDesktopPlayer({
             onClick={onToggleExpanded}
             expanded={playerExpanded}
           />
-          <button
+          <button type="button"
             onClick={playlist.clearPlaylist}
             className="p-0.5 text-zinc-300 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0"
             title={t('player.closePlayer')}
@@ -265,7 +265,7 @@ function SidebarDesktopPlayer({
         <div className="border-t border-zinc-100 dark:border-[#2d3148]">
           <div className="overflow-y-auto max-h-[180px] divide-y divide-zinc-50 dark:divide-[#2d3148]">
             {playlist.tracks.length === 0 && !playlist.isLoadingTracks ? (
-              <button
+              <button type="button"
                 onClick={onShowAddMusic}
                 className="w-full flex flex-col items-center justify-center gap-1.5 py-5 text-center hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors group"
               >
@@ -286,7 +286,7 @@ function SidebarDesktopPlayer({
                       isCurrent && 'bg-brand-50 dark:bg-brand-900/20',
                     )}
                   >
-                    <button
+                    <button type="button"
                       onClick={() => playlist.jumpTo(index)}
                       className="flex-1 min-w-0 flex items-center gap-1.5 text-left"
                     >
@@ -302,7 +302,7 @@ function SidebarDesktopPlayer({
                         {track.name}
                       </span>
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => { ignorePromise(playlist.removeTrack(track.id)) }}
                       className="shrink-0 p-0.5 text-zinc-200 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
                       title={t('player.removeTrack')}
@@ -317,7 +317,7 @@ function SidebarDesktopPlayer({
 
           {canAddMoreTracks && (
             <div className="border-t border-zinc-50 dark:border-[#2d3148]">
-              <button
+              <button type="button"
                 onClick={onShowAddMusic}
                 className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
               >
@@ -370,7 +370,7 @@ function SidebarBuildInfoModal({
               })}
             </p>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200"
             aria-label={t('action.close')}
@@ -423,7 +423,7 @@ function SidebarUserPanel({
 }>) {
   return (
     <div className="border-t border-zinc-200 dark:border-[#2d3148] p-2 relative">
-      <button
+      <button type="button"
         onClick={onToggleMenu}
         className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
       >
@@ -439,28 +439,28 @@ function SidebarUserPanel({
 
       {showUserMenu && (
         <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-lg py-1 z-50">
-          <button
+          <button type="button"
             onClick={onOpenTOTP}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
           >
             <ShieldCheck size={14} className={user?.totp_enabled ? 'text-green-500' : 'text-zinc-400'} />
             {user?.totp_enabled ? t('auth.2faEnabled') : t('auth.enable2fa')}
           </button>
-          <button
+          <button type="button"
             onClick={onToggleLocale}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
           >
             <span className="text-sm">{locale === 'da' ? '🇬🇧' : '🇩🇰'}</span>
             {locale === 'da' ? 'English' : 'Dansk'}
           </button>
-          <button
+          <button type="button"
             onClick={onOpenBuildInfo}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
           >
             <ScrollText size={14} className="text-zinc-400" />
             {t('buildInfo.title')}
           </button>
-          <button
+          <button type="button"
             onClick={onLogout}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
           >
@@ -514,7 +514,7 @@ function SidebarMobilePlayer({
               <Music size={14} className="text-brand-500 shrink-0" />
               <span className="font-semibold text-sm text-zinc-900 dark:text-slate-100 truncate">{playlist.activePlaylistName ?? 'Playlist'}</span>
             </div>
-            <button
+            <button type="button"
               onClick={() => onSetOpen(false)}
               className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200 shrink-0"
             >
@@ -575,7 +575,7 @@ function SidebarMobilePlayer({
                     isCurrent && 'bg-brand-50 dark:bg-brand-900/20',
                   )}
                 >
-                  <button
+                  <button type="button"
                     onClick={() => { playlist.jumpTo(index); onSetOpen(false) }}
                     className="flex-1 min-w-0 flex items-center gap-3 text-left"
                   >
@@ -589,7 +589,7 @@ function SidebarMobilePlayer({
                       {track.name}
                     </span>
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => { ignorePromise(playlist.removeTrack(track.id)) }}
                     className="p-1.5 text-zinc-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                   >
@@ -614,7 +614,7 @@ function SidebarMobilePlayer({
           fillClassName="block h-full bg-brand-500"
         />
         <div className="flex items-center gap-1.5 px-3 py-2">
-          <button
+          <button type="button"
             onClick={() => onSetOpen(!mobilePlayerOpen)}
             className="flex-1 min-w-0 flex items-center gap-2.5 text-left"
           >
@@ -639,7 +639,7 @@ function SidebarMobilePlayer({
             size={38}
           />
           <RetroButton onClick={playlist.next} disabled={!playlist.shuffle && playlist.currentIndex >= playlist.tracks.length - 1} icon={<svg width="12" height="12" viewBox="0 0 10 10" fill="currentColor"><rect x="8" y="1" width="2" height="8"/><polygon points="2,1 8,5 2,9"/></svg>} label={t('player.next')} size={32} />
-          <button
+          <button type="button"
             onClick={playlist.clearPlaylist}
             className="p-2 text-zinc-300 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0"
           >
@@ -740,7 +740,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
 
           {!playlist.activePlaylistId && !isGuest && (
             <div className="px-2 pb-2">
-              <button
+              <button type="button"
                 onClick={() => setShowAddMusic(true)}
                 className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] hover:text-zinc-900 dark:hover:text-slate-100"
               >
@@ -778,7 +778,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
             <>
               <div className="mx-4 border-t border-zinc-200 dark:border-[#2d3148] my-1" />
               <nav className="px-2 pb-3 space-y-0.5">
-                <button
+                <button type="button"
                   onClick={() => setShowWebDAV(true)}
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] hover:text-zinc-900 dark:hover:text-slate-100"
                 >

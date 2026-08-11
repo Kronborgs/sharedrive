@@ -202,7 +202,7 @@ function FileRow({
       <td className="pr-2">
         <div className="flex items-center justify-end gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity">
           {onQuickShare && (
-            <button
+            <button type="button"
               onClick={e => { e.stopPropagation(); onQuickShare(item) }}
               className="p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
               title="Share…"
@@ -210,7 +210,7 @@ function FileRow({
               <UserPlus size={14} />
             </button>
           )}
-          <button
+          <button type="button"
             ref={moreRef}
             onClick={e => { e.stopPropagation(); onContextMenu(item, moreRef.current!.getBoundingClientRect().left, moreRef.current!.getBoundingClientRect().bottom) }}
             className="p-1 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"

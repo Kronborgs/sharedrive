@@ -140,7 +140,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: Readonly<Pre
         <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148] shrink-0">
           {/* Prev / Next — fixed-width group so the filename never shifts */}
           <div className="flex items-center shrink-0">
-            <button
+            <button type="button"
               onClick={goPrev}
               disabled={!canNav}
               className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400 disabled:opacity-20 disabled:cursor-default"
@@ -148,7 +148,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: Readonly<Pre
             >
               <ChevronLeft size={16} />
             </button>
-            <button
+            <button type="button"
               onClick={goNext}
               disabled={!canNav}
               className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400 disabled:opacity-20 disabled:cursor-default"
@@ -169,7 +169,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: Readonly<Pre
             {t('action.download')}
           </a>
           {isPrintable && (
-            <button
+            <button type="button"
               onClick={handlePrint}
               className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
               title={t('preview.print')}
@@ -182,13 +182,13 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: Readonly<Pre
             confirmDelete ? (
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className="text-xs text-zinc-500 dark:text-slate-400 hidden sm:inline">{t('preview.deleteFile')}</span>
-                <button
+                <button type="button"
                   onClick={() => { setConfirmDelete(false); onDelete(currentItem) }}
                   className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors"
                 >
                   {t('action.delete')}
                 </button>
-                <button
+                <button type="button"
                   onClick={() => setConfirmDelete(false)}
                   className="px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-600 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                 >
@@ -196,7 +196,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: Readonly<Pre
                 </button>
               </div>
             ) : (
-              <button
+              <button type="button"
                 onClick={() => setConfirmDelete(true)}
                 className="shrink-0 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
                 title="Delete file"
@@ -205,7 +205,7 @@ export function PreviewModal({ item, siblings, onClose, onDelete }: Readonly<Pre
               </button>
             )
           )}
-          <button
+          <button type="button"
             onClick={onClose}
             className="shrink-0 p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-zinc-500 dark:text-slate-400"
           >
@@ -311,7 +311,7 @@ function ImageRenderer({ url, name, onDelete }: Readonly<{ url: string; name: st
         <span className="text-sm font-medium">{t('preview.imageLoadFailed')}</span>
         <span className="text-xs text-zinc-400 dark:text-zinc-500">{t('preview.imageMayBeCorrupt')}</span>
         {onDelete && (
-          <button
+          <button type="button"
             onClick={onDelete}
             className="mt-2 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors"
           >

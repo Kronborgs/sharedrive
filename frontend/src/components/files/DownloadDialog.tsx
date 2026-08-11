@@ -106,13 +106,13 @@ export function DownloadDialog({ ids, onClose }: Readonly<DownloadDialogProps>) 
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <button
+            <button type="button"
               onClick={onClose}
               className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted"
             >
               {t('download.cancel')}
             </button>
-            <button
+            <button type="button"
               onClick={() => prepare.mutate()}
               disabled={!canContinue}
               className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
@@ -135,7 +135,7 @@ export function DownloadDialog({ ids, onClose }: Readonly<DownloadDialogProps>) 
                 <code className="flex-1 text-sm font-mono text-zinc-900 dark:text-slate-100 select-all break-all">
                   {generatedPassword}
                 </code>
-                <button
+                <button type="button"
                   onClick={handleCopy}
                   className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-[#2d3148] text-zinc-500 shrink-0"
                   title={t('download.copyPwd')}
@@ -147,13 +147,13 @@ export function DownloadDialog({ ids, onClose }: Readonly<DownloadDialogProps>) 
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <button
+            <button type="button"
               onClick={onClose}
               className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted"
             >
               {t('download.cancel')}
             </button>
-            <button
+            <button type="button"
               onClick={handleDownload}
               className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
             >
@@ -184,7 +184,7 @@ export function DownloadDialog({ ids, onClose }: Readonly<DownloadDialogProps>) 
           <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">
             Download {ids.length} {ids.length !== 1 ? t('download.items') : t('download.item')}
           </h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] text-zinc-400">
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-[#2d3148] text-zinc-400">
             <X size={14} />
           </button>
         </div>

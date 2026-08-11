@@ -195,7 +195,7 @@ function ActiveShareRow({
     <li className="rounded-lg bg-zinc-50 dark:bg-[#0f1117] overflow-hidden">
       {/* Summary row */}
       <div className="flex items-center gap-2 p-2">
-        <button
+        <button type="button"
           onClick={() => setExpanded(v => !v)}
           className="flex-1 min-w-0 text-left"
         >
@@ -204,7 +204,7 @@ function ActiveShareRow({
             <p className="text-[10px] text-muted">{t('share.expiresAt', { when: formatDate(s.expires_at) })}</p>
           )}
         </button>
-        <button
+        <button type="button"
           onClick={() => setExpanded(v => !v)}
           className="p-1 rounded text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-300 transition-colors"
           title={expanded ? t('share.collapse') : t('share.editPermissions')}
@@ -212,7 +212,7 @@ function ActiveShareRow({
           {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         </button>
         {s.grantee_type === 'link' && onCopyLink && (
-          <button
+          <button type="button"
             onClick={onCopyLink}
             className="p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
             title={t('share.copyLink')}
@@ -220,7 +220,7 @@ function ActiveShareRow({
             {copied ? <Check size={13} /> : <Link size={13} />}
           </button>
         )}
-        <button
+        <button type="button"
           onClick={onRevoke}
           className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
           title={t('share.revoke')}
@@ -258,7 +258,7 @@ function ActiveShareRow({
               <p className="text-xs text-muted">{t('share.neverExpires')}</p>
             )}
           </div>
-          <button
+          <button type="button"
             onClick={() => {
               const expiresAt = hasExpiry && editExpiry ? new Date(editExpiry).toISOString() : null
               onUpdate(editPerms, expiresAt)
@@ -419,7 +419,7 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
             <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('share.title')}</h2>
             <p className="text-xs text-muted truncate max-w-[280px]" title={item.name}>{item.name}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors">
+          <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -427,7 +427,7 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
         {/* Tab bar */}
         <div className="flex border-b border-zinc-100 dark:border-[#2d3148] px-5">
           {(['user', 'group', 'link', 'webdav'] as ShareTargetType[]).map(tabType => (
-            <button
+            <button type="button"
               key={tabType}
               onClick={() => setTab(tabType)}
               className={`py-2.5 px-3 text-sm font-medium border-b-2 transition-colors ${
@@ -489,7 +489,7 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
                 </p>
                 <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
                   <span className="flex-1 text-xs font-mono text-zinc-900 dark:text-slate-100 break-all select-all">{davFileUrl}</span>
-                  <button
+                  <button type="button"
                     onClick={() => copyDav(davFileUrl, 'file')}
                     className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
                     title={t('share.webdavCopyUrl')}
@@ -504,7 +504,7 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
                 <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">{t('share.username')}</p>
                 <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
                   <span className="flex-1 text-xs font-mono text-zinc-900 dark:text-slate-100 select-all">{user?.email ?? ''}</span>
-                  <button
+                  <button type="button"
                     onClick={() => copyDav(user?.email ?? '', 'email')}
                     className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
                     title={t('share.webdavCopyEmail')}
@@ -536,14 +536,14 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
                   </p>
                   <div className="flex items-center gap-2 rounded border border-amber-200 dark:border-amber-700 bg-white dark:bg-[#0f1117] px-3 py-1.5">
                     <span className="flex-1 text-sm font-mono text-zinc-900 dark:text-slate-100 break-all select-all">{davRevealed.password}</span>
-                    <button
+                    <button type="button"
                       onClick={() => copyDav(davRevealed.password, 'newpwd')}
                       className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
                     >
                       {davCopied === 'newpwd' ? <Check size={13} /> : <Copy size={13} />}
                     </button>
                   </div>
-                  <button
+                  <button type="button"
                     onClick={() => setDavRevealed(null)}
                     className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
                   >
@@ -566,7 +566,7 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
                     className="flex-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                     onKeyDown={e => { if (e.key === 'Enter' && davPwdName.trim()) davCreatePwd.mutate(davPwdName.trim()) }}
                   />
-                  <button
+                  <button type="button"
                     onClick={() => { if (davPwdName.trim()) davCreatePwd.mutate(davPwdName.trim()) }}
                     disabled={!davPwdName.trim() || davCreatePwd.isPending}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
@@ -590,7 +590,7 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
                             {p.last_used_at ? t('share.lastUsedOn', { when: formatDate(p.last_used_at) }) : t('share.neverUsed')}
                           </p>
                         </div>
-                        <button
+                        <button type="button"
                           onClick={() => davRevokePwd.mutate(p.id)}
                           className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                           title={t('share.webdavDeleteTitle')}
@@ -636,7 +636,7 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
             )}
           </div>
 
-          <button
+          <button type="button"
             onClick={handleCreate}
             disabled={disableCreateShare}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"

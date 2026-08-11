@@ -220,7 +220,7 @@ export function AuditLogsPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-1">
-          <button
+          <button type="button"
             onClick={() => setPage(page - 1)}
             disabled={page === 1}
             className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm disabled:opacity-40 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
@@ -228,7 +228,7 @@ export function AuditLogsPage() {
             {t('audit.prev')}
           </button>
           <span className="text-sm text-muted px-2">{t('audit.pageOf', { page: String(page), total: String(totalPages) })}</span>
-          <button
+          <button type="button"
             onClick={() => setPage(page + 1)}
             disabled={page === totalPages}
             className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm disabled:opacity-40 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"

@@ -60,7 +60,7 @@ export function FolderPickerDialog({
     folderListContent = (
       <>
         {folders.map(folder => (
-          <button
+          <button type="button"
             key={folder.id}
             onClick={() => navigateInto(folder)}
             className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors text-left"
@@ -88,7 +88,7 @@ export function FolderPickerDialog({
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148]">
           <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{title}</h3>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 transition-colors"
           >
@@ -107,7 +107,7 @@ export function FolderPickerDialog({
                   {entry.name}
                 </span>
               ) : (
-                <button
+                <button type="button"
                   onClick={() => navigateTo(i)}
                   className="hover:text-zinc-700 dark:hover:text-slate-200 transition-colors flex items-center gap-1"
                 >
@@ -126,13 +126,13 @@ export function FolderPickerDialog({
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-zinc-100 dark:border-[#2d3148]">
-          <button
+          <button type="button"
             onClick={onClose}
             className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-muted hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
           >
             Cancel
           </button>
-          <button
+          <button type="button"
             onClick={() => onConfirm(currentFolderId)}
             className="px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
           >

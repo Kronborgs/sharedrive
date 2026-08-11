@@ -28,7 +28,7 @@ export function PwaInstallButton({ label, title, className, iconSize = 17 }: Rea
   if (!installPrompt || isStandalone()) return null
 
   return (
-    <button className={className} title={title} onClick={() => {
+    <button type="button" className={className} title={title} onClick={() => {
       installPrompt.prompt().then(() => {
         clearInstallPrompt()
         setInstallPrompt(null)

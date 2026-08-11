@@ -40,7 +40,7 @@ export function ShareTargetHint() {
           ? 'Del billeder hertil direkte fra Android-galleriet via Del-knappen.'
           : <>
               Installér som app — del billeder direkte hertil fra dit mobilgalleri.{' '}
-              <button
+              <button type="button"
                 onClick={() => {
                   const event = (window as Window & { __pwaInstallPrompt?: { prompt: () => void } }).__pwaInstallPrompt
                   if (event) event.prompt()
@@ -52,7 +52,7 @@ export function ShareTargetHint() {
             </>
         }
       </span>
-      <button
+      <button type="button"
         onClick={dismiss}
         className="shrink-0 p-0.5 text-brand-400 hover:text-brand-600 dark:hover:text-brand-200 transition-colors"
         title="Skjul"

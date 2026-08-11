@@ -115,7 +115,7 @@ export function ShareTargetDialog({
               Upload {files.length} {files.length === 1 ? 'fil' : 'filer'}
             </span>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-200 transition-colors">
+          <button type="button" onClick={onClose} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-200 transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -135,7 +135,7 @@ export function ShareTargetDialog({
           <p className="text-xs font-medium text-zinc-500 dark:text-slate-400 uppercase tracking-wide">
             Upload til mappe
           </p>
-          <button
+          <button type="button"
             onClick={() => setFolderPickerOpen(v => !v)}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors text-left"
           >
@@ -152,7 +152,7 @@ export function ShareTargetDialog({
                 {trail.map((entry, idx) => (
                   <span key={entry.id ?? entry.name} className="flex items-center gap-0.5 shrink-0">
                     {idx > 0 && <ChevronRight size={11} className="text-zinc-300 dark:text-slate-600" />}
-                    <button
+                    <button type="button"
                       onClick={() => browseTo(trail.slice(0, idx + 1))}
                       className="flex items-center gap-1 text-[11px] text-zinc-600 dark:text-slate-400 hover:text-zinc-900 dark:hover:text-slate-100 transition-colors"
                     >
@@ -164,7 +164,7 @@ export function ShareTargetDialog({
               </div>
 
               {/* "Upload here" row — always at top */}
-              <button
+              <button type="button"
                 onClick={() => selectFolder(pickerFolderId, trail[trail.length - 1].name)}
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/10 transition-colors border-b border-zinc-100 dark:border-[#2d3148]"
               >
@@ -175,7 +175,7 @@ export function ShareTargetDialog({
               {/* Sub-folders */}
               <div className="max-h-36 overflow-y-auto">
                 {folderBrowserEmptyState ?? folders.map(f => (
-                  <button
+                  <button type="button"
                     key={f.id}
                     onClick={() => browseTo([...trail, { id: f.id, name: f.name }])}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors border-b border-zinc-50 dark:border-[#2d3148]/40 last:border-0"
@@ -192,13 +192,13 @@ export function ShareTargetDialog({
 
         {/* Actions */}
         <div className="flex items-center gap-2 px-4 py-3">
-          <button
+          <button type="button"
             onClick={onClose}
             className="flex-1 px-4 py-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-sm text-zinc-600 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
           >
             Annullér
           </button>
-          <button
+          <button type="button"
             onClick={() => { onUpload(files, targetFolderId); onClose() }}
             className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors"
           >

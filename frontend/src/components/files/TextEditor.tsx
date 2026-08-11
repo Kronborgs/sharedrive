@@ -206,7 +206,7 @@ export function TextEditor({ item, onClose }: Readonly<Props>) {
         )}
 
         {/* Word wrap toggle */}
-        <button
+        <button type="button"
           onClick={() => setWordWrap(w => !w)}
           className={`p-1.5 rounded-lg transition-colors ${
             wordWrap
@@ -220,7 +220,7 @@ export function TextEditor({ item, onClose }: Readonly<Props>) {
 
         {/* Save */}
         {!readOnly && (
-          <button
+          <button type="button"
             onClick={() => saveMutation.mutate()}
             disabled={!dirty || saveMutation.isPending}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-xs font-medium transition-colors"
@@ -236,7 +236,7 @@ export function TextEditor({ item, onClose }: Readonly<Props>) {
 
         {/* Revert */}
         {dirty && (
-          <button
+          <button type="button"
             onClick={handleRevert}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-700 text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
             title={t('editor.revertTitle')}
@@ -247,7 +247,7 @@ export function TextEditor({ item, onClose }: Readonly<Props>) {
         )}
 
         {/* Close */}
-        <button
+        <button type="button"
           onClick={handleClose}
           className="p-1.5 rounded-lg hover:bg-zinc-800 transition-colors text-zinc-400 hover:text-zinc-200"
         >
@@ -268,7 +268,7 @@ export function TextEditor({ item, onClose }: Readonly<Props>) {
             <p className="text-sm">
               {error instanceof Error ? error.message : t('editor.loadFailed')}
             </p>
-            <button
+            <button type="button"
               onClick={handleClose}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-700 text-sm font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
             >

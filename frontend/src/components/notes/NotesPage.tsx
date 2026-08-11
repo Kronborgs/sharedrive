@@ -60,7 +60,7 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
         {view === 'active' && (
           <div className="flex flex-wrap gap-2">
             <NotesInstallButton />
-            <button className="notes-primary-button" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
+            <button type="button" className="notes-primary-button" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
               <Plus size={17} /> {t('notes.newNote' as never)}
             </button>
           </div>
@@ -83,7 +83,7 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
       <div className="notes-grid">
         {notes.map(note => (
           <article key={note.id} className="notes-card border-t-brand-500">
-            <button className="min-h-32 w-full text-left" onClick={() => { navigate({ to: '/notes/$id', params: { id: note.id }, search: { deleted: view === 'trash' || undefined } }).catch(() => undefined) }}>
+            <button type="button" className="min-h-32 w-full text-left" onClick={() => { navigate({ to: '/notes/$id', params: { id: note.id }, search: { deleted: view === 'trash' || undefined } }).catch(() => undefined) }}>
               <div className="mb-3 flex items-start justify-between gap-3">
                 <h2 className="line-clamp-2 font-semibold text-zinc-900 dark:text-zinc-100">{note.title || t('notes.untitled' as never)}</h2>
                 {note.is_pinned && <Pin size={15} className="shrink-0 fill-brand-400 text-brand-600" aria-label={t('notes.pinned' as never)} />}
@@ -99,8 +99,8 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
             <footer className="mt-4 flex items-center justify-between border-t border-zinc-100 pt-3 text-xs text-muted dark:border-zinc-800">
               <time dateTime={note.updated_at}>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(note.updated_at))}</time>
               <div className="flex gap-1">
-                {view === 'trash' && <button className="notes-icon-button" title={t('action.restore')} onClick={() => noteAction.mutate({ note, action: 'restore' })}><Archive size={15} /></button>}
-                <button className="notes-icon-button text-red-600" title={view === 'trash' ? t('ctx.delete') : t('ctx.trash')} onClick={() => noteAction.mutate({ note, action: 'delete' })}><Trash2 size={15} /></button>
+                {view === 'trash' && <button type="button" className="notes-icon-button" title={t('action.restore')} onClick={() => noteAction.mutate({ note, action: 'restore' })}><Archive size={15} /></button>}
+                <button type="button" className="notes-icon-button text-red-600" title={view === 'trash' ? t('ctx.delete') : t('ctx.trash')} onClick={() => noteAction.mutate({ note, action: 'delete' })}><Trash2 size={15} /></button>
               </div>
             </footer>
           </article>

@@ -25,7 +25,7 @@ function trimTrailingSlashes(input: string): string {
 function CopyButton({ text, copyKey, copied, onCopy }: Readonly<{ text: string; copyKey: string; copied: string | null; onCopy: (t: string, k: string) => void }>) {
   const { t } = useI18n()
   return (
-    <button
+    <button type="button"
       onClick={() => onCopy(text, copyKey)}
       className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
       title={t('webdav.copy')}
@@ -133,7 +133,7 @@ export function WebDAVDialog({ onClose }: Props) {
             <HardDrive size={16} className="text-brand-500" />
             <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('webdav.title')}</h2>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors">
+          <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -143,7 +143,7 @@ export function WebDAVDialog({ onClose }: Props) {
           {/* Platform tabs */}
           <div className="flex gap-1 rounded-lg bg-zinc-100 dark:bg-[#0f1117] p-1">
             {tabs.map(t => (
-              <button
+              <button type="button"
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
@@ -190,7 +190,7 @@ export function WebDAVDialog({ onClose }: Props) {
 
               {/* Fallback: PowerShell */}
               <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148]">
-                <button
+                <button type="button"
                   onClick={() => setShowPSFallback(v => !v)}
                   className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-medium text-zinc-600 dark:text-slate-400 hover:text-zinc-900 dark:hover:text-slate-200 transition-colors"
                 >
@@ -267,7 +267,7 @@ export function WebDAVDialog({ onClose }: Props) {
                 <span className="flex-1 text-sm font-mono text-zinc-900 dark:text-slate-100 break-all">{revealed.password}</span>
                 <CopyButton text={revealed.password} copyKey="pwd" copied={copied} onCopy={copy} />
               </div>
-              <button
+              <button type="button"
                 onClick={() => setRevealed(null)}
                 className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
               >
@@ -294,7 +294,7 @@ export function WebDAVDialog({ onClose }: Props) {
                 className="flex-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) create.mutate(newName.trim()) }}
               />
-              <button
+              <button type="button"
                 onClick={() => { if (newName.trim()) create.mutate(newName.trim()) }}
                 disabled={!newName.trim() || create.isPending}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
@@ -319,7 +319,7 @@ export function WebDAVDialog({ onClose }: Props) {
                         {' · '}{t('webdav.createdOn', { when: formatDate(p.created_at) })}
                       </p>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => revoke.mutate(p.id)}
                       className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                       title={t('webdav.revoke')}

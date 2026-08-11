@@ -100,7 +100,7 @@ export function AddMusicDialog({ onClose, onAdd }: Props) {
               {t('player.addMusic' as any)}
             </span>
           </div>
-          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200">
+          <button type="button" onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-slate-200">
             <X size={16} />
           </button>
         </div>
@@ -110,7 +110,7 @@ export function AddMusicDialog({ onClose, onAdd }: Props) {
           {breadcrumbs.map((crumb, idx) => (
             <span key={breadcrumbs.slice(0, idx + 1).map(c => `${c.id ?? 'root'}:${c.name}`).join('/')} className="flex items-center gap-1">
               {idx > 0 && <ChevronRight size={10} className="text-zinc-300" />}
-              <button
+              <button type="button"
                 onClick={() => navigateTo(idx)}
                 className={cn(
                   'hover:text-brand-600 dark:hover:text-brand-400 transition-colors',
@@ -133,7 +133,7 @@ export function AddMusicDialog({ onClose, onAdd }: Props) {
             <>
               {/* Folders */}
               {folders.map(folder => (
-                <button
+                <button type="button"
                   key={folder.id}
                   onClick={() => openFolder(folder)}
                   className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
@@ -148,7 +148,7 @@ export function AddMusicDialog({ onClose, onAdd }: Props) {
               {audioFiles.length > 0 && (
                 <>
                   {audioFiles.length > 1 && (
-                    <button
+                    <button type="button"
                       onClick={selectAll}
                       className="w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
@@ -163,7 +163,7 @@ export function AddMusicDialog({ onClose, onAdd }: Props) {
                     </button>
                   )}
                   {audioFiles.map(file => (
-                    <button
+                    <button type="button"
                       key={file.id}
                       onClick={() => toggleFile(file.id)}
                       className={cn(
@@ -212,13 +212,13 @@ export function AddMusicDialog({ onClose, onAdd }: Props) {
             {selected.size > 0 ? `${selected.size} valgt` : ''}
           </span>
           <div className="flex items-center gap-2">
-            <button
+            <button type="button"
               onClick={onClose}
               className="px-3 py-1.5 text-sm text-zinc-600 dark:text-slate-400 hover:text-zinc-900 dark:hover:text-slate-100 transition-colors"
             >
               {t('action.cancel' as any)}
             </button>
-            <button
+            <button type="button"
               onClick={confirm}
               disabled={selected.size === 0}
               className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-sm font-medium transition-colors"

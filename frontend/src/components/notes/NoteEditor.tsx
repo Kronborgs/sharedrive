@@ -153,7 +153,7 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
   return (
     <section className="notes-editor mx-auto max-w-4xl animate-fade-in">
       <header className="mb-4 flex items-center justify-between gap-3 border-b border-zinc-200 pb-3 dark:border-zinc-800">
-        <button className="notes-icon-button" title={t('action.close')} onClick={() => {
+        <button type="button" className="notes-icon-button" title={t('action.close')} onClick={() => {
           if (guest) {
             history.back()
             return
@@ -162,9 +162,9 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
         }}><ArrowLeft size={19} /></button>
         <div className="flex items-center gap-1.5">
           <span className={`mr-2 text-xs ${saveState === 'error' || saveState === 'conflict' ? 'text-red-600' : 'text-muted'}`} aria-live="polite">{saveLabel(saveState, t)}</span>
-          {!guest && !includeDeleted && <button className="notes-icon-button" title={t('notes.pinned' as never)} onClick={() => patchDraft({ is_pinned: !draft.is_pinned })}><Pin size={18} className={draft.is_pinned ? 'fill-brand-400 text-brand-600' : ''} /></button>}
-          {!guest && !includeDeleted && <button className="notes-icon-button" title={t('notes.archive' as never)} onClick={() => patchDraft({ is_archived: !draft.is_archived })}><Archive size={18} /></button>}
-          {!guest && !includeDeleted && <button className="notes-icon-button" title={t('action.share')} onClick={() => setShareOpen(true)}><Share2 size={18} /></button>}
+          {!guest && !includeDeleted && <button type="button" className="notes-icon-button" title={t('notes.pinned' as never)} onClick={() => patchDraft({ is_pinned: !draft.is_pinned })}><Pin size={18} className={draft.is_pinned ? 'fill-brand-400 text-brand-600' : ''} /></button>}
+          {!guest && !includeDeleted && <button type="button" className="notes-icon-button" title={t('notes.archive' as never)} onClick={() => patchDraft({ is_archived: !draft.is_archived })}><Archive size={18} /></button>}
+          {!guest && !includeDeleted && <button type="button" className="notes-icon-button" title={t('action.share')} onClick={() => setShareOpen(true)}><Share2 size={18} /></button>}
         </div>
       </header>
 
@@ -178,7 +178,7 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
       {draft.type === 'text' ? (
         <div>
           <textarea aria-label={t('notes.content' as never)} value={draft.content} readOnly={!canEdit} maxLength={100000} onChange={event => patchDraft({ content: event.target.value })} placeholder={t('notes.startWriting' as never)} className="min-h-[48vh] w-full resize-none bg-transparent text-base leading-7 outline-none" />
-          {!guest && canEdit && <button className="notes-secondary-button mt-4" onClick={() => { convertToChecklist().catch(() => setSaveState('error')) }}><CheckSquare size={17} />{t('notes.addChecklist' as never)}</button>}
+          {!guest && canEdit && <button type="button" className="notes-secondary-button mt-4" onClick={() => { convertToChecklist().catch(() => setSaveState('error')) }}><CheckSquare size={17} />{t('notes.addChecklist' as never)}</button>}
         </div>
       ) : (
         <div className="space-y-2">
@@ -198,14 +198,14 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
                   else itemMutation.mutate({ action: 'delete', itemId: item.id })
                 }
               }} className={`min-w-0 flex-1 bg-transparent py-2 outline-none ${item.is_checked ? 'line-through opacity-55' : ''}`} />
-              {canEdit && <div className="flex opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">{!isDraftItem(item) && <><button className="notes-icon-button" title={t('notes.moveUp' as never)} onClick={() => { moveItem(item.id, -1).catch(() => setSaveState('error')) }}><ArrowUp size={15} /></button><button className="notes-icon-button" title={t('notes.moveDown' as never)} onClick={() => { moveItem(item.id, 1).catch(() => setSaveState('error')) }}><ArrowDown size={15} /></button></>}<button className="notes-icon-button text-red-600" title={t('action.delete')} onClick={() => isDraftItem(item) ? setDraft(current => current ? removeItem(current, item.id) : current) : itemMutation.mutate({ action: 'delete', itemId: item.id })}><X size={16} /></button></div>}
+              {canEdit && <div className="flex opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">{!isDraftItem(item) && <><button type="button" className="notes-icon-button" title={t('notes.moveUp' as never)} onClick={() => { moveItem(item.id, -1).catch(() => setSaveState('error')) }}><ArrowUp size={15} /></button><button type="button" className="notes-icon-button" title={t('notes.moveDown' as never)} onClick={() => { moveItem(item.id, 1).catch(() => setSaveState('error')) }}><ArrowDown size={15} /></button></>}<button type="button" className="notes-icon-button text-red-600" title={t('action.delete')} onClick={() => isDraftItem(item) ? setDraft(current => current ? removeItem(current, item.id) : current) : itemMutation.mutate({ action: 'delete', itemId: item.id })}><X size={16} /></button></div>}
             </div>
           ))}
-      {canEdit && <button className="mt-4 flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400" onClick={() => addDraftItem()}><Plus size={17} />{t('notes.addItem' as never)}</button>}
+      {canEdit && <button type="button" className="mt-4 flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400" onClick={() => addDraftItem()}><Plus size={17} />{t('notes.addItem' as never)}</button>}
         </div>
       )}
 
-      {guest && <button className="mt-10 flex items-center gap-2 text-sm text-red-600" onClick={async () => { await api.post('/api/v1/guest/logout'); location.assign('/') }}><Trash2 size={16} />{t('notes.closeGuest' as never)}</button>}
+      {guest && <button type="button" className="mt-10 flex items-center gap-2 text-sm text-red-600" onClick={async () => { await api.post('/api/v1/guest/logout'); location.assign('/') }}><Trash2 size={16} />{t('notes.closeGuest' as never)}</button>}
       {shareOpen && <NoteShareDialog note={draft} onClose={() => setShareOpen(false)} />}
     </section>
   )

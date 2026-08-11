@@ -250,7 +250,7 @@ function StoragePage() {
           JPEG/PNG/GIF/WebP, parses the full image header to catch files with valid magic bytes
           but corrupt data after them.
         </p>
-        <button
+        <button type="button"
           onClick={startScan}
           disabled={scanFetching}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
@@ -313,7 +313,7 @@ function StoragePage() {
           Walks the physical storage directory and finds blobs that have no matching record in the
           database. These can be safely deleted to free disk space, or restored to a folder for review.
         </p>
-        <button
+        <button type="button"
           onClick={startOrphanScan}
           disabled={orphanFetching}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
@@ -351,7 +351,7 @@ function StoragePage() {
           onDelete={() => purgeOrphans.mutate(Array.from(selectedOrphan))}
           isDeleting={purgeOrphans.isPending}
           extraActions={
-            <button
+            <button type="button"
               onClick={() => restoreOrphans.mutate(Array.from(selectedOrphan))}
               disabled={restoreOrphans.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
@@ -406,7 +406,7 @@ function SchedulePanel({ value, onChange, onSave, isSaving, lastRun }: Readonly<
 
   return (
     <div className="border border-zinc-200 dark:border-[#2d3148] rounded-lg overflow-hidden">
-      <button
+      <button type="button"
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-3 py-2 text-xs text-zinc-500 dark:text-slate-400 hover:bg-zinc-50 dark:hover:bg-[#1e2130] transition-colors"
       >
@@ -504,7 +504,7 @@ function SchedulePanel({ value, onChange, onSave, isSaving, lastRun }: Readonly<
             </div>
           )}
 
-          <button
+          <button type="button"
             onClick={onSave}
             disabled={isSaving}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
@@ -562,7 +562,7 @@ function FileTable({
         {selected.size > 0 && (
           <div className="flex items-center gap-2">
             {extraActions}
-            <button
+            <button type="button"
               onClick={onDelete}
               disabled={isDeleting}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
@@ -593,7 +593,7 @@ function FileTable({
               </td>
               <td className="px-4 py-2 font-medium text-zinc-800 dark:text-slate-200 truncate max-w-xs" title={row.col1Title}>
                 {onPreview ? (
-                  <button
+                  <button type="button"
                     onClick={() => onPreview(row.id)}
                     className="flex items-center gap-1.5 text-left hover:text-brand-500 transition-colors group"
                   >

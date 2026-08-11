@@ -632,7 +632,7 @@ function FilesPage() {
           {selected.size > 0 ? (
             /* ── Bulk action bar ─────────────────────────────── */
             <>
-              <button onClick={() => setSelected(new Set())} className="p-1 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 transition-colors" title="Clear selection">
+              <button type="button" onClick={() => setSelected(new Set())} className="p-1 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 transition-colors" title="Clear selection">
                 <X size={16} />
               </button>
               <span className="text-sm font-medium text-zinc-900 dark:text-slate-100 flex-1">
@@ -642,7 +642,7 @@ function FilesPage() {
                 {selected.size === 1 && (() => {
                   const item = sorted.find(f => selected.has(f.id))
                   return item ? (
-                    <button
+                    <button type="button"
                       onClick={() => setShareItem(item)}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                       title="Del"
@@ -652,7 +652,7 @@ function FilesPage() {
                     </button>
                   ) : null
                 })()}
-                <button
+                <button type="button"
                   onClick={() => setBulkMoveOpen(true)}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                   title={t('action.move')}
@@ -660,7 +660,7 @@ function FilesPage() {
                   <MoveRight size={12} />
                   <span className="hidden sm:inline">{t('action.move')}</span>
                 </button>
-                <button
+                <button type="button"
                   onClick={() => { ignorePromise(handleBulkBackup()) }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                   title={t('nav.backup')}
@@ -668,14 +668,14 @@ function FilesPage() {
                   <HardDrive size={12} />
                   <span className="hidden sm:inline">Backup</span>
                 </button>
-                <button
+                <button type="button"
                   onClick={handleBulkDownload}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                 >
                   <Download size={12} />
                   <span className="hidden sm:inline">Download</span>
                 </button>
-                <button
+                <button type="button"
                   onClick={() => { ignorePromise(handleCreatePlaylist()) }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                   title="Opret M3U afspilningsliste fra valgte lydfiler"
@@ -683,7 +683,7 @@ function FilesPage() {
                   <ListMusic size={12} />
                   <span className="hidden sm:inline">{t('files.playlist')}</span>
                 </button>
-                <button
+                <button type="button"
                   onClick={() => { ignorePromise(handleBulkTrash()) }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-900/40 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 >
@@ -696,7 +696,7 @@ function FilesPage() {
             /* ── Normal toolbar ──────────────────────────────── */
             <div className="flex w-full flex-col gap-1.5 lg:flex-row lg:items-center">
               <nav className="flex min-w-0 items-center gap-1 text-sm lg:flex-1">
-                <button
+                <button type="button"
                   onClick={() => ignorePromise(navigate({ to: '/files', search: {} }))}
                   className="flex items-center gap-1 text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors shrink-0"
                 >
@@ -706,7 +706,7 @@ function FilesPage() {
                 {breadcrumbs?.map(bc => (
                   <span key={bc.id} className="flex items-center gap-1 min-w-0">
                     <ChevronRight size={13} className="text-zinc-300 dark:text-slate-600 shrink-0" />
-                    <button
+                    <button type="button"
                       onClick={() => ignorePromise(navigate({ to: '/files', search: { folder: bc.id } }))}
                       className="text-muted hover:text-zinc-900 dark:hover:text-slate-100 transition-colors truncate max-w-[140px] sm:max-w-[160px]"
                     >
@@ -725,21 +725,21 @@ function FilesPage() {
                 {/* Folder actions — desktop only (hidden on mobile) */}
                 {folderId && currentFolderItem && (
                   <>
-                    <button
+                    <button type="button"
                       onClick={() => setShareItem(currentFolderItem)}
                       className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
                       <Share2 size={12} />
                       {t('action.share')}
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => { setRenameId(folderId); setRenameName(currentFolderItem.name) }}
                       className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
                       <Pencil size={12} />
                       {t('action.rename')}
                     </button>
-                    <button
+                    <button type="button"
                       onClick={async () => {
                         if (!confirm(`Move "${currentFolderItem.name}" to trash?`)) return
                         try {
@@ -784,7 +784,7 @@ function FilesPage() {
                 </label>
 
                 {/* New folder — desktop only */}
-                <button
+                <button type="button"
                   onClick={() => { const n = window.prompt('Folder name:'); if (n?.trim()) createFolder.mutate(n.trim()) }}
                   className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                 >
@@ -794,7 +794,7 @@ function FilesPage() {
 
                 {/* New document dropdown — desktop only */}
                 <div className="relative hidden lg:block">
-                    <button
+                    <button type="button"
                       onClick={() => setNewDocOpen(v => !v)}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-xs font-medium text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
@@ -808,7 +808,7 @@ function FilesPage() {
                           { type: 'cell' as const,  icon: '📊', labelKey: 'doc.excel' as const,      nameKey: 'doc.excelName' as const,      ext: '.xlsx' },
                           { type: 'slide' as const, icon: '📑', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx' },
                         ] as const).map(o => (
-                          <button
+                          <button type="button"
                             key={o.type}
                             onClick={() => { createDocument.mutate({ type: o.type, name: `${t(o.nameKey)}${o.ext}` }) }}
                             disabled={createDocument.isPending}
@@ -824,7 +824,7 @@ function FilesPage() {
                           { icon: '📋', labelKey: 'doc.markdown' as const,  nameKey: 'doc.markdownName' as const,  ext: '.md' },
                           { icon: '{ }', labelKey: 'doc.jsonFile' as const,  nameKey: 'doc.jsonFileName' as const,  ext: '.json' },
                         ] as const).map(o => (
-                          <button
+                          <button type="button"
                             key={o.ext}
                             onClick={() => { createTextFile.mutate({ name: `${t(o.nameKey)}${o.ext}` }) }}
                             disabled={createTextFile.isPending}
@@ -840,7 +840,7 @@ function FilesPage() {
 
                 {/* Compact actions for phones and narrow tablets */}
                 <div className="lg:hidden" ref={mobileMenuRef}>
-                  <button
+                  <button type="button"
                     onClick={() => setMobileActionsOpen(v => !v)}
                     className="flex items-center p-1.5 rounded-lg border border-zinc-200 dark:border-[#2d3148] text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     title="More actions"
@@ -851,8 +851,8 @@ function FilesPage() {
 
                 {/* View toggle */}
                 <div className="flex items-center rounded-lg border border-zinc-200 dark:border-[#2d3148] overflow-hidden">
-                  <button onClick={() => setView('list')} className={`p-1.5 transition-colors ${view === 'list' ? 'bg-zinc-100 dark:bg-[#2d3148] text-zinc-900 dark:text-slate-100' : 'text-zinc-400 hover:text-zinc-600'}`} title="List view"><LayoutList size={14} /></button>
-                  <button onClick={() => setView('grid')} className={`p-1.5 transition-colors ${view === 'grid' ? 'bg-zinc-100 dark:bg-[#2d3148] text-zinc-900 dark:text-slate-100' : 'text-zinc-400 hover:text-zinc-600'}`} title="Grid view"><LayoutGrid size={14} /></button>
+                  <button type="button" onClick={() => setView('list')} className={`p-1.5 transition-colors ${view === 'list' ? 'bg-zinc-100 dark:bg-[#2d3148] text-zinc-900 dark:text-slate-100' : 'text-zinc-400 hover:text-zinc-600'}`} title="List view"><LayoutList size={14} /></button>
+                  <button type="button" onClick={() => setView('grid')} className={`p-1.5 transition-colors ${view === 'grid' ? 'bg-zinc-100 dark:bg-[#2d3148] text-zinc-900 dark:text-slate-100' : 'text-zinc-400 hover:text-zinc-600'}`} title="Grid view"><LayoutGrid size={14} /></button>
                 </div>
               </div>
             </div>
@@ -877,7 +877,7 @@ function FilesPage() {
                 <div className="w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-600" />
               </div>
               <div className="overflow-y-auto pb-6">
-                <button
+                <button type="button"
                   onClick={() => { setMobileActionsOpen(false); const n = window.prompt('Folder name:'); if (n?.trim()) createFolder.mutate(n.trim()) }}
                   className="flex w-full items-center gap-3 px-5 py-3.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                 >
@@ -892,7 +892,7 @@ function FilesPage() {
                   { type: 'cell' as const,  icon: '📊', labelKey: 'doc.excel' as const,      nameKey: 'doc.excelName' as const,      ext: '.xlsx' },
                   { type: 'slide' as const, icon: '📑', labelKey: 'doc.powerpoint' as const, nameKey: 'doc.powerpointName' as const, ext: '.pptx' },
                 ] as const).map(o => (
-                  <button
+                  <button type="button"
                     key={o.type}
                     onClick={() => { setMobileActionsOpen(false); createDocument.mutate({ type: o.type, name: `${t(o.nameKey)}${o.ext}` }) }}
                     disabled={createDocument.isPending}
@@ -907,7 +907,7 @@ function FilesPage() {
                   { icon: '📋', labelKey: 'doc.markdown' as const,  nameKey: 'doc.markdownName' as const,  ext: '.md' },
                   { icon: '{ }', labelKey: 'doc.jsonFile' as const,  nameKey: 'doc.jsonFileName' as const,  ext: '.json' },
                 ] as const).map(o => (
-                  <button
+                  <button type="button"
                     key={o.ext}
                     onClick={() => { setMobileActionsOpen(false); createTextFile.mutate({ name: `${t(o.nameKey)}${o.ext}` }) }}
                     disabled={createTextFile.isPending}
@@ -921,14 +921,14 @@ function FilesPage() {
                   <>
                     <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-4 my-1" />
                     <p className="px-5 py-1.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">{currentFolderItem.name}</p>
-                    <button
+                    <button type="button"
                       onClick={() => { setMobileActionsOpen(false); setShareItem(currentFolderItem) }}
                       className="flex w-full items-center gap-3 px-5 py-3.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
                       <Share2 size={17} />
                       {t('files.shareFolder')}
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => { setMobileActionsOpen(false); setRenameId(folderId); setRenameName(currentFolderItem.name) }}
                       className="flex w-full items-center gap-3 px-5 py-3.5 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
                     >
@@ -936,7 +936,7 @@ function FilesPage() {
                       {t('files.renameFolder')}
                     </button>
                     <div className="h-px bg-zinc-100 dark:bg-[#2d3148] mx-4 my-1" />
-                    <button
+                    <button type="button"
                       onClick={async () => {
                         setMobileActionsOpen(false)
                         if (!confirm(`Move "${currentFolderItem.name}" to trash?`)) return
@@ -1065,7 +1065,7 @@ function FilesPage() {
               </p>
             </div>
             <div className="flex flex-col gap-2">
-              <button
+              <button type="button"
                 onClick={() => ignorePromise(doCreateFolderPlaylist(
                   folderPlaylistJob.folder,
                   folderPlaylistJob.audioFiles,
@@ -1076,7 +1076,7 @@ function FilesPage() {
               >
                 {t('playlist.first50')}
               </button>
-              <button
+              <button type="button"
                 onClick={() => ignorePromise(doCreateFolderPlaylist(
                   folderPlaylistJob.folder,
                   folderPlaylistJob.audioFiles,
@@ -1087,7 +1087,7 @@ function FilesPage() {
               >
                 {t('playlist.random50')}
               </button>
-              <button
+              <button type="button"
                 onClick={() => setFolderPlaylistJob(null)}
                 className="w-full px-4 py-2 rounded-lg text-sm text-muted hover:text-zinc-700 dark:hover:text-slate-200 transition-colors"
               >

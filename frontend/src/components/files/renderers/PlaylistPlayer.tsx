@@ -163,7 +163,7 @@ export function PlaylistPlayer({ fileId }: Readonly<PlaylistPlayerProps>) {
       {/* Track list */}
       <div className="flex-1 overflow-y-auto divide-y divide-zinc-100 dark:divide-[#2d3148]">
         {tracks.map((track, i) => (
-          <button
+          <button type="button"
             key={track.id}
             onClick={() => {
               if (i === currentIndex) {

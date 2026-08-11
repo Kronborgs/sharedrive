@@ -16,7 +16,7 @@ export function AdminBanner() {
           __html: t('banner.adminSession', { user: `<strong>${targetUser}</strong>` }),
         }}
       />
-      <button
+      <button type="button"
         onClick={dismiss}
         aria-label={t('banner.dismiss')}
         className="ml-auto p-0.5 rounded hover:bg-amber-600/40 dark:hover:bg-amber-700/40 transition-colors"

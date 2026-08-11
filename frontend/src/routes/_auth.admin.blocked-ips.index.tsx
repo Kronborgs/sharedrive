@@ -98,7 +98,7 @@ function BlockedIPsPage() {
                 </td>
                 <td className="px-4 py-3 text-xs text-muted">{expiresText}</td>
                 <td className="px-4 py-3 text-right">
-                  <button
+                  <button type="button"
                     onClick={() => unblock.mutate(b.ip)}
                     disabled={unblock.isPending}
                     className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
@@ -130,7 +130,7 @@ function BlockedIPsPage() {
               <td className="px-4 py-3 text-muted text-xs">{entry.description || '—'}</td>
               <td className="px-4 py-3 text-xs text-muted">{formatDate(entry.created_at)}</td>
               <td className="px-4 py-3 text-right">
-                <button
+                <button type="button"
                   onClick={() => removeWhitelist.mutate(entry.id)}
                   disabled={removeWhitelist.isPending}
                   className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
@@ -183,7 +183,7 @@ function BlockedIPsPage() {
             placeholder={t('blocked.descPlaceholder')}
             className="flex-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
-          <button
+          <button type="button"
             onClick={() => addWhitelist.mutate()}
             disabled={!newCIDR || addWhitelist.isPending}
             className="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"

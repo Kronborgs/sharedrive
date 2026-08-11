@@ -44,6 +44,7 @@ import (
 
 const (
 	filesRoute             = "/api/v1/files"
+	filesUploadRoute       = "/api/v1/files/upload"
 	fileByIDRoute          = "/api/v1/files/{id}"
 	backupPasswordRoute    = "/api/v1/backup/password"
 	backupBuddyConfigRoute = "/api/v1/backup/buddy/config"
@@ -361,7 +362,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Body != nil &&
 				!strings.HasPrefix(r.URL.Path, "/upload/") &&
-				!(r.URL.Path == filesRoute && r.Method == http.MethodPost) &&
+				!(r.URL.Path == filesUploadRoute && r.Method == http.MethodPost) &&
 				r.URL.Path != "/api/v1/backup/buddy/receive" {
 				r.Body = http.MaxBytesReader(w, r.Body, 4<<20) // 4 MB
 			}

@@ -138,4 +138,14 @@ describe('performMultipartUpload', () => {
     expect(update).toHaveBeenLastCalledWith({ status: 'error', error: 'network failed' })
     expect(refresh).not.toHaveBeenCalled()
   })
+
+  it('uses a stable message for non-Error failures', async () => {
+    const update = vi.fn()
+    await performMultipartUpload({ file: new File(['data'], 'report.txt') }, null, {
+      post: vi.fn().mockRejectedValue('network failed'),
+      update,
+      refresh: vi.fn(),
+    })
+    expect(update).toHaveBeenLastCalledWith({ status: 'error', error: 'Upload failed' })
+  })
 })

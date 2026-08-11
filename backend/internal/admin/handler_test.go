@@ -1,6 +1,29 @@
 package admin
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
+
+func TestPublicSettingsResponse(t *testing.T) {
+	t.Parallel()
+
+	kv := map[string]string{
+		"direct_upload_url": " https://upload.example.com/ ",
+		"onlyoffice_url":    "https://office.example.com",
+	}
+	want := map[string]any{
+		"direct_upload_url":      "https://upload.example.com/",
+		"direct_uploads_enabled": true,
+		"upload_endpoint":        "https://upload.example.com/upload/",
+		"onlyoffice_url":         "https://office.example.com",
+		"playlist_max_tracks":    250,
+	}
+
+	if got := publicSettingsResponse(kv, 250); !reflect.DeepEqual(got, want) {
+		t.Fatalf("publicSettingsResponse() = %#v, want %#v", got, want)
+	}
+}
 
 func TestDirectUploadPublicSettings(t *testing.T) {
 	t.Parallel()

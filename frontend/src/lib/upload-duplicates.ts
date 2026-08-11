@@ -1,5 +1,6 @@
 import { api } from '@/lib/api'
 import type { UploadRequest } from '@/components/files/UploadZone'
+import { createClientId } from '@/lib/client-id'
 
 export interface UploadConflictPair {
   incoming: UploadRequest
@@ -72,7 +73,7 @@ export function partitionUploadRequests(
 
 export function createDuplicateUploadQueue(entries: Array<{ incoming: UploadRequest; matches: NameDuplicateHit[] }>): DuplicateUploadEntry[] {
   return entries.map(entry => ({
-    id: crypto.randomUUID(),
+    id: createClientId(),
     incoming: entry.incoming,
     matches: entry.matches,
   }))

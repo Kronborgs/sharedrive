@@ -6,6 +6,7 @@ import * as tus from 'tus-js-client'
 import { api } from '@/lib/api'
 import type { FileItem } from '@/types/api'
 import { ignorePromise } from '@/lib/ignore-promise'
+import { createClientId } from '@/lib/client-id'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
 
@@ -410,7 +411,7 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
     // open folder when no override was supplied at all.
     const targetFolderId = overrideFolderId === undefined ? folderId : overrideFolderId
     const newEntries = requests.map(request => ({
-      id: crypto.randomUUID(),
+      id: createClientId(),
       file: request.file,
       overwrite: request.overwrite,
       progress: 0,

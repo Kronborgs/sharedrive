@@ -388,6 +388,17 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusNotFound, userErrNotFound)
 		return
 	}
+	var ownsRoom bool
+	if err := h.db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM rooms WHERE owner_id = $1)`, id,
+	).Scan(&ownsRoom); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
+		return
+	}
+	if ownsRoom {
+		httputil.RespondError(w, http.StatusConflict, "transfer ownership of all owned Rooms before deleting this user")
+		return
+	}
 
 	tx, err := h.db.Begin(ctx)
 	if err != nil {

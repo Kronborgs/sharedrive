@@ -18,9 +18,10 @@ func TestPublicSettingsResponse(t *testing.T) {
 		"upload_endpoint":        "https://upload.example.com/upload/",
 		"onlyoffice_url":         "https://office.example.com",
 		"playlist_max_tracks":    250,
+		"rooms_enabled":          true,
 	}
 
-	if got := publicSettingsResponse(kv, 250); !reflect.DeepEqual(got, want) {
+	if got := publicSettingsResponse(kv, 250, true); !reflect.DeepEqual(got, want) {
 		t.Fatalf("publicSettingsResponse() = %#v, want %#v", got, want)
 	}
 }

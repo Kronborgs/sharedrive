@@ -21,6 +21,7 @@ import {
   X,
   Plus,
 	StickyNote,
+  MessagesSquare,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
@@ -46,6 +47,7 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { to: '/files',    labelKey: 'nav.myFiles',   icon: <Files size={16} />,   exact: true },
 	{ to: '/notes',    labelKey: 'nav.notes',     icon: <StickyNote size={16} /> },
+  { to: '/rooms',    labelKey: 'nav.rooms',     icon: <MessagesSquare size={16} /> },
   { to: '/shares',   labelKey: 'nav.shared',    icon: <Share2 size={16} /> },
   { to: '/recent',   labelKey: 'nav.recent',    icon: <Clock size={16} /> },
   { to: '/activity', labelKey: 'nav.activity',  icon: <History size={16} /> },
@@ -115,6 +117,10 @@ type SidebarTrack = SidebarPlaylist['tracks'][number] | undefined
 type SidebarBuildInfo = {
   version: string
   build_date: string
+}
+
+type SidebarSystemSettings = {
+  rooms_enabled?: boolean
 }
 
 function getQuotaBarClass(pct: number) {
@@ -670,6 +676,11 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
     queryFn: ({ signal }) => api.get<SidebarBuildInfo>('/api/v1/system/version', signal),
     staleTime: 60_000,
   })
+  const { data: systemSettings } = useQuery({
+    queryKey: ['system', 'settings'],
+    queryFn: ({ signal }) => api.get<SidebarSystemSettings>('/api/v1/system/settings', signal),
+    staleTime: 60_000,
+  })
 
   const currentTrack = playlist.tracks[playlist.currentIndex]
   const isGuest = user?.role === 'guest'
@@ -733,7 +744,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
 
         <div className="flex-1 overflow-y-auto min-h-0">
           <nav className="px-2 py-3 space-y-0.5">
-            {(isGuest ? guestNav : mainNav).map(item => (
+            {(isGuest ? guestNav : mainNav.filter(item => item.to !== '/rooms' || systemSettings?.rooms_enabled)).map(item => (
               <NavLink key={item.to} item={item} />
             ))}
           </nav>

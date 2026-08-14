@@ -74,6 +74,7 @@ type Config struct {
 	WebDAVEnabled        bool `mapstructure:"WEBDAV_ENABLED"`
 	RegistrationOpen     bool `mapstructure:"REGISTRATION_OPEN"`
 	TOTPRequiredForAdmin bool `mapstructure:"TOTP_REQUIRED_FOR_ADMIN"`
+	RoomsEnabled         bool `mapstructure:"ROOMS_ENABLED"`
 
 	// Gotenberg — Office document → PDF conversion service
 	GotenbergURL string `mapstructure:"GOTENBERG_URL"`
@@ -184,6 +185,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("WEBDAV_ENABLED", true)
 	v.SetDefault("REGISTRATION_OPEN", false)
 	v.SetDefault("TOTP_REQUIRED_FOR_ADMIN", true)
+	v.SetDefault("ROOMS_ENABLED", false)
 	v.SetDefault("RL_USER_LOCKOUT_THRESHOLD", 5)
 	v.SetDefault("RL_USER_LOCKOUT_DURATION_MIN", 30)
 	v.SetDefault("RL_IP_THRESHOLD_60M", 10)

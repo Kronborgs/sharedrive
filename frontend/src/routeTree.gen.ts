@@ -21,6 +21,7 @@ import { Route as LoginTotpRouteImport } from './routes/login.totp'
 import { Route as AuthTrashIndexRouteImport } from './routes/_auth.trash.index'
 import { Route as AuthSharesIndexRouteImport } from './routes/_auth.shares.index'
 import { Route as AuthSharedBrowseIndexRouteImport } from './routes/_auth.shared-browse.index'
+import { Route as AuthRoomsIndexRouteImport } from './routes/_auth.rooms.index'
 import { Route as AuthRecentIndexRouteImport } from './routes/_auth.recent.index'
 import { Route as AuthNotesIndexRouteImport } from './routes/_auth.notes.index'
 import { Route as AuthFilesIndexRouteImport } from './routes/_auth.files.index'
@@ -29,6 +30,7 @@ import { Route as AuthAdminIndexRouteImport } from './routes/_auth.admin.index'
 import { Route as AuthActivityIndexRouteImport } from './routes/_auth.activity.index'
 import { Route as NotesGuestIdRouteImport } from './routes/notes.guest.$id'
 import { Route as GuestNotesIdRouteImport } from './routes/guest.notes.$id'
+import { Route as AuthRoomsRoomIDRouteImport } from './routes/_auth.rooms.$roomID'
 import { Route as AuthNotesTrashRouteImport } from './routes/_auth.notes.trash'
 import { Route as AuthNotesArchiveRouteImport } from './routes/_auth.notes.archive'
 import { Route as AuthNotesIdRouteImport } from './routes/_auth.notes.$id'
@@ -100,6 +102,11 @@ const AuthSharedBrowseIndexRoute = AuthSharedBrowseIndexRouteImport.update({
   path: '/shared-browse/',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthRoomsIndexRoute = AuthRoomsIndexRouteImport.update({
+  id: '/rooms/',
+  path: '/rooms/',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthRecentIndexRoute = AuthRecentIndexRouteImport.update({
   id: '/recent/',
   path: '/recent/',
@@ -139,6 +146,11 @@ const GuestNotesIdRoute = GuestNotesIdRouteImport.update({
   id: '/guest/notes/$id',
   path: '/guest/notes/$id',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoomsRoomIDRoute = AuthRoomsRoomIDRouteImport.update({
+  id: '/rooms/$roomID',
+  path: '/rooms/$roomID',
+  getParentRoute: () => AuthRoute,
 } as any)
 const AuthNotesTrashRoute = AuthNotesTrashRouteImport.update({
   id: '/notes/trash',
@@ -209,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/notes/$id': typeof AuthNotesIdRoute
   '/notes/archive': typeof AuthNotesArchiveRoute
   '/notes/trash': typeof AuthNotesTrashRoute
+  '/rooms/$roomID': typeof AuthRoomsRoomIDRoute
   '/guest/notes/$id': typeof GuestNotesIdRoute
   '/notes/guest/$id': typeof NotesGuestIdRoute
   '/activity/': typeof AuthActivityIndexRoute
@@ -217,6 +230,7 @@ export interface FileRoutesByFullPath {
   '/files/': typeof AuthFilesIndexRoute
   '/notes/': typeof AuthNotesIndexRoute
   '/recent/': typeof AuthRecentIndexRoute
+  '/rooms/': typeof AuthRoomsIndexRoute
   '/shared-browse/': typeof AuthSharedBrowseIndexRoute
   '/shares/': typeof AuthSharesIndexRoute
   '/trash/': typeof AuthTrashIndexRoute
@@ -240,6 +254,7 @@ export interface FileRoutesByTo {
   '/notes/$id': typeof AuthNotesIdRoute
   '/notes/archive': typeof AuthNotesArchiveRoute
   '/notes/trash': typeof AuthNotesTrashRoute
+  '/rooms/$roomID': typeof AuthRoomsRoomIDRoute
   '/guest/notes/$id': typeof GuestNotesIdRoute
   '/notes/guest/$id': typeof NotesGuestIdRoute
   '/activity': typeof AuthActivityIndexRoute
@@ -248,6 +263,7 @@ export interface FileRoutesByTo {
   '/files': typeof AuthFilesIndexRoute
   '/notes': typeof AuthNotesIndexRoute
   '/recent': typeof AuthRecentIndexRoute
+  '/rooms': typeof AuthRoomsIndexRoute
   '/shared-browse': typeof AuthSharedBrowseIndexRoute
   '/shares': typeof AuthSharesIndexRoute
   '/trash': typeof AuthTrashIndexRoute
@@ -274,6 +290,7 @@ export interface FileRoutesById {
   '/_auth/notes/$id': typeof AuthNotesIdRoute
   '/_auth/notes/archive': typeof AuthNotesArchiveRoute
   '/_auth/notes/trash': typeof AuthNotesTrashRoute
+  '/_auth/rooms/$roomID': typeof AuthRoomsRoomIDRoute
   '/guest/notes/$id': typeof GuestNotesIdRoute
   '/notes/guest/$id': typeof NotesGuestIdRoute
   '/_auth/activity/': typeof AuthActivityIndexRoute
@@ -282,6 +299,7 @@ export interface FileRoutesById {
   '/_auth/files/': typeof AuthFilesIndexRoute
   '/_auth/notes/': typeof AuthNotesIndexRoute
   '/_auth/recent/': typeof AuthRecentIndexRoute
+  '/_auth/rooms/': typeof AuthRoomsIndexRoute
   '/_auth/shared-browse/': typeof AuthSharedBrowseIndexRoute
   '/_auth/shares/': typeof AuthSharesIndexRoute
   '/_auth/trash/': typeof AuthTrashIndexRoute
@@ -308,6 +326,7 @@ export interface FileRouteTypes {
     | '/notes/$id'
     | '/notes/archive'
     | '/notes/trash'
+    | '/rooms/$roomID'
     | '/guest/notes/$id'
     | '/notes/guest/$id'
     | '/activity/'
@@ -316,6 +335,7 @@ export interface FileRouteTypes {
     | '/files/'
     | '/notes/'
     | '/recent/'
+    | '/rooms/'
     | '/shared-browse/'
     | '/shares/'
     | '/trash/'
@@ -339,6 +359,7 @@ export interface FileRouteTypes {
     | '/notes/$id'
     | '/notes/archive'
     | '/notes/trash'
+    | '/rooms/$roomID'
     | '/guest/notes/$id'
     | '/notes/guest/$id'
     | '/activity'
@@ -347,6 +368,7 @@ export interface FileRouteTypes {
     | '/files'
     | '/notes'
     | '/recent'
+    | '/rooms'
     | '/shared-browse'
     | '/shares'
     | '/trash'
@@ -372,6 +394,7 @@ export interface FileRouteTypes {
     | '/_auth/notes/$id'
     | '/_auth/notes/archive'
     | '/_auth/notes/trash'
+    | '/_auth/rooms/$roomID'
     | '/guest/notes/$id'
     | '/notes/guest/$id'
     | '/_auth/activity/'
@@ -380,6 +403,7 @@ export interface FileRouteTypes {
     | '/_auth/files/'
     | '/_auth/notes/'
     | '/_auth/recent/'
+    | '/_auth/rooms/'
     | '/_auth/shared-browse/'
     | '/_auth/shares/'
     | '/_auth/trash/'
@@ -491,6 +515,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSharedBrowseIndexRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/rooms/': {
+      id: '/_auth/rooms/'
+      path: '/rooms'
+      fullPath: '/rooms/'
+      preLoaderRoute: typeof AuthRoomsIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/recent/': {
       id: '/_auth/recent/'
       path: '/recent'
@@ -546,6 +577,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/guest/notes/$id'
       preLoaderRoute: typeof GuestNotesIdRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_auth/rooms/$roomID': {
+      id: '/_auth/rooms/$roomID'
+      path: '/rooms/$roomID'
+      fullPath: '/rooms/$roomID'
+      preLoaderRoute: typeof AuthRoomsRoomIDRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/_auth/notes/trash': {
       id: '/_auth/notes/trash'
@@ -631,12 +669,14 @@ interface AuthRouteChildren {
   AuthNotesIdRoute: typeof AuthNotesIdRoute
   AuthNotesArchiveRoute: typeof AuthNotesArchiveRoute
   AuthNotesTrashRoute: typeof AuthNotesTrashRoute
+  AuthRoomsRoomIDRoute: typeof AuthRoomsRoomIDRoute
   AuthActivityIndexRoute: typeof AuthActivityIndexRoute
   AuthAdminIndexRoute: typeof AuthAdminIndexRoute
   AuthBackupIndexRoute: typeof AuthBackupIndexRoute
   AuthFilesIndexRoute: typeof AuthFilesIndexRoute
   AuthNotesIndexRoute: typeof AuthNotesIndexRoute
   AuthRecentIndexRoute: typeof AuthRecentIndexRoute
+  AuthRoomsIndexRoute: typeof AuthRoomsIndexRoute
   AuthSharedBrowseIndexRoute: typeof AuthSharedBrowseIndexRoute
   AuthSharesIndexRoute: typeof AuthSharesIndexRoute
   AuthTrashIndexRoute: typeof AuthTrashIndexRoute
@@ -654,12 +694,14 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthNotesIdRoute: AuthNotesIdRoute,
   AuthNotesArchiveRoute: AuthNotesArchiveRoute,
   AuthNotesTrashRoute: AuthNotesTrashRoute,
+  AuthRoomsRoomIDRoute: AuthRoomsRoomIDRoute,
   AuthActivityIndexRoute: AuthActivityIndexRoute,
   AuthAdminIndexRoute: AuthAdminIndexRoute,
   AuthBackupIndexRoute: AuthBackupIndexRoute,
   AuthFilesIndexRoute: AuthFilesIndexRoute,
   AuthNotesIndexRoute: AuthNotesIndexRoute,
   AuthRecentIndexRoute: AuthRecentIndexRoute,
+  AuthRoomsIndexRoute: AuthRoomsIndexRoute,
   AuthSharedBrowseIndexRoute: AuthSharedBrowseIndexRoute,
   AuthSharesIndexRoute: AuthSharesIndexRoute,
   AuthTrashIndexRoute: AuthTrashIndexRoute,

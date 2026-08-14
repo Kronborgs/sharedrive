@@ -140,10 +140,10 @@ func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 			playlistMax = n
 		}
 	}
-	httputil.Respond(w, http.StatusOK, publicSettingsResponse(kv, playlistMax))
+	httputil.Respond(w, http.StatusOK, publicSettingsResponse(kv, playlistMax, h.cfg.RoomsEnabled))
 }
 
-func publicSettingsResponse(kv map[string]string, playlistMax int) map[string]any {
+func publicSettingsResponse(kv map[string]string, playlistMax int, roomsEnabled bool) map[string]any {
 	directUploadURL, directUploadsEnabled, uploadEndpoint := directUploadPublicSettings(kv["direct_upload_url"])
 	return map[string]any{
 		"direct_upload_url":      directUploadURL,
@@ -151,6 +151,7 @@ func publicSettingsResponse(kv map[string]string, playlistMax int) map[string]an
 		"upload_endpoint":        uploadEndpoint,
 		"onlyoffice_url":         kv["onlyoffice_url"],
 		"playlist_max_tracks":    playlistMax,
+		"rooms_enabled":          roomsEnabled,
 	}
 }
 
@@ -774,7 +775,8 @@ type groupMember struct {
 func (h *Handler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	rows, err := h.db.Query(ctx,
-		`SELECT id, name, description, color, created_at FROM groups ORDER BY name ASC`)
+		`SELECT id, name, description, color, created_at
+		 FROM groups WHERE is_system_managed = FALSE ORDER BY name ASC`)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
@@ -836,6 +838,9 @@ type updateGroupRequest struct {
 func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
+	if h.rejectManagedGroup(w, r, id) {
+		return
+	}
 	var req updateGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.RespondError(w, http.StatusBadRequest, errInvalidRequest)
@@ -865,6 +870,9 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
+	if h.rejectManagedGroup(w, r, id) {
+		return
+	}
 	tag, err := h.db.Exec(ctx, `DELETE FROM groups WHERE id = $1`, id)
 	if err != nil || tag.RowsAffected() == 0 {
 		httputil.RespondError(w, http.StatusNotFound, "group not found")
@@ -876,6 +884,9 @@ func (h *Handler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListGroupMembers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	groupID := chi.URLParam(r, "id")
+	if h.rejectManagedGroup(w, r, groupID) {
+		return
+	}
 	rows, err := h.db.Query(ctx,
 		`SELECT gm.user_id, u.email, u.display_name, gm.added_at
 		 FROM group_members gm
@@ -910,6 +921,9 @@ type groupMemberRequest struct {
 func (h *Handler) AddGroupMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	groupID := chi.URLParam(r, "id")
+	if h.rejectManagedGroup(w, r, groupID) {
+		return
+	}
 	var req groupMemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.UserID == "" {
 		httputil.RespondError(w, http.StatusBadRequest, "user_id is required")
@@ -929,9 +943,26 @@ func (h *Handler) AddGroupMember(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RemoveGroupMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	groupID := chi.URLParam(r, "id")
+	if h.rejectManagedGroup(w, r, groupID) {
+		return
+	}
 	userID := chi.URLParam(r, "userId")
 	h.db.Exec(ctx, `DELETE FROM group_members WHERE group_id = $1 AND user_id = $2`, groupID, userID)
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *Handler) rejectManagedGroup(w http.ResponseWriter, r *http.Request, groupID string) bool {
+	var managed bool
+	if err := h.db.QueryRow(r.Context(),
+		`SELECT is_system_managed FROM groups WHERE id = $1`, groupID).Scan(&managed); err != nil {
+		httputil.RespondError(w, http.StatusNotFound, "group not found")
+		return true
+	}
+	if managed {
+		httputil.RespondError(w, http.StatusConflict, "group is managed by a Room")
+		return true
+	}
+	return false
 }
 
 // ─── Tags ────────────────────────────────────────────────────────────────────

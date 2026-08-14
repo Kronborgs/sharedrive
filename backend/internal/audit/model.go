@@ -51,17 +51,23 @@ const (
 	EventShareRevoked  = "SHARE_REVOKED"
 
 	// Note events
-	EventNoteCreated          = "NOTE_CREATED"
-	EventNoteUpdated          = "NOTE_UPDATED"
-	EventNoteDeleted          = "NOTE_DELETED"
-	EventNoteRestored         = "NOTE_RESTORED"
-	EventNotePermanentDeleted = "NOTE_PERMANENTLY_DELETED"
-	EventNoteShareCreated     = "NOTE_SHARE_CREATED"
-	EventNoteShareModified    = "NOTE_SHARE_MODIFIED"
-	EventNoteShareRevoked     = "NOTE_SHARE_REVOKED"
-	EventNoteGuestAccessed    = "NOTE_GUEST_ACCESSED"
-	EventNoteGuestUpdated     = "NOTE_GUEST_UPDATED"
+	EventNoteCreated             = "NOTE_CREATED"
+	EventNoteUpdated             = "NOTE_UPDATED"
+	EventNoteDeleted             = "NOTE_DELETED"
+	EventNoteRestored            = "NOTE_RESTORED"
+	EventNotePermanentDeleted    = "NOTE_PERMANENTLY_DELETED"
+	EventNoteShareCreated        = "NOTE_SHARE_CREATED"
+	EventNoteShareModified       = "NOTE_SHARE_MODIFIED"
+	EventNoteShareRevoked        = "NOTE_SHARE_REVOKED"
+	EventNoteGuestAccessed       = "NOTE_GUEST_ACCESSED"
+	EventNoteGuestUpdated        = "NOTE_GUEST_UPDATED"
 	EventNoteGuestSessionCreated = "NOTE_GUEST_SESSION_CREATED"
+
+	// Room events
+	EventRoomCreated       = "ROOM_CREATED"
+	EventRoomArchived      = "ROOM_ARCHIVED"
+	EventRoomMemberAdded   = "ROOM_MEMBER_ADDED"
+	EventRoomMemberRemoved = "ROOM_MEMBER_REMOVED"
 
 	// WebDAV events
 	EventWebDAVLoginSuccess = "WEBDAV_LOGIN_SUCCESS"

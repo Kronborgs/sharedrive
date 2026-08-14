@@ -36,6 +36,7 @@ import (
 	"github.com/yourname/privatedrive/internal/onlyoffice"
 	"github.com/yourname/privatedrive/internal/preview"
 	"github.com/yourname/privatedrive/internal/ratelimit"
+	"github.com/yourname/privatedrive/internal/rooms"
 	"github.com/yourname/privatedrive/internal/shares"
 	"github.com/yourname/privatedrive/internal/smtp"
 	"github.com/yourname/privatedrive/internal/user"
@@ -71,6 +72,7 @@ type Server struct {
 	filesHandler   *files.Handler
 	sharesHandler  *shares.Handler
 	notesHandler   *notes.Handler
+	roomsHandler   *rooms.Handler
 	adminHandler   *admin.Handler
 	sseHandler     *admin.SSEHandler
 	supportHandler *admin.SupportAccessHandler
@@ -157,6 +159,7 @@ func newServerDependencies(deps serverDependencies) *Server {
 			notes.NewSharingService(deps.db, smtp.New(deps.cfg, deps.db), deps.auditSvc,
 				ratelimit.New(deps.rdb), deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production"),
 		),
+		roomsHandler:   rooms.NewHandler(rooms.NewService(deps.db, deps.auditSvc)),
 		adminHandler:   admin.NewHandler(deps.db, deps.cfg, deps.ioTracker, deps.rdb),
 		sseHandler:     admin.NewSSEHandler(deps.db),
 		supportHandler: admin.NewSupportAccessHandler(deps.db),
@@ -520,6 +523,17 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Patch("/api/v1/notes/{id}/shares/{shareId}", s.notesHandler.UpdateShare)
 		r.Delete("/api/v1/notes/{id}/shares/{shareId}", s.notesHandler.RevokeShare)
 		r.Post("/api/v1/notes/{id}/shares/{shareId}/resend", s.notesHandler.ResendShare)
+
+		if s.cfg.RoomsEnabled {
+			r.Get("/api/v1/rooms", s.roomsHandler.List)
+			r.Post("/api/v1/rooms", s.roomsHandler.Create)
+			r.Get("/api/v1/rooms/{roomID}", s.roomsHandler.Get)
+			r.Patch("/api/v1/rooms/{roomID}", s.roomsHandler.Update)
+			r.Post("/api/v1/rooms/{roomID}/archive", s.roomsHandler.Archive)
+			r.Get("/api/v1/rooms/{roomID}/members", s.roomsHandler.ListMembers)
+			r.Post("/api/v1/rooms/{roomID}/members", s.roomsHandler.AddMember)
+			r.Delete("/api/v1/rooms/{roomID}/members/{userID}", s.roomsHandler.RemoveMember)
+		}
 
 		// Backup
 		r.Get("/api/v1/backup/config", s.backupHandler.GetConfig)

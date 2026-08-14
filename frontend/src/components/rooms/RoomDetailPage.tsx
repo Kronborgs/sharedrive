@@ -3,9 +3,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { Archive, ArrowLeft, Copy, DoorOpen, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
-import { archiveRoom, getRoom } from '@/lib/rooms'
+import { archiveRoom, getRoom, updateRoom } from '@/lib/rooms'
 import { RoomMembersPanel } from '@/components/rooms/RoomMembersPanel'
-import { updateRoom } from '@/lib/rooms'
 
 export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const { t } = useI18n()

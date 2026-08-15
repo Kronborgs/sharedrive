@@ -40,15 +40,31 @@ export function RoomChatPanel({ roomID }: Readonly<{ roomID: string }>) {
           typingTimerRef.current = setTimeout(() => setTypingName(''), 1800)
         }
       }
-      socket.onclose = () => { socketRef.current = undefined; if (!stopped) retry = setTimeout(connect, 1500) }
+      socket.onclose = () => {
+        socketRef.current = undefined
+        if (!stopped) {
+          retry = setTimeout(connect, 1500)
+        }
+      }
     }
     connect()
-    return () => { stopped = true; if (retry) clearTimeout(retry); if (typingTimerRef.current) clearTimeout(typingTimerRef.current); socket?.close() }
+    return () => {
+      stopped = true
+      if (retry) {
+        clearTimeout(retry)
+      }
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current)
+      }
+      socket?.close()
+    }
   }, [queryClient, roomID, user?.id])
 
   useEffect(() => {
     const newest = messages.data?.pages[0]?.messages[0]
-    if (newest) markRoomRead(roomID, newest.id).catch(() => undefined)
+    if (newest) {
+      markRoomRead(roomID, newest.id).catch(() => undefined)
+    }
   }, [messages.data, roomID])
 
   const notifyTyping = () => {
@@ -64,7 +80,9 @@ export function RoomChatPanel({ roomID }: Readonly<{ roomID: string }>) {
   })
   const edit = (message: RoomMessage) => {
     const next = window.prompt('Redigér besked', message.body)
-    if (next?.trim() && next.trim() !== message.body) updateRoomMessage(roomID, message.id, next.trim()).then(refresh).catch(() => undefined)
+    if (next?.trim() && next.trim() !== message.body) {
+      updateRoomMessage(roomID, message.id, next.trim()).then(refresh).catch(() => undefined)
+    }
   }
   const remove = (message: RoomMessage) => deleteRoomMessage(roomID, message.id).then(refresh).catch(() => undefined)
   const toggleReaction = (message: RoomMessage, emoji: string) => {
@@ -101,7 +119,12 @@ export function RoomChatPanel({ roomID }: Readonly<{ roomID: string }>) {
       </div>
       {typingName && <p className="mb-2 text-xs text-muted">{typingName} skriver…</p>}
       {replyTo && <div className="mb-2 flex justify-between rounded-lg bg-zinc-100 px-3 py-2 text-xs dark:bg-[#1a1d27]"><span>Svarer til {replyTo.sender_name}</span><button type="button" onClick={() => setReplyTo(undefined)}>Annuller</button></div>}
-      <form className="flex gap-2" onSubmit={event => { event.preventDefault(); if (body.trim()) send.mutate() }}>
+      <form className="flex gap-2" onSubmit={event => {
+        event.preventDefault()
+        if (body.trim()) {
+          send.mutate()
+        }
+      }}>
         <textarea value={body} onChange={event => { setBody(event.target.value); notifyTyping() }} maxLength={10000} rows={2} placeholder="Skriv en besked…" className="min-h-12 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-[#2d3148] dark:bg-[#0f1117]" />
         <button type="submit" disabled={!body.trim() || send.isPending} className="self-end rounded-lg bg-brand-600 p-2 text-white disabled:opacity-50" aria-label="Send besked"><Send size={18} /></button>
       </form>

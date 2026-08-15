@@ -109,6 +109,22 @@ function buildOnlyOfficePayload(ooURL: string, ooSecret: string): Record<string,
   return body
 }
 
+function RoomsStorageStatus({ data }: Readonly<{ data?: SystemSettings }>) {
+  const { t } = useI18n()
+  const usedMB = ((data?.rooms_data_used_bytes ?? 0) / (1024 * 1024)).toLocaleString(undefined, { maximumFractionDigits: 2 })
+  let cleanupStatus = t('settings.roomsNoCleanup')
+  if (data?.rooms_last_cleanup_at) {
+    const cleanupDate = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(data.rooms_last_cleanup_at))
+    cleanupStatus = t('settings.roomsLastCleanup', { date: cleanupDate })
+  }
+  return (
+    <div className="rounded-lg bg-zinc-100 px-3 py-2 text-xs text-muted dark:bg-[#0f1117]">
+      <p>{t('settings.roomsUsage', { used: usedMB })}</p>
+      <p>{cleanupStatus}</p>
+    </div>
+  )
+}
+
 function SettingsPage() {
   const qc = useQueryClient()
   const [tab, setTab] = useState<Tab>('general')
@@ -445,10 +461,8 @@ function SettingsPage() {
               <input type="number" step="1" min="0" max="3650" {...register('rooms_message_retention_days')} className={inputClass} />
               <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">{t('settings.roomsRetentionDesc')}</p>
             </Field>
-            <div className="rounded-lg bg-zinc-100 px-3 py-2 text-xs text-muted dark:bg-[#0f1117]">
-              <p>{t('settings.roomsUsage', { used: ((data?.rooms_data_used_bytes ?? 0) / (1024 * 1024)).toLocaleString(undefined, { maximumFractionDigits: 2 }) })}</p>
-              <p>{data?.rooms_last_cleanup_at ? t('settings.roomsLastCleanup', { date: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(data.rooms_last_cleanup_at)) }) : t('settings.roomsNoCleanup')}</p>
-            </div>
+            <RoomsStorageStatus data={data} />
+
             <Toggle label={t('settings.roomsBackup')} description={t('settings.roomsBackupDesc')} name="rooms_backup_enabled" register={register} />
             <p className="rounded-lg bg-zinc-100 dark:bg-[#0f1117] px-3 py-2 text-xs text-muted">{t('settings.roomsPhaseTwoNote')}</p>
           </section>

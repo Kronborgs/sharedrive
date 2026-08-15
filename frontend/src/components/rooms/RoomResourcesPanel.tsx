@@ -82,7 +82,13 @@ export function RoomResourcesPanel({ room }: Readonly<{ room: Room }>) {
         <button type="submit" disabled={!resourceID || add.isPending} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm text-white disabled:opacity-50"><Link2 size={16} /> Tilknyt</button>
         <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-[#2d3148]">
           <Upload size={16} /> {upload.isPending ? 'Uploader…' : 'Upload fil'}
-          <input type="file" className="sr-only" disabled={upload.isPending} onChange={event => { const selected = event.target.files?.[0]; if (selected) upload.mutate(selected); event.currentTarget.value = '' }} />
+          <input type="file" className="sr-only" disabled={upload.isPending} onChange={event => {
+            const selected = event.target.files?.[0]
+            if (selected) {
+              upload.mutate(selected)
+            }
+            event.currentTarget.value = ''
+          }} />
         </label>
       </form>
       {(add.isError || upload.isError) && <p className="mt-2 text-xs text-red-600">Ressourcen kunne ikke tilknyttes. Kontrollér adgang og re-share-rettighed.</p>}

@@ -134,7 +134,9 @@ func (handler *Handler) roomUpdates(ctx context.Context, roomID uuid.UUID) (<-ch
 	pubsub := handler.redis.Subscribe(ctx, roomEventsChannel(roomID))
 	if _, err := pubsub.Receive(ctx); err != nil {
 		_ = pubsub.Close()
-		return nil, func() {}, err
+		return nil, func() {
+			// Subscription setup failed, so there is no active Redis resource to close.
+		}, err
 	}
 	updates := make(chan string, 8)
 	go func() {

@@ -491,9 +491,28 @@ func (service *Service) ListMessages(ctx context.Context, actorID, roomID uuid.U
 	if _, err := service.Get(ctx, actorID, roomID); err != nil {
 		return MessagePage{}, err
 	}
-	if limit < 1 || limit > 100 {
-		limit = 50
+	if service.cryptor == nil {
+		return MessagePage{}, ErrEncryptionUnavailable
 	}
+	limit = normalizeMessagePageLimit(limit)
+	messages, err := service.queryMessagePage(ctx, roomID, limit+1, cursor)
+	if err != nil {
+		return MessagePage{}, err
+	}
+	if err := service.loadMessageReactions(ctx, messages); err != nil {
+		return MessagePage{}, err
+	}
+	return buildMessagePage(messages, limit), nil
+}
+
+func normalizeMessagePageLimit(limit int) int {
+	if limit < 1 || limit > 100 {
+		return 50
+	}
+	return limit
+}
+
+func (service *Service) queryMessagePage(ctx context.Context, roomID uuid.UUID, queryLimit int, cursor *uuid.UUID) ([]Message, error) {
 	rows, err := service.db.Query(ctx, `SELECT m.id, m.room_id, m.sender_user_id, COALESCE(u.display_name, u.email),
 		m.body, m.reply_to_message_id, m.created_at, m.edited_at, m.deleted_at
 		FROM room_messages m JOIN users u ON u.id = m.sender_user_id
@@ -503,58 +522,80 @@ func (service *Service) ListMessages(ctx context.Context, actorID, roomID uuid.U
 			FROM room_messages cursor_message
 			WHERE cursor_message.room_id = $1 AND cursor_message.id = $3
 		))
-		ORDER BY m.created_at DESC, m.id DESC LIMIT $2`, roomID, limit+1, cursor)
+		ORDER BY m.created_at DESC, m.id DESC LIMIT $2`, roomID, queryLimit, cursor)
 	if err != nil {
-		return MessagePage{}, err
+		return nil, err
 	}
 	defer rows.Close()
-	page := MessagePage{Messages: make([]Message, 0)}
+	messages := make([]Message, 0, queryLimit)
 	for rows.Next() {
-		var m Message
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.SenderUserID, &m.SenderName, &m.Body, &m.ReplyToMessageID, &m.CreatedAt, &m.EditedAt, &m.DeletedAt); err != nil {
-			return MessagePage{}, err
+		message, scanErr := service.scanMessage(ctx, rows)
+		if scanErr != nil {
+			return nil, scanErr
 		}
-		if service.cryptor == nil {
-			return MessagePage{}, ErrEncryptionUnavailable
-		}
-		if strings.HasPrefix(m.Body, "v1:") {
-			m.Body, err = service.cryptor.decrypt(m.Body)
-			if err != nil {
-				return MessagePage{}, err
-			}
-		} else {
-			legacyBody := m.Body
-			encryptedBody, encryptErr := service.cryptor.encrypt(legacyBody)
-			if encryptErr != nil {
-				return MessagePage{}, encryptErr
-			}
-			if _, updateErr := service.db.Exec(ctx, `UPDATE room_messages SET body = $1 WHERE id = $2 AND body = $3`, encryptedBody, m.ID, legacyBody); updateErr != nil {
-				return MessagePage{}, updateErr
-			}
-			m.Body = legacyBody
-		}
-		reactionRows, reactionErr := service.db.Query(ctx, `SELECT user_id, emoji FROM room_reactions WHERE message_id=$1 ORDER BY created_at`, m.ID)
-		if reactionErr != nil {
-			return MessagePage{}, reactionErr
-		}
-		m.Reactions = make([]Reaction, 0)
-		for reactionRows.Next() {
-			var reaction Reaction
-			if err := reactionRows.Scan(&reaction.UserID, &reaction.Emoji); err != nil {
-				reactionRows.Close()
-				return MessagePage{}, err
-			}
-			m.Reactions = append(m.Reactions, reaction)
-		}
-		reactionRows.Close()
-		page.Messages = append(page.Messages, m)
+		messages = append(messages, message)
 	}
-	if err := rows.Err(); err != nil {
-		return MessagePage{}, err
+	return messages, rows.Err()
+}
+
+func (service *Service) scanMessage(ctx context.Context, row pgx.Row) (Message, error) {
+	var message Message
+	err := row.Scan(&message.ID, &message.RoomID, &message.SenderUserID, &message.SenderName, &message.Body,
+		&message.ReplyToMessageID, &message.CreatedAt, &message.EditedAt, &message.DeletedAt)
+	if err != nil {
+		return Message{}, err
 	}
-	if len(page.Messages) > limit {
-		page.Messages = page.Messages[:limit]
-		page.NextCursor = page.Messages[len(page.Messages)-1].ID.String()
+	message.Body, err = service.decryptMessageBody(ctx, message.ID, message.Body)
+	return message, err
+}
+
+func (service *Service) decryptMessageBody(ctx context.Context, messageID uuid.UUID, storedBody string) (string, error) {
+	if strings.HasPrefix(storedBody, "v1:") {
+		return service.cryptor.decrypt(storedBody)
 	}
-	return page, nil
+	encryptedBody, err := service.cryptor.encrypt(storedBody)
+	if err != nil {
+		return "", err
+	}
+	_, err = service.db.Exec(ctx, `UPDATE room_messages SET body = $1 WHERE id = $2 AND body = $3`, encryptedBody, messageID, storedBody)
+	return storedBody, err
+}
+
+func (service *Service) loadMessageReactions(ctx context.Context, messages []Message) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	indices := make(map[uuid.UUID]int, len(messages))
+	ids := make([]uuid.UUID, len(messages))
+	for index := range messages {
+		messages[index].Reactions = make([]Reaction, 0)
+		indices[messages[index].ID] = index
+		ids[index] = messages[index].ID
+	}
+	rows, err := service.db.Query(ctx, `SELECT message_id, user_id, emoji FROM room_reactions
+		WHERE message_id = ANY($1::uuid[]) ORDER BY created_at`, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var messageID uuid.UUID
+		var reaction Reaction
+		if err := rows.Scan(&messageID, &reaction.UserID, &reaction.Emoji); err != nil {
+			return err
+		}
+		index := indices[messageID]
+		messages[index].Reactions = append(messages[index].Reactions, reaction)
+	}
+	return rows.Err()
+}
+
+func buildMessagePage(messages []Message, limit int) MessagePage {
+	page := MessagePage{Messages: messages}
+	if len(messages) <= limit {
+		return page
+	}
+	page.Messages = messages[:limit]
+	page.NextCursor = page.Messages[len(page.Messages)-1].ID.String()
+	return page
 }

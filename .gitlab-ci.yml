@@ -162,6 +162,7 @@ frontend:build:
 
   script:
     - npm run type-check
+    - npm run check:openmoji
     - npm run build
 
   artifacts:

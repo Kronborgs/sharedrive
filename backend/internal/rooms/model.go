@@ -99,21 +99,23 @@ func Slugify(name string) string {
 }
 
 type Message struct {
-	ID               uuid.UUID  `json:"id"`
-	RoomID           uuid.UUID  `json:"room_id"`
-	SenderUserID     uuid.UUID  `json:"sender_user_id"`
-	SenderName       string     `json:"sender_name"`
-	Body             string     `json:"body"`
-	ReplyToMessageID *uuid.UUID `json:"reply_to_message_id,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
-	EditedAt         *time.Time `json:"edited_at,omitempty"`
-	DeletedAt        *time.Time `json:"deleted_at,omitempty"`
-	Reactions        []Reaction `json:"reactions"`
+	ID                   uuid.UUID  `json:"id"`
+	RoomID               uuid.UUID  `json:"room_id"`
+	SenderUserID         *uuid.UUID `json:"sender_user_id,omitempty"`
+	SenderGuestSessionID *uuid.UUID `json:"sender_guest_session_id,omitempty"`
+	SenderName           string     `json:"sender_name"`
+	Body                 string     `json:"body"`
+	ReplyToMessageID     *uuid.UUID `json:"reply_to_message_id,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
+	EditedAt             *time.Time `json:"edited_at,omitempty"`
+	DeletedAt            *time.Time `json:"deleted_at,omitempty"`
+	Reactions            []Reaction `json:"reactions"`
 }
 
 type Reaction struct {
-	UserID uuid.UUID `json:"user_id"`
-	Emoji  string    `json:"emoji"`
+	UserID         *uuid.UUID `json:"user_id,omitempty"`
+	GuestSessionID *uuid.UUID `json:"guest_session_id,omitempty"`
+	Emoji          string     `json:"emoji"`
 }
 type MessagePage struct {
 	Messages   []Message `json:"messages"`

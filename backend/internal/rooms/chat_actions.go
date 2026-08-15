@@ -28,8 +28,8 @@ func (service *Service) UpdateMessage(ctx context.Context, actorID, roomID, mess
 	var message Message
 	err = service.db.QueryRow(ctx, `UPDATE room_messages SET body = $1, edited_at = now()
 		WHERE id = $2 AND room_id = $3 AND sender_user_id = $4 AND deleted_at IS NULL
-		RETURNING id, room_id, sender_user_id, body, reply_to_message_id, created_at, edited_at, deleted_at`,
-		encrypted, messageID, roomID, actorID).Scan(&message.ID, &message.RoomID, &message.SenderUserID, &message.Body, &message.ReplyToMessageID, &message.CreatedAt, &message.EditedAt, &message.DeletedAt)
+		RETURNING id, room_id, sender_user_id, sender_guest_session_id, body, reply_to_message_id, created_at, edited_at, deleted_at`,
+		encrypted, messageID, roomID, actorID).Scan(&message.ID, &message.RoomID, &message.SenderUserID, &message.SenderGuestSessionID, &message.Body, &message.ReplyToMessageID, &message.CreatedAt, &message.EditedAt, &message.DeletedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Message{}, ErrForbidden
 	}
@@ -37,12 +37,14 @@ func (service *Service) UpdateMessage(ctx context.Context, actorID, roomID, mess
 	return message, err
 }
 
-func (service *Service) DeleteMessage(ctx context.Context, actorID, roomID, messageID uuid.UUID) error {
-	if _, err := service.Get(ctx, actorID, roomID); err != nil {
-		return err
-	}
+func (service *Service) DeleteMessage(ctx context.Context, actorID uuid.UUID, platformRole string, roomID, messageID uuid.UUID) error {
 	tag, err := service.db.Exec(ctx, `UPDATE room_messages SET deleted_at = now(), edited_at = now()
-		WHERE id = $1 AND room_id = $2 AND sender_user_id = $3 AND deleted_at IS NULL`, messageID, roomID, actorID)
+		WHERE id = $1 AND room_id = $2 AND deleted_at IS NULL
+		AND ($4 = 'admin' OR EXISTS (
+			SELECT 1 FROM room_members
+			WHERE room_id = $2 AND user_id = $3
+			AND (sender_user_id = $3 OR role IN ('owner', 'moderator'))
+		))`, messageID, roomID, actorID, platformRole)
 	if err != nil {
 		return err
 	}

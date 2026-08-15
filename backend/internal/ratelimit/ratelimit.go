@@ -21,6 +21,9 @@ const (
 	KeyUserRoomMessage    = "user_room_message:"
 	KeyUserRoomSocket     = "user_room_socket:"
 	KeyUserRoomTyping     = "user_room_typing:"
+	KeyUserRoomInvite     = "user_room_invite:"
+	KeyIPRoomInviteAccept = "ip_room_invite_accept:"
+	KeyGuestRoomMutation  = "guest_room_mutation:"
 )
 
 // Limiter implements a sliding-window counter using a Redis sorted set.

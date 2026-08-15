@@ -160,7 +160,7 @@ func newServerDependencies(deps serverDependencies) *Server {
 			notes.NewSharingService(deps.db, smtp.New(deps.cfg, deps.db), deps.auditSvc,
 				ratelimit.New(deps.rdb), deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production"),
 		),
-		roomsHandler:   rooms.NewHandler(rooms.NewService(deps.db, deps.auditSvc, deps.cfg.RoomsEncryptKey, deps.fileSvc, noteService), ratelimit.New(deps.rdb), deps.rdb),
+		roomsHandler:   rooms.NewHandler(rooms.NewService(deps.db, deps.auditSvc, deps.cfg.RoomsEncryptKey, deps.fileSvc, noteService), ratelimit.New(deps.rdb), deps.rdb, deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production", deps.authHandler),
 		adminHandler:   admin.NewHandler(deps.db, deps.cfg, deps.ioTracker, deps.rdb),
 		sseHandler:     admin.NewSSEHandler(deps.db),
 		supportHandler: admin.NewSupportAccessHandler(deps.db),
@@ -428,6 +428,16 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Post("/api/v1/guest/notes/{id}/items/reorder", s.notesHandler.GuestReorderItems)
 	r.Post("/api/v1/guest/logout", s.notesHandler.GuestLogout)
 
+	// Room guest sessions are isolated from authenticated user sessions.
+	r.Post("/api/v1/public/rooms/invitations/{token}/accept", s.roomsHandler.RequireEnabled(s.roomsHandler.AcceptInvite))
+	r.Get("/api/v1/guest/rooms/{roomID}", s.roomsHandler.RequireEnabled(s.roomsHandler.GuestGet))
+	r.Get("/api/v1/guest/rooms/{roomID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.GuestListMessages))
+	r.Get("/api/v1/guest/rooms/{roomID}/messages/ws", s.roomsHandler.RequireEnabled(s.roomsHandler.GuestWebSocket))
+	r.Post("/api/v1/guest/rooms/{roomID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.GuestCreateMessage))
+	r.Post("/api/v1/guest/rooms/{roomID}/uploads", s.roomsHandler.RequireEnabled(s.roomsHandler.GuestUpload))
+	r.Post("/api/v1/guest/rooms/{roomID}/upload-token", s.roomsHandler.RequireEnabled(s.roomsHandler.IssueGuestUploadToken))
+	r.Post("/api/v1/guest/rooms/logout", s.roomsHandler.GuestLogout)
+
 	// ── Public OnlyOffice endpoints for link-share (guest) access ─────────
 	r.Get("/api/v1/public/onlyoffice/config/{fileId}", s.ooHandler.PublicGetEditorConfig)
 	r.Post("/api/v1/public/onlyoffice/create", s.ooHandler.PublicCreateDocument)
@@ -533,6 +543,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/rooms/{roomID}/members", s.roomsHandler.RequireEnabled(s.roomsHandler.ListMembers))
 		r.Post("/api/v1/rooms/{roomID}/members", s.roomsHandler.RequireEnabled(s.roomsHandler.AddMember))
 		r.Delete("/api/v1/rooms/{roomID}/members/{userID}", s.roomsHandler.RequireEnabled(s.roomsHandler.RemoveMember))
+		r.Get("/api/v1/rooms/{roomID}/invites", s.roomsHandler.RequireEnabled(s.roomsHandler.ListInvites))
+		r.Post("/api/v1/rooms/{roomID}/invites", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateInvite))
+		r.Delete("/api/v1/rooms/{roomID}/invites/{inviteID}", s.roomsHandler.RequireEnabled(s.roomsHandler.RevokeInvite))
 		r.Get("/api/v1/rooms/{roomID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.ListMessages))
 		r.Post("/api/v1/rooms/{roomID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateMessage))
 		r.Patch("/api/v1/rooms/{roomID}/messages/{messageID}", s.roomsHandler.RequireEnabled(s.roomsHandler.UpdateMessage))
@@ -673,6 +686,7 @@ func (s *Server) buildRouter() *chi.Mux {
 func shouldApplyGlobalBodyLimit(path, method string) bool {
 	return !strings.HasPrefix(path, "/upload/") &&
 		!(path == filesUploadRoute && method == http.MethodPost) &&
+		!(strings.HasPrefix(path, "/api/v1/guest/rooms/") && strings.HasSuffix(path, "/uploads") && method == http.MethodPost) &&
 		path != "/api/v1/backup/buddy/receive"
 }
 
@@ -681,21 +695,32 @@ type redactingLogFormatter struct {
 }
 
 func (formatter redactingLogFormatter) NewLogEntry(request *http.Request) chimiddleware.LogEntry {
-	if !strings.HasPrefix(request.URL.Path, "/notes/invite/") &&
-		!strings.HasPrefix(request.URL.Path, "/api/v1/public/notes/invitations/") {
+	redactedPath := sensitiveTokenPath(request.URL.Path)
+	if redactedPath == "" {
 		return formatter.base.NewLogEntry(request)
 	}
 	clone := request.Clone(request.Context())
 	clonedURL := *request.URL
-	if strings.HasPrefix(request.URL.Path, "/notes/invite/") {
-		clonedURL.Path = "/notes/invite/[redacted]"
-	} else {
-		clonedURL.Path = "/api/v1/public/notes/invitations/[redacted]/accept"
-	}
+	clonedURL.Path = redactedPath
 	clonedURL.RawPath = ""
 	clone.URL = &clonedURL
 	clone.RequestURI = clonedURL.RequestURI()
 	return formatter.base.NewLogEntry(clone)
+}
+
+func sensitiveTokenPath(path string) string {
+	switch {
+	case strings.HasPrefix(path, "/notes/invite/"):
+		return "/notes/invite/[redacted]"
+	case strings.HasPrefix(path, "/api/v1/public/notes/invitations/"):
+		return "/api/v1/public/notes/invitations/[redacted]/accept"
+	case strings.HasPrefix(path, "/rooms/invite/"):
+		return "/rooms/invite/[redacted]"
+	case strings.HasPrefix(path, "/api/v1/public/rooms/invitations/"):
+		return "/api/v1/public/rooms/invitations/[redacted]/accept"
+	default:
+		return ""
+	}
 }
 
 // spaHandler serves the embedded React SPA for all non-API routes.
@@ -1038,6 +1063,14 @@ func (s *Server) tusPreUploadCreateCallback(hook tusd.HookEvent) (tusd.HTTPRespo
 
 	meta := hook.Upload.MetaData
 	overwrite := isTusOverwrite(meta)
+	if guest, ok := auth.RoomGuestUploadFromContext(ctx); ok {
+		if overwrite || guest.FolderID != tusFolderID(meta) {
+			return tusUploadErrorResponse(http.StatusForbidden, "guest upload scope is invalid"), tusd.FileInfoChanges{}, nil
+		}
+		if err := s.roomsHandler.ValidateGuestTusUpload(ctx, guest.GuestSessionID, guest.RoomID, guest.OwnerID, guest.FolderID, hook.Upload.Size); err != nil {
+			return tusUploadErrorResponse(http.StatusForbidden, "guest upload is no longer allowed"), tusd.FileInfoChanges{}, nil
+		}
+	}
 	conflict, response := s.tusFindUploadConflict(ctx, meta, overwrite)
 	if response != nil {
 		return *response, tusd.FileInfoChanges{}, nil
@@ -1126,6 +1159,12 @@ func (s *Server) tusPreFinishResponseCallback(hook tusd.HookEvent) (tusd.HTTPRes
 	if err != nil {
 		log.Error().Err(err).Str("upload_id", hook.Upload.ID).Msg("tusHandler: finalize")
 		return tusFinalizeUploadErrorResponse(err), err
+	}
+	if guest, ok := auth.RoomGuestUploadFromContext(ctx); ok {
+		if err := s.roomsHandler.CompleteGuestTusUpload(ctx, guest.GuestSessionID, guest.RoomID, file.ID.String()); err != nil {
+			log.Error().Err(err).Str("upload_id", hook.Upload.ID).Msg("tusHandler: attach guest upload")
+			return tusUploadErrorResponse(http.StatusInternalServerError, "guest upload could not be attached to Room"), err
+		}
 	}
 
 	s.auditSvc.Log(ctx, audit.Event{

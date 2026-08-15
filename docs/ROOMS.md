@@ -10,7 +10,15 @@ Rooms are permanent, PostgreSQL-backed collaboration workspaces. Phase 1 provide
 - Only owners may archive a Room.
 - Moderators can add or remove members, but cannot add or remove moderators or owners.
 - Archived Rooms are read-only.
-- Platform administrators do not gain implicit Room membership or access. Any future administrative access must be an explicit, tested Room policy.
+- Platform administrators do not gain implicit Room membership or general Room access. They do have the explicit moderation right to delete any Room chat message when they can access that Room.
+
+## Chat moderation
+
+- Message authors may edit and delete their own messages.
+- Room owners and Room moderators may delete every message in their Room, including guest messages, but may not edit other authors' messages.
+- Sharedrive platform administrators may delete every Room message. This is a platform-wide moderation right; the Room moderator role remains scoped to the individual Room.
+- Deletion is a soft delete: the message body is replaced by the deleted-message state in the UI.
+- Room reaction graphics use the pinned OpenMoji release from the frontend dependency lock. OpenMoji graphics are credited in the Room chat and licensed under CC BY-SA 4.0.
 
 ## Managed groups
 

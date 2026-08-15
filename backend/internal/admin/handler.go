@@ -62,6 +62,10 @@ type settingsResponse struct {
 	RoomsMessageRetentionDays int    `json:"rooms_message_retention_days"`
 	RoomsBackupEnabled        bool   `json:"rooms_backup_enabled"`
 	RoomsMaxDataBytes         int64  `json:"rooms_max_data_bytes"`
+	RoomsGuestUploadsEnabled  bool   `json:"rooms_guest_uploads_enabled"`
+	RoomsGuestMaxFileBytes    int64  `json:"rooms_guest_upload_max_file_bytes"`
+	RoomsGuestMaxFilesSession int    `json:"rooms_guest_upload_max_files_session"`
+	RoomsGuestMaxFilesRoomDay int    `json:"rooms_guest_upload_max_files_room_day"`
 	RoomsEncryptionReady      bool   `json:"rooms_encryption_ready"`
 	RoomsDataUsedBytes        int64  `json:"rooms_data_used_bytes"`
 	RoomsLastCleanupAt        string `json:"rooms_last_cleanup_at,omitempty"`
@@ -150,6 +154,10 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		RoomsMessageRetentionDays: settingInt(kv, "rooms_message_retention_days", 0, 0, 3650),
 		RoomsBackupEnabled:        kv["rooms_backup_enabled"] != "false",
 		RoomsMaxDataBytes:         settingInt64AtLeast(kv, "rooms_max_data_bytes", 500*1024*1024, 1024*1024),
+		RoomsGuestUploadsEnabled:  kv["rooms_guest_uploads_enabled"] == "true",
+		RoomsGuestMaxFileBytes:    settingInt64AtLeast(kv, "rooms_guest_upload_max_file_bytes", 25*1024*1024, 1024*1024),
+		RoomsGuestMaxFilesSession: settingInt(kv, "rooms_guest_upload_max_files_session", 10, 1, 1000),
+		RoomsGuestMaxFilesRoomDay: settingInt(kv, "rooms_guest_upload_max_files_room_day", 100, 1, 10000),
 		RoomsEncryptionReady:      validRoomsEncryptionKey(h.cfg.RoomsEncryptKey),
 		RoomsDataUsedBytes:        roomsDataUsedBytes,
 		RoomsLastCleanupAt:        kv["rooms_last_cleanup_at"],
@@ -206,26 +214,30 @@ func directUploadPublicSettings(rawURL string) (string, bool, string) {
 }
 
 type updateSettingsRequest struct {
-	SiteName            *string `json:"site_name"`
-	AllowRegistrations  *bool   `json:"allow_registrations"`
-	RequireInvite       *bool   `json:"require_invite"`
-	DefaultQuotaBytes   *int64  `json:"default_quota_bytes"`
-	MaxUploadBytes      *int64  `json:"max_upload_bytes"`
-	DirectUploadURL     *string `json:"direct_upload_url"`
-	SMTPHost            *string `json:"smtp_host"`
-	SMTPPort            *int    `json:"smtp_port"`
-	SMTPUsername        *string `json:"smtp_username"`
-	SMTPPassword        *string `json:"smtp_password"`
-	SMTPFromAddress     *string `json:"smtp_from_address"`
-	SMTPTls             *bool   `json:"smtp_tls"`
-	OnlyOfficeURL       *string `json:"onlyoffice_url"`
-	OnlyOfficeJWTSecret *string `json:"onlyoffice_jwt_secret"`
-	PlaylistMaxTracks   *int    `json:"playlist_max_tracks"`
-	RoomsEnabled        *bool   `json:"rooms_enabled"`
-	RoomsChatMaxLength  *int    `json:"rooms_chat_max_length"`
-	RoomsRetentionDays  *int    `json:"rooms_message_retention_days"`
-	RoomsBackupEnabled  *bool   `json:"rooms_backup_enabled"`
-	RoomsMaxDataBytes   *int64  `json:"rooms_max_data_bytes"`
+	SiteName                  *string `json:"site_name"`
+	AllowRegistrations        *bool   `json:"allow_registrations"`
+	RequireInvite             *bool   `json:"require_invite"`
+	DefaultQuotaBytes         *int64  `json:"default_quota_bytes"`
+	MaxUploadBytes            *int64  `json:"max_upload_bytes"`
+	DirectUploadURL           *string `json:"direct_upload_url"`
+	SMTPHost                  *string `json:"smtp_host"`
+	SMTPPort                  *int    `json:"smtp_port"`
+	SMTPUsername              *string `json:"smtp_username"`
+	SMTPPassword              *string `json:"smtp_password"`
+	SMTPFromAddress           *string `json:"smtp_from_address"`
+	SMTPTls                   *bool   `json:"smtp_tls"`
+	OnlyOfficeURL             *string `json:"onlyoffice_url"`
+	OnlyOfficeJWTSecret       *string `json:"onlyoffice_jwt_secret"`
+	PlaylistMaxTracks         *int    `json:"playlist_max_tracks"`
+	RoomsEnabled              *bool   `json:"rooms_enabled"`
+	RoomsChatMaxLength        *int    `json:"rooms_chat_max_length"`
+	RoomsRetentionDays        *int    `json:"rooms_message_retention_days"`
+	RoomsBackupEnabled        *bool   `json:"rooms_backup_enabled"`
+	RoomsMaxDataBytes         *int64  `json:"rooms_max_data_bytes"`
+	RoomsGuestUploadsEnabled  *bool   `json:"rooms_guest_uploads_enabled"`
+	RoomsGuestMaxFileBytes    *int64  `json:"rooms_guest_upload_max_file_bytes"`
+	RoomsGuestMaxFilesSession *int    `json:"rooms_guest_upload_max_files_session"`
+	RoomsGuestMaxFilesRoomDay *int    `json:"rooms_guest_upload_max_files_room_day"`
 }
 
 type settingsUpserter struct {
@@ -335,6 +347,10 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	upserter.setBoundedInt("rooms_message_retention_days", req.RoomsRetentionDays, 0, 3650)
 	upserter.setBool("rooms_backup_enabled", req.RoomsBackupEnabled)
 	upserter.setBoundedInt64("rooms_max_data_bytes", req.RoomsMaxDataBytes, 1024*1024, 1024*1024*1024*1024)
+	upserter.setBool("rooms_guest_uploads_enabled", req.RoomsGuestUploadsEnabled)
+	upserter.setBoundedInt64("rooms_guest_upload_max_file_bytes", req.RoomsGuestMaxFileBytes, 1024*1024, 5*1024*1024*1024)
+	upserter.setBoundedInt("rooms_guest_upload_max_files_session", req.RoomsGuestMaxFilesSession, 1, 1000)
+	upserter.setBoundedInt("rooms_guest_upload_max_files_room_day", req.RoomsGuestMaxFilesRoomDay, 1, 10000)
 
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }

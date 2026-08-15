@@ -636,9 +636,11 @@ func (h *Handler) createSessionAndCookie(ctx context.Context, w http.ResponseWri
 
 // uploadTokenData holds the scoped data stored in Redis for each upload token.
 type uploadTokenData struct {
-	UserID   string `json:"user_id"`
-	FolderID string `json:"folder_id,omitempty"`
-	Purpose  string `json:"purpose"` // "tus_upload"
+	UserID         string `json:"user_id"`
+	FolderID       string `json:"folder_id,omitempty"`
+	Purpose        string `json:"purpose"` // "tus_upload" or "room_guest_tus_upload"
+	GuestSessionID string `json:"guest_session_id,omitempty"`
+	RoomID         string `json:"room_id,omitempty"`
 }
 
 // IssueUploadToken generates a short-lived, scoped token for cross-subdomain
@@ -692,43 +694,44 @@ func (h *Handler) HandleIssueUploadToken(w http.ResponseWriter, r *http.Request)
 // Tokens are single-use: consumed (deleted from Redis) on first successful use.
 func (h *Handler) UploadTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Already authenticated via session cookie — nothing to do.
-		if middleware.UserFromContext(r.Context()) != nil {
+		// An explicit scoped token takes precedence over a login cookie. This is
+		// required when an authenticated browser also joins a Room as a guest.
+		token := r.Header.Get("X-Upload-Token")
+		if token == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
-		token := r.Header.Get("X-Upload-Token")
-		if token == "" || !reUploadToken.MatchString(token) {
-			next.ServeHTTP(w, r)
+		if !reUploadToken.MatchString(token) {
+			httputil.RespondError(w, http.StatusUnauthorized, "invalid upload token")
 			return
 		}
 
-		// Use Get (not GetDel) because TUS uploads span multiple HTTP requests
-		// (POST to create + PATCH to send data). The token expires via TTL.
+		// Use Get (not GetDel) because TUS uploads span multiple HTTP requests.
 		raw, err := h.rdb.Get(r.Context(), uploadTokenKey+token).Result()
 		if err != nil {
-			next.ServeHTTP(w, r)
+			httputil.RespondError(w, http.StatusUnauthorized, "upload token expired")
 			return
 		}
 
 		var data uploadTokenData
 		if err := json.Unmarshal([]byte(raw), &data); err != nil {
-			next.ServeHTTP(w, r)
+			httputil.RespondError(w, http.StatusUnauthorized, "invalid upload token")
 			return
 		}
-
-		// Validate purpose
-		if data.Purpose != "tus_upload" {
-			next.ServeHTTP(w, r)
+		if data.Purpose != "tus_upload" && data.Purpose != "room_guest_tus_upload" {
+			httputil.RespondError(w, http.StatusUnauthorized, "invalid upload token")
 			return
 		}
 
 		u, err := user.FindByID(r.Context(), h.db, data.UserID)
 		if err != nil || u == nil || !u.IsActive {
-			next.ServeHTTP(w, r)
+			httputil.RespondError(w, http.StatusUnauthorized, "upload owner is unavailable")
 			return
 		}
 		ctx := middleware.WithUser(r.Context(), u)
+		if data.Purpose == "room_guest_tus_upload" {
+			ctx = withRoomGuestUpload(ctx, data)
+		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

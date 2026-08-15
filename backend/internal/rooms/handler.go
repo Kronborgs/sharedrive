@@ -17,14 +17,17 @@ import (
 )
 
 type Handler struct {
-	service *Service
-	hub     *roomHub
-	limiter *ratelimit.Limiter
-	redis   *goredis.Client
+	service      *Service
+	hub          *roomHub
+	limiter      *ratelimit.Limiter
+	redis        *goredis.Client
+	appURL       string
+	secureCookie bool
+	uploadTokens guestUploadTokenIssuer
 }
 
-func NewHandler(service *Service, limiter *ratelimit.Limiter, redisClient *goredis.Client) *Handler {
-	return &Handler{service: service, hub: newRoomHub(), limiter: limiter, redis: redisClient}
+func NewHandler(service *Service, limiter *ratelimit.Limiter, redisClient *goredis.Client, appURL string, secureCookie bool, uploadTokens guestUploadTokenIssuer) *Handler {
+	return &Handler{service: service, hub: newRoomHub(), limiter: limiter, redis: redisClient, appURL: appURL, secureCookie: secureCookie, uploadTokens: uploadTokens}
 }
 
 type createRoomRequest struct {
@@ -149,7 +152,7 @@ func (handler *Handler) DeleteMessage(w http.ResponseWriter, request *http.Reque
 		return
 	}
 	user := middleware.UserFromContext(request.Context())
-	if err := handler.service.DeleteMessage(request.Context(), user.ID, roomID, messageID); err != nil {
+	if err := handler.service.DeleteMessage(request.Context(), user.ID, user.Role, roomID, messageID); err != nil {
 		handler.respondError(w, err)
 		return
 	}

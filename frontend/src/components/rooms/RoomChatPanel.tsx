@@ -2,9 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Reply, Send, Trash2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
-import { addRoomReaction, createRoomMessage, deleteRoomMessage, listRoomMessages, markRoomRead, removeRoomReaction, updateRoomMessage, type RoomMessage } from '@/lib/rooms'
+import { addRoomReaction, createRoomMessage, deleteRoomMessage, listRoomMessages, markRoomRead, removeRoomReaction, updateRoomMessage, type RoomMessage, type RoomRole } from '@/lib/rooms'
+import thumbsUpEmoji from 'openmoji/color/svg/1F44D.svg'
+import heartEmoji from 'openmoji/color/svg/1F9E1.svg'
+import joyEmoji from 'openmoji/color/svg/1F602.svg'
 
-export function RoomChatPanel({ roomID }: Readonly<{ roomID: string }>) {
+const reactionEmojis = [
+  { value: '👍', label: 'Synes godt om', image: thumbsUpEmoji },
+  { value: '❤️', label: 'Hjerte', image: heartEmoji },
+  { value: '😂', label: 'Griner', image: joyEmoji },
+]
+
+export function RoomChatPanel({ roomID, roomRole }: Readonly<{ roomID: string; roomRole: RoomRole }>) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const [body, setBody] = useState('')
@@ -21,6 +30,7 @@ export function RoomChatPanel({ roomID }: Readonly<{ roomID: string }>) {
     getNextPageParam: page => page.next_cursor,
   })
   const messageItems = messages.data?.pages.flatMap(page => page.messages) ?? []
+  const canModerate = user?.role === 'admin' || roomRole === 'owner' || roomRole === 'moderator'
   const refresh = () => queryClient.invalidateQueries({ queryKey }).catch(() => undefined)
 
   useEffect(() => {
@@ -103,12 +113,13 @@ export function RoomChatPanel({ roomID }: Readonly<{ roomID: string }>) {
               <p className="text-sm font-medium text-zinc-900 dark:text-slate-100">{message.sender_name}</p>
               <div className="flex gap-2 text-muted">
                 <button type="button" onClick={() => setReplyTo(message)} aria-label="Svar"><Reply size={14} /></button>
-                {message.sender_user_id === user?.id && <><button type="button" onClick={() => edit(message)} aria-label="Redigér"><Pencil size={14} /></button><button type="button" onClick={() => remove(message)} aria-label="Slet"><Trash2 size={14} /></button></>}
+                {!message.deleted_at && message.sender_user_id === user?.id && <button type="button" onClick={() => edit(message)} aria-label="Redigér"><Pencil size={14} /></button>}
+                {!message.deleted_at && (message.sender_user_id === user?.id || canModerate) && <button type="button" onClick={() => remove(message)} aria-label="Slet"><Trash2 size={14} /></button>}
               </div>
             </div>
             {message.reply_to_message_id && <p className="text-xs text-muted">Svar på en tidligere besked</p>}
             <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{message.deleted_at ? 'Beskeden er slettet' : message.body}</p>
-            {!message.deleted_at && <div className="mt-2 flex gap-1">{['👍','❤️','😂'].map(emoji => <button key={emoji} type="button" onClick={() => toggleReaction(message, emoji)} className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs dark:border-[#3a3f58]">{emoji} {message.reactions?.filter(reaction => reaction.emoji === emoji).length || ''}</button>)}</div>}
+            {!message.deleted_at && <div className="mt-2 flex gap-1">{reactionEmojis.map(emoji => <button key={emoji.value} type="button" onClick={() => toggleReaction(message, emoji.value)} className="flex items-center gap-1 rounded-full border border-zinc-200 px-2 py-0.5 text-xs dark:border-[#3a3f58]" aria-label={emoji.label}><img src={emoji.image} alt="" className="h-4 w-4" />{message.reactions?.filter(reaction => reaction.emoji === emoji.value).length || ''}</button>)}</div>}
           </article>
         ))}
         {messages.hasNextPage && (
@@ -128,6 +139,7 @@ export function RoomChatPanel({ roomID }: Readonly<{ roomID: string }>) {
         <textarea value={body} onChange={event => { setBody(event.target.value); notifyTyping() }} maxLength={10000} rows={2} placeholder="Skriv en besked…" className="min-h-12 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-[#2d3148] dark:bg-[#0f1117]" />
         <button type="submit" disabled={!body.trim() || send.isPending} className="self-end rounded-lg bg-brand-600 p-2 text-white disabled:opacity-50" aria-label="Send besked"><Send size={18} /></button>
       </form>
+      <p className="mt-2 text-[11px] text-muted">Emoji-grafik: <a href="https://openmoji.org/" target="_blank" rel="noreferrer" className="underline">OpenMoji</a> (CC BY-SA 4.0).</p>
     </section>
   )
 }

@@ -479,8 +479,8 @@ func (service *Service) CreateMessage(ctx context.Context, actorID, roomID uuid.
 	var message Message
 	err = service.db.QueryRow(ctx, `INSERT INTO room_messages (room_id, sender_user_id, body, reply_to_message_id)
 		VALUES ($1, $2, $3, $4)
-		RETURNING id, room_id, sender_user_id, body, reply_to_message_id, created_at, edited_at, deleted_at`, roomID, actorID, body, replyTo).Scan(
-		&message.ID, &message.RoomID, &message.SenderUserID, &message.Body, &message.ReplyToMessageID, &message.CreatedAt, &message.EditedAt, &message.DeletedAt)
+		RETURNING id, room_id, sender_user_id, sender_guest_session_id, body, reply_to_message_id, created_at, edited_at, deleted_at`, roomID, actorID, body, replyTo).Scan(
+		&message.ID, &message.RoomID, &message.SenderUserID, &message.SenderGuestSessionID, &message.Body, &message.ReplyToMessageID, &message.CreatedAt, &message.EditedAt, &message.DeletedAt)
 	if err == nil {
 		message.Body = plainBody
 	}
@@ -513,9 +513,10 @@ func normalizeMessagePageLimit(limit int) int {
 }
 
 func (service *Service) queryMessagePage(ctx context.Context, roomID uuid.UUID, queryLimit int, cursor *uuid.UUID) ([]Message, error) {
-	rows, err := service.db.Query(ctx, `SELECT m.id, m.room_id, m.sender_user_id, COALESCE(u.display_name, u.email),
+	rows, err := service.db.Query(ctx, `SELECT m.id, m.room_id, m.sender_user_id, m.sender_guest_session_id, COALESCE(u.display_name, u.email, guest.display_name),
 		m.body, m.reply_to_message_id, m.created_at, m.edited_at, m.deleted_at
-		FROM room_messages m JOIN users u ON u.id = m.sender_user_id
+		FROM room_messages m LEFT JOIN users u ON u.id = m.sender_user_id
+		LEFT JOIN room_guest_sessions guest ON guest.id = m.sender_guest_session_id
 		WHERE m.room_id = $1
 		AND ($3::uuid IS NULL OR (m.created_at, m.id) < (
 			SELECT cursor_message.created_at, cursor_message.id
@@ -540,7 +541,7 @@ func (service *Service) queryMessagePage(ctx context.Context, roomID uuid.UUID, 
 
 func (service *Service) scanMessage(ctx context.Context, row pgx.Row) (Message, error) {
 	var message Message
-	err := row.Scan(&message.ID, &message.RoomID, &message.SenderUserID, &message.SenderName, &message.Body,
+	err := row.Scan(&message.ID, &message.RoomID, &message.SenderUserID, &message.SenderGuestSessionID, &message.SenderName, &message.Body,
 		&message.ReplyToMessageID, &message.CreatedAt, &message.EditedAt, &message.DeletedAt)
 	if err != nil {
 		return Message{}, err
@@ -572,7 +573,7 @@ func (service *Service) loadMessageReactions(ctx context.Context, messages []Mes
 		indices[messages[index].ID] = index
 		ids[index] = messages[index].ID
 	}
-	rows, err := service.db.Query(ctx, `SELECT message_id, user_id, emoji FROM room_reactions
+	rows, err := service.db.Query(ctx, `SELECT message_id, user_id, guest_session_id, emoji FROM room_reactions
 		WHERE message_id = ANY($1::uuid[]) ORDER BY created_at`, ids)
 	if err != nil {
 		return err
@@ -581,7 +582,7 @@ func (service *Service) loadMessageReactions(ctx context.Context, messages []Mes
 	for rows.Next() {
 		var messageID uuid.UUID
 		var reaction Reaction
-		if err := rows.Scan(&messageID, &reaction.UserID, &reaction.Emoji); err != nil {
+		if err := rows.Scan(&messageID, &reaction.UserID, &reaction.GuestSessionID, &reaction.Emoji); err != nil {
 			return err
 		}
 		index := indices[messageID]

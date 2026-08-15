@@ -210,7 +210,7 @@ Phase 1 holdes fri af files/chat/guest/media og beviser kun Room core.
 - Owner kan ikke fjernes uden eksplicit ownership transfer, som ikke er del af foerste Phase 1-slice.
 - Archive revokerer senere invites/media joins, men sletter aldrig files/Notes/group. Phase 1 markerer kun Room archived og goer mutationer readonly efter central policy.
 - API starter med list/create/get/patch/archive og list/add/remove members. DELETE bruges ikke til destruktiv Room deletion.
-- Admin kan foelge eksisterende policy for at se/administrere Rooms, men dette skal vaere en eksplicit Room authorization-regel med tests; adminstatus er ikke implicit membership til file resources.
+- Sharedrive-admin har en eksplicit, platform-wide moderationsret til at slette alle Room-chatbeskeder. Adminstatus er fortsat ikke implicit membership eller adgang til Room-delte filer og Notes.
 
 ## Rooms systemindstillinger
 
@@ -244,7 +244,8 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 
 - PostgreSQL-persistente plain-text messages med escaped rendering.
 - Cursor/keyset pagination; aldrig `SELECT all messages ever`.
-- Reply, edit/delete egen besked efter definerede regler, reactions og timestamps.
+- Reply, edit/delete og timestamps. Afsenderen kan redigere/slette egen besked; Room owner/moderator kan slette alle beskeder i det paagaeldende Room; Sharedrive-admin kan slette alle Room-beskeder globalt. Ingen kan redigere andres beskeder.
+- Reactions gemmes som Unicode-tegn, ikke som uploadede billedfiler. UI renderer de faste reaction-knapper med den lokalt bundne og versionsfastlaaste OpenMoji-pakke (CC BY-SA 4.0) med synlig attribution og uden runtime-CDN. Buildet kontrollerer informativt for en nyere stabil npm-release; opdatering sker manuelt efter review og aendrer aldrig produktionen automatisk.
 - Permanent read state per room/user, ikke en raekke per besked.
 - Realtime WebSocket med server-afledt identity, Room-access, Origin-check, size limit, rate limits, ping/pong og clean disconnect.
 - Redis kun til namespaced ephemeral presence, typing og event distribution.
@@ -270,7 +271,11 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 - Raw token fjernes fra URL og maa ikke logges eller ligge i backup.
 - Owner/moderator styrer Room-permissions som chat, voice og screen share.
 - File access afgøres fortsat af eksisterende file authorization.
-- Guest upload, hvis tilladt, gaar gennem normal file pipeline og auditeres med guest/room metadata.
+- Guest upload er deaktiveret som standard og kraever baade global admin-aktivering og en eksplicit permission paa invitationen styret af Room owner/moderator.
+- Tilladt guest upload gaar gennem normal multipart/TUS-pipeline med MIME-, checksum-, quota-, storage- og rate-limit-kontrol og auditeres med guest/Room metadata.
+- Guest-uploadede filer oprettes som normale Sharedrive-filer ejet af Room-ejeren i en automatisk, systemstyret `Rooms/<room-slug>/Guest uploads`-mappe, der er synlig i ejerens Files. Roomet gemmer kun filreferencen.
+- Standardgraenser er 25 MB pr. fil, 10 filer pr. guest session og 100 guest uploads pr. Room pr. rullende 24 timer. Admin kan saette lavere/hoejere graenser i Rooms-indstillinger; eksisterende konto-/uploadkvoter og den strengeste graense vinder altid.
+- Session revoke, member removal, invite revoke og fjernelse af Room-referencen sletter aldrig den normale Sharedrive-fil. Permanent sletning bruger fortsat Files/trash-flowet.
 
 ### Phase 5 - optional LiveKit voice
 

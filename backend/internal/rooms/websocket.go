@@ -17,9 +17,10 @@ import (
 )
 
 type roomEvent struct {
-	Type        string    `json:"type"`
-	UserID      uuid.UUID `json:"user_id,omitempty"`
-	DisplayName string    `json:"display_name,omitempty"`
+	Type           string    `json:"type"`
+	UserID         uuid.UUID `json:"user_id,omitempty"`
+	GuestSessionID string    `json:"guest_session_id,omitempty"`
+	DisplayName    string    `json:"display_name,omitempty"`
 }
 
 type roomClientEvent struct {

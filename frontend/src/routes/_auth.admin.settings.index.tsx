@@ -34,6 +34,10 @@ interface SystemSettings {
   rooms_message_retention_days: number
   rooms_backup_enabled: boolean
   rooms_max_data_bytes: number
+  rooms_guest_uploads_enabled: boolean
+  rooms_guest_upload_max_file_bytes: number
+  rooms_guest_upload_max_files_session: number
+  rooms_guest_upload_max_files_room_day: number
   rooms_encryption_ready: boolean
   rooms_data_used_bytes: number
   rooms_last_cleanup_at?: string
@@ -57,6 +61,10 @@ const settingsSchema = z.object({
   rooms_message_retention_days: z.coerce.number().int().min(0).max(3650),
   rooms_backup_enabled: z.boolean(),
   rooms_max_data_bytes: z.coerce.number().int().min(1).max(1024 * 1024),
+  rooms_guest_uploads_enabled: z.boolean(),
+  rooms_guest_upload_max_file_bytes: z.coerce.number().int().min(1).max(5120),
+  rooms_guest_upload_max_files_session: z.coerce.number().int().min(1).max(1000),
+  rooms_guest_upload_max_files_room_day: z.coerce.number().int().min(1).max(10000),
 })
 
 type FormValues = z.infer<typeof settingsSchema>
@@ -93,6 +101,7 @@ function buildSettingsPayload(values: FormValues, smtpPassword: string): Record<
     default_quota_bytes: toGB(values.default_quota_bytes),
     max_upload_bytes: toMB(values.max_upload_bytes),
     rooms_max_data_bytes: toMB(values.rooms_max_data_bytes),
+    rooms_guest_upload_max_file_bytes: toMB(values.rooms_guest_upload_max_file_bytes),
     direct_upload_url: values.direct_upload_url,
   }
   if (smtpPassword) {
@@ -138,7 +147,7 @@ function SettingsPage() {
   const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(settingsSchema),
     values: data
-      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '', playlist_max_tracks: data.playlist_max_tracks ?? 200, rooms_enabled: data.rooms_enabled ?? false, rooms_chat_max_length: data.rooms_chat_max_length ?? 4000, rooms_message_retention_days: data.rooms_message_retention_days ?? 0, rooms_backup_enabled: data.rooms_backup_enabled ?? true, rooms_max_data_bytes: MB(data.rooms_max_data_bytes ?? 500 * 1024 * 1024) }
+      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '', playlist_max_tracks: data.playlist_max_tracks ?? 200, rooms_enabled: data.rooms_enabled ?? false, rooms_chat_max_length: data.rooms_chat_max_length ?? 4000, rooms_message_retention_days: data.rooms_message_retention_days ?? 0, rooms_backup_enabled: data.rooms_backup_enabled ?? true, rooms_max_data_bytes: MB(data.rooms_max_data_bytes ?? 500 * 1024 * 1024), rooms_guest_uploads_enabled: data.rooms_guest_uploads_enabled ?? false, rooms_guest_upload_max_file_bytes: MB(data.rooms_guest_upload_max_file_bytes ?? 25 * 1024 * 1024), rooms_guest_upload_max_files_session: data.rooms_guest_upload_max_files_session ?? 10, rooms_guest_upload_max_files_room_day: data.rooms_guest_upload_max_files_room_day ?? 100 }
       : undefined,
   })
 
@@ -462,6 +471,23 @@ function SettingsPage() {
               <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">{t('settings.roomsRetentionDesc')}</p>
             </Field>
             <RoomsStorageStatus data={data} />
+
+            <div className="border-t border-zinc-200 pt-4 dark:border-[#2d3148]">
+              <h3 className="mb-1 text-sm font-semibold">{t('settings.roomsGuestUploadsTitle')}</h3>
+              <p className="mb-3 text-xs text-muted">{t('settings.roomsGuestUploadsDesc')}</p>
+              <div className="space-y-4">
+                <Toggle label={t('settings.roomsGuestUploadsEnabled')} description={t('settings.roomsGuestUploadsEnabledDesc')} name="rooms_guest_uploads_enabled" register={register} />
+                <Field label={t('settings.roomsGuestMaxFile')} error={errors.rooms_guest_upload_max_file_bytes?.message}>
+                  <input type="number" step="1" min="1" max="5120" {...register('rooms_guest_upload_max_file_bytes')} className={inputClass} />
+                </Field>
+                <Field label={t('settings.roomsGuestMaxSession')} error={errors.rooms_guest_upload_max_files_session?.message}>
+                  <input type="number" step="1" min="1" max="1000" {...register('rooms_guest_upload_max_files_session')} className={inputClass} />
+                </Field>
+                <Field label={t('settings.roomsGuestMaxRoomDay')} error={errors.rooms_guest_upload_max_files_room_day?.message}>
+                  <input type="number" step="1" min="1" max="10000" {...register('rooms_guest_upload_max_files_room_day')} className={inputClass} />
+                </Field>
+              </div>
+            </div>
 
             <Toggle label={t('settings.roomsBackup')} description={t('settings.roomsBackupDesc')} name="rooms_backup_enabled" register={register} />
             <p className="rounded-lg bg-zinc-100 dark:bg-[#0f1117] px-3 py-2 text-xs text-muted">{t('settings.roomsPhaseTwoNote')}</p>

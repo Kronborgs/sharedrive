@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:openmoji": "node scripts/check-openmoji-version.mjs",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.reporter=lcov",
@@ -39,6 +40,7 @@
     "input-otp": "^1.4.1",
     "lucide-react": "^1.16.0",
     "monaco-editor": "^0.55.1",
+    "openmoji": "17.0.0",
     "pdfjs-dist": "^5.7.284",
     "qrcode": "^1.5.4",
     "react": "^19.2.6",

@@ -68,6 +68,10 @@ const (
 	EventRoomArchived      = "ROOM_ARCHIVED"
 	EventRoomMemberAdded   = "ROOM_MEMBER_ADDED"
 	EventRoomMemberRemoved = "ROOM_MEMBER_REMOVED"
+	EventRoomInviteCreated = "ROOM_INVITE_CREATED"
+	EventRoomInviteRevoked = "ROOM_INVITE_REVOKED"
+	EventRoomGuestJoined   = "ROOM_GUEST_JOINED"
+	EventRoomGuestUpload   = "ROOM_GUEST_UPLOAD"
 
 	// WebDAV events
 	EventWebDAVLoginSuccess = "WEBDAV_LOGIN_SUCCESS"

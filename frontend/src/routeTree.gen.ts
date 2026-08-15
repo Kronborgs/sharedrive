@@ -28,6 +28,8 @@ import { Route as AuthFilesIndexRouteImport } from './routes/_auth.files.index'
 import { Route as AuthBackupIndexRouteImport } from './routes/_auth.backup.index'
 import { Route as AuthAdminIndexRouteImport } from './routes/_auth.admin.index'
 import { Route as AuthActivityIndexRouteImport } from './routes/_auth.activity.index'
+import { Route as RoomsInviteTokenRouteImport } from './routes/rooms.invite.$token'
+import { Route as RoomsGuestIdRouteImport } from './routes/rooms.guest.$id'
 import { Route as NotesGuestIdRouteImport } from './routes/notes.guest.$id'
 import { Route as GuestNotesIdRouteImport } from './routes/guest.notes.$id'
 import { Route as AuthRoomsRoomIDRouteImport } from './routes/_auth.rooms.$roomID'
@@ -137,6 +139,16 @@ const AuthActivityIndexRoute = AuthActivityIndexRouteImport.update({
   path: '/activity/',
   getParentRoute: () => AuthRoute,
 } as any)
+const RoomsInviteTokenRoute = RoomsInviteTokenRouteImport.update({
+  id: '/rooms/invite/$token',
+  path: '/rooms/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoomsGuestIdRoute = RoomsGuestIdRouteImport.update({
+  id: '/rooms/guest/$id',
+  path: '/rooms/guest/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NotesGuestIdRoute = NotesGuestIdRouteImport.update({
   id: '/notes/guest/$id',
   path: '/notes/guest/$id',
@@ -224,6 +236,8 @@ export interface FileRoutesByFullPath {
   '/rooms/$roomID': typeof AuthRoomsRoomIDRoute
   '/guest/notes/$id': typeof GuestNotesIdRoute
   '/notes/guest/$id': typeof NotesGuestIdRoute
+  '/rooms/guest/$id': typeof RoomsGuestIdRoute
+  '/rooms/invite/$token': typeof RoomsInviteTokenRoute
   '/activity/': typeof AuthActivityIndexRoute
   '/admin/': typeof AuthAdminIndexRoute
   '/backup/': typeof AuthBackupIndexRoute
@@ -257,6 +271,8 @@ export interface FileRoutesByTo {
   '/rooms/$roomID': typeof AuthRoomsRoomIDRoute
   '/guest/notes/$id': typeof GuestNotesIdRoute
   '/notes/guest/$id': typeof NotesGuestIdRoute
+  '/rooms/guest/$id': typeof RoomsGuestIdRoute
+  '/rooms/invite/$token': typeof RoomsInviteTokenRoute
   '/activity': typeof AuthActivityIndexRoute
   '/admin': typeof AuthAdminIndexRoute
   '/backup': typeof AuthBackupIndexRoute
@@ -293,6 +309,8 @@ export interface FileRoutesById {
   '/_auth/rooms/$roomID': typeof AuthRoomsRoomIDRoute
   '/guest/notes/$id': typeof GuestNotesIdRoute
   '/notes/guest/$id': typeof NotesGuestIdRoute
+  '/rooms/guest/$id': typeof RoomsGuestIdRoute
+  '/rooms/invite/$token': typeof RoomsInviteTokenRoute
   '/_auth/activity/': typeof AuthActivityIndexRoute
   '/_auth/admin/': typeof AuthAdminIndexRoute
   '/_auth/backup/': typeof AuthBackupIndexRoute
@@ -329,6 +347,8 @@ export interface FileRouteTypes {
     | '/rooms/$roomID'
     | '/guest/notes/$id'
     | '/notes/guest/$id'
+    | '/rooms/guest/$id'
+    | '/rooms/invite/$token'
     | '/activity/'
     | '/admin/'
     | '/backup/'
@@ -362,6 +382,8 @@ export interface FileRouteTypes {
     | '/rooms/$roomID'
     | '/guest/notes/$id'
     | '/notes/guest/$id'
+    | '/rooms/guest/$id'
+    | '/rooms/invite/$token'
     | '/activity'
     | '/admin'
     | '/backup'
@@ -397,6 +419,8 @@ export interface FileRouteTypes {
     | '/_auth/rooms/$roomID'
     | '/guest/notes/$id'
     | '/notes/guest/$id'
+    | '/rooms/guest/$id'
+    | '/rooms/invite/$token'
     | '/_auth/activity/'
     | '/_auth/admin/'
     | '/_auth/backup/'
@@ -427,6 +451,8 @@ export interface RootRouteChildren {
   SharedIndexRoute: typeof SharedIndexRoute
   GuestNotesIdRoute: typeof GuestNotesIdRoute
   NotesGuestIdRoute: typeof NotesGuestIdRoute
+  RoomsGuestIdRoute: typeof RoomsGuestIdRoute
+  RoomsInviteTokenRoute: typeof RoomsInviteTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -563,6 +589,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/activity/'
       preLoaderRoute: typeof AuthActivityIndexRouteImport
       parentRoute: typeof AuthRoute
+    }
+    '/rooms/invite/$token': {
+      id: '/rooms/invite/$token'
+      path: '/rooms/invite/$token'
+      fullPath: '/rooms/invite/$token'
+      preLoaderRoute: typeof RoomsInviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rooms/guest/$id': {
+      id: '/rooms/guest/$id'
+      path: '/rooms/guest/$id'
+      fullPath: '/rooms/guest/$id'
+      preLoaderRoute: typeof RoomsGuestIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/notes/guest/$id': {
       id: '/notes/guest/$id'
@@ -739,6 +779,8 @@ const rootRouteChildren: RootRouteChildren = {
   SharedIndexRoute: SharedIndexRoute,
   GuestNotesIdRoute: GuestNotesIdRoute,
   NotesGuestIdRoute: NotesGuestIdRoute,
+  RoomsGuestIdRoute: RoomsGuestIdRoute,
+  RoomsInviteTokenRoute: RoomsInviteTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

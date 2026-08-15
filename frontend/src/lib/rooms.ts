@@ -58,14 +58,15 @@ export function removeRoomMember(roomID: string, userID: string): Promise<void> 
 export interface RoomMessage {
   id: string
   room_id: string
-  sender_user_id: string
+  sender_user_id?: string
+  sender_guest_session_id?: string
   sender_name: string
   body: string
   reply_to_message_id?: string
   created_at: string
   edited_at?: string
   deleted_at?: string
-  reactions: Array<{ user_id: string; emoji: string }>
+  reactions: Array<{ user_id?: string; guest_session_id?: string; emoji: string }>
 }
 
 export interface RoomMessagePage {
@@ -119,4 +120,71 @@ export function removeRoomReaction(roomID: string, messageID: string, emoji: str
 }
 export function markRoomRead(roomID: string, messageID: string): Promise<void> {
   return api.put(`/api/v1/rooms/${roomID}/read-state`, { message_id: messageID })
+}
+export interface RoomInvite {
+  id: string
+  room_id: string
+  label: string
+  can_chat: boolean
+  can_upload: boolean
+  can_voice: boolean
+  can_share_screen: boolean
+  expires_at: string
+  revoked_at?: string
+  created_at: string
+}
+
+export interface CreateRoomInviteInput {
+  label: string
+  expires_hours: number
+  can_chat: boolean
+  can_upload: boolean
+  can_voice: boolean
+  can_share_screen: boolean
+}
+
+export interface GuestRoom {
+  id: string
+  name: string
+  guest_session_id: string
+  display_name: string
+  can_chat: boolean
+  can_upload: boolean
+  upload_max_file_bytes: number
+  upload_max_files_session: number
+  can_voice: boolean
+  can_share_screen: boolean
+  expires_at: string
+}
+
+export function listRoomInvites(roomID: string, signal?: AbortSignal): Promise<RoomInvite[]> {
+  return api.get<RoomInvite[]>(`/api/v1/rooms/${roomID}/invites`, signal)
+}
+
+export function createRoomInvite(roomID: string, input: CreateRoomInviteInput): Promise<{ invite: RoomInvite; invite_url: string }> {
+  return api.post(`/api/v1/rooms/${roomID}/invites`, input)
+}
+
+export function revokeRoomInvite(roomID: string, inviteID: string): Promise<void> {
+  return api.delete(`/api/v1/rooms/${roomID}/invites/${inviteID}`)
+}
+
+export function acceptRoomInvite(token: string, displayName: string): Promise<{ room_id: string; session_id: string }> {
+  return api.post(`/api/v1/public/rooms/invitations/${encodeURIComponent(token)}/accept`, { display_name: displayName })
+}
+
+export function getGuestRoom(roomID: string, signal?: AbortSignal): Promise<GuestRoom> {
+  return api.get<GuestRoom>(`/api/v1/guest/rooms/${roomID}`, signal)
+}
+
+export function listGuestRoomMessages(roomID: string, signal?: AbortSignal): Promise<RoomMessagePage> {
+  return api.get<RoomMessagePage>(`/api/v1/guest/rooms/${roomID}/messages?limit=50`, signal)
+}
+
+export function createGuestRoomMessage(roomID: string, body: string): Promise<RoomMessage> {
+  return api.post<RoomMessage>(`/api/v1/guest/rooms/${roomID}/messages`, { body })
+}
+
+export function logoutGuestRoom(): Promise<void> {
+  return api.post('/api/v1/guest/rooms/logout', {})
 }

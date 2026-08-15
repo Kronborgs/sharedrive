@@ -74,7 +74,6 @@ type Config struct {
 	WebDAVEnabled        bool `mapstructure:"WEBDAV_ENABLED"`
 	RegistrationOpen     bool `mapstructure:"REGISTRATION_OPEN"`
 	TOTPRequiredForAdmin bool `mapstructure:"TOTP_REQUIRED_FOR_ADMIN"`
-	RoomsEnabled         bool `mapstructure:"ROOMS_ENABLED"`
 
 	// Gotenberg — Office document → PDF conversion service
 	GotenbergURL string `mapstructure:"GOTENBERG_URL"`

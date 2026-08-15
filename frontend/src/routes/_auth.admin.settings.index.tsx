@@ -48,7 +48,7 @@ const settingsSchema = z.object({
 
 type FormValues = z.infer<typeof settingsSchema>
 
-type Tab = 'general' | 'smtp' | 'onlyoffice' | 'texteditor' | 'player'
+type Tab = 'general' | 'smtp' | 'onlyoffice' | 'texteditor' | 'player' | 'rooms'
 type SMTPProviderId = 'gmail' | 'microsoft365' | 'outlook' | 'yahoo' | 'zoho' | 'custom'
 
 const SMTP_PROVIDER_PRESETS: Record<Exclude<SMTPProviderId, 'custom'>, { host: string; port: number; tls: boolean }> = {
@@ -108,7 +108,7 @@ function SettingsPage() {
   const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(settingsSchema),
     values: data
-      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '', playlist_max_tracks: data.playlist_max_tracks ?? 200 }
+      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '', playlist_max_tracks: data.playlist_max_tracks ?? 200, rooms_enabled: data.rooms_enabled ?? false, rooms_chat_max_length: data.rooms_chat_max_length ?? 4000, rooms_message_retention_days: data.rooms_message_retention_days ?? 0, rooms_backup_enabled: data.rooms_backup_enabled ?? true, rooms_max_data_bytes: MB(data.rooms_max_data_bytes ?? 500 * 1024 * 1024) }
       : undefined,
   })
 
@@ -195,6 +195,7 @@ function SettingsPage() {
     { id: 'onlyoffice', label: t('settings.tabOnlyOffice') },
     { id: 'texteditor', label: t('settings.tabTextEditor') },
     { id: 'player',     label: t('settings.tabPlayer') },
+    { id: 'rooms',      label: t('settings.tabRooms') },
   ]
 
   return (
@@ -405,6 +406,36 @@ function SettingsPage() {
         </div>
       )}
 
+      {tab === 'rooms' && (
+        <form onSubmit={handleSubmit(values => save.mutate(values))} className="space-y-5">
+          <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('settings.roomsTitle')}</h2>
+              <p className="text-xs text-muted">{t('settings.roomsDesc')}</p>
+            </div>
+            <Toggle label={t('settings.roomsEnabled')} description={t('settings.roomsEnabledDesc')} name="rooms_enabled" register={register} />
+            <Field label={t('settings.roomsChatLength')} error={errors.rooms_chat_max_length?.message}>
+              <input type="number" step="1" min="1" max="10000" {...register('rooms_chat_max_length')} className={inputClass} />
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">{t('settings.roomsChatLengthDesc')}</p>
+            </Field>
+            <Field label={t('settings.roomsMaxData')} error={errors.rooms_max_data_bytes?.message}>
+              <input type="number" step="1" min="1" max="1048576" {...register('rooms_max_data_bytes')} className={inputClass} />
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">{t('settings.roomsMaxDataDesc')}</p>
+            </Field>
+            <Field label={t('settings.roomsRetention')} error={errors.rooms_message_retention_days?.message}>
+              <input type="number" step="1" min="0" max="3650" {...register('rooms_message_retention_days')} className={inputClass} />
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">{t('settings.roomsRetentionDesc')}</p>
+            </Field>
+            <Toggle label={t('settings.roomsBackup')} description={t('settings.roomsBackupDesc')} name="rooms_backup_enabled" register={register} />
+            <p className="rounded-lg bg-zinc-100 dark:bg-[#0f1117] px-3 py-2 text-xs text-muted">{t('settings.roomsPhaseTwoNote')}</p>
+          </section>
+          <div className="flex justify-end">
+            <button type="submit" disabled={!isDirty || save.isPending} className="px-5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+              {save.isPending ? t('settings.saving') : t('settings.saveChanges')}
+            </button>
+          </div>
+        </form>
+      )}
       {tab === 'player' && (
         <form onSubmit={handleSubmit(values => save.mutate(values))} className="space-y-5">
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-4">

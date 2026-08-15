@@ -38,6 +38,20 @@ func NewService(db *pgxpool.Pool, auditLogger audit.Logger) *Service {
 	return &Service{db: db, audit: auditLogger}
 }
 
+// Enabled reports whether the administrator has enabled the Rooms feature.
+// The setting is stored in system_settings so it takes effect without a restart.
+func (service *Service) Enabled(ctx context.Context) (bool, error) {
+	var value string
+	err := service.db.QueryRow(ctx, `SELECT value FROM system_settings WHERE key = 'rooms_enabled'`).Scan(&value)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return value == "true", nil
+}
+
 const roomColumns = `r.id, r.name, r.slug, r.owner_id, r.managed_group_id,
  r.created_by, r.created_at, r.updated_at, r.archived_at`
 

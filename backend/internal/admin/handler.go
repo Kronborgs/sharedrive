@@ -60,6 +60,7 @@ type settingsResponse struct {
 	RoomsChatMaxLength        int    `json:"rooms_chat_max_length"`
 	RoomsMessageRetentionDays int    `json:"rooms_message_retention_days"`
 	RoomsBackupEnabled        bool   `json:"rooms_backup_enabled"`
+	RoomsMaxDataBytes         int64  `json:"rooms_max_data_bytes"`
 }
 
 func loadSettings(ctx context.Context, db *pgxpool.Pool) (map[string]string, error) {
@@ -122,6 +123,7 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		RoomsChatMaxLength:        settingInt(kv, "rooms_chat_max_length", 4000, 1, 10000),
 		RoomsMessageRetentionDays: settingInt(kv, "rooms_message_retention_days", 0, 0, 3650),
 		RoomsBackupEnabled:        kv["rooms_backup_enabled"] != "false",
+		RoomsMaxDataBytes:         settingInt64(kv, "rooms_max_data_bytes", 500*1024*1024),
 	})
 }
 
@@ -131,7 +133,7 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	rows, err := h.db.Query(ctx,
-		`SELECT key, value FROM system_settings WHERE key IN ('direct_upload_url','onlyoffice_url','playlist_max_tracks')`)
+		`SELECT key, value FROM system_settings WHERE key IN ('direct_upload_url','onlyoffice_url','playlist_max_tracks','rooms_enabled')`)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
@@ -151,7 +153,7 @@ func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 			playlistMax = n
 		}
 	}
-	httputil.Respond(w, http.StatusOK, publicSettingsResponse(kv, playlistMax, h.cfg.RoomsEnabled))
+	httputil.Respond(w, http.StatusOK, publicSettingsResponse(kv, playlistMax, kv["rooms_enabled"] == "true"))
 }
 
 func publicSettingsResponse(kv map[string]string, playlistMax int, roomsEnabled bool) map[string]any {
@@ -190,6 +192,11 @@ type updateSettingsRequest struct {
 	OnlyOfficeURL       *string `json:"onlyoffice_url"`
 	OnlyOfficeJWTSecret *string `json:"onlyoffice_jwt_secret"`
 	PlaylistMaxTracks   *int    `json:"playlist_max_tracks"`
+	RoomsEnabled        *bool   `json:"rooms_enabled"`
+	RoomsChatMaxLength  *int    `json:"rooms_chat_max_length"`
+	RoomsRetentionDays  *int    `json:"rooms_message_retention_days"`
+	RoomsBackupEnabled  *bool   `json:"rooms_backup_enabled"`
+	RoomsMaxDataBytes   *int64  `json:"rooms_max_data_bytes"`
 }
 
 type settingsUpserter struct {
@@ -253,6 +260,17 @@ func (u *settingsUpserter) setNonEmptyString(key string, value *string) {
 	}
 }
 
+func (u *settingsUpserter) setBoundedInt(key string, value *int, min, max int) {
+	if value != nil && *value >= min && *value <= max {
+		u.upsert(key, strconv.Itoa(*value))
+	}
+}
+
+func (u *settingsUpserter) setBoundedInt64(key string, value *int64, min, max int64) {
+	if value != nil && *value >= min && *value <= max {
+		u.upsert(key, strconv.FormatInt(*value, 10))
+	}
+}
 func (u *settingsUpserter) setPositiveInt(key string, value *int) {
 	if value != nil && *value > 0 {
 		u.upsert(key, strconv.Itoa(*value))
@@ -283,6 +301,11 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	upserter.setString("onlyoffice_url", req.OnlyOfficeURL)
 	upserter.setNonEmptyString("onlyoffice_jwt_secret", req.OnlyOfficeJWTSecret)
 	upserter.setPositiveInt("playlist_max_tracks", req.PlaylistMaxTracks)
+	upserter.setBool("rooms_enabled", req.RoomsEnabled)
+	upserter.setBoundedInt("rooms_chat_max_length", req.RoomsChatMaxLength, 1, 10000)
+	upserter.setBoundedInt("rooms_message_retention_days", req.RoomsRetentionDays, 0, 3650)
+	upserter.setBool("rooms_backup_enabled", req.RoomsBackupEnabled)
+	upserter.setBoundedInt64("rooms_max_data_bytes", req.RoomsMaxDataBytes, 1, 1024*1024*1024*1024)
 
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }

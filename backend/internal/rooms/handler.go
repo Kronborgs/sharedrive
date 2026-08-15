@@ -35,6 +35,20 @@ type addMemberRequest struct {
 	Role   string    `json:"role"`
 }
 
+func (handler *Handler) RequireEnabled(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, request *http.Request) {
+		enabled, err := handler.service.Enabled(request.Context())
+		if err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if !enabled {
+			httputil.RespondError(w, http.StatusNotFound, "rooms are disabled")
+			return
+		}
+		next(w, request)
+	}
+}
 func (handler *Handler) List(w http.ResponseWriter, request *http.Request) {
 	user := middleware.UserFromContext(request.Context())
 	includeArchived, err := strconv.ParseBool(request.URL.Query().Get("include_archived"))

@@ -524,16 +524,14 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/v1/notes/{id}/shares/{shareId}", s.notesHandler.RevokeShare)
 		r.Post("/api/v1/notes/{id}/shares/{shareId}/resend", s.notesHandler.ResendShare)
 
-		if s.cfg.RoomsEnabled {
-			r.Get("/api/v1/rooms", s.roomsHandler.List)
-			r.Post("/api/v1/rooms", s.roomsHandler.Create)
-			r.Get("/api/v1/rooms/{roomID}", s.roomsHandler.Get)
-			r.Patch("/api/v1/rooms/{roomID}", s.roomsHandler.Update)
-			r.Post("/api/v1/rooms/{roomID}/archive", s.roomsHandler.Archive)
-			r.Get("/api/v1/rooms/{roomID}/members", s.roomsHandler.ListMembers)
-			r.Post("/api/v1/rooms/{roomID}/members", s.roomsHandler.AddMember)
-			r.Delete("/api/v1/rooms/{roomID}/members/{userID}", s.roomsHandler.RemoveMember)
-		}
+		r.Get("/api/v1/rooms", s.roomsHandler.RequireEnabled(s.roomsHandler.List))
+		r.Post("/api/v1/rooms", s.roomsHandler.RequireEnabled(s.roomsHandler.Create))
+		r.Get("/api/v1/rooms/{roomID}", s.roomsHandler.RequireEnabled(s.roomsHandler.Get))
+		r.Patch("/api/v1/rooms/{roomID}", s.roomsHandler.RequireEnabled(s.roomsHandler.Update))
+		r.Post("/api/v1/rooms/{roomID}/archive", s.roomsHandler.RequireEnabled(s.roomsHandler.Archive))
+		r.Get("/api/v1/rooms/{roomID}/members", s.roomsHandler.RequireEnabled(s.roomsHandler.ListMembers))
+		r.Post("/api/v1/rooms/{roomID}/members", s.roomsHandler.RequireEnabled(s.roomsHandler.AddMember))
+		r.Delete("/api/v1/rooms/{roomID}/members/{userID}", s.roomsHandler.RequireEnabled(s.roomsHandler.RemoveMember))
 
 		// Backup
 		r.Get("/api/v1/backup/config", s.backupHandler.GetConfig)

@@ -178,7 +178,7 @@ Foer produktionskode:
 - Routes er filbaserede, og `routeTree.gen.ts` er genereret output. Room routes oprettes efter eksisterende `_auth.*` pattern.
 - I18n er en typed dansk/engelsk dictionary i `frontend/src/lib/i18n.tsx`; alle Rooms strings tilfoejes der.
 - Files har eksisterende UploadZone, folder picker, preview, OnlyOffice og share dialogs, som Phase 3 skal genbruge eller udskille smaa genbrugelige dele fra uden generel refactor.
-- Notes har eksisterende editor/share/guest patterns. PWA har separate site/Notes manifests og service worker; Rooms er i foerste version del af hoved-Sharedrive PWA.
+- Notes har eksisterende editor/share/guest patterns. PWA har separate site/Notes manifests og service worker. Rooms skal både være en integreret del af hoved-Sharedrive PWA og have sin egen installerbare Rooms-PWA med separat manifest, start-URL og relevant Room-navigation. Den selvstændige PWA skal fortsat bruge samme Sharedrive authentication, API, permissions og data; den er ikke en parallel application eller data-store.
 
 ## Genbrugsmatrix
 
@@ -212,6 +212,22 @@ Phase 1 holdes fri af files/chat/guest/media og beviser kun Room core.
 - API starter med list/create/get/patch/archive og list/add/remove members. DELETE bruges ikke til destruktiv Room deletion.
 - Admin kan foelge eksisterende policy for at se/administrere Rooms, men dette skal vaere en eksplicit Room authorization-regel med tests; adminstatus er ikke implicit membership til file resources.
 
+## Rooms systemindstillinger
+
+Rooms konfigureres af administrator under `Admin -> Indstillinger -> Rooms`, ikke med Docker- eller environment-variabler. Indstillingerne gemmes i eksisterende `system_settings` og auditeres som almindelige adminindstillingsændringer.
+
+Foerste user-test skal have disse standarder:
+
+- **Aktivér Rooms:** slået fra som standard; aktivering viser Rooms-navigation og åbner Rooms API for autentificerede brugere.
+- **Maks. tegn pr. chatbesked:** `4.000`. Grænsen gælder én besked, aldrig hele Roomets chat.
+- **Maks. Rooms-data i alt:** `500 MB`. Tæller kun Rooms-ejet PostgreSQL-data som chatbeskeder, replies, reactions og read-state.
+- **Besked-retention:** `0` dage betyder permanent opbevaring, medmindre lagergrænsen kræver oprydning.
+- **Oprydning ved lagergrænse:** slet ældste chatbeskeder gradvist med en 10 % fri buffer. Admin ser valgt regel, aktuelt forbrug og seneste oprydning.
+- **Inkludér Rooms i backup:** slået til som standard, når Phase 7 backup/restore for Rooms implementeres.
+
+Room-dataregler må aldrig automatisk slette, ændre eller tælle eksisterende Sharedrive Files, Notes, filblobs, media eller andre Sharedrive-ressourcer. Filer og Notes er fortsat kun referencer med deres egne permissions og retention-regler.
+
+Chat-retention, byteberegning og automatisk oprydning implementeres først med Phase 2-chatten. Indstillingerne kan vises og ændres i Rooms-fanen før da, men UI skal tydeligt markere indstillinger, der endnu ikke har aktiv effekt.
 ## Faseplan
 
 ### Phase 1 - Room core

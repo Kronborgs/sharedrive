@@ -41,21 +41,25 @@ func NewHandler(db *pgxpool.Pool, cfg *config.Config, ioTracker *files.IOTracker
 // ─── System Settings ─────────────────────────────────────────────────────────
 
 type settingsResponse struct {
-	SiteName               string `json:"site_name"`
-	AllowRegistrations     bool   `json:"allow_registrations"`
-	RequireInvite          bool   `json:"require_invite"`
-	DefaultQuotaBytes      int64  `json:"default_quota_bytes"`
-	MaxUploadBytes         int64  `json:"max_upload_bytes"`
-	DirectUploadURL        string `json:"direct_upload_url"`
-	SMTPHost               string `json:"smtp_host"`
-	SMTPPort               int    `json:"smtp_port"`
-	SMTPUsername           string `json:"smtp_username"`
-	SMTPFromAddress        string `json:"smtp_from_address"`
-	SMTPTls                bool   `json:"smtp_tls"`
-	OnlyOfficeURL          string `json:"onlyoffice_url"`
-	OnlyOfficeJWTSecret    string `json:"onlyoffice_jwt_secret"`     // always empty in response — write-only
-	OnlyOfficeJWTSecretSet bool   `json:"onlyoffice_jwt_secret_set"` // true when a secret is stored
-	PlaylistMaxTracks      int    `json:"playlist_max_tracks"`
+	SiteName                  string `json:"site_name"`
+	AllowRegistrations        bool   `json:"allow_registrations"`
+	RequireInvite             bool   `json:"require_invite"`
+	DefaultQuotaBytes         int64  `json:"default_quota_bytes"`
+	MaxUploadBytes            int64  `json:"max_upload_bytes"`
+	DirectUploadURL           string `json:"direct_upload_url"`
+	SMTPHost                  string `json:"smtp_host"`
+	SMTPPort                  int    `json:"smtp_port"`
+	SMTPUsername              string `json:"smtp_username"`
+	SMTPFromAddress           string `json:"smtp_from_address"`
+	SMTPTls                   bool   `json:"smtp_tls"`
+	OnlyOfficeURL             string `json:"onlyoffice_url"`
+	OnlyOfficeJWTSecret       string `json:"onlyoffice_jwt_secret"`     // always empty in response — write-only
+	OnlyOfficeJWTSecretSet    bool   `json:"onlyoffice_jwt_secret_set"` // true when a secret is stored
+	PlaylistMaxTracks         int    `json:"playlist_max_tracks"`
+	RoomsEnabled              bool   `json:"rooms_enabled"`
+	RoomsChatMaxLength        int    `json:"rooms_chat_max_length"`
+	RoomsMessageRetentionDays int    `json:"rooms_message_retention_days"`
+	RoomsBackupEnabled        bool   `json:"rooms_backup_enabled"`
 }
 
 func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
@@ -94,23 +98,39 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 			playlistMaxTracks = n
 		}
 	}
+	roomsChatMaxLength := 4000
+	if s := kv["rooms_chat_max_length"]; s != "" {
+		if n, err2 := strconv.Atoi(s); err2 == nil && n >= 1 && n <= 10000 {
+			roomsChatMaxLength = n
+		}
+	}
+	roomsRetentionDays := 0
+	if s := kv["rooms_message_retention_days"]; s != "" {
+		if n, err2 := strconv.Atoi(s); err2 == nil && n >= 0 && n <= 3650 {
+			roomsRetentionDays = n
+		}
+	}
 
 	httputil.Respond(w, http.StatusOK, settingsResponse{
-		SiteName:               kv["app_name"],
-		AllowRegistrations:     kv["allow_registrations"] == "true",
-		RequireInvite:          kv["require_invite"] == "true",
-		DefaultQuotaBytes:      defaultQuota,
-		MaxUploadBytes:         maxUpload,
-		DirectUploadURL:        kv["direct_upload_url"],
-		SMTPHost:               kv["smtp_host"],
-		SMTPPort:               smtpPort,
-		SMTPUsername:           kv["smtp_user"],
-		SMTPFromAddress:        kv["smtp_from"],
-		SMTPTls:                kv["smtp_tls"] == "starttls",
-		OnlyOfficeURL:          kv["onlyoffice_url"],
-		OnlyOfficeJWTSecret:    "", // never expose via API
-		OnlyOfficeJWTSecretSet: kv["onlyoffice_jwt_secret"] != "",
-		PlaylistMaxTracks:      playlistMaxTracks,
+		SiteName:                  kv["app_name"],
+		AllowRegistrations:        kv["allow_registrations"] == "true",
+		RequireInvite:             kv["require_invite"] == "true",
+		DefaultQuotaBytes:         defaultQuota,
+		MaxUploadBytes:            maxUpload,
+		DirectUploadURL:           kv["direct_upload_url"],
+		SMTPHost:                  kv["smtp_host"],
+		SMTPPort:                  smtpPort,
+		SMTPUsername:              kv["smtp_user"],
+		SMTPFromAddress:           kv["smtp_from"],
+		SMTPTls:                   kv["smtp_tls"] == "starttls",
+		OnlyOfficeURL:             kv["onlyoffice_url"],
+		OnlyOfficeJWTSecret:       "", // never expose via API
+		OnlyOfficeJWTSecretSet:    kv["onlyoffice_jwt_secret"] != "",
+		PlaylistMaxTracks:         playlistMaxTracks,
+		RoomsEnabled:              kv["rooms_enabled"] == "true",
+		RoomsChatMaxLength:        roomsChatMaxLength,
+		RoomsMessageRetentionDays: roomsRetentionDays,
+		RoomsBackupEnabled:        kv["rooms_backup_enabled"] != "false",
 	})
 }
 

@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -61,6 +62,9 @@ type settingsResponse struct {
 	RoomsMessageRetentionDays int    `json:"rooms_message_retention_days"`
 	RoomsBackupEnabled        bool   `json:"rooms_backup_enabled"`
 	RoomsMaxDataBytes         int64  `json:"rooms_max_data_bytes"`
+	RoomsEncryptionReady      bool   `json:"rooms_encryption_ready"`
+	RoomsDataUsedBytes        int64  `json:"rooms_data_used_bytes"`
+	RoomsLastCleanupAt        string `json:"rooms_last_cleanup_at,omitempty"`
 }
 
 func loadSettings(ctx context.Context, db *pgxpool.Pool) (map[string]string, error) {
@@ -96,7 +100,29 @@ func settingInt64(kv map[string]string, key string, fallback int64) int64 {
 	return value
 }
 
+func settingInt64AtLeast(kv map[string]string, key string, fallback, min int64) int64 {
+	value := settingInt64(kv, key, fallback)
+	if value < min {
+		return fallback
+	}
+	return value
+}
+func validRoomsEncryptionKey(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	key, err := hex.DecodeString(value)
+	return err == nil && len(key) == 32
+}
 func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
+	var roomsDataUsedBytes int64
+	if err := h.db.QueryRow(r.Context(), `SELECT
+		COALESCE((SELECT SUM(octet_length(body) + 128) FROM room_messages), 0) +
+		COALESCE((SELECT SUM(octet_length(emoji) + 48) FROM room_reactions), 0) +
+		COALESCE((SELECT COUNT(*) * 64 FROM room_read_state), 0)`).Scan(&roomsDataUsedBytes); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
+		return
+	}
 	kv, err := loadSettings(r.Context(), h.db)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
@@ -123,7 +149,10 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		RoomsChatMaxLength:        settingInt(kv, "rooms_chat_max_length", 4000, 1, 10000),
 		RoomsMessageRetentionDays: settingInt(kv, "rooms_message_retention_days", 0, 0, 3650),
 		RoomsBackupEnabled:        kv["rooms_backup_enabled"] != "false",
-		RoomsMaxDataBytes:         settingInt64(kv, "rooms_max_data_bytes", 500*1024*1024),
+		RoomsMaxDataBytes:         settingInt64AtLeast(kv, "rooms_max_data_bytes", 500*1024*1024, 1024*1024),
+		RoomsEncryptionReady:      validRoomsEncryptionKey(h.cfg.RoomsEncryptKey),
+		RoomsDataUsedBytes:        roomsDataUsedBytes,
+		RoomsLastCleanupAt:        kv["rooms_last_cleanup_at"],
 	})
 }
 
@@ -305,7 +334,7 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	upserter.setBoundedInt("rooms_chat_max_length", req.RoomsChatMaxLength, 1, 10000)
 	upserter.setBoundedInt("rooms_message_retention_days", req.RoomsRetentionDays, 0, 3650)
 	upserter.setBool("rooms_backup_enabled", req.RoomsBackupEnabled)
-	upserter.setBoundedInt64("rooms_max_data_bytes", req.RoomsMaxDataBytes, 1, 1024*1024*1024*1024)
+	upserter.setBoundedInt64("rooms_max_data_bytes", req.RoomsMaxDataBytes, 1024*1024, 1024*1024*1024*1024)
 
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }

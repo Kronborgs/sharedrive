@@ -142,6 +142,7 @@ type serverDependencies struct {
 }
 
 func newServerDependencies(deps serverDependencies) *Server {
+	noteService := notes.NewService(deps.db, deps.auditSvc)
 	return &Server{
 		cfg:           deps.cfg,
 		db:            deps.db,
@@ -155,11 +156,11 @@ func newServerDependencies(deps serverDependencies) *Server {
 		filesHandler:  files.NewHandler(deps.fileSvc, deps.trashSvc, deps.auditSvc, deps.rdb, deps.conv, ratelimit.New(deps.rdb), deps.ioTracker),
 		sharesHandler: shares.NewHandler(deps.db, smtp.New(deps.cfg, deps.db), deps.cfg.AppBaseURL),
 		notesHandler: notes.NewHandler(
-			notes.NewService(deps.db, deps.auditSvc),
+			noteService,
 			notes.NewSharingService(deps.db, smtp.New(deps.cfg, deps.db), deps.auditSvc,
 				ratelimit.New(deps.rdb), deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production"),
 		),
-		roomsHandler:   rooms.NewHandler(rooms.NewService(deps.db, deps.auditSvc)),
+		roomsHandler:   rooms.NewHandler(rooms.NewService(deps.db, deps.auditSvc, deps.cfg.RoomsEncryptKey, deps.fileSvc, noteService), ratelimit.New(deps.rdb), deps.rdb),
 		adminHandler:   admin.NewHandler(deps.db, deps.cfg, deps.ioTracker, deps.rdb),
 		sseHandler:     admin.NewSSEHandler(deps.db),
 		supportHandler: admin.NewSupportAccessHandler(deps.db),
@@ -534,6 +535,15 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/v1/rooms/{roomID}/members/{userID}", s.roomsHandler.RequireEnabled(s.roomsHandler.RemoveMember))
 		r.Get("/api/v1/rooms/{roomID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.ListMessages))
 		r.Post("/api/v1/rooms/{roomID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateMessage))
+		r.Patch("/api/v1/rooms/{roomID}/messages/{messageID}", s.roomsHandler.RequireEnabled(s.roomsHandler.UpdateMessage))
+		r.Delete("/api/v1/rooms/{roomID}/messages/{messageID}", s.roomsHandler.RequireEnabled(s.roomsHandler.DeleteMessage))
+		r.Post("/api/v1/rooms/{roomID}/messages/{messageID}/reactions", s.roomsHandler.RequireEnabled(s.roomsHandler.AddReaction))
+		r.Delete("/api/v1/rooms/{roomID}/messages/{messageID}/reactions", s.roomsHandler.RequireEnabled(s.roomsHandler.RemoveReaction))
+		r.Put("/api/v1/rooms/{roomID}/read-state", s.roomsHandler.RequireEnabled(s.roomsHandler.MarkRead))
+		r.Get("/api/v1/rooms/{roomID}/messages/ws", s.roomsHandler.RequireEnabled(s.roomsHandler.WebSocket))
+		r.Get("/api/v1/rooms/{roomID}/resources", s.roomsHandler.RequireEnabled(s.roomsHandler.ListResources))
+		r.Post("/api/v1/rooms/{roomID}/resources", s.roomsHandler.RequireEnabled(s.roomsHandler.AddResource))
+		r.Delete("/api/v1/rooms/{roomID}/resources/{resourceID}", s.roomsHandler.RequireEnabled(s.roomsHandler.RemoveResource))
 
 		// Backup
 		r.Get("/api/v1/backup/config", s.backupHandler.GetConfig)

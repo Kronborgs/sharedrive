@@ -65,6 +65,7 @@ export interface RoomMessage {
   created_at: string
   edited_at?: string
   deleted_at?: string
+  reactions: Array<{ user_id: string; emoji: string }>
 }
 
 export interface RoomMessagePage {
@@ -72,10 +73,50 @@ export interface RoomMessagePage {
   next_cursor?: string
 }
 
-export function listRoomMessages(roomID: string, signal?: AbortSignal): Promise<RoomMessagePage> {
-  return api.get<RoomMessagePage>(`/api/v1/rooms/${roomID}/messages`, signal)
+export function listRoomMessages(roomID: string, cursor?: string, signal?: AbortSignal): Promise<RoomMessagePage> {
+  const query = new URLSearchParams({ limit: '50' })
+  if (cursor) query.set('cursor', cursor)
+  return api.get<RoomMessagePage>(`/api/v1/rooms/${roomID}/messages?${query}`, signal)
 }
 
 export function createRoomMessage(roomID: string, body: string, replyTo?: string): Promise<RoomMessage> {
   return api.post<RoomMessage>(`/api/v1/rooms/${roomID}/messages`, { body, reply_to_message_id: replyTo })
+}
+export type RoomResourceType = 'file' | 'note'
+export interface RoomResource {
+  id: string
+  room_id: string
+  resource_type: RoomResourceType
+  resource_id: string
+  added_by?: string
+  created_at: string
+  accessible: boolean
+  name?: string
+  mime_type?: string
+  is_folder?: boolean
+  note_type?: string
+}
+export function listRoomResources(roomID: string, signal?: AbortSignal): Promise<RoomResource[]> {
+  return api.get<RoomResource[]>(`/api/v1/rooms/${roomID}/resources`, signal)
+}
+export function addRoomResource(roomID: string, resourceType: RoomResourceType, resourceID: string): Promise<RoomResource> {
+  return api.post<RoomResource>(`/api/v1/rooms/${roomID}/resources`, { resource_type: resourceType, resource_id: resourceID })
+}
+export function removeRoomResource(roomID: string, linkID: string): Promise<void> {
+  return api.delete(`/api/v1/rooms/${roomID}/resources/${linkID}`)
+}
+export function updateRoomMessage(roomID: string, messageID: string, body: string): Promise<RoomMessage> {
+  return api.patch<RoomMessage>(`/api/v1/rooms/${roomID}/messages/${messageID}`, { body })
+}
+export function deleteRoomMessage(roomID: string, messageID: string): Promise<void> {
+  return api.delete(`/api/v1/rooms/${roomID}/messages/${messageID}`)
+}
+export function addRoomReaction(roomID: string, messageID: string, emoji: string): Promise<void> {
+  return api.post(`/api/v1/rooms/${roomID}/messages/${messageID}/reactions`, { emoji })
+}
+export function removeRoomReaction(roomID: string, messageID: string, emoji: string): Promise<void> {
+  return api.delete(`/api/v1/rooms/${roomID}/messages/${messageID}/reactions?emoji=${encodeURIComponent(emoji)}`)
+}
+export function markRoomRead(roomID: string, messageID: string): Promise<void> {
+  return api.put(`/api/v1/rooms/${roomID}/read-state`, { message_id: messageID })
 }

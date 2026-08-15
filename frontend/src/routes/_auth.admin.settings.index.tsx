@@ -34,6 +34,9 @@ interface SystemSettings {
   rooms_message_retention_days: number
   rooms_backup_enabled: boolean
   rooms_max_data_bytes: number
+  rooms_encryption_ready: boolean
+  rooms_data_used_bytes: number
+  rooms_last_cleanup_at?: string
 }
 
 const settingsSchema = z.object({
@@ -89,6 +92,7 @@ function buildSettingsPayload(values: FormValues, smtpPassword: string): Record<
     ...values,
     default_quota_bytes: toGB(values.default_quota_bytes),
     max_upload_bytes: toMB(values.max_upload_bytes),
+    rooms_max_data_bytes: toMB(values.rooms_max_data_bytes),
     direct_upload_url: values.direct_upload_url,
   }
   if (smtpPassword) {
@@ -423,6 +427,11 @@ function SettingsPage() {
               <h2 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('settings.roomsTitle')}</h2>
               <p className="text-xs text-muted">{t('settings.roomsDesc')}</p>
             </div>
+            {!data?.rooms_encryption_ready && (
+              <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                {t('settings.roomsEncryptionMissing')}
+              </div>
+            )}
             <Toggle label={t('settings.roomsEnabled')} description={t('settings.roomsEnabledDesc')} name="rooms_enabled" register={register} />
             <Field label={t('settings.roomsChatLength')} error={errors.rooms_chat_max_length?.message}>
               <input type="number" step="1" min="1" max="10000" {...register('rooms_chat_max_length')} className={inputClass} />
@@ -436,6 +445,10 @@ function SettingsPage() {
               <input type="number" step="1" min="0" max="3650" {...register('rooms_message_retention_days')} className={inputClass} />
               <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">{t('settings.roomsRetentionDesc')}</p>
             </Field>
+            <div className="rounded-lg bg-zinc-100 px-3 py-2 text-xs text-muted dark:bg-[#0f1117]">
+              <p>{t('settings.roomsUsage', { used: ((data?.rooms_data_used_bytes ?? 0) / (1024 * 1024)).toLocaleString(undefined, { maximumFractionDigits: 2 }) })}</p>
+              <p>{data?.rooms_last_cleanup_at ? t('settings.roomsLastCleanup', { date: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(data.rooms_last_cleanup_at)) }) : t('settings.roomsNoCleanup')}</p>
+            </div>
             <Toggle label={t('settings.roomsBackup')} description={t('settings.roomsBackupDesc')} name="rooms_backup_enabled" register={register} />
             <p className="rounded-lg bg-zinc-100 dark:bg-[#0f1117] px-3 py-2 text-xs text-muted">{t('settings.roomsPhaseTwoNote')}</p>
           </section>

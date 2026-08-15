@@ -108,8 +108,13 @@ type Message struct {
 	CreatedAt        time.Time  `json:"created_at"`
 	EditedAt         *time.Time `json:"edited_at,omitempty"`
 	DeletedAt        *time.Time `json:"deleted_at,omitempty"`
+	Reactions        []Reaction `json:"reactions"`
 }
 
+type Reaction struct {
+	UserID uuid.UUID `json:"user_id"`
+	Emoji  string    `json:"emoji"`
+}
 type MessagePage struct {
 	Messages   []Message `json:"messages"`
 	NextCursor string    `json:"next_cursor,omitempty"`

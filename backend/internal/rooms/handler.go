@@ -5,20 +5,26 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/yourname/privatedrive/internal/httputil"
 	"github.com/yourname/privatedrive/internal/middleware"
+	"github.com/yourname/privatedrive/internal/ratelimit"
 )
 
 type Handler struct {
 	service *Service
+	hub     *roomHub
+	limiter *ratelimit.Limiter
+	redis   *goredis.Client
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, limiter *ratelimit.Limiter, redisClient *goredis.Client) *Handler {
+	return &Handler{service: service, hub: newRoomHub(), limiter: limiter, redis: redisClient}
 }
 
 type createRoomRequest struct {
@@ -29,6 +35,19 @@ type updateRoomRequest struct {
 	Name *string `json:"name"`
 }
 
+type addResourceRequest struct {
+	ResourceType ResourceType `json:"resource_type"`
+	ResourceID   uuid.UUID    `json:"resource_id"`
+}
+type updateMessageRequest struct {
+	Body string `json:"body"`
+}
+type reactionRequest struct {
+	Emoji string `json:"emoji"`
+}
+type markReadRequest struct {
+	MessageID uuid.UUID `json:"message_id"`
+}
 type createMessageRequest struct {
 	Body    string     `json:"body"`
 	ReplyTo *uuid.UUID `json:"reply_to_message_id"`
@@ -53,6 +72,148 @@ func (handler *Handler) RequireEnabled(next http.HandlerFunc) http.HandlerFunc {
 		next(w, request)
 	}
 }
+func (handler *Handler) ListResources(w http.ResponseWriter, request *http.Request) {
+	roomID, ok := roomIDParam(w, request)
+	if !ok {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	resources, err := handler.service.ListResources(request.Context(), user.ID, roomID)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, resources)
+}
+
+func (handler *Handler) AddResource(w http.ResponseWriter, request *http.Request) {
+	roomID, ok := roomIDParam(w, request)
+	if !ok {
+		return
+	}
+	var input addResourceRequest
+	if !decodeRequest(w, request, &input) {
+		return
+	}
+	if input.ResourceID == uuid.Nil || !ValidResourceType(input.ResourceType) {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid room resource")
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	resource, err := handler.service.AddResource(request.Context(), user.ID, roomID, input.ResourceType, input.ResourceID)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusCreated, resource)
+}
+
+func (handler *Handler) RemoveResource(w http.ResponseWriter, request *http.Request) {
+	roomID, ok := roomIDParam(w, request)
+	if !ok {
+		return
+	}
+	resourceID, err := uuid.Parse(chi.URLParam(request, "resourceID"))
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid resource id")
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	if err := handler.service.RemoveResource(request.Context(), user.ID, roomID, resourceID); err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+func (handler *Handler) UpdateMessage(w http.ResponseWriter, request *http.Request) {
+	roomID, messageID, ok := roomMessageParams(w, request)
+	if !ok {
+		return
+	}
+	var input updateMessageRequest
+	if !decodeRequest(w, request, &input) {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	message, err := handler.service.UpdateMessage(request.Context(), user.ID, roomID, messageID, input.Body)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	handler.publish(request.Context(), roomID)
+	httputil.Respond(w, http.StatusOK, message)
+}
+func (handler *Handler) DeleteMessage(w http.ResponseWriter, request *http.Request) {
+	roomID, messageID, ok := roomMessageParams(w, request)
+	if !ok {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	if err := handler.service.DeleteMessage(request.Context(), user.ID, roomID, messageID); err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	handler.publish(request.Context(), roomID)
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+func (handler *Handler) AddReaction(w http.ResponseWriter, request *http.Request) {
+	roomID, messageID, ok := roomMessageParams(w, request)
+	if !ok {
+		return
+	}
+	var input reactionRequest
+	if !decodeRequest(w, request, &input) {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	if err := handler.service.AddReaction(request.Context(), user.ID, roomID, messageID, input.Emoji); err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	handler.publish(request.Context(), roomID)
+	httputil.Respond(w, http.StatusCreated, map[string]bool{"ok": true})
+}
+func (handler *Handler) RemoveReaction(w http.ResponseWriter, request *http.Request) {
+	roomID, messageID, ok := roomMessageParams(w, request)
+	if !ok {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	if err := handler.service.RemoveReaction(request.Context(), user.ID, roomID, messageID, request.URL.Query().Get("emoji")); err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	handler.publish(request.Context(), roomID)
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+func (handler *Handler) MarkRead(w http.ResponseWriter, request *http.Request) {
+	roomID, ok := roomIDParam(w, request)
+	if !ok {
+		return
+	}
+	var input markReadRequest
+	if !decodeRequest(w, request, &input) || input.MessageID == uuid.Nil {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	if err := handler.service.MarkRead(request.Context(), user.ID, roomID, input.MessageID); err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+func roomMessageParams(w http.ResponseWriter, request *http.Request) (uuid.UUID, uuid.UUID, bool) {
+	roomID, ok := roomIDParam(w, request)
+	if !ok {
+		return uuid.Nil, uuid.Nil, false
+	}
+	messageID, err := uuid.Parse(chi.URLParam(request, "messageID"))
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid message id")
+		return uuid.Nil, uuid.Nil, false
+	}
+	return roomID, messageID, true
+}
 func (handler *Handler) ListMessages(w http.ResponseWriter, request *http.Request) {
 	roomID, ok := roomIDParam(w, request)
 	if !ok {
@@ -63,8 +224,17 @@ func (handler *Handler) ListMessages(w http.ResponseWriter, request *http.Reques
 		httputil.RespondError(w, http.StatusBadRequest, "invalid message limit")
 		return
 	}
+	var cursor *uuid.UUID
+	if rawCursor := request.URL.Query().Get("cursor"); rawCursor != "" {
+		parsedCursor, parseErr := uuid.Parse(rawCursor)
+		if parseErr != nil {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid message cursor")
+			return
+		}
+		cursor = &parsedCursor
+	}
 	user := middleware.UserFromContext(request.Context())
-	page, err := handler.service.ListMessages(request.Context(), user.ID, roomID, limit)
+	page, err := handler.service.ListMessages(request.Context(), user.ID, roomID, limit, cursor)
 	if err != nil {
 		handler.respondError(w, err)
 		return
@@ -82,11 +252,17 @@ func (handler *Handler) CreateMessage(w http.ResponseWriter, request *http.Reque
 		return
 	}
 	user := middleware.UserFromContext(request.Context())
+	allowed, _, _, limitErr := handler.limiter.Allow(request.Context(), ratelimit.KeyUserRoomMessage, user.ID.String(), 30, time.Minute)
+	if limitErr != nil || !allowed {
+		httputil.RespondError(w, http.StatusTooManyRequests, "room message rate limit exceeded")
+		return
+	}
 	message, err := handler.service.CreateMessage(request.Context(), user.ID, roomID, input.Body, input.ReplyTo)
 	if err != nil {
 		handler.respondError(w, err)
 		return
 	}
+	handler.publish(request.Context(), roomID)
 	httputil.Respond(w, http.StatusCreated, message)
 }
 func (handler *Handler) List(w http.ResponseWriter, request *http.Request) {
@@ -260,8 +436,10 @@ func (handler *Handler) respondError(w http.ResponseWriter, err error) {
 		status, message = http.StatusNotFound, err.Error()
 	case errors.Is(err, ErrForbidden), errors.Is(err, ErrOwnerRemoval):
 		status, message = http.StatusForbidden, err.Error()
-	case errors.Is(err, ErrArchived), errors.Is(err, ErrMemberExists):
+	case errors.Is(err, ErrArchived), errors.Is(err, ErrMemberExists), errors.Is(err, ErrResourceExists):
 		status, message = http.StatusConflict, err.Error()
+	case errors.Is(err, ErrEncryptionUnavailable):
+		status, message = http.StatusServiceUnavailable, "rooms chat encryption is not configured"
 	}
 	httputil.RespondError(w, status, message)
 }

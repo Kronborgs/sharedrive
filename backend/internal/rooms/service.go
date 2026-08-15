@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yourname/privatedrive/internal/audit"
+	"github.com/yourname/privatedrive/internal/files"
+	"github.com/yourname/privatedrive/internal/notes"
 )
 
 var (
@@ -24,8 +26,11 @@ var (
 )
 
 type Service struct {
-	db    *pgxpool.Pool
-	audit audit.Logger
+	db      *pgxpool.Pool
+	audit   audit.Logger
+	cryptor *cryptor
+	fileSvc *files.Service
+	noteSvc *notes.Service
 }
 
 type roomAccess struct {
@@ -35,9 +40,12 @@ type roomAccess struct {
 	actorRole      string
 }
 
-func NewService(db *pgxpool.Pool, auditLogger audit.Logger) *Service {
-	return &Service{db: db, audit: auditLogger}
+func NewService(db *pgxpool.Pool, auditLogger audit.Logger, roomsEncryptKey string, fileSvc *files.Service, noteSvc *notes.Service) *Service {
+	cryptor, _ := newCryptor(roomsEncryptKey)
+	return &Service{db: db, audit: auditLogger, cryptor: cryptor, fileSvc: fileSvc, noteSvc: noteSvc}
 }
+
+func (service *Service) ChatEncryptionReady() bool { return service.cryptor != nil }
 
 // Enabled reports whether the administrator has enabled the Rooms feature.
 // The setting is stored in system_settings so it takes effect without a restart.
@@ -443,7 +451,18 @@ func (service *Service) CreateMessage(ctx context.Context, actorID, roomID uuid.
 	if _, err := service.Get(ctx, actorID, roomID); err != nil {
 		return Message{}, err
 	}
+	if err := service.maintainChatStorage(ctx); err != nil {
+		return Message{}, err
+	}
 	body, err := NormalizeMessage(body, service.ChatMaxLength(ctx))
+	if err != nil {
+		return Message{}, err
+	}
+	if service.cryptor == nil {
+		return Message{}, ErrEncryptionUnavailable
+	}
+	plainBody := body
+	body, err = service.cryptor.encrypt(body)
 	if err != nil {
 		return Message{}, err
 	}
@@ -462,10 +481,13 @@ func (service *Service) CreateMessage(ctx context.Context, actorID, roomID uuid.
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, room_id, sender_user_id, body, reply_to_message_id, created_at, edited_at, deleted_at`, roomID, actorID, body, replyTo).Scan(
 		&message.ID, &message.RoomID, &message.SenderUserID, &message.Body, &message.ReplyToMessageID, &message.CreatedAt, &message.EditedAt, &message.DeletedAt)
+	if err == nil {
+		message.Body = plainBody
+	}
 	return message, err
 }
 
-func (service *Service) ListMessages(ctx context.Context, actorID, roomID uuid.UUID, limit int) (MessagePage, error) {
+func (service *Service) ListMessages(ctx context.Context, actorID, roomID uuid.UUID, limit int, cursor *uuid.UUID) (MessagePage, error) {
 	if _, err := service.Get(ctx, actorID, roomID); err != nil {
 		return MessagePage{}, err
 	}
@@ -475,7 +497,13 @@ func (service *Service) ListMessages(ctx context.Context, actorID, roomID uuid.U
 	rows, err := service.db.Query(ctx, `SELECT m.id, m.room_id, m.sender_user_id, COALESCE(u.display_name, u.email),
 		m.body, m.reply_to_message_id, m.created_at, m.edited_at, m.deleted_at
 		FROM room_messages m JOIN users u ON u.id = m.sender_user_id
-		WHERE m.room_id = $1 ORDER BY m.created_at DESC, m.id DESC LIMIT $2`, roomID, limit)
+		WHERE m.room_id = $1
+		AND ($3::uuid IS NULL OR (m.created_at, m.id) < (
+			SELECT cursor_message.created_at, cursor_message.id
+			FROM room_messages cursor_message
+			WHERE cursor_message.room_id = $1 AND cursor_message.id = $3
+		))
+		ORDER BY m.created_at DESC, m.id DESC LIMIT $2`, roomID, limit+1, cursor)
 	if err != nil {
 		return MessagePage{}, err
 	}
@@ -486,7 +514,47 @@ func (service *Service) ListMessages(ctx context.Context, actorID, roomID uuid.U
 		if err := rows.Scan(&m.ID, &m.RoomID, &m.SenderUserID, &m.SenderName, &m.Body, &m.ReplyToMessageID, &m.CreatedAt, &m.EditedAt, &m.DeletedAt); err != nil {
 			return MessagePage{}, err
 		}
+		if service.cryptor == nil {
+			return MessagePage{}, ErrEncryptionUnavailable
+		}
+		if strings.HasPrefix(m.Body, "v1:") {
+			m.Body, err = service.cryptor.decrypt(m.Body)
+			if err != nil {
+				return MessagePage{}, err
+			}
+		} else {
+			legacyBody := m.Body
+			encryptedBody, encryptErr := service.cryptor.encrypt(legacyBody)
+			if encryptErr != nil {
+				return MessagePage{}, encryptErr
+			}
+			if _, updateErr := service.db.Exec(ctx, `UPDATE room_messages SET body = $1 WHERE id = $2 AND body = $3`, encryptedBody, m.ID, legacyBody); updateErr != nil {
+				return MessagePage{}, updateErr
+			}
+			m.Body = legacyBody
+		}
+		reactionRows, reactionErr := service.db.Query(ctx, `SELECT user_id, emoji FROM room_reactions WHERE message_id=$1 ORDER BY created_at`, m.ID)
+		if reactionErr != nil {
+			return MessagePage{}, reactionErr
+		}
+		m.Reactions = make([]Reaction, 0)
+		for reactionRows.Next() {
+			var reaction Reaction
+			if err := reactionRows.Scan(&reaction.UserID, &reaction.Emoji); err != nil {
+				reactionRows.Close()
+				return MessagePage{}, err
+			}
+			m.Reactions = append(m.Reactions, reaction)
+		}
+		reactionRows.Close()
 		page.Messages = append(page.Messages, m)
 	}
-	return page, rows.Err()
+	if err := rows.Err(); err != nil {
+		return MessagePage{}, err
+	}
+	if len(page.Messages) > limit {
+		page.Messages = page.Messages[:limit]
+		page.NextCursor = page.Messages[len(page.Messages)-1].ID.String()
+	}
+	return page, nil
 }

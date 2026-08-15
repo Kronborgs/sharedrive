@@ -53,7 +53,8 @@ type Config struct {
 	// stored in plaintext (backward-compatible). Set FILE_ENCRYPT_KEY to
 	// enable. Existing unencrypted files are still readable; newly written
 	// files (uploads, WebDAV PUT, OO saves) will be encrypted.
-	FileEncryptKey string `mapstructure:"FILE_ENCRYPT_KEY"`
+	FileEncryptKey  string `mapstructure:"FILE_ENCRYPT_KEY"`
+	RoomsEncryptKey string `mapstructure:"ROOMS_ENCRYPT_KEY"`
 
 	// SMTP
 	SMTPHost     string `mapstructure:"SMTP_HOST"`
@@ -221,6 +222,7 @@ func applyDirectEnvOverrides(cfg *Config) {
 		{target: &cfg.SMTPFrom, key: "SMTP_FROM"},
 		{target: &cfg.BackupsRoot, key: "BACKUPS_ROOT"},
 		{target: &cfg.FileEncryptKey, key: "FILE_ENCRYPT_KEY"},
+		{target: &cfg.RoomsEncryptKey, key: "ROOMS_ENCRYPT_KEY"},
 	}
 	for _, override := range overrides {
 		if val := os.Getenv(override.key); val != "" {

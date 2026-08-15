@@ -10,14 +10,17 @@ import (
 
 // Key type constants for download rate limiting.
 const (
-	KeyUserDownload = "user_dl:"
-	KeyIPDownload   = "ip_dl:"
-	KeyUserZipDL    = "user_zip:"
-	KeyIPZipDL      = "ip_zip:"
-	KeyUserNoteInvite    = "user_note_invite:"
-	KeyNoteShareResend   = "note_share_resend:"
+	KeyUserDownload       = "user_dl:"
+	KeyIPDownload         = "ip_dl:"
+	KeyUserZipDL          = "user_zip:"
+	KeyIPZipDL            = "ip_zip:"
+	KeyUserNoteInvite     = "user_note_invite:"
+	KeyNoteShareResend    = "note_share_resend:"
 	KeyIPNoteInviteAccept = "ip_note_invite_accept:"
-	KeyGuestNoteMutation = "guest_note_mutation:"
+	KeyGuestNoteMutation  = "guest_note_mutation:"
+	KeyUserRoomMessage    = "user_room_message:"
+	KeyUserRoomSocket     = "user_room_socket:"
+	KeyUserRoomTyping     = "user_room_typing:"
 )
 
 // Limiter implements a sliding-window counter using a Redis sorted set.

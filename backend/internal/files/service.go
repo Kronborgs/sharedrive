@@ -264,6 +264,34 @@ func (s *Service) GetAccessible(ctx context.Context, id, userID string) (*File, 
 	return scanFile(row)
 }
 
+// CanReshare reports whether userID may expose a file reference to another audience.
+// Owners may always reshare; shared access requires an active can_reshare grant on
+// the file or one of its ancestor folders.
+func (s *Service) CanReshare(ctx context.Context, id, userID string) (bool, error) {
+	if _, err := s.GetAccessible(ctx, id, userID); err != nil {
+		return false, err
+	}
+	var allowed bool
+	err := s.db.QueryRow(ctx, `WITH RECURSIVE ancestors AS (
+		SELECT id, parent_id FROM files WHERE id = $1::uuid AND deleted_at IS NULL
+		UNION ALL
+		SELECT f.id, f.parent_id FROM files f JOIN ancestors a ON f.id = a.parent_id
+		WHERE f.deleted_at IS NULL
+	)
+	SELECT EXISTS(SELECT 1 FROM files WHERE id = $1::uuid AND owner_id = $2::uuid)
+	OR EXISTS(
+		SELECT 1 FROM shares sh JOIN ancestors a ON a.id = sh.resource_id
+		WHERE sh.revoked_at IS NULL AND (sh.expires_at IS NULL OR sh.expires_at > now())
+		AND sh.can_reshare = true AND (
+			(sh.grantee_type = 'user' AND sh.grantee_id = $2::uuid)
+			OR (sh.grantee_type = 'group' AND sh.grantee_id IN (
+				SELECT group_id FROM group_members WHERE user_id = $2::uuid
+			))
+		)
+	)`, id, userID).Scan(&allowed)
+	return allowed, err
+}
+
 // GetNameByID returns the name of a file by ID, including trashed files.
 // Returns an empty string when not found — used for audit log enrichment only.
 func (s *Service) GetNameByID(ctx context.Context, id string) string {

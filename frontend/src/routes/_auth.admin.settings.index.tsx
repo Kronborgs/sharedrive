@@ -29,6 +29,11 @@ interface SystemSettings {
   onlyoffice_url: string
   onlyoffice_jwt_secret: string
   playlist_max_tracks: number
+  rooms_enabled: boolean
+  rooms_chat_max_length: number
+  rooms_message_retention_days: number
+  rooms_backup_enabled: boolean
+  rooms_max_data_bytes: number
 }
 
 const settingsSchema = z.object({
@@ -44,6 +49,11 @@ const settingsSchema = z.object({
   smtp_from_address: z.string().email().or(z.literal('')),
   smtp_tls: z.boolean(),
   playlist_max_tracks: z.coerce.number().min(1).max(10000),
+  rooms_enabled: z.boolean(),
+  rooms_chat_max_length: z.coerce.number().int().min(1).max(10000),
+  rooms_message_retention_days: z.coerce.number().int().min(0).max(3650),
+  rooms_backup_enabled: z.boolean(),
+  rooms_max_data_bytes: z.coerce.number().int().min(1).max(1024 * 1024),
 })
 
 type FormValues = z.infer<typeof settingsSchema>

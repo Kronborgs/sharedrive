@@ -23,7 +23,7 @@ function RoomInvitePage() {
       <DoorOpen className="mb-4 text-brand-600" size={32} />
       <h1 className="text-2xl font-semibold text-zinc-950 dark:text-white">Deltag som gæst</h1>
       <p className="mt-2 text-sm text-muted">Skriv det navn, de andre deltagere skal se. Du behøver ikke en Sharedrive-konto.</p>
-      <label className="mt-5 block text-sm">Dit navn
+      <label className="mt-5 block text-sm"><span className="block">Dit navn</span>
         <input autoFocus required minLength={1} maxLength={80} value={displayName} onChange={event => setDisplayName(event.target.value)} className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-[#3a3f58] dark:bg-[#0f1117]" />
       </label>
       {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}

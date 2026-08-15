@@ -42,10 +42,10 @@ export function RoomInvitesPanel({ room }: Readonly<{ room: Room }>) {
       <h2 id="room-invites-heading" className="mb-1 flex items-center gap-2 text-lg font-semibold text-zinc-950 dark:text-white"><Link2 size={18} /> Gæsteadgang</h2>
       <p className="mb-4 text-sm text-muted">Opret et tidsbegrænset link. Linket kan kun kopieres, når det bliver oprettet.</p>
       <form className="grid gap-3 rounded-xl border border-zinc-200 p-4 dark:border-[#2d3148] sm:grid-cols-3" onSubmit={event => { event.preventDefault(); create.mutate() }}>
-        <label className="text-sm sm:col-span-2">Navn på invitation
+        <label className="text-sm sm:col-span-2"><span className="block">Navn på invitation</span>
           <input value={label} onChange={event => setLabel(event.target.value)} maxLength={120} placeholder="Fx Ekstern gæst" className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-[#3a3f58] dark:bg-[#0f1117]" />
         </label>
-        <label className="text-sm">Gyldig i timer
+        <label className="text-sm"><span className="block">Gyldig i timer</span>
           <input type="number" min={1} max={720} value={expiresHours} onChange={event => setExpiresHours(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-[#3a3f58] dark:bg-[#0f1117]" />
         </label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={canChat} onChange={event => setCanChat(event.target.checked)} /> Må skrive i chat</label>

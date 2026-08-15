@@ -28,16 +28,17 @@ import (
 )
 
 const (
-	sessionCookieName   = "pd_session"
-	deviceCookieName    = "pd_device"
-	pendingTOTPKey      = "pending_totp:"
-	pendingTOTPTTL      = 10 * time.Minute
-	uploadTokenKey      = "upload_token:"
-	uploadTokenTTL      = 5 * time.Minute // short-lived, single-use
-	errInternal         = "internal error"
-	errTooManyRequests  = "too many requests"
-	errInvalidRequest   = "invalid request"
-	errPasswordTooShort = "password must be at least 12 characters"
+	sessionCookieName         = "pd_session"
+	deviceCookieName          = "pd_device"
+	pendingTOTPKey            = "pending_totp:"
+	pendingTOTPTTL            = 10 * time.Minute
+	uploadTokenKey            = "upload_token:"
+	uploadTokenTTL            = 5 * time.Minute // short-lived, single-use
+	errInternal               = "internal error"
+	errTooManyRequests        = "too many requests"
+	errInvalidRequest         = "invalid request"
+	errPasswordTooShort       = "password must be at least 12 characters"
+	invalidUploadTokenMessage = "invalid upload token"
 )
 
 // reUploadToken matches the 64-character lowercase hex tokens issued by IssueUploadToken.
@@ -701,25 +702,9 @@ func (h *Handler) UploadTokenMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if !reUploadToken.MatchString(token) {
-			httputil.RespondError(w, http.StatusUnauthorized, "invalid upload token")
-			return
-		}
-
-		// Use Get (not GetDel) because TUS uploads span multiple HTTP requests.
-		raw, err := h.rdb.Get(r.Context(), uploadTokenKey+token).Result()
-		if err != nil {
-			httputil.RespondError(w, http.StatusUnauthorized, "upload token expired")
-			return
-		}
-
-		var data uploadTokenData
-		if err := json.Unmarshal([]byte(raw), &data); err != nil {
-			httputil.RespondError(w, http.StatusUnauthorized, "invalid upload token")
-			return
-		}
-		if data.Purpose != "tus_upload" && data.Purpose != "room_guest_tus_upload" {
-			httputil.RespondError(w, http.StatusUnauthorized, "invalid upload token")
+		data, errorMessage := h.readUploadToken(r.Context(), token)
+		if errorMessage != "" {
+			httputil.RespondError(w, http.StatusUnauthorized, errorMessage)
 			return
 		}
 
@@ -734,6 +719,26 @@ func (h *Handler) UploadTokenMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func (h *Handler) readUploadToken(ctx context.Context, token string) (uploadTokenData, string) {
+	if !reUploadToken.MatchString(token) {
+		return uploadTokenData{}, invalidUploadTokenMessage
+	}
+	// Use Get (not GetDel) because TUS uploads span multiple HTTP requests.
+	raw, err := h.rdb.Get(ctx, uploadTokenKey+token).Result()
+	if err != nil {
+		return uploadTokenData{}, "upload token expired"
+	}
+	var data uploadTokenData
+	if err := json.Unmarshal([]byte(raw), &data); err != nil || !validUploadTokenPurpose(data.Purpose) {
+		return uploadTokenData{}, invalidUploadTokenMessage
+	}
+	return data, ""
+}
+
+func validUploadTokenPurpose(purpose string) bool {
+	return purpose == "tus_upload" || purpose == "room_guest_tus_upload"
 }
 
 func (h *Handler) storePendingTOTP(ctx context.Context, userID string, trustDevice bool) (string, error) {

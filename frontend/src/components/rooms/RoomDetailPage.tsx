@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { archiveRoom, getRoom, updateRoom } from '@/lib/rooms'
 import { RoomMembersPanel } from '@/components/rooms/RoomMembersPanel'
+import { RoomChatPanel } from '@/components/rooms/RoomChatPanel'
 
 export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const { t } = useI18n()
@@ -78,6 +79,8 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
           </div>
         </div>
       </header>
+
+      <RoomChatPanel roomID={room.id} />
 
       <RoomMembersPanel room={room} />
     </section>

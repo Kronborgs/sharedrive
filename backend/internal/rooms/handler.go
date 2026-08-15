@@ -29,6 +29,10 @@ type updateRoomRequest struct {
 	Name *string `json:"name"`
 }
 
+type createMessageRequest struct {
+	Body    string     `json:"body"`
+	ReplyTo *uuid.UUID `json:"reply_to_message_id"`
+}
 type addMemberRequest struct {
 	UserID uuid.UUID `json:"user_id"`
 	Email  string    `json:"email"`
@@ -48,6 +52,42 @@ func (handler *Handler) RequireEnabled(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, request)
 	}
+}
+func (handler *Handler) ListMessages(w http.ResponseWriter, request *http.Request) {
+	roomID, ok := roomIDParam(w, request)
+	if !ok {
+		return
+	}
+	limit, err := strconv.Atoi(request.URL.Query().Get("limit"))
+	if err != nil && request.URL.Query().Has("limit") {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid message limit")
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	page, err := handler.service.ListMessages(request.Context(), user.ID, roomID, limit)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, page)
+}
+
+func (handler *Handler) CreateMessage(w http.ResponseWriter, request *http.Request) {
+	roomID, ok := roomIDParam(w, request)
+	if !ok {
+		return
+	}
+	var input createMessageRequest
+	if !decodeRequest(w, request, &input) {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	message, err := handler.service.CreateMessage(request.Context(), user.ID, roomID, input.Body, input.ReplyTo)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusCreated, message)
 }
 func (handler *Handler) List(w http.ResponseWriter, request *http.Request) {
 	user := middleware.UserFromContext(request.Context())

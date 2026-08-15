@@ -532,6 +532,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/v1/rooms/{roomID}/members", s.roomsHandler.RequireEnabled(s.roomsHandler.ListMembers))
 		r.Post("/api/v1/rooms/{roomID}/members", s.roomsHandler.RequireEnabled(s.roomsHandler.AddMember))
 		r.Delete("/api/v1/rooms/{roomID}/members/{userID}", s.roomsHandler.RequireEnabled(s.roomsHandler.RemoveMember))
+		r.Get("/api/v1/rooms/{roomID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.ListMessages))
+		r.Post("/api/v1/rooms/{roomID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateMessage))
 
 		// Backup
 		r.Get("/api/v1/backup/config", s.backupHandler.GetConfig)

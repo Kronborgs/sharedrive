@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -425,4 +426,67 @@ func (service *Service) log(ctx context.Context, eventType string, actorID uuid.
 		ResourceName: room.Name,
 		Metadata:     metadata,
 	})
+}
+func (service *Service) ChatMaxLength(ctx context.Context) int {
+	var value string
+	if err := service.db.QueryRow(ctx, `SELECT value FROM system_settings WHERE key = 'rooms_chat_max_length'`).Scan(&value); err != nil {
+		return 4000
+	}
+	length, err := strconv.Atoi(value)
+	if err != nil || length < 1 || length > 10000 {
+		return 4000
+	}
+	return length
+}
+
+func (service *Service) CreateMessage(ctx context.Context, actorID, roomID uuid.UUID, body string, replyTo *uuid.UUID) (Message, error) {
+	if _, err := service.Get(ctx, actorID, roomID); err != nil {
+		return Message{}, err
+	}
+	body, err := NormalizeMessage(body, service.ChatMaxLength(ctx))
+	if err != nil {
+		return Message{}, err
+	}
+	if replyTo != nil {
+		var exists bool
+		err = service.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM room_messages WHERE id = $1 AND room_id = $2 AND deleted_at IS NULL)`, *replyTo, roomID).Scan(&exists)
+		if err != nil {
+			return Message{}, err
+		}
+		if !exists {
+			return Message{}, ErrNotFound
+		}
+	}
+	var message Message
+	err = service.db.QueryRow(ctx, `INSERT INTO room_messages (room_id, sender_user_id, body, reply_to_message_id)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, room_id, sender_user_id, body, reply_to_message_id, created_at, edited_at, deleted_at`, roomID, actorID, body, replyTo).Scan(
+		&message.ID, &message.RoomID, &message.SenderUserID, &message.Body, &message.ReplyToMessageID, &message.CreatedAt, &message.EditedAt, &message.DeletedAt)
+	return message, err
+}
+
+func (service *Service) ListMessages(ctx context.Context, actorID, roomID uuid.UUID, limit int) (MessagePage, error) {
+	if _, err := service.Get(ctx, actorID, roomID); err != nil {
+		return MessagePage{}, err
+	}
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	rows, err := service.db.Query(ctx, `SELECT m.id, m.room_id, m.sender_user_id, COALESCE(u.display_name, u.email),
+		m.body, m.reply_to_message_id, m.created_at, m.edited_at, m.deleted_at
+		FROM room_messages m JOIN users u ON u.id = m.sender_user_id
+		WHERE m.room_id = $1 ORDER BY m.created_at DESC, m.id DESC LIMIT $2`, roomID, limit)
+	if err != nil {
+		return MessagePage{}, err
+	}
+	defer rows.Close()
+	page := MessagePage{Messages: make([]Message, 0)}
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.SenderUserID, &m.SenderName, &m.Body, &m.ReplyToMessageID, &m.CreatedAt, &m.EditedAt, &m.DeletedAt); err != nil {
+			return MessagePage{}, err
+		}
+		page.Messages = append(page.Messages, m)
+	}
+	return page, rows.Err()
 }

@@ -55,3 +55,27 @@ export function addRoomMember(roomID: string, email: string, role: Exclude<RoomR
 export function removeRoomMember(roomID: string, userID: string): Promise<void> {
   return api.delete(`/api/v1/rooms/${roomID}/members/${userID}`)
 }
+export interface RoomMessage {
+  id: string
+  room_id: string
+  sender_user_id: string
+  sender_name: string
+  body: string
+  reply_to_message_id?: string
+  created_at: string
+  edited_at?: string
+  deleted_at?: string
+}
+
+export interface RoomMessagePage {
+  messages: RoomMessage[]
+  next_cursor?: string
+}
+
+export function listRoomMessages(roomID: string, signal?: AbortSignal): Promise<RoomMessagePage> {
+  return api.get<RoomMessagePage>(`/api/v1/rooms/${roomID}/messages`, signal)
+}
+
+export function createRoomMessage(roomID: string, body: string, replyTo?: string): Promise<RoomMessage> {
+  return api.post<RoomMessage>(`/api/v1/rooms/${roomID}/messages`, { body, reply_to_message_id: replyTo })
+}

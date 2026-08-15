@@ -18,8 +18,9 @@ const (
 )
 
 var (
-	ErrInvalidName = errors.New("room name must be between 1 and 120 characters")
-	ErrInvalidRole = errors.New("invalid room role")
+	ErrInvalidName    = errors.New("room name must be between 1 and 120 characters")
+	ErrInvalidRole    = errors.New("invalid room role")
+	ErrInvalidMessage = errors.New("message must be between 1 and 4000 characters")
 )
 
 type Room struct {
@@ -95,4 +96,29 @@ func Slugify(name string) string {
 		return "room"
 	}
 	return value
+}
+
+type Message struct {
+	ID               uuid.UUID  `json:"id"`
+	RoomID           uuid.UUID  `json:"room_id"`
+	SenderUserID     uuid.UUID  `json:"sender_user_id"`
+	SenderName       string     `json:"sender_name"`
+	Body             string     `json:"body"`
+	ReplyToMessageID *uuid.UUID `json:"reply_to_message_id,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	EditedAt         *time.Time `json:"edited_at,omitempty"`
+	DeletedAt        *time.Time `json:"deleted_at,omitempty"`
+}
+
+type MessagePage struct {
+	Messages   []Message `json:"messages"`
+	NextCursor string    `json:"next_cursor,omitempty"`
+}
+
+func NormalizeMessage(body string, maxRunes int) (string, error) {
+	normalized := strings.TrimSpace(body)
+	if normalized == "" || utf8.RuneCountInString(normalized) > maxRunes {
+		return "", ErrInvalidMessage
+	}
+	return normalized, nil
 }

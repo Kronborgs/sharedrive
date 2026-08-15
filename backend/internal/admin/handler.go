@@ -62,74 +62,65 @@ type settingsResponse struct {
 	RoomsBackupEnabled        bool   `json:"rooms_backup_enabled"`
 }
 
-func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	rows, err := h.db.Query(ctx, `SELECT key, value FROM system_settings`)
+func loadSettings(ctx context.Context, db *pgxpool.Pool) (map[string]string, error) {
+	rows, err := db.Query(ctx, `SELECT key, value FROM system_settings`)
 	if err != nil {
-		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
-		return
+		return nil, err
 	}
 	defer rows.Close()
 
 	kv := map[string]string{}
 	for rows.Next() {
-		var k, v string
-		if err := rows.Scan(&k, &v); err != nil {
-			continue
+		var key, value string
+		if err := rows.Scan(&key, &value); err == nil {
+			kv[key] = value
 		}
-		kv[k] = v
 	}
+	return kv, rows.Err()
+}
 
-	defaultQuota := int64(10 * 1 << 30) // 10 GB default
-	if s, ok := kv["default_quota_bytes"]; ok {
-		defaultQuota, _ = strconv.ParseInt(s, 10, 64)
+func settingInt(kv map[string]string, key string, fallback, min, max int) int {
+	value, err := strconv.Atoi(kv[key])
+	if err != nil || value < min || (max > 0 && value > max) {
+		return fallback
 	}
-	maxUpload := int64(5 * 1 << 30) // 5 GB default
-	if s, ok := kv["max_upload_bytes"]; ok {
-		maxUpload, _ = strconv.ParseInt(s, 10, 64)
+	return value
+}
+
+func settingInt64(kv map[string]string, key string, fallback int64) int64 {
+	value, err := strconv.ParseInt(kv[key], 10, 64)
+	if err != nil {
+		return fallback
 	}
-	smtpPort := 587
-	if s, ok := kv["smtp_port"]; ok {
-		smtpPort, _ = strconv.Atoi(s)
-	}
-	playlistMaxTracks := 200
-	if s, ok := kv["playlist_max_tracks"]; ok {
-		if n, err2 := strconv.Atoi(s); err2 == nil && n > 0 {
-			playlistMaxTracks = n
-		}
-	}
-	roomsChatMaxLength := 4000
-	if s := kv["rooms_chat_max_length"]; s != "" {
-		if n, err2 := strconv.Atoi(s); err2 == nil && n >= 1 && n <= 10000 {
-			roomsChatMaxLength = n
-		}
-	}
-	roomsRetentionDays := 0
-	if s := kv["rooms_message_retention_days"]; s != "" {
-		if n, err2 := strconv.Atoi(s); err2 == nil && n >= 0 && n <= 3650 {
-			roomsRetentionDays = n
-		}
+	return value
+}
+
+func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
+	kv, err := loadSettings(r.Context(), h.db)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
+		return
 	}
 
 	httputil.Respond(w, http.StatusOK, settingsResponse{
 		SiteName:                  kv["app_name"],
 		AllowRegistrations:        kv["allow_registrations"] == "true",
 		RequireInvite:             kv["require_invite"] == "true",
-		DefaultQuotaBytes:         defaultQuota,
-		MaxUploadBytes:            maxUpload,
+		DefaultQuotaBytes:         settingInt64(kv, "default_quota_bytes", 10*1<<30),
+		MaxUploadBytes:            settingInt64(kv, "max_upload_bytes", 5*1<<30),
 		DirectUploadURL:           kv["direct_upload_url"],
 		SMTPHost:                  kv["smtp_host"],
-		SMTPPort:                  smtpPort,
+		SMTPPort:                  settingInt(kv, "smtp_port", 587, 1, 65535),
 		SMTPUsername:              kv["smtp_user"],
 		SMTPFromAddress:           kv["smtp_from"],
 		SMTPTls:                   kv["smtp_tls"] == "starttls",
 		OnlyOfficeURL:             kv["onlyoffice_url"],
-		OnlyOfficeJWTSecret:       "", // never expose via API
+		OnlyOfficeJWTSecret:       "",
 		OnlyOfficeJWTSecretSet:    kv["onlyoffice_jwt_secret"] != "",
-		PlaylistMaxTracks:         playlistMaxTracks,
+		PlaylistMaxTracks:         settingInt(kv, "playlist_max_tracks", 200, 1, 0),
 		RoomsEnabled:              kv["rooms_enabled"] == "true",
-		RoomsChatMaxLength:        roomsChatMaxLength,
-		RoomsMessageRetentionDays: roomsRetentionDays,
+		RoomsChatMaxLength:        settingInt(kv, "rooms_chat_max_length", 4000, 1, 10000),
+		RoomsMessageRetentionDays: settingInt(kv, "rooms_message_retention_days", 0, 0, 3650),
 		RoomsBackupEnabled:        kv["rooms_backup_enabled"] != "false",
 	})
 }

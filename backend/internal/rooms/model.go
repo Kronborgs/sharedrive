@@ -122,3 +122,23 @@ func NormalizeMessage(body string, maxRunes int) (string, error) {
 	}
 	return normalized, nil
 }
+
+type ResourceType string
+
+const (
+	ResourceFile ResourceType = "file"
+	ResourceNote ResourceType = "note"
+)
+
+type Resource struct {
+	ID           uuid.UUID    `json:"id"`
+	RoomID       uuid.UUID    `json:"room_id"`
+	ResourceType ResourceType `json:"resource_type"`
+	ResourceID   uuid.UUID    `json:"resource_id"`
+	AddedBy      *uuid.UUID   `json:"added_by,omitempty"`
+	CreatedAt    time.Time    `json:"created_at"`
+}
+
+func ValidResourceType(resourceType ResourceType) bool {
+	return resourceType == ResourceFile || resourceType == ResourceNote
+}

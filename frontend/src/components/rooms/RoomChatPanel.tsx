@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { File, FileText, Pencil, Reply, Send, Trash2 } from 'lucide-react'
+import { ArrowDown, File, FileText, Pencil, Reply, Send, Trash2 } from 'lucide-react'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { EmojiPicker } from '@/components/rooms/EmojiPicker'
 import { RoomResourcesPanel } from '@/components/rooms/RoomResourcesPanel'
@@ -161,6 +161,10 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
   const [body, setBody] = useState('')
   const [replyTo, setReplyTo] = useState<RoomMessage>()
   const [previewID, setPreviewID] = useState<string>()
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+  const newestTimelineID = useRef<string | undefined>(undefined)
+  const scrollAfterSend = useRef(false)
+  const [hasNewMessagesBelow, setHasNewMessagesBelow] = useState(false)
   const messageQueryKey = useMemo(() => ['rooms', roomID, 'messages'], [roomID])
   const resourceQueryKey = useMemo(() => ['rooms', roomID, 'resources'], [roomID])
   const refresh = useCallback(() => {
@@ -181,6 +185,26 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
     ...(resources.data ?? []).map(value => ({ kind: 'resource' as const, date: value.created_at, value })),
   ].sort((a, b) => a.date.localeCompare(b.date)), [messageItems, resources.data])
 
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior })
+    setHasNewMessagesBelow(false)
+  }, [])
+
+  useEffect(() => {
+    const latest = timeline.at(-1)
+    if (!latest) return
+    const latestID = `${latest.kind}-${latest.value.id}`
+    const previousID = newestTimelineID.current
+    newestTimelineID.current = latestID
+    const container = chatScrollRef.current
+    if (!container || !previousID || scrollAfterSend.current) {
+      scrollAfterSend.current = false
+      requestAnimationFrame(() => scrollToLatest(previousID ? 'smooth' : 'auto'))
+      return
+    }
+    if (previousID !== latestID && container.scrollHeight - container.scrollTop - container.clientHeight > 48) setHasNewMessagesBelow(true)
+  }, [scrollToLatest, timeline])
+
   useEffect(() => {
     const newest = messages.data?.pages[0]?.messages[0]
     if (newest) {
@@ -190,7 +214,7 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
     }
   }, [messages.data, queryClient, roomID])
 
-  const send = useMutation({ mutationFn: () => createRoomMessage(roomID, body, replyTo?.id), onSuccess: () => { setBody(''); setReplyTo(undefined); refresh() } })
+  const send = useMutation({ mutationFn: () => createRoomMessage(roomID, body, replyTo?.id), onSuccess: () => { scrollAfterSend.current = true; setBody(''); setReplyTo(undefined); refresh() } })
   const removeResourceMutation = useMutation({ mutationFn: (resourceID: string) => removeRoomResource(roomID, resourceID), onSuccess: refresh })
   const editMessage = (message: RoomMessage) => {
     const next = window.prompt(t('rooms.editMessagePrompt'), message.body)?.trim()
@@ -205,13 +229,16 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
 
   return <section className="mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]" aria-label={t('rooms.chatAria')}>
     <h2 className="mb-3 text-lg font-semibold">{t('rooms.chat')}</h2>
-    <div className="mb-3 max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
+    <div className="relative mb-3">
+    <div ref={chatScrollRef} onScroll={() => { const node = chatScrollRef.current; if (node && node.scrollHeight - node.scrollTop - node.clientHeight <= 48) setHasNewMessagesBelow(false) }} className="max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
       {messages.isLoading && <p className="text-sm text-muted">{t('rooms.chatLoading')}</p>}
       {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}
       {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}
       {timeline.map(item => item.kind === 'message'
         ? <MessageCard key={`message-${item.value.id}`} message={item.value} currentUserID={user?.id} canModerate={canModerate} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} />
         : <ResourceCard key={`resource-${item.value.id}`} resource={item.value} canModerate={canModerate} onPreview={setPreviewID} onRemove={removeResourceMutation.mutate} />)}
+    </div>
+    {hasNewMessagesBelow && <button type="button" onClick={() => scrollToLatest()} className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-brand-600 px-3 py-1.5 text-xs font-medium text-white shadow-lg"><ArrowDown size={14} /> {t('rooms.newMessagesBelow')}</button>}
     </div>
     {typingName && <p className="mb-2 text-xs text-muted">{t('rooms.typing', { name: typingName })}</p>}
     {replyTo && <div className="mb-2 flex justify-between rounded-lg bg-zinc-100 px-3 py-2 text-xs dark:bg-[#1a1d27]"><span>{t('rooms.replyingTo', { name: replyTo.sender_name })}</span><button type="button" onClick={() => setReplyTo(undefined)}>{t('action.cancel')}</button></div>}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/livekit/protocol/auth"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 
@@ -27,18 +28,21 @@ type RoomMailer interface {
 }
 
 type Handler struct {
-	service      *Service
-	hub          *roomHub
-	limiter      *ratelimit.Limiter
-	redis        *goredis.Client
-	appURL       string
-	secureCookie bool
-	uploadTokens guestUploadTokenIssuer
-	mailer       RoomMailer
+	service       *Service
+	hub           *roomHub
+	limiter       *ratelimit.Limiter
+	redis         *goredis.Client
+	appURL        string
+	secureCookie  bool
+	uploadTokens  guestUploadTokenIssuer
+	mailer        RoomMailer
+	liveKitURL    string
+	liveKitKey    string
+	liveKitSecret string
 }
 
-func NewHandler(service *Service, limiter *ratelimit.Limiter, redisClient *goredis.Client, appURL string, secureCookie bool, uploadTokens guestUploadTokenIssuer, mailer RoomMailer) *Handler {
-	return &Handler{service: service, hub: newRoomHub(), limiter: limiter, redis: redisClient, appURL: appURL, secureCookie: secureCookie, uploadTokens: uploadTokens, mailer: mailer}
+func NewHandler(service *Service, limiter *ratelimit.Limiter, redisClient *goredis.Client, appURL string, secureCookie bool, uploadTokens guestUploadTokenIssuer, mailer RoomMailer, liveKitURL, liveKitKey, liveKitSecret string) *Handler {
+	return &Handler{service: service, hub: newRoomHub(), limiter: limiter, redis: redisClient, appURL: appURL, secureCookie: secureCookie, uploadTokens: uploadTokens, mailer: mailer, liveKitURL: strings.TrimSpace(liveKitURL), liveKitKey: strings.TrimSpace(liveKitKey), liveKitSecret: strings.TrimSpace(liveKitSecret)}
 }
 
 type createRoomRequest struct {
@@ -66,6 +70,58 @@ type createMessageRequest struct {
 	Body    string     `json:"body"`
 	ReplyTo *uuid.UUID `json:"reply_to_message_id"`
 }
+
+func (handler *Handler) CreateMediaToken(w http.ResponseWriter, request *http.Request) {
+	if handler.liveKitURL == "" || handler.liveKitKey == "" || handler.liveKitSecret == "" {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "voice is not configured")
+		return
+	}
+	roomID, ok := roomIDParam(w, request)
+	if !ok {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	room, err := handler.service.Get(request.Context(), user.ID, roomID)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	signed, err := handler.mediaToken(room.ID, "user:"+user.ID.String(), user.DisplayName)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]string{"url": handler.liveKitURL, "token": signed, "room": "sharedrive-room:" + room.ID.String()})
+}
+
+func (handler *Handler) CreateGuestMediaToken(w http.ResponseWriter, request *http.Request) {
+	access, ok := handler.guestAccess(w, request)
+	if !ok {
+		return
+	}
+	if !access.CanVoice {
+		httputil.RespondError(w, http.StatusForbidden, "voice is not allowed for this guest")
+		return
+	}
+	if handler.liveKitURL == "" || handler.liveKitKey == "" || handler.liveKitSecret == "" {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "voice is not configured")
+		return
+	}
+	signed, err := handler.mediaToken(access.RoomID, "guest:"+access.SessionID.String(), access.DisplayName)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]string{"url": handler.liveKitURL, "token": signed, "room": "sharedrive-room:" + access.RoomID.String()})
+}
+
+func (handler *Handler) mediaToken(roomID uuid.UUID, identity, name string) (string, error) {
+	canPublish, canSubscribe, canPublishData := true, true, false
+	token := auth.NewAccessToken(handler.liveKitKey, handler.liveKitSecret)
+	token.SetIdentity(identity).SetName(name).SetValidFor(15 * time.Minute).SetVideoGrant(&auth.VideoGrant{RoomJoin: true, Room: "sharedrive-room:" + roomID.String(), CanPublish: &canPublish, CanSubscribe: &canSubscribe, CanPublishData: &canPublishData, CanPublishSources: []string{"microphone"}})
+	return token.ToJWT()
+}
+
 type addMemberRequest struct {
 	UserID uuid.UUID `json:"user_id"`
 	Email  string    `json:"email"`

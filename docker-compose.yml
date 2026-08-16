@@ -27,6 +27,9 @@ services:
       # enable server-side backup storage (e.g. BACKUPS_ROOT=/mnt/backup).
       # You must also mount the disk at that path in the volumes section above.
       BACKUPS_ROOT: ${BACKUPS_ROOT:-}
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy

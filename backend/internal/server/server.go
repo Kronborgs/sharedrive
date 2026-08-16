@@ -160,7 +160,7 @@ func newServerDependencies(deps serverDependencies) *Server {
 			notes.NewSharingService(deps.db, smtp.New(deps.cfg, deps.db), deps.auditSvc,
 				ratelimit.New(deps.rdb), deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production"),
 		),
-		roomsHandler:   rooms.NewHandler(rooms.NewService(deps.db, deps.auditSvc, deps.cfg.RoomsEncryptKey, deps.fileSvc, noteService), ratelimit.New(deps.rdb), deps.rdb, deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production", deps.authHandler, smtp.New(deps.cfg, deps.db)),
+		roomsHandler:   rooms.NewHandler(rooms.NewService(deps.db, deps.auditSvc, deps.cfg.RoomsEncryptKey, deps.fileSvc, noteService), ratelimit.New(deps.rdb), deps.rdb, deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production", deps.authHandler, smtp.New(deps.cfg, deps.db), deps.cfg.LiveKitURL, deps.cfg.LiveKitAPIKey, deps.cfg.LiveKitAPISecret),
 		adminHandler:   admin.NewHandler(deps.db, deps.cfg, deps.ioTracker, deps.rdb),
 		sseHandler:     admin.NewSSEHandler(deps.db),
 		supportHandler: admin.NewSupportAccessHandler(deps.db),
@@ -356,6 +356,8 @@ func (s *Server) buildRouter() *chi.Mux {
 			).Scan(&v)
 			return v
 		},
+		s.cfg.LiveKitURL,
+		s.cfg.AppBaseURL,
 	))
 	// M1: Limit JSON request bodies globally to 4 MB. File-upload and backup
 	// endpoints apply their own tighter limits via MaxBytesReader, so this
@@ -438,6 +440,7 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Delete("/api/v1/guest/rooms/{roomID}/messages/{messageID}/reactions", s.roomsHandler.RequireEnabled(s.roomsHandler.GuestRemoveReaction))
 	r.Post("/api/v1/guest/rooms/{roomID}/uploads", s.roomsHandler.RequireEnabled(s.roomsHandler.GuestUpload))
 	r.Post("/api/v1/guest/rooms/{roomID}/upload-token", s.roomsHandler.RequireEnabled(s.roomsHandler.IssueGuestUploadToken))
+	r.Post("/api/v1/guest/rooms/{roomID}/media-token", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateGuestMediaToken))
 	r.Post("/api/v1/guest/rooms/logout", s.roomsHandler.GuestLogout)
 
 	// ── Public OnlyOffice endpoints for link-share (guest) access ─────────
@@ -557,6 +560,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/rooms/{roomID}/messages/{messageID}/reactions", s.roomsHandler.RequireEnabled(s.roomsHandler.AddReaction))
 		r.Delete("/api/v1/rooms/{roomID}/messages/{messageID}/reactions", s.roomsHandler.RequireEnabled(s.roomsHandler.RemoveReaction))
 		r.Put("/api/v1/rooms/{roomID}/read-state", s.roomsHandler.RequireEnabled(s.roomsHandler.MarkRead))
+		r.Post("/api/v1/rooms/{roomID}/media-token", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateMediaToken))
 		r.Get("/api/v1/rooms/{roomID}/messages/ws", s.roomsHandler.RequireEnabled(s.roomsHandler.WebSocket))
 		r.Get("/api/v1/rooms/{roomID}/resources", s.roomsHandler.RequireEnabled(s.roomsHandler.ListResources))
 		r.Post("/api/v1/rooms/{roomID}/resources", s.roomsHandler.RequireEnabled(s.roomsHandler.AddResource))

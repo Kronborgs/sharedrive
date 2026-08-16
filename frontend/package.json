@@ -38,6 +38,7 @@
     "clsx": "^2.1.1",
     "epubjs": "^0.3.93",
     "input-otp": "^1.4.1",
+    "livekit-client": "^2.21.0",
     "lucide-react": "^1.16.0",
     "monaco-editor": "^0.55.1",
     "openmoji": "17.0.0",

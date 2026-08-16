@@ -4,6 +4,7 @@ import { DoorOpen, LogOut, Send } from 'lucide-react'
 import { EmojiPicker } from '@/components/rooms/EmojiPicker'
 import { GuestRoomLiveSync } from '@/components/rooms/GuestRoomLiveSync'
 import { GuestRoomUpload } from '@/components/rooms/GuestRoomUpload'
+import { RoomVoicePanel } from '@/components/rooms/RoomVoicePanel'
 import { useI18n } from '@/lib/i18n'
 import {
   addGuestRoomReaction,
@@ -65,6 +66,7 @@ export function GuestRoomPage({ roomID }: Readonly<{ roomID: string }>) {
         <button type="button" className="flex items-center gap-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-[#3a3f58]" onClick={() => logoutGuestRoom().finally(() => window.location.replace('/login'))}><LogOut size={15} /> {t('rooms.leave')}</button>
       </header>
       <section className="mt-6" aria-label={t('rooms.chatAria')}>
+        {room.data.can_voice && <RoomVoicePanel roomID={roomID} guest />}
         <h2 className="mb-3 text-lg font-semibold">{t('rooms.chat')}</h2>
         <div className="mb-3 max-h-[55vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
           {[...(messages.data?.messages ?? [])].reverse().map(message => <GuestMessageCard key={message.id} message={message} canReact={room.data.can_chat} userKey={guestUserKey} onReaction={(selected, emoji) => reaction.mutate({ message: selected, emoji })} />)}

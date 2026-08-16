@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -47,7 +48,7 @@ func InlineScriptHashes(distFS fs.FS) []string {
 // extraScriptAndFrameSrc is called at most once per minute and its return value
 // (if non-empty) is appended to both script-src and frame-src — use it to allow
 // a dynamic OnlyOffice Document Server URL.
-func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extraScriptAndFrameSrc func() string) func(http.Handler) http.Handler {
+func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extraScriptAndFrameSrc func() string, liveKitURL, appBaseURL string) func(http.Handler) http.Handler {
 	// Build the static part of script-src once at startup
 	staticScriptSrc := "'self' https://static.cloudflareinsights.com https://cdn.jsdelivr.net"
 	if len(scriptHashes) > 0 {
@@ -80,7 +81,13 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extra
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			connectSrc := "'self' wss: ws: https://cloudflareinsights.com https://cdn.jsdelivr.net"
+			connectSrc := "'self' https://cloudflareinsights.com https://cdn.jsdelivr.net"
+			if websocketURL := websocketOrigin(appBaseURL); websocketURL != "" {
+				connectSrc += " " + websocketURL
+			}
+			if strings.HasPrefix(liveKitURL, "wss://") || strings.HasPrefix(liveKitURL, "https://") {
+				connectSrc += " " + liveKitURL
+			}
 			if extra := resolve(extraConnectSrc, &cacheConnect); extra != "" {
 				connectSrc += " " + extra
 			}
@@ -109,7 +116,11 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extra
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("X-Frame-Options", "DENY")
 			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-			h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=()")
+			permissionsPolicy := "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=()"
+			if strings.HasPrefix(r.URL.Path, "/rooms") {
+				permissionsPolicy = "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=()"
+			}
+			h.Set("Permissions-Policy", permissionsPolicy)
 			h.Set("Content-Security-Policy", csp)
 			// HSTS — only set over HTTPS connections
 			if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
@@ -118,4 +129,25 @@ func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extra
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// websocketOrigin returns the concrete, same-origin WSS endpoint used by the
+// Rooms chat. It avoids reopening the broad ws: or wss: CSP source schemes.
+func websocketOrigin(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" {
+		return ""
+	}
+	switch parsed.Scheme {
+	case "https":
+		parsed.Scheme = "wss"
+	case "http":
+		parsed.Scheme = "ws"
+	default:
+		return ""
+	}
+	parsed.Path = ""
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }

@@ -7,6 +7,7 @@ import { archiveRoom, getRoom, updateRoom } from '@/lib/rooms'
 import { RoomMembersPanel } from '@/components/rooms/RoomMembersPanel'
 import { RoomChatPanel } from '@/components/rooms/RoomChatPanel'
 import { RoomInvitesPanel } from '@/components/rooms/RoomInvitesPanel'
+import { RoomVoicePanel } from '@/components/rooms/RoomVoicePanel'
 
 export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const { t } = useI18n()
@@ -81,6 +82,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
         </div>
       </header>
 
+      <RoomVoicePanel roomID={room.id} />
       <RoomChatPanel room={room} />
 
 

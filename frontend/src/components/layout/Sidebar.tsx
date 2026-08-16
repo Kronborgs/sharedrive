@@ -695,6 +695,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
 
   const currentTrack = playlist.tracks[playlist.currentIndex]
   const isGuest = user?.role === 'guest'
+  const canUseMediaPlayer = !isGuest && !user?.rooms_only_account
   const roomsAvailable = systemSettings?.rooms_enabled && user?.rooms_access_enabled !== false
   const { data: rooms = [] } = useQuery({
     queryKey: ['rooms'],
@@ -782,7 +783,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
             ))}
           </nav>
 
-          {!playlist.activePlaylistId && !isGuest && (
+          {canUseMediaPlayer && !playlist.activePlaylistId && (
             <div className="px-2 pb-2">
               <button type="button"
                 onClick={() => setShowAddMusic(true)}
@@ -794,7 +795,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
             </div>
           )}
 
-          <SidebarDesktopPlayer
+          {canUseMediaPlayer && <SidebarDesktopPlayer
             playlist={playlist}
             currentTrack={currentTrack}
             playerExpanded={playerExpanded}
@@ -802,7 +803,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
             onShowAddMusic={() => setShowAddMusic(true)}
             onSeek={handleSeekClick}
             t={t}
-          />
+          />}
 
           {user?.is_admin && (
             <>
@@ -892,14 +893,14 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
         />
       </aside>
 
-      <SidebarMobilePlayer
+      {canUseMediaPlayer && <SidebarMobilePlayer
         playlist={playlist}
         currentTrack={currentTrack}
         mobilePlayerOpen={mobilePlayerOpen}
         onSetOpen={setMobilePlayerOpen}
         onSeek={handleSeekClick}
         t={t}
-      />
+      />}
     </>
   )
 }

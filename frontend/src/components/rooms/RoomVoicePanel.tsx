@@ -13,10 +13,10 @@ function connectionStatus(state: string): 'idle' | 'joining' | 'connected' | 're
   return 'joining'
 }
 
-function voiceDescription(status: string, t: (key: string) => string) {
-  if (status === 'reconnecting') return t('rooms.voiceReconnecting')
-  if (status === 'connected') return t('rooms.voiceConnected')
-  return t('rooms.voiceDescription')
+function voiceDescriptionKey(status: string): 'rooms.voiceReconnecting' | 'rooms.voiceConnected' | 'rooms.voiceDescription' {
+  if (status === 'reconnecting') return 'rooms.voiceReconnecting'
+  if (status === 'connected') return 'rooms.voiceConnected'
+  return 'rooms.voiceDescription'
 }
 
 export function RoomVoicePanel({ roomID, guest = false }: Readonly<{ roomID: string; guest?: boolean }>) {
@@ -68,7 +68,7 @@ export function RoomVoicePanel({ roomID, guest = false }: Readonly<{ roomID: str
 
   useEffect(() => () => { leave().catch(() => undefined) }, [])
 
-  const description = voiceDescription(status, t)
+  const description = t(voiceDescriptionKey(status))
   return <section className="mt-6 rounded-xl border border-zinc-200 p-4 dark:border-[#2d3148]" aria-label={t('rooms.voice')}>
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-semibold"><Mic size={18} /> {t('rooms.voice')}</h2><p className="mt-1 text-sm text-muted">{description}</p></div>{status !== 'connected' && status !== 'reconnecting' ? <button type="button" onClick={() => join().catch(() => undefined)} disabled={status === 'joining'} className="notes-primary-button"><Phone size={16} /> {status === 'joining' ? t('rooms.voiceJoining') : t('rooms.voiceJoin')}</button> : <div className="flex gap-2"><button type="button" onClick={() => toggleMute().catch(() => undefined)} className="notes-secondary-button">{muted ? <MicOff size={16} /> : <Mic size={16} />}{muted ? t('rooms.voiceUnmute') : t('rooms.voiceMute')}</button><button type="button" onClick={() => leave().catch(() => undefined)} className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-600 dark:border-red-900"><PhoneOff size={16} /> {t('rooms.voiceLeave')}</button></div>}</div>
     {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}

@@ -105,6 +105,15 @@ func (service *Service) MarkRead(ctx context.Context, actorID, roomID, messageID
 		return ErrNotFound
 	}
 	_, err := service.db.Exec(ctx, `INSERT INTO room_read_state(room_id,user_id,last_read_message_id) VALUES($1,$2,$3)
-		ON CONFLICT(room_id,user_id) DO UPDATE SET last_read_message_id=excluded.last_read_message_id, updated_at=now()`, roomID, actorID, messageID)
+		ON CONFLICT(room_id,user_id) DO UPDATE
+		SET last_read_message_id=excluded.last_read_message_id, updated_at=now()
+		WHERE room_read_state.last_read_message_id IS NULL OR EXISTS (
+			SELECT 1
+			FROM room_messages current_message, room_messages candidate_message
+			WHERE current_message.id = room_read_state.last_read_message_id
+				AND candidate_message.id = $3
+				AND (candidate_message.created_at, candidate_message.id) >
+					(current_message.created_at, current_message.id)
+		)`, roomID, actorID, messageID)
 	return err
 }

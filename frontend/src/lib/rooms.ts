@@ -12,6 +12,11 @@ export interface Room {
   updated_at: string
   archived_at?: string
   current_role: RoomRole
+  unread_count: number
+}
+
+export function totalRoomUnread(rooms: Room[]): number {
+  return rooms.reduce((total, room) => total + Math.max(0, room.unread_count ?? 0), 0)
 }
 
 export interface RoomMember {

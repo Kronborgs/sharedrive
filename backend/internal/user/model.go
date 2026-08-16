@@ -20,6 +20,8 @@ type User struct {
 	BandwidthLimitBytesPerDay *int64     `json:"bandwidth_limit_bytes_per_day,omitempty"`
 	MaxUploadBytes            *int64     `json:"max_upload_bytes,omitempty"`
 	WebDAVEnabled             bool       `json:"webdav_enabled"`
+	RoomsAccessEnabled        bool       `json:"rooms_access_enabled"`
+	RoomsOnlyAccount          bool       `json:"rooms_only_account"`
 	TrashRetentionDays        *int       `json:"trash_retention_days,omitempty"`
 	InvitedBy                 *uuid.UUID `json:"invited_by,omitempty"`
 	LastLoginAt               *time.Time `json:"last_login_at,omitempty"`

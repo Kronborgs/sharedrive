@@ -5,9 +5,9 @@ export const Route = createFileRoute('/')({
   beforeLoad: async () => {
     const { api } = await import('@/lib/api')
     try {
-      const user = await api.get<{ role: string }>('/api/v1/me')
+      const user = await api.get<{ role: string; rooms_only_account?: boolean }>('/api/v1/me')
       if (user.role === 'guest') {
-        throw redirect({ to: '/shares' })
+        throw redirect({ to: user.rooms_only_account ? '/rooms' : '/shares' })
       }
       throw redirect({ to: '/files' })
     } catch (e) {

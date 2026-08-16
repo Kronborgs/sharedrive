@@ -121,7 +121,7 @@ func (m *Mailer) SendInvitation(_ context.Context, toEmail, inviterName, inviteL
 }
 
 func roomRoleText(role string) string {
-	if translated := map[string]string{"member": "medlem", "moderator": "moderator", "guest": "gæst"}[role]; translated != "" {
+	if translated := map[string]string{"member": "medlem", "moderator": "moderator", "guest": "gæst", "room_member": "medlem", "room_moderator": "moderator"}[role]; translated != "" {
 		return translated
 	}
 	return role
@@ -129,7 +129,9 @@ func roomRoleText(role string) string {
 
 func roomInvitationContent(inviterName, roomName, role, inviteLink, instanceURL string) (string, string) {
 	guidance := "Log ind med din Sharedrive-konto for at åbne Roomet."
-	if role == "guest" {
+	if strings.HasPrefix(role, "room_") {
+		guidance = "Opret din begrænsede Rooms-konto med linket. Kontoen giver adgang til Rooms, men ikke til Mine filer eller Noter."
+	} else if role == "guest" {
 		guidance = "Linket er personligt og tidsbegrænset. Du behøver ikke en Sharedrive-konto, og du bør ikke videresende linket."
 	}
 	subject := fmt.Sprintf("%s har inviteret dig til %s på Sharedrive", inviterName, roomName)

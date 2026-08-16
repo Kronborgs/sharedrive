@@ -154,6 +154,11 @@ func (handler *Handler) roomUpdates(ctx context.Context, roomID uuid.UUID) (<-ch
 	return updates, func() { _ = pubsub.Close() }, nil
 }
 
+func userRoomsAccessWasRevoked(payload string, userID uuid.UUID) bool {
+	var event roomEvent
+	return json.Unmarshal([]byte(payload), &event) == nil && event.Type == "user_rooms_access_revoked" && event.UserID == userID
+}
+
 func (handler *Handler) serveWebSocket(ctx context.Context, conn *websocket.Conn, roomID, userID uuid.UUID, displayName string, updates <-chan string) {
 	incoming := readRoomClientEvents(ctx, conn)
 	ping := time.NewTicker(30 * time.Second)
@@ -163,7 +168,10 @@ func (handler *Handler) serveWebSocket(ctx context.Context, conn *websocket.Conn
 		case <-ctx.Done():
 			return
 		case payload, open := <-updates:
-			if !open || conn.Write(ctx, websocket.MessageText, []byte(payload)) != nil {
+			if !open || userRoomsAccessWasRevoked(payload, userID) {
+				return
+			}
+			if conn.Write(ctx, websocket.MessageText, []byte(payload)) != nil {
 				return
 			}
 		case event, open := <-incoming:

@@ -26,6 +26,8 @@ export interface User {
   bandwidth_limit_bytes_per_day: number | null
   max_upload_bytes: number | null
   webdav_enabled: boolean
+  rooms_access_enabled: boolean
+  rooms_only_account: boolean
   trash_retention_days: number | null
   invited_by: string | null
   last_login_at: string | null

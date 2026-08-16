@@ -614,6 +614,8 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Use(mw.RequireAdmin)
 
 			r.Get("/api/v1/admin/users", s.userHandler.List)
+			r.Get("/api/v1/admin/rooms/access", s.roomsHandler.AdminListAccess)
+			r.Patch("/api/v1/admin/rooms/users/{userID}/access", s.roomsHandler.AdminSetUserAccess)
 			r.Post("/api/v1/admin/users", s.userHandler.Create)
 			r.Get(adminUsersByIDRoute, s.userHandler.Get)
 			r.Patch(adminUsersByIDRoute, s.userHandler.Update)

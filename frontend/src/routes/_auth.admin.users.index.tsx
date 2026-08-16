@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth-context'
 import type { User, Group, PaginatedResponse, GuestUser } from '@/types/api'
 import { formatBytes, formatDate } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
+import { AdminRoomsAccessPanel } from '@/components/admin/AdminRoomsAccessPanel'
 
 export const Route = createFileRoute('/_auth/admin/users/')({
   component: AdminUsersPage,
@@ -290,7 +291,7 @@ function Field({ label, children }: Readonly<{ label: string; children: React.Re
 function AdminUsersPage() {
   const qc = useQueryClient()
   const { user: me } = useAuth()
-  const [tab, setTab] = useState<'users' | 'guests' | 'groups'>('users')
+  const [tab, setTab] = useState<'users' | 'rooms' | 'guests' | 'groups'>('users')
   const [showDialog, setShowDialog] = useState(false)
   const [editUser, setEditUser] = useState<User | null>(null)
   const { t } = useI18n()
@@ -359,7 +360,7 @@ function AdminUsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 bg-zinc-100 dark:bg-[#0f1117] rounded-lg p-1">
-          {(['users', 'guests', 'groups'] as const).map(t => (
+          {(['users', 'rooms', 'guests', 'groups'] as const).map(t => (
             <button type="button" key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
                 tab === t
@@ -456,6 +457,9 @@ function AdminUsersPage() {
           )}
         </div>
       )}
+
+      {/* Rooms tab */}
+      {tab === 'rooms' && <AdminRoomsAccessPanel />}
 
       {/* Guests tab */}
       {tab === 'guests' && (

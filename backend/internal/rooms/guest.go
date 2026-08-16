@@ -205,7 +205,8 @@ func (handler *Handler) ListInvites(w http.ResponseWriter, request *http.Request
 		return
 	}
 	rows, err := handler.service.db.Query(request.Context(), `SELECT `+roomInviteColumns+`
-		FROM room_invites WHERE room_id=$1 ORDER BY created_at DESC LIMIT 100`, roomID)
+		FROM room_invites WHERE room_id=$1 AND revoked_at IS NULL AND expires_at > now()
+		ORDER BY created_at DESC LIMIT 100`, roomID)
 	if err != nil {
 		handler.respondError(w, err)
 		return

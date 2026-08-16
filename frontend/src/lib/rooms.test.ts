@@ -17,6 +17,7 @@ import {
   listRoomMembers,
   listRooms,
   removeRoomMember,
+  totalRoomUnread,
   updateRoom,
 } from './rooms'
 
@@ -49,5 +50,16 @@ describe('Rooms API client', () => {
       email: 'anna@example.com', role: 'moderator',
     })
     expect(mocks.delete).toHaveBeenCalledWith('/api/v1/rooms/room-1/members/user-2')
+  })
+
+  it('adds unread messages across Rooms without returning negative counts', () => {
+    const rooms = [
+      { unread_count: 3 },
+      { unread_count: 0 },
+      { unread_count: -2 },
+      { unread_count: 7 },
+    ] as Parameters<typeof totalRoomUnread>[0]
+
+    expect(totalRoomUnread(rooms)).toBe(10)
   })
 })

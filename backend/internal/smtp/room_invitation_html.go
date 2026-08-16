@@ -15,7 +15,9 @@ func roomInvitationHTML(inviterName, roomName, role, inviteLink, instanceURL str
 	baseURL := strings.TrimRight(instanceURL, "/")
 	logoURL := escape(baseURL + "/logo_name.png")
 	accessText := "Log ind med din Sharedrive-konto for at deltage."
-	if role == "guest" {
+	if strings.HasPrefix(role, "room_") {
+		accessText = "Opret din begrænsede Rooms-konto. Den giver ikke adgang til Mine filer eller Noter."
+	} else if role == "guest" {
 		accessText = "Dit personlige gæstelink er tidsbegrænset og må ikke videresendes."
 	}
 

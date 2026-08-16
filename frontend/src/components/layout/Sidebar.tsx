@@ -23,7 +23,7 @@ import {
 	StickyNote,
   MessagesSquare,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
 import { api, createPlaylist } from '@/lib/api'
@@ -36,6 +36,7 @@ import { usePlaylist } from '@/lib/playlist-context'
 import { APP_VERSION } from '@/version'
 import { CHANGELOG_ENTRIES } from '@/changelog.generated'
 import { ignorePromise } from '@/lib/ignore-promise'
+import { listRooms, totalRoomUnread } from '@/lib/rooms'
 
 interface NavItem {
   to: string
@@ -56,7 +57,12 @@ const mainNav: NavItem[] = [
 ]
 
 const guestNav: NavItem[] = [
-  { to: '/shares',  labelKey: 'nav.shared',     icon: <Share2 size={16} /> },
+  { to: '/rooms', labelKey: 'nav.rooms', icon: <MessagesSquare size={16} /> },
+  { to: '/shares', labelKey: 'nav.shared', icon: <Share2 size={16} /> },
+]
+
+const roomsOnlyNav: NavItem[] = [
+  { to: '/rooms', labelKey: 'nav.rooms', icon: <MessagesSquare size={16} /> },
 ]
 
 const adminNav: NavItem[] = [
@@ -69,7 +75,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/settings',     labelKey: 'nav.settings',    icon: <Settings size={16} /> },
 ]
 
-function NavLink({ item }: Readonly<{ item: NavItem }>) {
+function NavLink({ item, badge = 0 }: Readonly<{ item: NavItem; badge?: number }>) {
   const state = useRouterState()
   const { t } = useI18n()
   const active = item.exact
@@ -86,7 +92,12 @@ function NavLink({ item }: Readonly<{ item: NavItem }>) {
       }`}
     >
       <span className={active ? 'text-brand-600 dark:text-brand-400' : ''}>{item.icon}</span>
-      {t(item.labelKey as any)}
+      <span className="flex-1">{t(item.labelKey as any)}</span>
+      {badge > 0 && (
+        <span className="min-w-5 rounded-full bg-brand-600 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white" aria-label={`${badge} ulæste beskeder`}>
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </Link>
   )
 }
@@ -684,9 +695,28 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
 
   const currentTrack = playlist.tracks[playlist.currentIndex]
   const isGuest = user?.role === 'guest'
+  const roomsAvailable = systemSettings?.rooms_enabled && user?.rooms_access_enabled !== false
+  const { data: rooms = [] } = useQuery({
+    queryKey: ['rooms'],
+    queryFn: ({ signal }) => listRooms(signal),
+    enabled: Boolean(user && roomsAvailable),
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
+  })
+  const unreadRoomsMessages = totalRoomUnread(rooms)
+  const accountNav = user?.rooms_only_account
+    ? roomsOnlyNav.filter(() => roomsAvailable)
+    : guestNav.filter(item => item.to !== '/rooms' || roomsAvailable)
   const quota = user?.quota_bytes ?? 0
   const used = user?.quota_used_bytes ?? 0
   const pct = quota > 0 ? Math.min(100, (used / quota) * 100) : 0
+
+  useEffect(() => {
+    const notesApp = state.location.pathname === '/notes' || state.location.pathname.startsWith('/notes/')
+    const baseTitle = notesApp ? 'Sharedrive Noter' : 'Sharedrive'
+    const badge = unreadRoomsMessages > 99 ? '99+' : unreadRoomsMessages
+    document.title = unreadRoomsMessages > 0 ? `(${badge}) ${baseTitle}` : baseTitle
+  }, [state.location.pathname, unreadRoomsMessages])
 
   const handleAddMusic = async (fileIds: string[]) => {
     setShowAddMusic(false)
@@ -744,8 +774,8 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
 
         <div className="flex-1 overflow-y-auto min-h-0">
           <nav className="px-2 py-3 space-y-0.5">
-            {(isGuest ? guestNav : mainNav.filter(item => item.to !== '/rooms' || systemSettings?.rooms_enabled)).map(item => (
-              <NavLink key={item.to} item={item} />
+            {(isGuest ? accountNav : mainNav.filter(item => item.to !== '/rooms' || roomsAvailable)).map(item => (
+              <NavLink key={item.to} item={item} badge={item.to === '/rooms' ? unreadRoomsMessages : 0} />
             ))}
           </nav>
 
@@ -870,4 +900,3 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
     </>
   )
 }
-

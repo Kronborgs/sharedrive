@@ -73,6 +73,7 @@ const (
 	EventRoomGuestJoined         = "ROOM_GUEST_JOINED"
 	EventRoomGuestUpload         = "ROOM_GUEST_UPLOAD"
 	EventRoomGuestSessionRevoked = "ROOM_GUEST_SESSION_REVOKED"
+	EventRoomsUserAccessChanged  = "ROOMS_USER_ACCESS_CHANGED"
 
 	// WebDAV events
 	EventWebDAVLoginSuccess = "WEBDAV_LOGIN_SUCCESS"

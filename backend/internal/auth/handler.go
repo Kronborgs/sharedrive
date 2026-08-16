@@ -548,15 +548,17 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 	var newUserID uuid.UUID
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO users (email, display_name, password_hash, role, quota_bytes, invited_by)
-		 VALUES ($1, $2, $3, 'guest', (SELECT (value::bigint) FROM system_settings WHERE key = 'default_quota_bytes'), $4)
+		`INSERT INTO users (email, display_name, password_hash, role, quota_bytes, invited_by, rooms_only_account)
+		 VALUES ($1, $2, $3, 'guest', (SELECT (value::bigint) FROM system_settings WHERE key = 'default_quota_bytes'), $4,
+			EXISTS(SELECT 1 FROM room_member_invitations WHERE invitation_token_id=$5 AND accepted_at IS NULL AND expires_at > now()))
 		 ON CONFLICT (email) DO UPDATE
-		   SET display_name   = EXCLUDED.display_name,
-		       password_hash  = EXCLUDED.password_hash,
-		       updated_at     = now()
+		   SET display_name       = EXCLUDED.display_name,
+		       password_hash      = EXCLUDED.password_hash,
+		       rooms_only_account = users.rooms_only_account OR EXCLUDED.rooms_only_account,
+		       updated_at         = now()
 		 WHERE users.role = 'guest'
 		 RETURNING id`,
-		email, req.DisplayName, pwHash, invitedBy,
+		email, req.DisplayName, pwHash, invitedBy, tokenID,
 	).Scan(&newUserID); err != nil {
 		httputil.RespondError(w, http.StatusConflict, "email already registered")
 		return
@@ -570,6 +572,10 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		 WHERE grantee_type = 'pending' AND pending_email = lower($2) AND revoked_at IS NULL`,
 		newUserID, email,
 	)
+	if err := acceptPendingRoomMemberships(ctx, tx, tokenID, newUserID); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
+		return
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)

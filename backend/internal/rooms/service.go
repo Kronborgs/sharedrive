@@ -78,6 +78,14 @@ func scanRoomWithRole(row pgx.Row) (Room, error) {
 	return room, err
 }
 
+func scanRoomWithRoleAndUnread(row pgx.Row) (Room, error) {
+	var room Room
+	err := row.Scan(&room.ID, &room.Name, &room.Slug, &room.OwnerID, &room.ManagedGroupID,
+		&room.CreatedBy, &room.CreatedAt, &room.UpdatedAt, &room.ArchivedAt, &room.CurrentRole,
+		&room.UnreadCount)
+	return room, err
+}
+
 func (service *Service) Create(ctx context.Context, actorID uuid.UUID, name string) (Room, error) {
 	normalizedName, err := NormalizeName(name)
 	if err != nil {
@@ -140,11 +148,26 @@ func (service *Service) Create(ctx context.Context, actorID uuid.UUID, name stri
 }
 
 func (service *Service) List(ctx context.Context, actorID uuid.UUID, includeArchived bool) ([]Room, error) {
-	rows, err := service.db.Query(ctx, `SELECT `+roomColumns+`, rm.role
+	rows, err := service.db.Query(ctx, `SELECT `+roomColumns+`, rm.role, unread.unread_count
 		FROM rooms r
 		JOIN room_members rm ON rm.room_id = r.id
+		LEFT JOIN room_read_state read_state
+			ON read_state.room_id = r.id AND read_state.user_id = $1
+		LEFT JOIN room_messages last_read_message
+			ON last_read_message.id = read_state.last_read_message_id
+		LEFT JOIN LATERAL (
+			SELECT COUNT(*)::integer AS unread_count
+			FROM room_messages unread_message
+			WHERE unread_message.room_id = r.id
+				AND unread_message.deleted_at IS NULL
+				AND unread_message.sender_user_id IS DISTINCT FROM $1
+				AND unread_message.created_at >= rm.joined_at
+				AND (last_read_message.id IS NULL OR
+					(unread_message.created_at, unread_message.id) >
+					(last_read_message.created_at, last_read_message.id))
+		) unread ON TRUE
 		WHERE rm.user_id = $1 AND ($2 OR r.archived_at IS NULL)
-		ORDER BY r.updated_at DESC, r.id DESC`, actorID, includeArchived)
+		ORDER BY (unread.unread_count > 0) DESC, r.updated_at DESC, r.id DESC`, actorID, includeArchived)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +175,7 @@ func (service *Service) List(ctx context.Context, actorID uuid.UUID, includeArch
 
 	result := make([]Room, 0)
 	for rows.Next() {
-		room, err := scanRoomWithRole(rows)
+		room, err := scanRoomWithRoleAndUnread(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -312,7 +335,7 @@ func (service *Service) AddMember(ctx context.Context, actorID, roomID, userID u
 
 	var activeUser bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(
-		SELECT 1 FROM users WHERE id = $1 AND is_active = TRUE AND role <> 'guest')`, userID).Scan(&activeUser); err != nil {
+		SELECT 1 FROM users WHERE id = $1 AND is_active = TRUE AND rooms_access_enabled = TRUE)`, userID).Scan(&activeUser); err != nil {
 		return err
 	}
 	if !activeUser {
@@ -342,7 +365,7 @@ func (service *Service) AddMember(ctx context.Context, actorID, roomID, userID u
 
 func (service *Service) MemberEmail(ctx context.Context, userID uuid.UUID) (string, error) {
 	var email string
-	err := service.db.QueryRow(ctx, `SELECT email FROM users WHERE id = $1 AND is_active = TRUE AND role <> 'guest'`, userID).Scan(&email)
+	err := service.db.QueryRow(ctx, `SELECT email FROM users WHERE id = $1 AND is_active = TRUE AND rooms_access_enabled = TRUE`, userID).Scan(&email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrMemberNotFound
 	}
@@ -352,7 +375,7 @@ func (service *Service) MemberEmail(ctx context.Context, userID uuid.UUID) (stri
 func (service *Service) AddMemberByEmail(ctx context.Context, actorID, roomID uuid.UUID, email, role string) error {
 	var userID uuid.UUID
 	err := service.db.QueryRow(ctx, `SELECT id FROM users
-		WHERE email = lower($1) AND is_active = TRUE AND role <> 'guest'`, strings.TrimSpace(email)).Scan(&userID)
+		WHERE lower(email) = lower($1) AND is_active = TRUE AND rooms_access_enabled = TRUE`, strings.TrimSpace(email)).Scan(&userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrMemberNotFound
 	}

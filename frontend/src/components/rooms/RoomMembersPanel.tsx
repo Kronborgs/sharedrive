@@ -47,7 +47,7 @@ function GuestPermissions(props: Readonly<GuestPermissionsProps>) {
 
 async function showInvitationResult(result: RoomInvitationResult) {
   if (result.mail_sent) {
-    toast.success('Personen er tilføjet, og invitationen er sendt med mail.')
+    toast.success('Invitationen er sendt med mail.')
     return
   }
   if (!result.invite_url) {
@@ -56,7 +56,7 @@ async function showInvitationResult(result: RoomInvitationResult) {
   }
   try {
     await navigator.clipboard.writeText(result.invite_url)
-    toast.warning('Gæsten er oprettet, men mailen kunne ikke sendes. Linket er kopieret.')
+    toast.warning('Invitationen blev oprettet, men mailen kunne ikke sendes. Linket er kopieret.')
   } catch {
     window.prompt('Mailen kunne ikke sendes. Kopiér gæstelinket:', result.invite_url)
   }
@@ -67,7 +67,7 @@ function showAddError(error: unknown) {
     toast.error('Mailadressen tilhører ikke en aktiv Sharedrive-konto. Vælg Gæst i stedet.')
     return
   }
-  toast.error('Personen kunne ikke tilføjes til Roomet.')
+  toast.error('Personen kunne ikke tilføjes eller inviteres til Roomet.')
 }
 
 function AddPersonDialog({ room }: Readonly<{ room: Room }>) {
@@ -117,7 +117,7 @@ function AddPersonDialog({ room }: Readonly<{ room: Room }>) {
       <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />
       <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-5 shadow-xl dark:border-[#2d3148] dark:bg-[#1a1d27]">
         <div className="flex items-start justify-between gap-4">
-          <div><Dialog.Title className="text-lg font-semibold text-zinc-950 dark:text-white">Tilføj person</Dialog.Title><Dialog.Description className="mt-1 text-sm text-muted">Medlem og moderator kræver en aktiv Sharedrive-konto. Gæst får et tidsbegrænset link.</Dialog.Description></div>
+          <div><Dialog.Title className="text-lg font-semibold text-zinc-950 dark:text-white">Tilføj person</Dialog.Title><Dialog.Description className="mt-1 text-sm text-muted">Medlem og moderator får en Rooms-konto, hvis e-mailen ikke allerede findes i Sharedrive. Gæst får et tidsbegrænset link.</Dialog.Description></div>
           <Dialog.Close asChild><button type="button" className="notes-icon-button" aria-label={t('action.close')}><X size={17} /></button></Dialog.Close>
         </div>
         <form className="mt-5 space-y-4" onSubmit={event => { event.preventDefault(); mutation.mutate() }}>

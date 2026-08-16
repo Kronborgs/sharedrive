@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -79,6 +80,17 @@ func (handler *Handler) RequireEnabled(next http.HandlerFunc) http.HandlerFunc {
 		if !enabled {
 			httputil.RespondError(w, http.StatusNotFound, "rooms are disabled")
 			return
+		}
+		if currentUser := middleware.UserFromContext(request.Context()); currentUser != nil {
+			allowed, accessErr := handler.service.UserAccessEnabled(request.Context(), currentUser.ID)
+			if accessErr != nil {
+				httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if !allowed {
+				httputil.RespondError(w, http.StatusForbidden, "rooms access is disabled for this account")
+				return
+			}
 		}
 		next(w, request)
 	}
@@ -391,6 +403,8 @@ func (handler *Handler) AddMember(w http.ResponseWriter, request *http.Request) 
 	actor := middleware.UserFromContext(request.Context())
 	var err error
 	recipientEmail := strings.TrimSpace(input.Email)
+	inviteLink := ""
+	pendingAccount := false
 	if input.UserID != uuid.Nil {
 		err = handler.service.AddMember(request.Context(), actor.ID, roomID, input.UserID, input.Role)
 		if err == nil {
@@ -398,10 +412,14 @@ func (handler *Handler) AddMember(w http.ResponseWriter, request *http.Request) 
 		}
 	} else {
 		err = handler.service.AddMemberByEmail(request.Context(), actor.ID, roomID, recipientEmail, input.Role)
-	}
-	if errors.Is(err, ErrMemberNotFound) {
-		httputil.RespondError(w, http.StatusUnprocessableEntity, "no active Sharedrive account uses this email; choose Guest instead")
-		return
+		if errors.Is(err, ErrMemberNotFound) {
+			var rawToken string
+			rawToken, err = handler.service.InviteMemberByEmail(request.Context(), actor.ID, roomID, recipientEmail, input.Role)
+			if err == nil {
+				pendingAccount = true
+				inviteLink = strings.TrimRight(handler.appURL, "/") + "/accept-invite?token=" + url.QueryEscape(rawToken)
+			}
+		}
 	}
 	if err != nil {
 		handler.respondError(w, err)
@@ -412,8 +430,19 @@ func (handler *Handler) AddMember(w http.ResponseWriter, request *http.Request) 
 		handler.respondError(w, err)
 		return
 	}
-	mailSent := handler.sendRoomInvitation(request.Context(), recipientEmail, actor.DisplayName, actor.Email, room, input.Role, strings.TrimRight(handler.appURL, "/")+"/rooms/"+room.ID.String())
-	httputil.Respond(w, http.StatusCreated, map[string]bool{"ok": true, "mail_sent": mailSent})
+	if inviteLink == "" {
+		inviteLink = strings.TrimRight(handler.appURL, "/") + "/rooms/" + room.ID.String()
+	}
+	mailRole := input.Role
+	if pendingAccount {
+		mailRole = "room_" + input.Role
+	}
+	mailSent := handler.sendRoomInvitation(request.Context(), recipientEmail, actor.DisplayName, actor.Email, room, mailRole, inviteLink)
+	response := map[string]any{"ok": true, "mail_sent": mailSent}
+	if pendingAccount {
+		response["invite_url"] = inviteLink
+	}
+	httputil.Respond(w, http.StatusCreated, response)
 }
 
 func (handler *Handler) RemoveMember(w http.ResponseWriter, request *http.Request) {

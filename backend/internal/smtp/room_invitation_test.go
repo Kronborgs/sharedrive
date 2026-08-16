@@ -62,3 +62,10 @@ func TestRoomInvitationHTMLEscapesUserControlledContent(t *testing.T) {
 		}
 	}
 }
+
+func TestRoomInvitationContentExplainsRoomsOnlyAccount(t *testing.T) {
+	_, body := roomInvitationContent("Kenneth", "Projekt", "room_member", "https://sharedrive.example.test/accept-invite?token=x", "https://sharedrive.example.test")
+	if !strings.Contains(body, "begrænsede Rooms-konto") || !strings.Contains(body, "ikke til Mine filer eller Noter") {
+		t.Fatal("Rooms-only invitation does not explain the restricted account")
+	}
+}

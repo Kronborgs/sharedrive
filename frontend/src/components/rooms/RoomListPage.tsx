@@ -16,6 +16,8 @@ export function RoomListPage() {
   const roomsQuery = useQuery({
     queryKey: ['rooms'],
     queryFn: ({ signal }) => listRooms(signal),
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
   })
   const createMutation = useMutation({
     mutationFn: () => createRoom(name),
@@ -95,7 +97,14 @@ export function RoomListPage() {
           >
             <div className="flex items-start justify-between gap-3">
               <h2 className="font-semibold text-zinc-950 dark:text-white">{room.name}</h2>
-              <DoorOpen size={18} className="shrink-0 text-brand-500" />
+              <div className="flex shrink-0 items-center gap-2">
+                {room.unread_count > 0 && (
+                  <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs font-semibold text-white" aria-label={`${room.unread_count} ulæste beskeder`}>
+                    {room.unread_count > 99 ? '99+' : room.unread_count}
+                  </span>
+                )}
+                <DoorOpen size={18} className="text-brand-500" />
+              </div>
             </div>
             <div className="mt-8 flex items-center justify-between text-xs text-muted">
               <span className="flex items-center gap-1.5"><Users size={14} /> {t(`rooms.role.${room.current_role}` as never)}</span>

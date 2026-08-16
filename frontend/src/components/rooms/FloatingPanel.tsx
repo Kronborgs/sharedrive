@@ -72,7 +72,7 @@ export function FloatingPanel({ anchorRef, children, open, onOpenChange, ariaLab
       ref={panelRef}
       open
       aria-label={ariaLabel}
-      className={`fixed m-0 z-[100] overflow-y-auto rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-[#34394f] dark:bg-[#1a1d27] ${className}`}
+      className={`fixed m-0 z-[100] overflow-y-auto rounded-2xl border border-zinc-200 bg-white text-zinc-900 shadow-2xl dark:border-[#34394f] dark:bg-[#1a1d27] dark:text-slate-100 ${className}`}
       style={{ left: position?.left ?? 0, top: position?.top ?? 0, maxHeight: position?.maxHeight, visibility: position ? 'visible' : 'hidden' }}
     >
       {children}

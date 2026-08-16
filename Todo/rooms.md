@@ -246,7 +246,7 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 - Cursor/keyset pagination; aldrig `SELECT all messages ever`.
 - Reply, edit/delete og timestamps. Afsenderen kan redigere/slette egen besked; Room owner/moderator kan slette alle beskeder i det paagaeldende Room; Sharedrive-admin kan slette alle Room-beskeder globalt. Ingen kan redigere andres beskeder.
 - Reactions og emojis gemmes som Unicode-tegn, ikke som uploadede billedfiler. UI har en soegbar, Messenger-lignende emoji-vaelger med emner for smileys, personer, dyr, mad, aktiviteter, rejser, ting, symboler, flag og ekstra Unicode. Vaelgeren ligger i en viewport-aware portal, saa den aldrig klippes af chat-containeren og kan aabne over eller under knappen. Den bruger den lokalt bundne og versionsfastlaaste OpenMoji-pakke (CC BY-SA 4.0) med synlig attribution og uden runtime-CDN. Brugerens 10 mest anvendte emojis vises foerst og gemmes lokalt pr. bruger og browser/enhed. Buildet kontrollerer informativt for en nyere stabil npm-release; opdatering sker manuelt efter review og aendrer aldrig produktionen automatisk.
-- Permanent read state per room/user, ikke en raekke per besked.
+- Permanent read state per Room/bruger, ikke en raekke per besked. Egne og slettede beskeder samt historik fra foer brugerens aktuelle medlemskab taeller ikke som ulaeste. Room-oversigten viser antal ulaeste pr. Room, Rooms-punktet i sidemenuen viser det samlede antal, og browserfanens titel markerer nye beskeder paa tvaers af Sharedrive. Status opdateres via Roomets live-events og en kort periodisk synkronisering, saa flere samtidige brugere har hver deres korrekte state.
 - Realtime WebSocket med server-afledt identity, Room-access, Origin-check, size limit, rate limits, ping/pong og clean disconnect.
 - Redis kun til namespaced ephemeral presence, typing og event distribution.
 - Typing throttles og gemmes aldrig permanent.
@@ -269,7 +269,8 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 - Expiry, revoke, flere links hvis modellen forbliver simpel; raw token vises kun ved oprettelse.
 - Token exchange til kortlivet, revocable, server-valideret HttpOnly/Secure/SameSite guest session.
 - Raw token fjernes fra URL og maa ikke logges eller ligge i backup.
-- Den samlede Tilfoej person-dialog lader owner/moderator vaelge medlem eller guest; owner kan ogsaa vaelge moderator. Medlem/moderator kraever en aktiv Sharedrive-konto, mens en guest faar et tidsbegraenset link og eksplicitte permissions. Den konfigurerede SMTP-server sender en Sharedrive-velkomst med direkte Room-link og den offentlige installation fra `APP_BASE_URL`; hvis guest-mail fejler, vises og kopieres linket som fallback.
+- Den samlede Tilfoej person-dialog lader owner/moderator vaelge medlem eller guest; owner kan ogsaa vaelge moderator. En eksisterende Sharedrive-bruger tilknyttes direkte. En ukendt medlem/moderator-mail faar en begraenset Rooms-only konto-invitation, mens en guest faar et tidsbegraenset link og eksplicitte permissions. Den konfigurerede SMTP-server sender en Sharedrive-velkomst via `APP_BASE_URL`; hvis mail fejler, vises og kopieres linket som fallback.
+- Admin -> Brugere -> Rooms viser Sharedrive+Rooms-konti, Rooms-only konti, afventende kontoinvitationer og aktive link-gaester. Admin kan deaktivere en kontos Rooms-adgang server-side.
 - Owner/moderator styrer Room-permissions som chat, voice og screen share.
 - File access afgøres fortsat af eksisterende file authorization.
 - Guest upload er deaktiveret som standard og kraever baade global admin-aktivering og en eksplicit permission paa invitationen styret af Room owner/moderator.

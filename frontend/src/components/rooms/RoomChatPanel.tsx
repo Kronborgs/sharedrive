@@ -161,6 +161,7 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: messageQueryKey }),
       queryClient.invalidateQueries({ queryKey: resourceQueryKey }),
+      queryClient.invalidateQueries({ queryKey: ['rooms'] }),
     ]).catch(() => undefined)
   }, [messageQueryKey, queryClient, resourceQueryKey])
   const { notifyTyping, typingName } = useRoomLiveSync(roomID, user?.id, refresh)
@@ -176,8 +177,12 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
 
   useEffect(() => {
     const newest = messages.data?.pages[0]?.messages[0]
-    if (newest) markRoomRead(roomID, newest.id).catch(() => undefined)
-  }, [messages.data, roomID])
+    if (newest) {
+      markRoomRead(roomID, newest.id)
+        .then(() => queryClient.invalidateQueries({ queryKey: ['rooms'] }))
+        .catch(() => undefined)
+    }
+  }, [messages.data, queryClient, roomID])
 
   const send = useMutation({ mutationFn: () => createRoomMessage(roomID, body, replyTo?.id), onSuccess: () => { setBody(''); setReplyTo(undefined); refresh() } })
   const removeResourceMutation = useMutation({ mutationFn: (resourceID: string) => removeRoomResource(roomID, resourceID), onSuccess: refresh })

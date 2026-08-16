@@ -6,7 +6,6 @@ import { useI18n } from '@/lib/i18n'
 import { archiveRoom, getRoom, updateRoom } from '@/lib/rooms'
 import { RoomMembersPanel } from '@/components/rooms/RoomMembersPanel'
 import { RoomChatPanel } from '@/components/rooms/RoomChatPanel'
-import { RoomResourcesPanel } from '@/components/rooms/RoomResourcesPanel'
 import { RoomInvitesPanel } from '@/components/rooms/RoomInvitesPanel'
 
 export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
@@ -82,9 +81,8 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
         </div>
       </header>
 
-      <RoomChatPanel roomID={room.id} roomRole={room.current_role} />
+      <RoomChatPanel room={room} />
 
-      <RoomResourcesPanel room={room} />
 
       <RoomMembersPanel room={room} />
 

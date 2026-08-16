@@ -340,6 +340,15 @@ func (service *Service) AddMember(ctx context.Context, actorID, roomID, userID u
 	return nil
 }
 
+func (service *Service) MemberEmail(ctx context.Context, userID uuid.UUID) (string, error) {
+	var email string
+	err := service.db.QueryRow(ctx, `SELECT email FROM users WHERE id = $1 AND is_active = TRUE AND role <> 'guest'`, userID).Scan(&email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrMemberNotFound
+	}
+	return email, err
+}
+
 func (service *Service) AddMemberByEmail(ctx context.Context, actorID, roomID uuid.UUID, email, role string) error {
 	var userID uuid.UUID
 	err := service.db.QueryRow(ctx, `SELECT id FROM users

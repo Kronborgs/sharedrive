@@ -48,7 +48,12 @@ export function listRoomMembers(roomID: string, signal?: AbortSignal): Promise<R
   return api.get<RoomMember[]>(`/api/v1/rooms/${roomID}/members`, signal)
 }
 
-export function addRoomMember(roomID: string, email: string, role: Exclude<RoomRole, 'owner'>): Promise<void> {
+export interface RoomInvitationResult {
+  mail_sent: boolean
+  invite_url?: string
+}
+
+export function addRoomMember(roomID: string, email: string, role: Exclude<RoomRole, 'owner'>): Promise<RoomInvitationResult> {
   return api.post(`/api/v1/rooms/${roomID}/members`, { email, role })
 }
 
@@ -135,6 +140,7 @@ export interface RoomInvite {
 }
 
 export interface CreateRoomInviteInput {
+  email?: string
   label: string
   expires_hours: number
   can_chat: boolean
@@ -161,7 +167,7 @@ export function listRoomInvites(roomID: string, signal?: AbortSignal): Promise<R
   return api.get<RoomInvite[]>(`/api/v1/rooms/${roomID}/invites`, signal)
 }
 
-export function createRoomInvite(roomID: string, input: CreateRoomInviteInput): Promise<{ invite: RoomInvite; invite_url: string }> {
+export function createRoomInvite(roomID: string, input: CreateRoomInviteInput): Promise<{ invite: RoomInvite; invite_url: string; mail_sent: boolean }> {
   return api.post(`/api/v1/rooms/${roomID}/invites`, input)
 }
 

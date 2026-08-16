@@ -67,5 +67,6 @@ func (handler *Handler) storeGuestUploadResource(ctx context.Context, access roo
 	handler.service.log(ctx, audit.EventRoomGuestUpload, access.OwnerID,
 		Room{ID: access.RoomID, Name: access.RoomName}, nil,
 		map[string]any{"guest_session_id": access.SessionID, "file_id": uploaded.ID})
+	handler.publish(ctx, access.RoomID)
 	return resource, nil
 }

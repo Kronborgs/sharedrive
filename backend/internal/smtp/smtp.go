@@ -120,6 +120,16 @@ func (m *Mailer) SendInvitation(_ context.Context, toEmail, inviterName, inviteL
 	return m.send(toEmail, fmt.Sprintf("%s has invited you to PrivateDrive", inviterName), body)
 }
 
+// SendRoomInvitation notifies a Sharedrive member or guest about direct Room access.
+func (m *Mailer) SendRoomInvitation(_ context.Context, toEmail, inviterName, roomName, role, inviteLink string) error {
+	roleText := map[string]string{"member": "medlem", "moderator": "moderator", "guest": "gæst"}[role]
+	if roleText == "" {
+		roleText = role
+	}
+	body := fmt.Sprintf("Hej,\n\n%s har inviteret dig til Roomet \"%s\" som %s.\n\nÅbn Room:\n%s\n\nHvis du ikke forventede invitationen, kan du ignorere denne mail.\n", inviterName, roomName, roleText, inviteLink)
+	return m.send(toEmail, fmt.Sprintf("%s har inviteret dig til %s på Sharedrive", inviterName, roomName), body)
+}
+
 // SendShareNotification notifies a user that a file has been shared with them.
 func (m *Mailer) SendShareNotification(_ context.Context, toEmail, sharerName, fileName, appURL string) error {
 	body := fmt.Sprintf(

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/rs/zerolog/log"
 
 	"github.com/yourname/privatedrive/internal/audit"
 	"github.com/yourname/privatedrive/internal/httputil"
@@ -44,6 +46,7 @@ type RoomInvite struct {
 }
 
 type createRoomInviteRequest struct {
+	Email          string `json:"email"`
 	Label          string `json:"label"`
 	ExpiresHours   int    `json:"expires_hours"`
 	CanChat        bool   `json:"can_chat"`
@@ -104,7 +107,19 @@ func (handler *Handler) CreateInvite(w http.ResponseWriter, request *http.Reques
 	if !decodeRequest(w, request, &input) {
 		return
 	}
+	input.Email = strings.TrimSpace(input.Email)
 	input.Label = strings.TrimSpace(input.Label)
+	if input.Email != "" {
+		address, parseErr := mail.ParseAddress(input.Email)
+		if parseErr != nil || !strings.EqualFold(address.Address, input.Email) {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid guest email")
+			return
+		}
+		input.Email = address.Address
+		if input.Label == "" {
+			input.Label = input.Email
+		}
+	}
 	if utf8.RuneCountInString(input.Label) > 120 || input.ExpiresHours < 1 || input.ExpiresHours > 24*30 {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid room invitation")
 		return
@@ -141,7 +156,19 @@ func (handler *Handler) CreateInvite(w http.ResponseWriter, request *http.Reques
 	}
 	handler.service.log(request.Context(), audit.EventRoomInviteCreated, actor.ID, room, nil, map[string]any{"invite_id": invite.ID})
 	inviteURL := strings.TrimRight(handler.appURL, "/") + "/rooms/invite/" + url.PathEscape(rawToken)
-	httputil.Respond(w, http.StatusCreated, map[string]any{"invite": invite, "invite_url": inviteURL})
+	mailSent := false
+	if input.Email != "" && handler.mailer != nil {
+		inviterName := strings.TrimSpace(actor.DisplayName)
+		if inviterName == "" {
+			inviterName = actor.Email
+		}
+		if mailErr := handler.mailer.SendRoomInvitation(request.Context(), input.Email, inviterName, room.Name, "guest", inviteURL); mailErr != nil {
+			log.Warn().Err(mailErr).Str("room_id", room.ID.String()).Msg("rooms: guest invitation email failed")
+		} else {
+			mailSent = true
+		}
+	}
+	httputil.Respond(w, http.StatusCreated, map[string]any{"invite": invite, "invite_url": inviteURL, "mail_sent": mailSent})
 }
 
 func (handler *Handler) ListInvites(w http.ResponseWriter, request *http.Request) {

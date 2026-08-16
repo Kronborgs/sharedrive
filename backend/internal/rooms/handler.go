@@ -1,20 +1,27 @@
 package rooms
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	goredis "github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 
 	"github.com/yourname/privatedrive/internal/httputil"
 	"github.com/yourname/privatedrive/internal/middleware"
 	"github.com/yourname/privatedrive/internal/ratelimit"
 )
+
+type RoomMailer interface {
+	SendRoomInvitation(ctx context.Context, toEmail, inviterName, roomName, role, inviteLink string) error
+}
 
 type Handler struct {
 	service      *Service
@@ -24,10 +31,11 @@ type Handler struct {
 	appURL       string
 	secureCookie bool
 	uploadTokens guestUploadTokenIssuer
+	mailer       RoomMailer
 }
 
-func NewHandler(service *Service, limiter *ratelimit.Limiter, redisClient *goredis.Client, appURL string, secureCookie bool, uploadTokens guestUploadTokenIssuer) *Handler {
-	return &Handler{service: service, hub: newRoomHub(), limiter: limiter, redis: redisClient, appURL: appURL, secureCookie: secureCookie, uploadTokens: uploadTokens}
+func NewHandler(service *Service, limiter *ratelimit.Limiter, redisClient *goredis.Client, appURL string, secureCookie bool, uploadTokens guestUploadTokenIssuer, mailer RoomMailer) *Handler {
+	return &Handler{service: service, hub: newRoomHub(), limiter: limiter, redis: redisClient, appURL: appURL, secureCookie: secureCookie, uploadTokens: uploadTokens, mailer: mailer}
 }
 
 type createRoomRequest struct {
@@ -108,6 +116,7 @@ func (handler *Handler) AddResource(w http.ResponseWriter, request *http.Request
 		handler.respondError(w, err)
 		return
 	}
+	handler.publish(request.Context(), roomID)
 	httputil.Respond(w, http.StatusCreated, resource)
 }
 
@@ -126,6 +135,7 @@ func (handler *Handler) RemoveResource(w http.ResponseWriter, request *http.Requ
 		handler.respondError(w, err)
 		return
 	}
+	handler.publish(request.Context(), roomID)
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 func (handler *Handler) UpdateMessage(w http.ResponseWriter, request *http.Request) {
@@ -378,18 +388,32 @@ func (handler *Handler) AddMember(w http.ResponseWriter, request *http.Request) 
 	if !decodeRequest(w, request, &input) {
 		return
 	}
-	user := middleware.UserFromContext(request.Context())
+	actor := middleware.UserFromContext(request.Context())
 	var err error
+	recipientEmail := strings.TrimSpace(input.Email)
 	if input.UserID != uuid.Nil {
-		err = handler.service.AddMember(request.Context(), user.ID, roomID, input.UserID, input.Role)
+		err = handler.service.AddMember(request.Context(), actor.ID, roomID, input.UserID, input.Role)
+		if err == nil {
+			recipientEmail, err = handler.service.MemberEmail(request.Context(), input.UserID)
+		}
 	} else {
-		err = handler.service.AddMemberByEmail(request.Context(), user.ID, roomID, input.Email, input.Role)
+		err = handler.service.AddMemberByEmail(request.Context(), actor.ID, roomID, recipientEmail, input.Role)
+	}
+	if errors.Is(err, ErrMemberNotFound) {
+		httputil.RespondError(w, http.StatusUnprocessableEntity, "no active Sharedrive account uses this email; choose Guest instead")
+		return
 	}
 	if err != nil {
 		handler.respondError(w, err)
 		return
 	}
-	httputil.Respond(w, http.StatusCreated, map[string]bool{"ok": true})
+	room, err := handler.service.Get(request.Context(), actor.ID, roomID)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	mailSent := handler.sendRoomInvitation(request.Context(), recipientEmail, actor.DisplayName, actor.Email, room, input.Role, strings.TrimRight(handler.appURL, "/")+"/rooms/"+room.ID.String())
+	httputil.Respond(w, http.StatusCreated, map[string]bool{"ok": true, "mail_sent": mailSent})
 }
 
 func (handler *Handler) RemoveMember(w http.ResponseWriter, request *http.Request) {
@@ -424,6 +448,21 @@ func decodeRequest(w http.ResponseWriter, request *http.Request, target any) boo
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid request")
+		return false
+	}
+	return true
+}
+
+func (handler *Handler) sendRoomInvitation(ctx context.Context, toEmail, displayName, fallbackName string, room Room, role, inviteLink string) bool {
+	if handler.mailer == nil || strings.TrimSpace(toEmail) == "" {
+		return false
+	}
+	inviterName := strings.TrimSpace(displayName)
+	if inviterName == "" {
+		inviterName = fallbackName
+	}
+	if err := handler.mailer.SendRoomInvitation(ctx, toEmail, inviterName, room.Name, role, inviteLink); err != nil {
+		log.Warn().Err(err).Str("room_id", room.ID.String()).Msg("rooms: invitation email failed")
 		return false
 	}
 	return true

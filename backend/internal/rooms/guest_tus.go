@@ -85,6 +85,7 @@ func (handler *Handler) CompleteGuestTusUpload(ctx context.Context, guestSession
 	}
 	handler.service.log(ctx, audit.EventRoomGuestUpload, access.OwnerID, Room{ID: access.RoomID, Name: access.RoomName}, nil,
 		map[string]any{"guest_session_id": access.SessionID, "file_id": parsedFileID})
+	handler.publish(ctx, access.RoomID)
 	return nil
 }
 

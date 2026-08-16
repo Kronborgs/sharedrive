@@ -1,6 +1,6 @@
 # Sharedrive Rooms
 
-Rooms are permanent, PostgreSQL-backed collaboration workspaces. Phase 1 provides Room metadata and membership only; it does not add chat, files, Notes, guests, or media.
+Rooms are permanent, PostgreSQL-backed collaboration workspaces. Phases 1-3 provide Room metadata, membership, realtime chat, reactions, and references to existing Sharedrive files and Notes. Guest access is being introduced separately and media remains outside this scope.
 
 ## Phase 1 authorization
 
@@ -18,7 +18,19 @@ Rooms are permanent, PostgreSQL-backed collaboration workspaces. Phase 1 provide
 - Room owners and Room moderators may delete every message in their Room, including guest messages, but may not edit other authors' messages.
 - Sharedrive platform administrators may delete every Room message. This is a platform-wide moderation right; the Room moderator role remains scoped to the individual Room.
 - Deletion is a soft delete: the message body is replaced by the deleted-message state in the UI.
-- Room reaction graphics use the pinned OpenMoji release from the frontend dependency lock. OpenMoji graphics are credited in the Room chat and licensed under CC BY-SA 4.0.
+- The searchable emoji picker uses the pinned OpenMoji catalog from the frontend dependency lock. The ten most-used emojis are stored per signed-in user in that browser/device. OpenMoji is credited in the Room chat and licensed under CC BY-SA 4.0.
+
+## People and invitations
+
+- Owners and moderators use one Add person dialog for members and guests; only owners may add moderators.
+- Members and moderators must already have an active Sharedrive account. External email addresses must use the guest role.
+- The configured Sharedrive SMTP service sends a direct Room or guest link. A newly created guest link is copied as a fallback if email delivery fails.
+
+## Files and Notes in chat
+
+- Attached and uploaded files and linked Notes are displayed in the chronological chat timeline, not in a second resource list.
+- A Room upload still creates a normal Sharedrive file and stores only a Room reference. Closing its preview remains on the Room page.
+- Removing a Room reference never deletes the underlying file or Note.
 
 ## Managed groups
 

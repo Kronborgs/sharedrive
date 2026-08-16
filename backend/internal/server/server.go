@@ -160,7 +160,7 @@ func newServerDependencies(deps serverDependencies) *Server {
 			notes.NewSharingService(deps.db, smtp.New(deps.cfg, deps.db), deps.auditSvc,
 				ratelimit.New(deps.rdb), deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production"),
 		),
-		roomsHandler:   rooms.NewHandler(rooms.NewService(deps.db, deps.auditSvc, deps.cfg.RoomsEncryptKey, deps.fileSvc, noteService), ratelimit.New(deps.rdb), deps.rdb, deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production", deps.authHandler),
+		roomsHandler:   rooms.NewHandler(rooms.NewService(deps.db, deps.auditSvc, deps.cfg.RoomsEncryptKey, deps.fileSvc, noteService), ratelimit.New(deps.rdb), deps.rdb, deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production", deps.authHandler, smtp.New(deps.cfg, deps.db)),
 		adminHandler:   admin.NewHandler(deps.db, deps.cfg, deps.ioTracker, deps.rdb),
 		sseHandler:     admin.NewSSEHandler(deps.db),
 		supportHandler: admin.NewSupportAccessHandler(deps.db),

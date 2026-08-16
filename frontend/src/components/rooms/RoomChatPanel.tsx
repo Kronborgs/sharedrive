@@ -191,6 +191,17 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
     setHasNewMessagesBelow(false)
   }, [])
 
+  const handleChatScroll = useCallback(() => {
+    const container = chatScrollRef.current
+    if (!container) {
+      return
+    }
+    wasAtBottom.current = container.scrollHeight - container.scrollTop - container.clientHeight <= 48
+    if (wasAtBottom.current) {
+      setHasNewMessagesBelow(false)
+    }
+  }, [])
+
   useEffect(() => {
     const latest = timeline.at(-1)
     if (!latest) return
@@ -235,7 +246,7 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
   return <section className="mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]" aria-label={t('rooms.chatAria')}>
     <h2 className="mb-3 text-lg font-semibold">{t('rooms.chat')}</h2>
     <div className="relative mb-3">
-    <div ref={chatScrollRef} onScroll={() => { const node = chatScrollRef.current; if (!node) return; wasAtBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 48; if (wasAtBottom.current) setHasNewMessagesBelow(false) }} className="max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
+    <div ref={chatScrollRef} onScroll={handleChatScroll} className="max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
       {messages.isLoading && <p className="text-sm text-muted">{t('rooms.chatLoading')}</p>}
       {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}
       {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}

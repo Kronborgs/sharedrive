@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, SmilePlus, X } from 'lucide-react'
+import { FloatingPanel } from '@/components/rooms/FloatingPanel'
 
 interface OpenMojiEntry {
   emoji: string
@@ -55,25 +56,30 @@ function recordUsage(userKey: string, emoji: string): EmojiUsage[] {
   return trimmed
 }
 
+function EmojiGrid({ entries, onChoose }: Readonly<{ entries: OpenMojiEntry[]; onChoose: (emoji: string) => void }>) {
+  return <div className="grid grid-cols-8 gap-1 sm:grid-cols-10">
+    {entries.map(entry => <button key={entry.emoji} type="button" onClick={() => onChoose(entry.emoji)} className="flex aspect-square items-center justify-center rounded-lg text-2xl hover:bg-zinc-100 focus-visible:bg-zinc-100 dark:hover:bg-[#2d3148] dark:focus-visible:bg-[#2d3148]" title={entry.annotation}>{entry.emoji}</button>)}
+  </div>
+}
+
 export function EmojiPicker({ userKey, onSelect, label = 'Vælg emoji' }: Readonly<{ userKey: string; onSelect: (emoji: string) => void; label?: string }>) {
+  const buttonRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [catalog, setCatalog] = useState<OpenMojiEntry[]>([])
   const [usage, setUsage] = useState<EmojiUsage[]>(() => readUsage(userKey))
 
-  useEffect(() => {
-    setUsage(readUsage(userKey))
-  }, [userKey])
-
+  useEffect(() => setUsage(readUsage(userKey)), [userKey])
   useEffect(() => {
     if (open && catalog.length === 0) loadCatalog().then(setCatalog).catch(() => setCatalog([]))
   }, [catalog.length, open])
 
   const top = usage.length > 0 ? usage.slice(0, 10).map(item => item.emoji) : fallbackEmojis
+  const topEntries = top.map(emoji => ({ emoji, annotation: emoji, tags: '', group: '' }))
   const results = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
-    if (!needle) return catalog.slice(0, 120)
-    return catalog.filter(entry => `${entry.emoji} ${entry.annotation} ${entry.tags}`.toLocaleLowerCase().includes(needle)).slice(0, 120)
+    if (!needle) return catalog.slice(0, 160)
+    return catalog.filter(entry => `${entry.emoji} ${entry.annotation} ${entry.tags}`.toLocaleLowerCase().includes(needle)).slice(0, 160)
   }, [catalog, query])
   const choose = (emoji: string) => {
     setUsage(recordUsage(userKey, emoji))
@@ -82,13 +88,17 @@ export function EmojiPicker({ userKey, onSelect, label = 'Vælg emoji' }: Readon
     setQuery('')
   }
 
-  return <span className="relative inline-flex">
-    <button type="button" onClick={() => setOpen(value => !value)} className="rounded-md p-1.5 text-muted hover:bg-zinc-100 dark:hover:bg-[#2d3148]" aria-label={label} title={label}><SmilePlus size={17} /></button>
-    {open && <span className="absolute bottom-full right-0 z-40 mb-2 block w-80 rounded-xl border border-zinc-200 bg-white p-3 shadow-xl dark:border-[#2d3148] dark:bg-[#1a1d27]">
-      <span className="mb-2 flex items-center gap-2"><Search size={15} className="text-muted" /><input autoFocus type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Søg emoji (fx smile, heart)…" className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-[#3a3f58]" /><button type="button" onClick={() => setOpen(false)} aria-label="Luk emoji-vælger"><X size={15} /></button></span>
-      {!query && <><span className="mb-1 block text-xs font-medium text-muted">Dine mest brugte</span><span className="mb-3 grid grid-cols-10 gap-1">{top.map(emoji => <button key={emoji} type="button" onClick={() => choose(emoji)} className="rounded p-1 text-xl hover:bg-zinc-100 dark:hover:bg-[#2d3148]">{emoji}</button>)}</span></>}
-      <span className="grid max-h-64 grid-cols-10 gap-1 overflow-y-auto">{results.map(entry => <button key={entry.emoji} type="button" onClick={() => choose(entry.emoji)} className="rounded p-1 text-xl hover:bg-zinc-100 dark:hover:bg-[#2d3148]" title={entry.annotation}>{entry.emoji}</button>)}</span>
-      {catalog.length === 0 && <span className="block py-4 text-center text-xs text-muted">Indlæser OpenMoji-katalog…</span>}
-    </span>}
+  return <span className="inline-flex">
+    <button ref={buttonRef} type="button" onClick={() => setOpen(value => !value)} className="rounded-full p-2 text-muted hover:bg-zinc-100 dark:hover:bg-[#2d3148]" aria-label={label} title={label} aria-expanded={open}><SmilePlus size={19} /></button>
+    <FloatingPanel anchorRef={buttonRef} open={open} onOpenChange={setOpen} ariaLabel={label} className="w-[min(22rem,calc(100vw-1rem))] p-3">
+      <div className="mb-3 flex items-center gap-2 border-b border-zinc-200 pb-3 dark:border-[#34394f]">
+        <Search size={17} className="shrink-0 text-muted" />
+        <input autoFocus type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Søg efter emoji…" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+        <button type="button" onClick={() => setOpen(false)} className="rounded-full p-1 text-muted hover:bg-zinc-100 dark:hover:bg-[#2d3148]" aria-label="Luk emoji-vælger"><X size={16} /></button>
+      </div>
+      {!query && <section className="mb-3" aria-label="Mest brugte emojis"><p className="mb-1.5 text-xs font-medium text-muted">Mest brugte</p><EmojiGrid entries={topEntries} onChoose={choose} /></section>}
+      <section aria-label="Alle emojis"><p className="mb-1.5 text-xs font-medium text-muted">{query ? 'Søgeresultater' : 'Alle emojis'}</p><EmojiGrid entries={results} onChoose={choose} /></section>
+      {catalog.length === 0 && <p className="py-5 text-center text-xs text-muted">Indlæser OpenMoji-katalog…</p>}
+    </FloatingPanel>
   </span>
 }

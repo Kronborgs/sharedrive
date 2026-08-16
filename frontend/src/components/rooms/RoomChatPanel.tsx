@@ -81,19 +81,32 @@ function ResourceName({ resource, onPreview }: Readonly<{ resource: RoomResource
   return <a href={`/notes/${resource.resource_id}`} className="truncate text-sm font-medium text-brand-600 hover:underline">{resource.name}</a>
 }
 
-function ResourceCard({ resource, canModerate, onPreview, onRemove }: Readonly<{ resource: RoomResource; canModerate: boolean; onPreview: (id: string) => void; onRemove: (id: string) => void }>) {
-  const isFile = resource.resource_type === 'file'
-
-  return <article className="flex items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/40 px-3 py-3 dark:border-brand-900 dark:bg-brand-950/20">
-    {isFile ? <File size={20} /> : <FileText size={20} />}
-    <div className="min-w-0 flex-1">
-      <ResourceName resource={resource} onPreview={onPreview} />
-      <p className="text-xs text-muted">{isFile ? 'Fil delt i chatten' : 'Note delt i chatten'}</p>
-    </div>
-    {canModerate && <button type="button" onClick={() => onRemove(resource.id)} aria-label="Fjern fra chat" className="text-red-600"><Trash2 size={15} /></button>}
-  </article>
+function isImageResource(resource: RoomResource) {
+  if (resource.mime_type?.startsWith('image/')) return true
+  return /\.(avif|gif|jpe?g|png|svg|webp)$/i.test(resource.name ?? '')
 }
 
+function ResourceCard({ resource, canModerate, onPreview, onRemove }: Readonly<{ resource: RoomResource; canModerate: boolean; onPreview: (id: string) => void; onRemove: (id: string) => void }>) {
+  const [thumbnailFailed, setThumbnailFailed] = useState(false)
+  const showThumbnail = resource.accessible && resource.resource_type === 'file' && isImageResource(resource) && !thumbnailFailed
+
+  if (showThumbnail) {
+    return <article className="group relative w-fit max-w-[min(22rem,85%)]">
+      <button type="button" onClick={() => onPreview(resource.resource_id)} className="block overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-950 dark:border-[#34394f]" title={resource.name}>
+        <img src={`/api/v1/files/${resource.resource_id}/thumbnail`} alt={resource.name || 'Delt billede'} className="max-h-52 min-h-24 max-w-full object-contain" loading="lazy" onError={() => setThumbnailFailed(true)} />
+      </button>
+      {canModerate && <button type="button" onClick={() => onRemove(resource.id)} aria-label="Fjern billede fra chat" className="absolute right-2 top-2 rounded-full bg-black/70 p-1.5 text-white opacity-80 shadow hover:bg-red-600 hover:opacity-100"><Trash2 size={14} /></button>}
+      <span className="sr-only">{resource.name}</span>
+    </article>
+  }
+
+  const isFile = resource.resource_type === 'file'
+  return <article className="flex max-w-md items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-3 shadow-sm dark:border-[#34394f] dark:bg-[#1a1d27]">
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600 dark:bg-[#272b3a] dark:text-slate-300">{isFile ? <File size={20} /> : <FileText size={20} />}</span>
+    <div className="min-w-0 flex-1"><ResourceName resource={resource} onPreview={onPreview} /><p className="text-xs text-muted">{isFile ? 'Fil' : 'Note'} delt i chatten</p></div>
+    {canModerate && <button type="button" onClick={() => onRemove(resource.id)} aria-label="Fjern fra chat" className="rounded-full p-1.5 text-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"><Trash2 size={15} /></button>}
+  </article>
+}
 function useRoomLiveSync(roomID: string, currentUserID: string | undefined, refresh: () => void) {
   const [typingName, setTypingName] = useState('')
   const socketRef = useRef<WebSocket | undefined>(undefined)
@@ -198,12 +211,12 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
     </div>
     {typingName && <p className="mb-2 text-xs text-muted">{typingName} skriver…</p>}
     {replyTo && <div className="mb-2 flex justify-between rounded-lg bg-zinc-100 px-3 py-2 text-xs dark:bg-[#1a1d27]"><span>Svarer til {replyTo.sender_name}</span><button type="button" onClick={() => setReplyTo(undefined)}>Annuller</button></div>}
-    <form className="flex items-end gap-2" onSubmit={event => { event.preventDefault(); if (body.trim()) send.mutate() }}>
-      <textarea value={body} onChange={event => { setBody(event.target.value); notifyTyping() }} maxLength={10000} rows={2} placeholder="Skriv en besked…" className="min-h-12 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-[#2d3148] dark:bg-[#0f1117]" />
+    <form className="flex items-end gap-1 rounded-2xl border border-zinc-200 bg-white p-1.5 dark:border-[#2d3148] dark:bg-[#0f1117]" onSubmit={event => { event.preventDefault(); if (body.trim()) send.mutate() }}>
+      <RoomResourcesPanel room={room} />
+      <textarea value={body} onChange={event => { setBody(event.target.value); notifyTyping() }} maxLength={10000} rows={2} placeholder="Skriv en besked…" className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none" />
       <EmojiPicker userKey={user?.id ?? 'anonymous'} onSelect={emoji => setBody(value => value + emoji)} />
-      <button type="submit" disabled={!body.trim() || send.isPending} className="rounded-lg bg-brand-600 p-2 text-white disabled:opacity-50" aria-label="Send besked"><Send size={18} /></button>
+      <button type="submit" disabled={!body.trim() || send.isPending} className="rounded-full bg-brand-600 p-2.5 text-white disabled:opacity-50" aria-label="Send besked"><Send size={18} /></button>
     </form>
-    <RoomResourcesPanel room={room} />
     <p className="mt-2 text-[11px] text-muted">Emoji-katalog: <a href="https://openmoji.org/" target="_blank" rel="noreferrer" className="underline">OpenMoji</a> (CC BY-SA 4.0).</p>
     {previewID && preview.data && <PreviewModal item={preview.data} onClose={() => setPreviewID(undefined)} />}
   </section>

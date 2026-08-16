@@ -245,7 +245,7 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 - PostgreSQL-persistente plain-text messages med escaped rendering.
 - Cursor/keyset pagination; aldrig `SELECT all messages ever`.
 - Reply, edit/delete og timestamps. Afsenderen kan redigere/slette egen besked; Room owner/moderator kan slette alle beskeder i det paagaeldende Room; Sharedrive-admin kan slette alle Room-beskeder globalt. Ingen kan redigere andres beskeder.
-- Reactions og emojis gemmes som Unicode-tegn, ikke som uploadede billedfiler. UI har en soegbar emoji-vaelger baseret paa den lokalt bundne og versionsfastlaaste OpenMoji-pakke (CC BY-SA 4.0) med synlig attribution og uden runtime-CDN. Brugerens 10 mest anvendte emojis vises foerst og gemmes lokalt pr. bruger og browser/enhed. Buildet kontrollerer informativt for en nyere stabil npm-release; opdatering sker manuelt efter review og aendrer aldrig produktionen automatisk.
+- Reactions og emojis gemmes som Unicode-tegn, ikke som uploadede billedfiler. UI har en soegbar, Messenger-lignende emoji-vaelger i en viewport-aware portal, saa den aldrig klippes af chat-containeren og kan aabne over eller under knappen. Den bruger den lokalt bundne og versionsfastlaaste OpenMoji-pakke (CC BY-SA 4.0) med synlig attribution og uden runtime-CDN. Brugerens 10 mest anvendte emojis vises foerst og gemmes lokalt pr. bruger og browser/enhed. Buildet kontrollerer informativt for en nyere stabil npm-release; opdatering sker manuelt efter review og aendrer aldrig produktionen automatisk.
 - Permanent read state per room/user, ikke en raekke per besked.
 - Realtime WebSocket med server-afledt identity, Room-access, Origin-check, size limit, rate limits, ping/pong og clean disconnect.
 - Redis kun til namespaced ephemeral presence, typing og event distribution.
@@ -256,7 +256,7 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 - Attach existing file uden kopi; samme file ID, blob, checksum, metadata og editor/preview.
 - Backend verificerer baade adgang og eksisterende re-share-ret.
 - Room-upload bruger normal multipart/TUS pipeline, quota, storage, checksum, MIME, audit og preview. Uploadede og tilknyttede resources vises som tidsordnede elementer i chatten; lukning af en fil-preview vender tilbage til samme Room.
-- Fil- og Note-vaelgeren er et sekundaert chatvaerktoej; Roomet viser ikke en separat resourceliste under chatten.
+- Fil- og Note-vaelgeren aabnes fra en attachment-knap ved chatfeltet i en viewport-aware portal; Roomet viser ikke en separat resourceliste under chatten. Preview-understoettede billeder vises som kompakte thumbnails direkte i tidslinjen, mens andre filer og Notes vises som neutrale kompakte kort.
 - Resource cards slaar autoriseret metadata op ved rendering og batcher lookups for at undgaa N+1.
 - Manglende/slettet/ikke-autoriseret resource laekker ikke metadata.
 - Sletning af message/resource relation sletter aldrig filen eller Noten.

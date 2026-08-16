@@ -1,0 +1,8 @@
+import { PwaInstallButton } from '@/components/pwa/PwaInstallButton'
+import { useI18n } from '@/lib/i18n'
+
+export function RoomsInstallButton() {
+  const { t } = useI18n()
+  const label = t('rooms.installApp')
+  return <PwaInstallButton className="notes-secondary-button shrink-0" title={label} label={label} />
+}

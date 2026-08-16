@@ -6,6 +6,7 @@ import { DoorOpen, Plus, Users, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { createRoom, listRooms } from '@/lib/rooms'
+import { RoomsInstallButton } from '@/components/rooms/RoomsInstallButton'
 
 export function RoomListPage() {
   const { t, locale } = useI18n()
@@ -39,12 +40,14 @@ export function RoomListPage() {
           <h1 id="rooms-heading" className="text-2xl font-semibold text-zinc-950 dark:text-white">{t('rooms.title' as never)}</h1>
           <p className="mt-1 text-sm text-muted">{t('rooms.subtitle' as never)}</p>
         </div>
-        <Dialog.Root open={dialogOpen} onOpenChange={setDialogOpen}>
-          <Dialog.Trigger asChild>
-            <button type="button" className="notes-primary-button shrink-0">
-              <Plus size={17} /> {t('rooms.create' as never)}
-            </button>
-          </Dialog.Trigger>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <RoomsInstallButton />
+          <Dialog.Root open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog.Trigger asChild>
+              <button type="button" className="notes-primary-button shrink-0">
+                <Plus size={17} /> {t('rooms.create' as never)}
+              </button>
+            </Dialog.Trigger>
           <Dialog.Portal>
             <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />
             <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-zinc-200 bg-white p-5 shadow-xl dark:border-[#2d3148] dark:bg-[#1a1d27]">
@@ -76,7 +79,8 @@ export function RoomListPage() {
               </form>
             </Dialog.Content>
           </Dialog.Portal>
-        </Dialog.Root>
+          </Dialog.Root>
+        </div>
       </header>
 
       {roomsQuery.isLoading && <p className="text-sm text-muted">{t('rooms.loading' as never)}</p>}

@@ -179,7 +179,7 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
   const timeline = useMemo<TimelineItem[]>(() => [
     ...messageItems.map(value => ({ kind: 'message' as const, date: value.created_at, value })),
     ...(resources.data ?? []).map(value => ({ kind: 'resource' as const, date: value.created_at, value })),
-  ].sort((a, b) => b.date.localeCompare(a.date)), [messageItems, resources.data])
+  ].sort((a, b) => a.date.localeCompare(b.date)), [messageItems, resources.data])
 
   useEffect(() => {
     const newest = messages.data?.pages[0]?.messages[0]
@@ -208,10 +208,10 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
     <div className="mb-3 max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
       {messages.isLoading && <p className="text-sm text-muted">{t('rooms.chatLoading')}</p>}
       {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}
+      {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}
       {timeline.map(item => item.kind === 'message'
         ? <MessageCard key={`message-${item.value.id}`} message={item.value} currentUserID={user?.id} canModerate={canModerate} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} />
         : <ResourceCard key={`resource-${item.value.id}`} resource={item.value} canModerate={canModerate} onPreview={setPreviewID} onRemove={removeResourceMutation.mutate} />)}
-      {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}
     </div>
     {typingName && <p className="mb-2 text-xs text-muted">{t('rooms.typing', { name: typingName })}</p>}
     {replyTo && <div className="mb-2 flex justify-between rounded-lg bg-zinc-100 px-3 py-2 text-xs dark:bg-[#1a1d27]"><span>{t('rooms.replyingTo', { name: replyTo.sender_name })}</span><button type="button" onClick={() => setReplyTo(undefined)}>{t('action.cancel')}</button></div>}

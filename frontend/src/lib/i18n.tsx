@@ -69,6 +69,7 @@ const translations = {
 
   // ── Rooms ───────────────────────────────────────────────────────────────
   'rooms.title':             { da: 'Rum', en: 'Rooms' },
+  'rooms.installApp':        { da: 'Installér Rooms', en: 'Install Rooms' },
   'rooms.subtitle':          { da: 'Permanente arbejdsrum for dit team', en: 'Permanent workspaces for your team' },
   'rooms.create':            { da: 'Opret rum', en: 'Create Room' },
   'rooms.createDescription': { da: 'Opret et arbejdsrum og tilføj medlemmer.', en: 'Create a workspace and add members.' },

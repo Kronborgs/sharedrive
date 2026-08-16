@@ -132,7 +132,7 @@ func roomInvitationContent(inviterName, roomName, role, inviteLink, instanceURL 
 	if role == "guest" {
 		guidance = "Linket er personligt og tidsbegrænset. Du behøver ikke en Sharedrive-konto, og du bør ikke videresende linket."
 	}
-	subject := fmt.Sprintf("Velkommen til %s på Sharedrive", roomName)
+	subject := fmt.Sprintf("%s har inviteret dig til %s på Sharedrive", inviterName, roomName)
 	body := fmt.Sprintf(
 		"Hej og velkommen til Sharedrive!\n\n"+
 			"%s har inviteret dig til Roomet \"%s\" som %s.\n\n"+
@@ -150,7 +150,8 @@ func roomInvitationContent(inviterName, roomName, role, inviteLink, instanceURL 
 func (m *Mailer) SendRoomInvitation(_ context.Context, toEmail, inviterName, roomName, role, inviteLink string) error {
 	instanceURL := strings.TrimRight(m.cfg.AppBaseURL, "/")
 	subject, body := roomInvitationContent(inviterName, roomName, role, inviteLink, instanceURL)
-	return m.send(toEmail, subject, body, "Sharedrive")
+	htmlBody := roomInvitationHTML(inviterName, roomName, role, inviteLink, instanceURL)
+	return m.sendMessage(toEmail, subject, body, htmlBody, "Sharedrive")
 }
 
 // SendShareNotification notifies a user that a file has been shared with them.
@@ -222,6 +223,10 @@ func (m *Mailer) SendBackupFailure(_ context.Context, toEmail, toName, backupTyp
 }
 
 func (m *Mailer) send(to, subject, body string, fromName ...string) error {
+	return m.sendMessage(to, subject, body, "", fromName...)
+}
+
+func (m *Mailer) sendMessage(to, subject, plainBody, htmlBody string, fromName ...string) error {
 	s, err := m.loadSettings(context.Background())
 	if err != nil {
 		return err
@@ -267,7 +272,10 @@ func (m *Mailer) send(to, subject, body string, fromName ...string) error {
 		return fmt.Errorf("smtp: invalid to address: %w", err)
 	}
 	msg.Subject(subject)
-	msg.SetBodyString(mail.TypeTextPlain, body)
+	msg.SetBodyString(mail.TypeTextPlain, plainBody)
+	if htmlBody != "" {
+		msg.AddAlternativeString(mail.TypeTextHTML, htmlBody)
+	}
 
 	if err := client.DialAndSend(msg); err != nil {
 		return fmt.Errorf("smtp: send: %w", err)

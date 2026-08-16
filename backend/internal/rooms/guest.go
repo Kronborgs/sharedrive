@@ -98,6 +98,60 @@ func scanRoomInvite(row pgx.Row) (RoomInvite, error) {
 const roomInviteColumns = `id, room_id, label, can_chat, can_upload, can_voice,
 	can_share_screen, expires_at, revoked_at, created_at`
 
+var (
+	errInvalidGuestEmail = errors.New("invalid guest email")
+	errInvalidRoomInvite = errors.New("invalid room invitation")
+)
+
+func normalizeRoomInviteInput(input *createRoomInviteRequest) error {
+	input.Email = strings.TrimSpace(input.Email)
+	input.Label = strings.TrimSpace(input.Label)
+	if input.Email != "" {
+		address, err := mail.ParseAddress(input.Email)
+		if err != nil || !strings.EqualFold(address.Address, input.Email) {
+			return errInvalidGuestEmail
+		}
+		input.Email = address.Address
+		if input.Label == "" {
+			input.Label = input.Email
+		}
+	}
+	if utf8.RuneCountInString(input.Label) > 120 || input.ExpiresHours < 1 || input.ExpiresHours > 24*30 {
+		return errInvalidRoomInvite
+	}
+	return nil
+}
+
+func (handler *Handler) insertRoomInvite(ctx context.Context, roomID, actorID uuid.UUID, input createRoomInviteRequest) (RoomInvite, string, error) {
+	rawToken, tokenHash, err := secureRoomToken()
+	if err != nil {
+		return RoomInvite{}, "", err
+	}
+	expiresAt := time.Now().Add(time.Duration(input.ExpiresHours) * time.Hour)
+	invite, err := scanRoomInvite(handler.service.db.QueryRow(ctx, `INSERT INTO room_invites
+		(room_id, token_hash, label, created_by, can_chat, can_upload, can_voice, can_share_screen, expires_at)
+		SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9
+		WHERE (SELECT count(*) FROM room_invites WHERE room_id=$1 AND revoked_at IS NULL AND expires_at > now()) < $10
+		RETURNING `+roomInviteColumns, roomID, tokenHash, input.Label, actorID, input.CanChat, input.CanUpload,
+		input.CanVoice, input.CanShareScreen, expiresAt, maxRoomInvites))
+	return invite, rawToken, err
+}
+
+func (handler *Handler) sendGuestInvitation(ctx context.Context, email, displayName, fallbackName string, room Room, inviteURL string) bool {
+	if email == "" || handler.mailer == nil {
+		return false
+	}
+	inviterName := strings.TrimSpace(displayName)
+	if inviterName == "" {
+		inviterName = fallbackName
+	}
+	if err := handler.mailer.SendRoomInvitation(ctx, email, inviterName, room.Name, "guest", inviteURL); err != nil {
+		log.Warn().Err(err).Str("room_id", room.ID.String()).Msg("rooms: guest invitation email failed")
+		return false
+	}
+	return true
+}
+
 func (handler *Handler) CreateInvite(w http.ResponseWriter, request *http.Request) {
 	roomID, ok := roomIDParam(w, request)
 	if !ok {
@@ -107,21 +161,12 @@ func (handler *Handler) CreateInvite(w http.ResponseWriter, request *http.Reques
 	if !decodeRequest(w, request, &input) {
 		return
 	}
-	input.Email = strings.TrimSpace(input.Email)
-	input.Label = strings.TrimSpace(input.Label)
-	if input.Email != "" {
-		address, parseErr := mail.ParseAddress(input.Email)
-		if parseErr != nil || !strings.EqualFold(address.Address, input.Email) {
-			httputil.RespondError(w, http.StatusBadRequest, "invalid guest email")
-			return
+	if err := normalizeRoomInviteInput(&input); err != nil {
+		message := "invalid room invitation"
+		if errors.Is(err, errInvalidGuestEmail) {
+			message = err.Error()
 		}
-		input.Email = address.Address
-		if input.Label == "" {
-			input.Label = input.Email
-		}
-	}
-	if utf8.RuneCountInString(input.Label) > 120 || input.ExpiresHours < 1 || input.ExpiresHours > 24*30 {
-		httputil.RespondError(w, http.StatusBadRequest, "invalid room invitation")
+		httputil.RespondError(w, http.StatusBadRequest, message)
 		return
 	}
 	actor := middleware.UserFromContext(request.Context())
@@ -134,18 +179,7 @@ func (handler *Handler) CreateInvite(w http.ResponseWriter, request *http.Reques
 		httputil.RespondError(w, http.StatusTooManyRequests, "room invitation rate limit exceeded")
 		return
 	}
-	rawToken, tokenHash, err := secureRoomToken()
-	if err != nil {
-		handler.respondError(w, err)
-		return
-	}
-	expiresAt := time.Now().Add(time.Duration(input.ExpiresHours) * time.Hour)
-	invite, err := scanRoomInvite(handler.service.db.QueryRow(request.Context(), `INSERT INTO room_invites
-		(room_id, token_hash, label, created_by, can_chat, can_upload, can_voice, can_share_screen, expires_at)
-		SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9
-		WHERE (SELECT count(*) FROM room_invites WHERE room_id=$1 AND revoked_at IS NULL AND expires_at > now()) < $10
-		RETURNING `+roomInviteColumns, roomID, tokenHash, input.Label, actor.ID, input.CanChat, input.CanUpload,
-		input.CanVoice, input.CanShareScreen, expiresAt, maxRoomInvites))
+	invite, rawToken, err := handler.insertRoomInvite(request.Context(), roomID, actor.ID, input)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httputil.RespondError(w, http.StatusConflict, "active room invitation limit reached")
 		return
@@ -156,21 +190,9 @@ func (handler *Handler) CreateInvite(w http.ResponseWriter, request *http.Reques
 	}
 	handler.service.log(request.Context(), audit.EventRoomInviteCreated, actor.ID, room, nil, map[string]any{"invite_id": invite.ID})
 	inviteURL := strings.TrimRight(handler.appURL, "/") + "/rooms/invite/" + url.PathEscape(rawToken)
-	mailSent := false
-	if input.Email != "" && handler.mailer != nil {
-		inviterName := strings.TrimSpace(actor.DisplayName)
-		if inviterName == "" {
-			inviterName = actor.Email
-		}
-		if mailErr := handler.mailer.SendRoomInvitation(request.Context(), input.Email, inviterName, room.Name, "guest", inviteURL); mailErr != nil {
-			log.Warn().Err(mailErr).Str("room_id", room.ID.String()).Msg("rooms: guest invitation email failed")
-		} else {
-			mailSent = true
-		}
-	}
+	mailSent := handler.sendGuestInvitation(request.Context(), input.Email, actor.DisplayName, actor.Email, room, inviteURL)
 	httputil.Respond(w, http.StatusCreated, map[string]any{"invite": invite, "invite_url": inviteURL, "mail_sent": mailSent})
 }
-
 func (handler *Handler) ListInvites(w http.ResponseWriter, request *http.Request) {
 	roomID, ok := roomIDParam(w, request)
 	if !ok {

@@ -217,7 +217,6 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
       <EmojiPicker userKey={user?.id ?? 'anonymous'} onSelect={emoji => setBody(value => value + emoji)} />
       <button type="submit" disabled={!body.trim() || send.isPending} className="rounded-full bg-brand-600 p-2.5 text-white disabled:opacity-50" aria-label="Send besked"><Send size={18} /></button>
     </form>
-    <p className="mt-2 text-[11px] text-muted">Emoji-katalog: <a href="https://openmoji.org/" target="_blank" rel="noreferrer" className="underline">OpenMoji</a> (CC BY-SA 4.0).</p>
     {previewID && preview.data && <PreviewModal item={preview.data} onClose={() => setPreviewID(undefined)} />}
   </section>
 }

@@ -120,14 +120,37 @@ func (m *Mailer) SendInvitation(_ context.Context, toEmail, inviterName, inviteL
 	return m.send(toEmail, fmt.Sprintf("%s has invited you to PrivateDrive", inviterName), body)
 }
 
+func roomRoleText(role string) string {
+	if translated := map[string]string{"member": "medlem", "moderator": "moderator", "guest": "gæst"}[role]; translated != "" {
+		return translated
+	}
+	return role
+}
+
+func roomInvitationContent(inviterName, roomName, role, inviteLink, instanceURL string) (string, string) {
+	guidance := "Log ind med din Sharedrive-konto for at åbne Roomet."
+	if role == "guest" {
+		guidance = "Linket er personligt og tidsbegrænset. Du behøver ikke en Sharedrive-konto, og du bør ikke videresende linket."
+	}
+	subject := fmt.Sprintf("Velkommen til %s på Sharedrive", roomName)
+	body := fmt.Sprintf(
+		"Hej og velkommen til Sharedrive!\n\n"+
+			"%s har inviteret dig til Roomet \"%s\" som %s.\n\n"+
+			"Invitationen er sendt af denne Sharedrive-installation:\n%s\n\n"+
+			"Åbn Roomet her:\n%s\n\n%s\n\n"+
+			"I Roomet kan I skrive sammen og dele de filer og Noter, som du har fået adgang til.\n\n"+
+			"Hvis du ikke forventede invitationen, kan du roligt ignorere denne mail.\n\n"+
+			"Venlig hilsen\nSharedrive\n",
+		inviterName, roomName, roomRoleText(role), instanceURL, inviteLink, guidance,
+	)
+	return subject, body
+}
+
 // SendRoomInvitation notifies a Sharedrive member or guest about direct Room access.
 func (m *Mailer) SendRoomInvitation(_ context.Context, toEmail, inviterName, roomName, role, inviteLink string) error {
-	roleText := map[string]string{"member": "medlem", "moderator": "moderator", "guest": "gæst"}[role]
-	if roleText == "" {
-		roleText = role
-	}
-	body := fmt.Sprintf("Hej,\n\n%s har inviteret dig til Roomet \"%s\" som %s.\n\nÅbn Room:\n%s\n\nHvis du ikke forventede invitationen, kan du ignorere denne mail.\n", inviterName, roomName, roleText, inviteLink)
-	return m.send(toEmail, fmt.Sprintf("%s har inviteret dig til %s på Sharedrive", inviterName, roomName), body)
+	instanceURL := strings.TrimRight(m.cfg.AppBaseURL, "/")
+	subject, body := roomInvitationContent(inviterName, roomName, role, inviteLink, instanceURL)
+	return m.send(toEmail, subject, body, "Sharedrive")
 }
 
 // SendShareNotification notifies a user that a file has been shared with them.
@@ -198,7 +221,7 @@ func (m *Mailer) SendBackupFailure(_ context.Context, toEmail, toName, backupTyp
 	return m.send(toEmail, fmt.Sprintf("%s fejlede — ikke lykkedes i %d timer", backupType, hours), body)
 }
 
-func (m *Mailer) send(to, subject, body string) error {
+func (m *Mailer) send(to, subject, body string, fromName ...string) error {
 	s, err := m.loadSettings(context.Background())
 	if err != nil {
 		return err
@@ -231,8 +254,14 @@ func (m *Mailer) send(to, subject, body string) error {
 	}
 
 	msg := mail.NewMsg()
-	if err := msg.From(s.from); err != nil {
-		return fmt.Errorf("smtp: invalid from address: %w", err)
+	var fromErr error
+	if len(fromName) > 0 && strings.TrimSpace(fromName[0]) != "" {
+		fromErr = msg.FromFormat(strings.TrimSpace(fromName[0]), s.from)
+	} else {
+		fromErr = msg.From(s.from)
+	}
+	if fromErr != nil {
+		return fmt.Errorf("smtp: invalid from address: %w", fromErr)
 	}
 	if err := msg.To(to); err != nil {
 		return fmt.Errorf("smtp: invalid to address: %w", err)

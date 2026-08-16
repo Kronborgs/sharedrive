@@ -160,7 +160,7 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
   const { notifyTyping, typingName } = useRoomLiveSync(roomID, user?.id, refresh)
   const messages = useInfiniteQuery({ queryKey: messageQueryKey, queryFn: ({ pageParam, signal }) => listRoomMessages(roomID, pageParam, signal), initialPageParam: undefined as string | undefined, getNextPageParam: page => page.next_cursor })
   const resources = useQuery({ queryKey: resourceQueryKey, queryFn: ({ signal }) => listRoomResources(roomID, signal) })
-  const preview = useQuery({ queryKey: ['files', previewID], queryFn: ({ signal }) => api.get<FileItem>(`/api/v1/files/${previewID}`, signal), enabled: Boolean(previewID) })
+  const preview = useQuery({ queryKey: ['rooms', roomID, 'preview-file', previewID], queryFn: ({ signal }) => api.get<FileItem>(`/api/v1/files/${previewID}`, signal), enabled: Boolean(previewID) })
   const messageItems = messages.data?.pages.flatMap(page => page.messages) ?? []
   const canModerate = user?.role === 'admin' || room.current_role === 'owner' || room.current_role === 'moderator'
   const timeline = useMemo<TimelineItem[]>(() => [
@@ -205,6 +205,6 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
     </form>
     <RoomResourcesPanel room={room} />
     <p className="mt-2 text-[11px] text-muted">Emoji-katalog: <a href="https://openmoji.org/" target="_blank" rel="noreferrer" className="underline">OpenMoji</a> (CC BY-SA 4.0).</p>
-    {preview.data && <PreviewModal item={preview.data} onClose={() => setPreviewID(undefined)} />}
+    {previewID && preview.data && <PreviewModal item={preview.data} onClose={() => setPreviewID(undefined)} />}
   </section>
 }

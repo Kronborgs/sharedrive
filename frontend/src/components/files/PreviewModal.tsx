@@ -29,8 +29,8 @@ const OFFICE_EXTS = new Set(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt',
 // Google Drive stub files — contain a URL/JSON pointer, not real office content
 const GOOGLE_STUB_EXTS = new Set(['gsheet', 'gdoc', 'gslides', 'gdraw', 'gform', 'gmap', 'gsite'])
 
-function fileExt(name: string) {
-  return name.split('.').pop()?.toLowerCase() ?? ''
+function fileExt(name?: string) {
+  return (name ?? '').split('.').pop()?.toLowerCase() ?? ''
 }
 
 function detectKind(item: FileItem): PreviewKind {

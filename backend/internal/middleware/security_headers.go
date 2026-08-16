@@ -48,87 +48,102 @@ func InlineScriptHashes(distFS fs.FS) []string {
 // extraScriptAndFrameSrc is called at most once per minute and its return value
 // (if non-empty) is appended to both script-src and frame-src — use it to allow
 // a dynamic OnlyOffice Document Server URL.
+type cachedCSPValue struct {
+	value  string
+	loaded time.Time
+}
+type cspValueCache struct {
+	mu    sync.Mutex
+	value cachedCSPValue
+}
+
+func (cache *cspValueCache) resolve(fn func() string) string {
+	if fn == nil {
+		return ""
+	}
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if time.Since(cache.value.loaded) < time.Minute {
+		return cache.value.value
+	}
+	cache.value = cachedCSPValue{value: fn(), loaded: time.Now()}
+	return cache.value.value
+}
+
+type securityHeadersConfig struct {
+	staticScriptSrc, liveKitURL, appBaseURL string
+	extraConnectSrc, extraScriptAndFrameSrc func() string
+	connectCache, scriptFrameCache          cspValueCache
+}
+
 func SecurityHeaders(scriptHashes []string, extraConnectSrc func() string, extraScriptAndFrameSrc func() string, liveKitURL, appBaseURL string) func(http.Handler) http.Handler {
-	// Build the static part of script-src once at startup
-	staticScriptSrc := "'self' https://static.cloudflareinsights.com https://cdn.jsdelivr.net"
-	if len(scriptHashes) > 0 {
-		staticScriptSrc += " " + strings.Join(scriptHashes, " ")
+	config := securityHeadersConfig{
+		staticScriptSrc: staticScriptSource(scriptHashes), liveKitURL: liveKitURL, appBaseURL: appBaseURL,
+		extraConnectSrc: extraConnectSrc, extraScriptAndFrameSrc: extraScriptAndFrameSrc,
 	}
+	return config.middleware
+}
 
-	type cached struct {
-		value  string
-		loaded time.Time
+func staticScriptSource(scriptHashes []string) string {
+	base := "'self' https://static.cloudflareinsights.com https://cdn.jsdelivr.net"
+	if len(scriptHashes) == 0 {
+		return base
 	}
-	var (
-		cacheConnect  cached
-		cacheScriptFr cached
-		cacheMu       sync.Mutex
-		cacheTTL      = 60 * time.Second
-	)
-	resolve := func(fn func() string, c *cached) string {
-		if fn == nil {
-			return ""
-		}
-		cacheMu.Lock()
-		defer cacheMu.Unlock()
-		if time.Since(c.loaded) < cacheTTL {
-			return c.value
-		}
-		c.value = fn()
-		c.loaded = time.Now()
-		return c.value
+	return base + " " + strings.Join(scriptHashes, " ")
+}
+
+func (config *securityHeadersConfig) middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		headers := w.Header()
+		setBaseSecurityHeaders(headers, request)
+		headers.Set("Content-Security-Policy", config.contentSecurityPolicy())
+		next.ServeHTTP(w, request)
+	})
+}
+
+func (config *securityHeadersConfig) contentSecurityPolicy() string {
+	connectSrc := appendCSPSource("'self' https://cloudflareinsights.com https://cdn.jsdelivr.net", websocketOrigin(config.appBaseURL))
+	if validLiveKitOrigin(config.liveKitURL) {
+		connectSrc = appendCSPSource(connectSrc, config.liveKitURL)
 	}
+	connectSrc = appendCSPSource(connectSrc, config.connectCache.resolve(config.extraConnectSrc))
+	scriptSrc, frameSrc := config.scriptAndFrameSources()
+	return "default-src 'self'; script-src " + scriptSrc + "; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src " + connectSrc + "; worker-src 'self' blob:; frame-src " + frameSrc + "; frame-ancestors 'none';"
+}
 
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			connectSrc := "'self' https://cloudflareinsights.com https://cdn.jsdelivr.net"
-			if websocketURL := websocketOrigin(appBaseURL); websocketURL != "" {
-				connectSrc += " " + websocketURL
-			}
-			if strings.HasPrefix(liveKitURL, "wss://") || strings.HasPrefix(liveKitURL, "https://") {
-				connectSrc += " " + liveKitURL
-			}
-			if extra := resolve(extraConnectSrc, &cacheConnect); extra != "" {
-				connectSrc += " " + extra
-			}
-
-			scriptSrc := staticScriptSrc
-			frameSrc := "'none'"
-			if extra := resolve(extraScriptAndFrameSrc, &cacheScriptFr); extra != "" {
-				// OnlyOffice's api.js injects inline scripts on the host page when
-				// initialising the editor, so 'unsafe-inline' is required alongside
-				// the OO server origin. It is only added when OO is configured.
-				scriptSrc += " " + extra + " 'unsafe-inline'"
-				frameSrc = extra
-			}
-
-			csp := "default-src 'self'; " +
-				"script-src " + scriptSrc + "; " +
-				"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
-				"img-src 'self' data: blob:; " +
-				"font-src 'self' data:; " +
-				"connect-src " + connectSrc + "; " +
-				"worker-src 'self' blob:; " +
-				"frame-src " + frameSrc + "; " +
-				"frame-ancestors 'none';"
-
-			h := w.Header()
-			h.Set("X-Content-Type-Options", "nosniff")
-			h.Set("X-Frame-Options", "DENY")
-			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-			permissionsPolicy := "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=()"
-			if strings.HasPrefix(r.URL.Path, "/rooms") {
-				permissionsPolicy = "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=()"
-			}
-			h.Set("Permissions-Policy", permissionsPolicy)
-			h.Set("Content-Security-Policy", csp)
-			// HSTS — only set over HTTPS connections
-			if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
-				h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
-			}
-			next.ServeHTTP(w, r)
-		})
+func (config *securityHeadersConfig) scriptAndFrameSources() (string, string) {
+	extra := config.scriptFrameCache.resolve(config.extraScriptAndFrameSrc)
+	if extra == "" {
+		return config.staticScriptSrc, "'none'"
 	}
+	return config.staticScriptSrc + " " + extra + " 'unsafe-inline'", extra
+}
+
+func appendCSPSource(value, source string) string {
+	if source == "" {
+		return value
+	}
+	return value + " " + source
+}
+func validLiveKitOrigin(value string) bool {
+	return strings.HasPrefix(value, "wss://") || strings.HasPrefix(value, "https://")
+}
+
+func setBaseSecurityHeaders(headers http.Header, request *http.Request) {
+	headers.Set("X-Content-Type-Options", "nosniff")
+	headers.Set("X-Frame-Options", "DENY")
+	headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	headers.Set("Permissions-Policy", permissionsPolicy(request.URL.Path))
+	if request.TLS != nil || strings.EqualFold(request.Header.Get("X-Forwarded-Proto"), "https") {
+		headers.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+	}
+}
+
+func permissionsPolicy(path string) string {
+	if strings.HasPrefix(path, "/rooms") {
+		return "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=()"
+	}
+	return "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=()"
 }
 
 // websocketOrigin returns the concrete, same-origin WSS endpoint used by the

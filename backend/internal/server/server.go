@@ -160,7 +160,7 @@ func newServerDependencies(deps serverDependencies) *Server {
 			notes.NewSharingService(deps.db, smtp.New(deps.cfg, deps.db), deps.auditSvc,
 				ratelimit.New(deps.rdb), deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production"),
 		),
-		roomsHandler:   rooms.NewHandler(rooms.NewService(deps.db, deps.auditSvc, deps.cfg.RoomsEncryptKey, deps.fileSvc, noteService), ratelimit.New(deps.rdb), deps.rdb, deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production", deps.authHandler, smtp.New(deps.cfg, deps.db), deps.cfg.LiveKitURL, deps.cfg.LiveKitAPIKey, deps.cfg.LiveKitAPISecret),
+		roomsHandler:   rooms.NewHandler(rooms.HandlerConfig{Service: rooms.NewService(deps.db, deps.auditSvc, deps.cfg.RoomsEncryptKey, deps.fileSvc, noteService), Limiter: ratelimit.New(deps.rdb), Redis: deps.rdb, AppURL: deps.cfg.AppBaseURL, SecureCookie: deps.cfg.GoEnv == "production", UploadTokens: deps.authHandler, Mailer: smtp.New(deps.cfg, deps.db), LiveKitURL: deps.cfg.LiveKitURL, LiveKitKey: deps.cfg.LiveKitAPIKey, LiveKitSecret: deps.cfg.LiveKitAPISecret}),
 		adminHandler:   admin.NewHandler(deps.db, deps.cfg, deps.ioTracker, deps.rdb),
 		sseHandler:     admin.NewSSEHandler(deps.db),
 		supportHandler: admin.NewSupportAccessHandler(deps.db),

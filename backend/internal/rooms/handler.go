@@ -21,7 +21,10 @@ import (
 	"github.com/yourname/privatedrive/internal/ratelimit"
 )
 
-const internalErrorMessage = "internal error"
+const (
+	internalErrorMessage = "internal error"
+	mediaRoomPrefix      = "sharedrive-room:"
+)
 
 type RoomMailer interface {
 	SendRoomInvitation(ctx context.Context, toEmail, inviterName, roomName, role, inviteLink string) error
@@ -41,8 +44,19 @@ type Handler struct {
 	liveKitSecret string
 }
 
-func NewHandler(service *Service, limiter *ratelimit.Limiter, redisClient *goredis.Client, appURL string, secureCookie bool, uploadTokens guestUploadTokenIssuer, mailer RoomMailer, liveKitURL, liveKitKey, liveKitSecret string) *Handler {
-	return &Handler{service: service, hub: newRoomHub(), limiter: limiter, redis: redisClient, appURL: appURL, secureCookie: secureCookie, uploadTokens: uploadTokens, mailer: mailer, liveKitURL: strings.TrimSpace(liveKitURL), liveKitKey: strings.TrimSpace(liveKitKey), liveKitSecret: strings.TrimSpace(liveKitSecret)}
+type HandlerConfig struct {
+	Service                               *Service
+	Limiter                               *ratelimit.Limiter
+	Redis                                 *goredis.Client
+	AppURL                                string
+	SecureCookie                          bool
+	UploadTokens                          guestUploadTokenIssuer
+	Mailer                                RoomMailer
+	LiveKitURL, LiveKitKey, LiveKitSecret string
+}
+
+func NewHandler(config HandlerConfig) *Handler {
+	return &Handler{service: config.Service, hub: newRoomHub(), limiter: config.Limiter, redis: config.Redis, appURL: config.AppURL, secureCookie: config.SecureCookie, uploadTokens: config.UploadTokens, mailer: config.Mailer, liveKitURL: strings.TrimSpace(config.LiveKitURL), liveKitKey: strings.TrimSpace(config.LiveKitKey), liveKitSecret: strings.TrimSpace(config.LiveKitSecret)}
 }
 
 type createRoomRequest struct {
@@ -91,7 +105,7 @@ func (handler *Handler) CreateMediaToken(w http.ResponseWriter, request *http.Re
 		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
 		return
 	}
-	httputil.Respond(w, http.StatusOK, map[string]string{"url": handler.liveKitURL, "token": signed, "room": "sharedrive-room:" + room.ID.String()})
+	httputil.Respond(w, http.StatusOK, map[string]string{"url": handler.liveKitURL, "token": signed, "room": handler.mediaRoomName(room.ID)})
 }
 
 func (handler *Handler) CreateGuestMediaToken(w http.ResponseWriter, request *http.Request) {
@@ -112,14 +126,18 @@ func (handler *Handler) CreateGuestMediaToken(w http.ResponseWriter, request *ht
 		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
 		return
 	}
-	httputil.Respond(w, http.StatusOK, map[string]string{"url": handler.liveKitURL, "token": signed, "room": "sharedrive-room:" + access.RoomID.String()})
+	httputil.Respond(w, http.StatusOK, map[string]string{"url": handler.liveKitURL, "token": signed, "room": handler.mediaRoomName(access.RoomID)})
 }
 
 func (handler *Handler) mediaToken(roomID uuid.UUID, identity, name string) (string, error) {
 	canPublish, canSubscribe, canPublishData := true, true, false
 	token := auth.NewAccessToken(handler.liveKitKey, handler.liveKitSecret)
-	token.SetIdentity(identity).SetName(name).SetValidFor(15 * time.Minute).SetVideoGrant(&auth.VideoGrant{RoomJoin: true, Room: "sharedrive-room:" + roomID.String(), CanPublish: &canPublish, CanSubscribe: &canSubscribe, CanPublishData: &canPublishData, CanPublishSources: []string{"microphone"}})
+	token.SetIdentity(identity).SetName(name).SetValidFor(15 * time.Minute).SetVideoGrant(&auth.VideoGrant{RoomJoin: true, Room: handler.mediaRoomName(roomID), CanPublish: &canPublish, CanSubscribe: &canSubscribe, CanPublishData: &canPublishData, CanPublishSources: []string{"microphone"}})
 	return token.ToJWT()
+}
+
+func (handler *Handler) mediaRoomName(roomID uuid.UUID) string {
+	return mediaRoomPrefix + roomID.String()
 }
 
 type addMemberRequest struct {

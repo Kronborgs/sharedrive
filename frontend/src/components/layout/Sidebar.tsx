@@ -94,7 +94,7 @@ function NavLink({ item, badge = 0 }: Readonly<{ item: NavItem; badge?: number }
       <span className={active ? 'text-brand-600 dark:text-brand-400' : ''}>{item.icon}</span>
       <span className="flex-1">{t(item.labelKey as any)}</span>
       {badge > 0 && (
-        <span className="min-w-5 rounded-full bg-brand-600 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white" aria-label={`${badge} ulæste beskeder`}>
+        <span className="min-w-5 rounded-full bg-brand-600 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white" aria-label={t('rooms.unreadMessages', { count: badge })}>
           {badge > 99 ? '99+' : badge}
         </span>
       )}
@@ -713,7 +713,10 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
 
   useEffect(() => {
     const notesApp = state.location.pathname === '/notes' || state.location.pathname.startsWith('/notes/')
-    const baseTitle = notesApp ? 'Sharedrive Noter' : 'Sharedrive'
+    const roomsApp = state.location.pathname === '/rooms' || state.location.pathname.startsWith('/rooms/')
+    let baseTitle = 'Sharedrive'
+    if (notesApp) baseTitle = 'Sharedrive Noter'
+    if (roomsApp) baseTitle = 'Sharedrive Rooms'
     const badge = unreadRoomsMessages > 99 ? '99+' : unreadRoomsMessages
     document.title = unreadRoomsMessages > 0 ? `(${badge}) ${baseTitle}` : baseTitle
   }, [state.location.pathname, unreadRoomsMessages])

@@ -17,6 +17,7 @@ import {
 } from '@/lib/rooms'
 
 type InviteRole = Exclude<RoomRole, 'owner'> | 'guest'
+type Translator = ReturnType<typeof useI18n>['t']
 
 interface GuestPermissionsProps {
   expiresHours: number
@@ -32,42 +33,43 @@ interface GuestPermissionsProps {
 }
 
 function GuestPermissions(props: Readonly<GuestPermissionsProps>) {
+  const { t } = useI18n()
   return <fieldset className="space-y-3 rounded-lg border border-zinc-200 p-3 dark:border-[#2d3148]">
-    <legend className="px-1 text-sm font-medium">Gæstens rettigheder</legend>
+    <legend className="px-1 text-sm font-medium">{t('rooms.guestPermissions')}</legend>
     <label className="block text-sm">
-      <span className="block">Gyldig i timer</span>
+      <span className="block">{t('rooms.validHours')}</span>
       <input type="number" min={1} max={720} value={props.expiresHours} onChange={event => props.setExpiresHours(Number(event.target.value))} className="mt-1 w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-[#3a3f58]" />
     </label>
-    <label className="flex gap-2 text-sm"><input type="checkbox" checked={props.canChat} onChange={event => props.setCanChat(event.target.checked)} /> Må skrive i chat</label>
-    <label className="flex gap-2 text-sm"><input type="checkbox" checked={props.canUpload} onChange={event => props.setCanUpload(event.target.checked)} /> Må uploade filer</label>
-    <label className="flex gap-2 text-sm"><input type="checkbox" checked={props.canVoice} onChange={event => props.setCanVoice(event.target.checked)} /> Må deltage i tale (Phase 5)</label>
-    <label className="flex gap-2 text-sm"><input type="checkbox" checked={props.canShareScreen} onChange={event => props.setCanShareScreen(event.target.checked)} /> Må dele skærm (Phase 6)</label>
+    <label className="flex gap-2 text-sm"><input type="checkbox" checked={props.canChat} onChange={event => props.setCanChat(event.target.checked)} /> {t('rooms.canChat')}</label>
+    <label className="flex gap-2 text-sm"><input type="checkbox" checked={props.canUpload} onChange={event => props.setCanUpload(event.target.checked)} /> {t('rooms.canUpload')}</label>
+    <label className="flex gap-2 text-sm"><input type="checkbox" checked={props.canVoice} onChange={event => props.setCanVoice(event.target.checked)} /> {t('rooms.canVoice')}</label>
+    <label className="flex gap-2 text-sm"><input type="checkbox" checked={props.canShareScreen} onChange={event => props.setCanShareScreen(event.target.checked)} /> {t('rooms.canShareScreen')}</label>
   </fieldset>
 }
 
-async function showInvitationResult(result: RoomInvitationResult) {
+async function showInvitationResult(result: RoomInvitationResult, t: Translator) {
   if (result.mail_sent) {
-    toast.success('Invitationen er sendt med mail.')
+    toast.success(t('rooms.invitationMailed'))
     return
   }
   if (!result.invite_url) {
-    toast.warning('Medlemmet er tilføjet, men invitationsmailen kunne ikke sendes.')
+    toast.warning(t('rooms.memberMailFailed'))
     return
   }
   try {
     await navigator.clipboard.writeText(result.invite_url)
-    toast.warning('Invitationen blev oprettet, men mailen kunne ikke sendes. Linket er kopieret.')
+    toast.warning(t('rooms.inviteCopied'))
   } catch {
-    window.prompt('Mailen kunne ikke sendes. Kopiér gæstelinket:', result.invite_url)
+    window.prompt(t('rooms.copyGuestLink'), result.invite_url)
   }
 }
 
-function showAddError(error: unknown) {
+function showAddError(error: unknown, t: Translator) {
   if (error instanceof ApiClientError && error.status === 422) {
-    toast.error('Mailadressen tilhører ikke en aktiv Sharedrive-konto. Vælg Gæst i stedet.')
+    toast.error(t('rooms.accountNotActive'))
     return
   }
-  toast.error('Personen kunne ikke tilføjes eller inviteres til Roomet.')
+  toast.error(t('rooms.personAddFailed'))
 }
 
 function AddPersonDialog({ room }: Readonly<{ room: Room }>) {
@@ -102,29 +104,29 @@ function AddPersonDialog({ room }: Readonly<{ room: Room }>) {
         queryClient.invalidateQueries({ queryKey: ['rooms', room.id, 'members'] }),
         queryClient.invalidateQueries({ queryKey: ['rooms', room.id, 'invites'] }),
       ])
-      await showInvitationResult(result)
+      await showInvitationResult(result, t)
     },
-    onError: showAddError,
+    onError: error => showAddError(error, t),
   })
   const guestPermissions = { expiresHours, setExpiresHours, canChat, setCanChat, canUpload, setCanUpload, canVoice, setCanVoice, canShareScreen, setCanShareScreen }
   const invalidExpiry = role === 'guest' && (expiresHours < 1 || expiresHours > 720)
 
   return <Dialog.Root open={open} onOpenChange={setOpen}>
     <Dialog.Trigger asChild>
-      <button type="button" className="flex items-center gap-1.5 rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm hover:bg-zinc-100 dark:border-[#3a3f58] dark:hover:bg-[#2d3148]"><Plus size={15} /> Tilføj person</button>
+      <button type="button" className="flex items-center gap-1.5 rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm hover:bg-zinc-100 dark:border-[#3a3f58] dark:hover:bg-[#2d3148]"><Plus size={15} /> {t('rooms.addPerson')}</button>
     </Dialog.Trigger>
     <Dialog.Portal>
       <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />
       <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-5 shadow-xl dark:border-[#2d3148] dark:bg-[#1a1d27]">
         <div className="flex items-start justify-between gap-4">
-          <div><Dialog.Title className="text-lg font-semibold text-zinc-950 dark:text-white">Tilføj person</Dialog.Title><Dialog.Description className="mt-1 text-sm text-muted">Medlem og moderator får en Rooms-konto, hvis e-mailen ikke allerede findes i Sharedrive. Gæst får et tidsbegrænset link.</Dialog.Description></div>
+          <div><Dialog.Title className="text-lg font-semibold text-zinc-950 dark:text-white">{t('rooms.addPerson')}</Dialog.Title><Dialog.Description className="mt-1 text-sm text-muted">{t('rooms.addPersonDescription')}</Dialog.Description></div>
           <Dialog.Close asChild><button type="button" className="notes-icon-button" aria-label={t('action.close')}><X size={17} /></button></Dialog.Close>
         </div>
         <form className="mt-5 space-y-4" onSubmit={event => { event.preventDefault(); mutation.mutate() }}>
-          <label className="block text-sm font-medium" htmlFor="room-person-email"><span className="block">E-mail</span><input id="room-person-email" type="email" autoFocus required value={email} onChange={event => setEmail(event.target.value)} className="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-[#3a3f58] dark:bg-[#11141e]" /></label>
-          <label className="block text-sm font-medium" htmlFor="room-person-role"><span className="block">Rolle</span><select id="room-person-role" value={role} onChange={event => setRole(event.target.value as InviteRole)} className="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-[#3a3f58] dark:bg-[#11141e]"><option value="member">Medlem</option>{room.current_role === 'owner' && <option value="moderator">Moderator</option>}<option value="guest">Gæst</option></select></label>
+          <label className="block text-sm font-medium" htmlFor="room-person-email"><span className="block">{t('rooms.email')}</span><input id="room-person-email" type="email" autoFocus required value={email} onChange={event => setEmail(event.target.value)} className="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-[#3a3f58] dark:bg-[#11141e]" /></label>
+          <label className="block text-sm font-medium" htmlFor="room-person-role"><span className="block">{t('rooms.role')}</span><select id="room-person-role" value={role} onChange={event => setRole(event.target.value as InviteRole)} className="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-[#3a3f58] dark:bg-[#11141e]"><option value="member">{t('rooms.role.member')}</option>{room.current_role === 'owner' && <option value="moderator">{t('rooms.role.moderator')}</option>}<option value="guest">{t('rooms.role.guest')}</option></select></label>
           {role === 'guest' && <GuestPermissions {...guestPermissions} />}
-          <div className="flex justify-end gap-2"><Dialog.Close asChild><button type="button" className="rounded-md px-3 py-2 text-sm">Annuller</button></Dialog.Close><button type="submit" className="notes-primary-button" disabled={mutation.isPending || !email.trim() || invalidExpiry}>Tilføj og send mail</button></div>
+          <div className="flex justify-end gap-2"><Dialog.Close asChild><button type="button" className="rounded-md px-3 py-2 text-sm">{t('action.cancel')}</button></Dialog.Close><button type="submit" className="notes-primary-button" disabled={mutation.isPending || !email.trim() || invalidExpiry}>{t('rooms.addAndSend')}</button></div>
         </form>
       </Dialog.Content>
     </Dialog.Portal>

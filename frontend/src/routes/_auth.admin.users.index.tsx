@@ -360,13 +360,18 @@ function AdminUsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 bg-zinc-100 dark:bg-[#0f1117] rounded-lg p-1">
-          {(['users', 'rooms', 'guests', 'groups'] as const).map(t => (
-            <button type="button" key={t} onClick={() => setTab(t)}
+          {([
+            ['users', 'users.tabUsers'],
+            ['rooms', 'users.tabRooms'],
+            ['guests', 'users.tabGuests'],
+            ['groups', 'users.tabGroups'],
+          ] as const).map(([tabID, labelKey]) => (
+            <button type="button" key={tabID} onClick={() => setTab(tabID)}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
-                tab === t
+                tab === tabID
                   ? 'bg-white dark:bg-[#1a1d27] text-zinc-900 dark:text-slate-100 shadow-sm'
                   : 'text-zinc-500 dark:text-slate-400 hover:text-zinc-700 dark:hover:text-slate-200'
-              }`}>{t}</button>
+              }`}>{t(labelKey)}</button>
           ))}
         </div>
         {tab === 'users' && (
@@ -1124,4 +1129,3 @@ function EditUserDialog({ user, onClose, onSaved }: Readonly<{ user: User; onClo
     </div>
   )
 }
-

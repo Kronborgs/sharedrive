@@ -8,7 +8,7 @@ import { useI18n } from '@/lib/i18n'
 import { createRoom, listRooms } from '@/lib/rooms'
 
 export function RoomListPage() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -99,7 +99,7 @@ export function RoomListPage() {
               <h2 className="font-semibold text-zinc-950 dark:text-white">{room.name}</h2>
               <div className="flex shrink-0 items-center gap-2">
                 {room.unread_count > 0 && (
-                  <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs font-semibold text-white" aria-label={`${room.unread_count} ulæste beskeder`}>
+                  <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs font-semibold text-white" aria-label={t('rooms.unreadMessages', { count: room.unread_count })}>
                     {room.unread_count > 99 ? '99+' : room.unread_count}
                   </span>
                 )}
@@ -108,7 +108,7 @@ export function RoomListPage() {
             </div>
             <div className="mt-8 flex items-center justify-between text-xs text-muted">
               <span className="flex items-center gap-1.5"><Users size={14} /> {t(`rooms.role.${room.current_role}` as never)}</span>
-              <time dateTime={room.updated_at}>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(room.updated_at))}</time>
+              <time dateTime={room.updated_at}>{new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'medium' }).format(new Date(room.updated_at))}</time>
             </div>
           </button>
         ))}

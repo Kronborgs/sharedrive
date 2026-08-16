@@ -1,6 +1,14 @@
 # Implementer Sharedrive Rooms
 
-Status: Phase 0 - baseline og design er gennemfoert. Phase 1 kan startes additivt.
+Status: Phase 0-4 er implementeret. Phase 4 er klar til samlet brugertest; Phase 5 maa foerst startes, naar testen er godkendt.
+
+## Aktuel fasestatus
+
+- **Phase 0-4:** Implementeret. Rooms omfatter permanente Rooms, medlemsroller, live chat, reaktioner, filer/Notes, invitationer, link-gaester, Rooms-administration, ulaeste beskeder samt baade integreret hoved-PWA-navigation og en selvstaendig Rooms-PWA.
+- **Phase 5:** Ikke startet. `can_voice` er forberedt paa gaesteinvitationer, men LiveKit, media-token, join/leave, mute, deltagere og reconnect implementeres foerst efter godkendt Phase 4-test.
+- **Phase 6:** Ikke startet. Skaermdeling bygges oven paa den godkendte LiveKit-forbindelse fra Phase 5.
+- **Phase 7:** Ikke startet. Rooms backup/restore, samlet security/a11y-hardening og deployment-dokumentation hoerer hertil. Den eksisterende Rooms-backupindstilling er kun en forberedende indstilling og betyder ikke, at data allerede indgaar i backup/restore.
+- **Phase 8:** Ikke startet. Fuld regression og sammenligning med baseline afslutter projektet.
 
 Denne fil er den kanoniske arbejdsbeskrivelse for Sharedrive Rooms. Repositoryets faktiske kode er altid source of truth. Arbejdet udføres fasevist, uden automatiske commits eller versionsbump.
 
@@ -265,6 +273,8 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 
 ### Phase 4 - Guest Rooms
 
+- Rooms er tilgaengelig i hoved-Sharedrive PWA og som selvstaendig installerbar Rooms-PWA via `rooms.webmanifest`, med `/rooms/` som start-URL og scope.
+- Rooms-brugerflader har dansk/engelsk i18n og datoformatering, der foelger brugerens valgte sprog.
 - Kryptografisk random invite token; kun hash gemmes i databasen.
 - Expiry, revoke, flere links hvis modellen forbliver simpel; raw token vises kun ved oprettelse.
 - Token exchange til kortlivet, revocable, server-valideret HttpOnly/Secure/SameSite guest session.

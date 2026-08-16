@@ -6,6 +6,7 @@ import { EmojiPicker } from '@/components/rooms/EmojiPicker'
 import { RoomResourcesPanel } from '@/components/rooms/RoomResourcesPanel'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
+import { useI18n } from '@/lib/i18n'
 import {
   addRoomReaction,
   createRoomMessage,
@@ -38,36 +39,39 @@ interface MessageCardProps {
 }
 
 function MessageActions({ message, currentUserID, canModerate, onReply, onEdit, onDelete }: Readonly<Omit<MessageCardProps, 'onReaction'>>) {
+  const { t } = useI18n()
   const isAuthor = message.sender_user_id === currentUserID
   const canChange = !message.deleted_at
 
   return <div className="flex items-center gap-1 text-muted">
-    <button type="button" onClick={() => onReply(message)} aria-label="Svar"><Reply size={14} /></button>
-    {canChange && isAuthor && <button type="button" onClick={() => onEdit(message)} aria-label="Redigér"><Pencil size={14} /></button>}
-    {canChange && (isAuthor || canModerate) && <button type="button" onClick={() => onDelete(message)} aria-label="Slet"><Trash2 size={14} /></button>}
+    <button type="button" onClick={() => onReply(message)} aria-label={t('rooms.reply')}><Reply size={14} /></button>
+    {canChange && isAuthor && <button type="button" onClick={() => onEdit(message)} aria-label={t('rooms.edit')}><Pencil size={14} /></button>}
+    {canChange && (isAuthor || canModerate) && <button type="button" onClick={() => onDelete(message)} aria-label={t('rooms.delete')}><Trash2 size={14} /></button>}
   </div>
 }
 
 function MessageCard(props: Readonly<MessageCardProps>) {
+  const { t, locale } = useI18n()
   const { message, currentUserID, canModerate, onReply, onEdit, onDelete, onReaction } = props
   const deleted = Boolean(message.deleted_at)
 
   return <article className="rounded-lg bg-zinc-50 px-3 py-2 dark:bg-[#1a1d27]">
     <div className="flex items-center justify-between gap-2">
       <p className="text-sm font-medium">{message.sender_name}</p>
-      <MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} />
+      <div className="flex items-center gap-2"><time dateTime={message.created_at} className="text-[11px] text-muted">{new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>
     </div>
-    {message.reply_to_message_id && <p className="text-xs text-muted">Svar på en tidligere besked</p>}
-    <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{deleted ? 'Beskeden er slettet' : message.body}</p>
+    {message.reply_to_message_id && <p className="text-xs text-muted">{t('rooms.replyContext')}</p>}
+    <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{deleted ? t('rooms.messageDeleted') : message.body}</p>
     {!deleted && <div className="mt-2 flex flex-wrap items-center gap-1">
-      {summarizeRoomReactions(message.reactions).map(summary => <button key={summary.emoji} type="button" onClick={() => onReaction(message, summary.emoji)} title={`Sat af: ${summary.names.join(', ')}`} aria-label={`${summary.emoji}, sat af ${summary.names.join(', ')}`} className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs dark:border-[#3a3f58]">{summary.emoji} {summary.count}</button>)}
-      <EmojiPicker userKey={currentUserID ?? 'anonymous'} label="Tilføj reaktion" onSelect={emoji => onReaction(message, emoji)} />
+      {summarizeRoomReactions(message.reactions).map(summary => <button key={summary.emoji} type="button" onClick={() => onReaction(message, summary.emoji)} title={t('rooms.reactedBy', { names: summary.names.join(', ') })} aria-label={t('rooms.reactionAria', { emoji: summary.emoji, names: summary.names.join(', ') })} className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs dark:border-[#3a3f58]">{summary.emoji} {summary.count}</button>)}
+      <EmojiPicker userKey={currentUserID ?? 'anonymous'} label={t('rooms.addReaction')} onSelect={emoji => onReaction(message, emoji)} />
     </div>}
   </article>
 }
 
 function ResourceName({ resource, onPreview }: Readonly<{ resource: RoomResource; onPreview: (id: string) => void }>) {
-  if (!resource.accessible) return <p className="text-sm">Adgang kræves</p>
+  const { t } = useI18n()
+  if (!resource.accessible) return <p className="text-sm">{t('rooms.accessRequired')}</p>
   if (resource.resource_type === 'file') {
     return <button type="button" onClick={() => onPreview(resource.resource_id)} className="truncate text-left text-sm font-medium text-brand-600 hover:underline">{resource.name}</button>
   }
@@ -80,15 +84,16 @@ function isImageResource(resource: RoomResource) {
 }
 
 function ResourceCard({ resource, canModerate, onPreview, onRemove }: Readonly<{ resource: RoomResource; canModerate: boolean; onPreview: (id: string) => void; onRemove: (id: string) => void }>) {
+  const { t } = useI18n()
   const [thumbnailFailed, setThumbnailFailed] = useState(false)
   const showThumbnail = resource.accessible && resource.resource_type === 'file' && isImageResource(resource) && !thumbnailFailed
 
   if (showThumbnail) {
     return <article className="group relative w-fit max-w-[min(22rem,85%)]">
       <button type="button" onClick={() => onPreview(resource.resource_id)} className="block overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-950 dark:border-[#34394f]" title={resource.name}>
-        <img src={`/api/v1/files/${resource.resource_id}/thumbnail`} alt={resource.name || 'Delt billede'} className="max-h-52 min-h-24 max-w-full object-contain" loading="lazy" onError={() => setThumbnailFailed(true)} />
+        <img src={`/api/v1/files/${resource.resource_id}/thumbnail`} alt={resource.name || t('rooms.sharedImage')} className="max-h-52 min-h-24 max-w-full object-contain" loading="lazy" onError={() => setThumbnailFailed(true)} />
       </button>
-      {canModerate && <button type="button" onClick={() => onRemove(resource.id)} aria-label="Fjern billede fra chat" className="absolute right-2 top-2 rounded-full bg-black/70 p-1.5 text-white opacity-80 shadow hover:bg-red-600 hover:opacity-100"><Trash2 size={14} /></button>}
+      {canModerate && <button type="button" onClick={() => onRemove(resource.id)} aria-label={t('rooms.removeImage')} className="absolute right-2 top-2 rounded-full bg-black/70 p-1.5 text-white opacity-80 shadow hover:bg-red-600 hover:opacity-100"><Trash2 size={14} /></button>}
       <span className="sr-only">{resource.name}</span>
     </article>
   }
@@ -96,8 +101,8 @@ function ResourceCard({ resource, canModerate, onPreview, onRemove }: Readonly<{
   const isFile = resource.resource_type === 'file'
   return <article className="flex max-w-md items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-3 shadow-sm dark:border-[#34394f] dark:bg-[#1a1d27]">
     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600 dark:bg-[#272b3a] dark:text-slate-300">{isFile ? <File size={20} /> : <FileText size={20} />}</span>
-    <div className="min-w-0 flex-1"><ResourceName resource={resource} onPreview={onPreview} /><p className="text-xs text-muted">{isFile ? 'Fil' : 'Note'} delt i chatten</p></div>
-    {canModerate && <button type="button" onClick={() => onRemove(resource.id)} aria-label="Fjern fra chat" className="rounded-full p-1.5 text-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"><Trash2 size={15} /></button>}
+    <div className="min-w-0 flex-1"><ResourceName resource={resource} onPreview={onPreview} /><p className="text-xs text-muted">{t(isFile ? 'rooms.fileShared' : 'rooms.noteShared')}</p></div>
+    {canModerate && <button type="button" onClick={() => onRemove(resource.id)} aria-label={t('rooms.removeFromChat')} className="rounded-full p-1.5 text-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"><Trash2 size={15} /></button>}
   </article>
 }
 function useRoomLiveSync(roomID: string, currentUserID: string | undefined, refresh: () => void) {
@@ -149,6 +154,7 @@ function useRoomLiveSync(roomID: string, currentUserID: string | undefined, refr
 }
 
 export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
+  const { t } = useI18n()
   const roomID = room.id
   const queryClient = useQueryClient()
   const { user } = useAuth()
@@ -187,7 +193,7 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
   const send = useMutation({ mutationFn: () => createRoomMessage(roomID, body, replyTo?.id), onSuccess: () => { setBody(''); setReplyTo(undefined); refresh() } })
   const removeResourceMutation = useMutation({ mutationFn: (resourceID: string) => removeRoomResource(roomID, resourceID), onSuccess: refresh })
   const editMessage = (message: RoomMessage) => {
-    const next = window.prompt('Redigér besked', message.body)?.trim()
+    const next = window.prompt(t('rooms.editMessagePrompt'), message.body)?.trim()
     if (next && next !== message.body) updateRoomMessage(roomID, message.id, next).then(refresh).catch(() => undefined)
   }
   const removeMessage = (message: RoomMessage) => deleteRoomMessage(roomID, message.id).then(refresh).catch(() => undefined)
@@ -197,23 +203,23 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
     action.then(refresh).catch(() => undefined)
   }
 
-  return <section className="mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]" aria-label="Room chat">
-    <h2 className="mb-3 text-lg font-semibold">Chat</h2>
+  return <section className="mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]" aria-label={t('rooms.chatAria')}>
+    <h2 className="mb-3 text-lg font-semibold">{t('rooms.chat')}</h2>
     <div className="mb-3 max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
-      {messages.isLoading && <p className="text-sm text-muted">Indlæser chat…</p>}
-      {timeline.length === 0 && <p className="text-sm text-muted">Ingen beskeder eller filer endnu.</p>}
+      {messages.isLoading && <p className="text-sm text-muted">{t('rooms.chatLoading')}</p>}
+      {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}
       {timeline.map(item => item.kind === 'message'
         ? <MessageCard key={`message-${item.value.id}`} message={item.value} currentUserID={user?.id} canModerate={canModerate} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} />
         : <ResourceCard key={`resource-${item.value.id}`} resource={item.value} canModerate={canModerate} onPreview={setPreviewID} onRemove={removeResourceMutation.mutate} />)}
-      {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">Hent ældre beskeder</button>}
+      {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}
     </div>
-    {typingName && <p className="mb-2 text-xs text-muted">{typingName} skriver…</p>}
-    {replyTo && <div className="mb-2 flex justify-between rounded-lg bg-zinc-100 px-3 py-2 text-xs dark:bg-[#1a1d27]"><span>Svarer til {replyTo.sender_name}</span><button type="button" onClick={() => setReplyTo(undefined)}>Annuller</button></div>}
+    {typingName && <p className="mb-2 text-xs text-muted">{t('rooms.typing', { name: typingName })}</p>}
+    {replyTo && <div className="mb-2 flex justify-between rounded-lg bg-zinc-100 px-3 py-2 text-xs dark:bg-[#1a1d27]"><span>{t('rooms.replyingTo', { name: replyTo.sender_name })}</span><button type="button" onClick={() => setReplyTo(undefined)}>{t('action.cancel')}</button></div>}
     <form className="flex items-end gap-1 rounded-2xl border border-zinc-200 bg-white p-1.5 dark:border-[#2d3148] dark:bg-[#0f1117]" onSubmit={event => { event.preventDefault(); if (body.trim()) send.mutate() }}>
       <RoomResourcesPanel room={room} />
-      <textarea value={body} onChange={event => { setBody(event.target.value); notifyTyping() }} maxLength={10000} rows={2} placeholder="Skriv en besked…" className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none" />
+      <textarea value={body} onChange={event => { setBody(event.target.value); notifyTyping() }} maxLength={10000} rows={2} placeholder={t('rooms.messagePlaceholder')} className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none" />
       <EmojiPicker userKey={user?.id ?? 'anonymous'} onSelect={emoji => setBody(value => value + emoji)} />
-      <button type="submit" disabled={!body.trim() || send.isPending} className="rounded-full bg-brand-600 p-2.5 text-white disabled:opacity-50" aria-label="Send besked"><Send size={18} /></button>
+      <button type="submit" disabled={!body.trim() || send.isPending} className="rounded-full bg-brand-600 p-2.5 text-white disabled:opacity-50" aria-label={t('rooms.sendMessage')}><Send size={18} /></button>
     </form>
     {previewID && preview.data && <PreviewModal item={preview.data} onClose={() => setPreviewID(undefined)} />}
   </section>

@@ -5,15 +5,18 @@ import { toast } from 'sonner'
 import { FloatingPanel } from '@/components/rooms/FloatingPanel'
 import { api } from '@/lib/api'
 import { listNotes, type Note } from '@/lib/notes'
+import { useI18n } from '@/lib/i18n'
 import { addRoomResource, type Room, type RoomResourceType } from '@/lib/rooms'
 import type { FileItem } from '@/types/api'
 
 function ResourceOptions({ type, files, notes }: Readonly<{ type: RoomResourceType; files: FileItem[]; notes: Note[] }>) {
+  const { t } = useI18n()
   if (type === 'file') return <>{files.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</>
-  return <>{notes.map(note => <option key={note.id} value={note.id}>{note.title || 'Note uden titel'}</option>)}</>
+  return <>{notes.map(note => <option key={note.id} value={note.id}>{note.title || t('rooms.untitledNote')}</option>)}</>
 }
 
 export function RoomResourcesPanel({ room }: Readonly<{ room: Room }>) {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
   const buttonRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -31,9 +34,9 @@ export function RoomResourcesPanel({ room }: Readonly<{ room: Room }>) {
       setResourceID('')
       setOpen(false)
       refresh()
-      toast.success(`${resource.name || 'Ressourcen'} er delt i chatten.`)
+      toast.success(t('rooms.resourceShared', { name: resource.name || t('rooms.resourceFallback') }))
     },
-    onError: () => toast.error('Ressourcen kunne ikke deles i chatten.'),
+    onError: () => toast.error(t('rooms.resourceShareFailed')),
   })
   const upload = useMutation({
     mutationFn: async (file: globalThis.File) => {
@@ -46,9 +49,9 @@ export function RoomResourcesPanel({ room }: Readonly<{ room: Room }>) {
       setOpen(false)
       refresh()
       queryClient.invalidateQueries({ queryKey: ['files'] }).catch(() => undefined)
-      toast.success(`${resource.name || 'Filen'} er uploadet og vist i chatten.`)
+      toast.success(t('rooms.fileUploaded', { name: resource.name || t('rooms.fileFallback') }))
     },
-    onError: () => toast.error('Filen kunne ikke uploades og deles i chatten.'),
+    onError: () => toast.error(t('rooms.fileUploadFailed')),
   })
   const fileOptions = (files.data ?? []).filter(item => !item.is_folder)
   const noteOptions = (notes.data ?? []).filter(note => !note.deleted_at)
@@ -63,17 +66,17 @@ export function RoomResourcesPanel({ room }: Readonly<{ room: Room }>) {
   }
 
   return <span className="inline-flex">
-    <button ref={buttonRef} type="button" onClick={() => setOpen(value => !value)} className="rounded-full p-2 text-muted hover:bg-zinc-100 dark:hover:bg-[#2d3148]" aria-label="Tilføj billede, fil eller Note" title="Tilføj billede, fil eller Note" aria-expanded={open}><Paperclip size={19} /></button>
+    <button ref={buttonRef} type="button" onClick={() => setOpen(value => !value)} className="rounded-full p-2 text-muted hover:bg-zinc-100 dark:hover:bg-[#2d3148]" aria-label={t('rooms.addAttachment')} title={t('rooms.addAttachment')} aria-expanded={open}><Paperclip size={19} /></button>
     <input ref={inputRef} type="file" className="sr-only" disabled={upload.isPending} onChange={selectUpload} />
-    <FloatingPanel anchorRef={buttonRef} open={open} onOpenChange={setOpen} ariaLabel="Tilføj billede, fil eller Note" className="w-[min(25rem,calc(100vw-1rem))] p-4">
-      <div className="mb-4 flex items-center justify-between"><h3 className="font-semibold">Tilføj til chatten</h3><button type="button" onClick={() => setOpen(false)} className="rounded-full p-1 text-muted hover:bg-zinc-100 dark:hover:bg-[#2d3148]" aria-label="Luk"><X size={17} /></button></div>
-      <button type="button" onClick={() => inputRef.current?.click()} disabled={upload.isPending} className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"><Upload size={18} /><span>{upload.isPending ? 'Uploader…' : 'Upload billede eller fil'}</span></button>
-      <div className="my-4 flex items-center gap-3 text-xs text-muted"><span className="h-px flex-1 bg-zinc-200 dark:bg-[#34394f]" /><span>eller del en eksisterende</span><span className="h-px flex-1 bg-zinc-200 dark:bg-[#34394f]" /></div>
+    <FloatingPanel anchorRef={buttonRef} open={open} onOpenChange={setOpen} ariaLabel={t('rooms.addAttachment')} className="w-[min(25rem,calc(100vw-1rem))] p-4">
+      <div className="mb-4 flex items-center justify-between"><h3 className="font-semibold">{t('rooms.addToChat')}</h3><button type="button" onClick={() => setOpen(false)} className="rounded-full p-1 text-muted hover:bg-zinc-100 dark:hover:bg-[#2d3148]" aria-label={t('action.close')}><X size={17} /></button></div>
+      <button type="button" onClick={() => inputRef.current?.click()} disabled={upload.isPending} className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"><Upload size={18} /><span>{upload.isPending ? t('rooms.uploading') : t('rooms.uploadImageFile')}</span></button>
+      <div className="my-4 flex items-center gap-3 text-xs text-muted"><span className="h-px flex-1 bg-zinc-200 dark:bg-[#34394f]" /><span>{t('rooms.orShareExisting')}</span><span className="h-px flex-1 bg-zinc-200 dark:bg-[#34394f]" /></div>
       <div className="space-y-3">
-        <select value={resourceType} onChange={event => selectType(event.target.value as RoomResourceType)} aria-label="Ressourcetype" className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-[#34394f] dark:bg-[#11141e] dark:text-slate-100"><option value="file">Fil</option><option value="note">Note</option></select>
-        {resourceType === 'file' && <input type="search" value={fileSearch} onChange={event => setFileSearch(event.target.value)} placeholder="Søg i dine filer…" aria-label="Søg efter fil" className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-[#34394f] dark:bg-[#11141e] dark:text-slate-100" />}
-        <select value={resourceID} onChange={event => setResourceID(event.target.value)} aria-label="Vælg eksisterende ressource" className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-[#34394f] dark:bg-[#11141e] dark:text-slate-100"><option value="">Vælg {resourceType === 'file' ? 'fil' : 'Note'}…</option><ResourceOptions type={resourceType} files={fileOptions} notes={noteOptions} /></select>
-        <button type="button" onClick={() => resourceID && add.mutate({ type: resourceType, id: resourceID })} disabled={!resourceID || add.isPending} className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 dark:border-[#34394f] dark:hover:bg-[#2d3148]"><Link2 size={16} /> Del i chatten</button>
+        <select value={resourceType} onChange={event => selectType(event.target.value as RoomResourceType)} aria-label={t('rooms.resourceType')} className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-[#34394f] dark:bg-[#11141e] dark:text-slate-100"><option value="file">{t('rooms.file')}</option><option value="note">{t('rooms.note')}</option></select>
+        {resourceType === 'file' && <input type="search" value={fileSearch} onChange={event => setFileSearch(event.target.value)} placeholder={t('rooms.searchFiles')} aria-label={t('rooms.searchFileAria')} className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-[#34394f] dark:bg-[#11141e] dark:text-slate-100" />}
+        <select value={resourceID} onChange={event => setResourceID(event.target.value)} aria-label={t('rooms.selectResource')} className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-[#34394f] dark:bg-[#11141e] dark:text-slate-100"><option value="">{t(resourceType === 'file' ? 'rooms.chooseFile' : 'rooms.chooseNote')}</option><ResourceOptions type={resourceType} files={fileOptions} notes={noteOptions} /></select>
+        <button type="button" onClick={() => resourceID && add.mutate({ type: resourceType, id: resourceID })} disabled={!resourceID || add.isPending} className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 dark:border-[#34394f] dark:hover:bg-[#2d3148]"><Link2 size={16} /> {t('rooms.shareInChat')}</button>
       </div>
     </FloatingPanel>
   </span>

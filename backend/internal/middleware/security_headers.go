@@ -103,9 +103,7 @@ func (config *securityHeadersConfig) middleware(next http.Handler) http.Handler 
 
 func (config *securityHeadersConfig) contentSecurityPolicy() string {
 	connectSrc := appendCSPSource("'self' https://cloudflareinsights.com https://cdn.jsdelivr.net", websocketOrigin(config.appBaseURL))
-	if validLiveKitOrigin(config.liveKitURL) {
-		connectSrc = appendCSPSource(connectSrc, config.liveKitURL)
-	}
+	connectSrc = appendLiveKitConnectSources(connectSrc, config.liveKitURL)
 	connectSrc = appendCSPSource(connectSrc, config.connectCache.resolve(config.extraConnectSrc))
 	scriptSrc, frameSrc := config.scriptAndFrameSources()
 	return "default-src 'self'; script-src " + scriptSrc + "; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src " + connectSrc + "; worker-src 'self' blob:; frame-src " + frameSrc + "; frame-ancestors 'none';"
@@ -125,8 +123,18 @@ func appendCSPSource(value, source string) string {
 	}
 	return value + " " + source
 }
-func validLiveKitOrigin(value string) bool {
-	return strings.HasPrefix(value, "wss://") || strings.HasPrefix(value, "https://")
+func appendLiveKitConnectSources(value, liveKitURL string) string {
+	parsed, err := url.Parse(liveKitURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "wss" && parsed.Scheme != "https") {
+		return value
+	}
+	parsed.Path, parsed.RawQuery, parsed.Fragment = "", "", ""
+	value = appendCSPSource(value, parsed.String())
+	if parsed.Scheme == "wss" {
+		parsed.Scheme = "https"
+		value = appendCSPSource(value, parsed.String())
+	}
+	return value
 }
 
 func setBaseSecurityHeaders(headers http.Header, request *http.Request) {

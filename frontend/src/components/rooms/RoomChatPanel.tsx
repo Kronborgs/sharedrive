@@ -164,6 +164,7 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const newestTimelineID = useRef<string | undefined>(undefined)
   const scrollAfterSend = useRef(false)
+  const wasAtBottom = useRef(true)
   const [hasNewMessagesBelow, setHasNewMessagesBelow] = useState(false)
   const messageQueryKey = useMemo(() => ['rooms', roomID, 'messages'], [roomID])
   const resourceQueryKey = useMemo(() => ['rooms', roomID, 'resources'], [roomID])
@@ -196,13 +197,17 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
     const latestID = `${latest.kind}-${latest.value.id}`
     const previousID = newestTimelineID.current
     newestTimelineID.current = latestID
-    const container = chatScrollRef.current
-    if (!container || !previousID || scrollAfterSend.current) {
-      scrollAfterSend.current = false
+    if (!previousID) {
       requestAnimationFrame(() => scrollToLatest(previousID ? 'smooth' : 'auto'))
       return
     }
-    if (previousID !== latestID && container.scrollHeight - container.scrollTop - container.clientHeight > 48) setHasNewMessagesBelow(true)
+    if (previousID === latestID) return
+    if (scrollAfterSend.current || wasAtBottom.current) {
+      scrollAfterSend.current = false
+      requestAnimationFrame(() => scrollToLatest())
+      return
+    }
+    setHasNewMessagesBelow(true)
   }, [scrollToLatest, timeline])
 
   useEffect(() => {
@@ -230,7 +235,7 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
   return <section className="mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]" aria-label={t('rooms.chatAria')}>
     <h2 className="mb-3 text-lg font-semibold">{t('rooms.chat')}</h2>
     <div className="relative mb-3">
-    <div ref={chatScrollRef} onScroll={() => { const node = chatScrollRef.current; if (node && node.scrollHeight - node.scrollTop - node.clientHeight <= 48) setHasNewMessagesBelow(false) }} className="max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
+    <div ref={chatScrollRef} onScroll={() => { const node = chatScrollRef.current; if (!node) return; wasAtBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 48; if (wasAtBottom.current) setHasNewMessagesBelow(false) }} className="max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
       {messages.isLoading && <p className="text-sm text-muted">{t('rooms.chatLoading')}</p>}
       {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}
       {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}

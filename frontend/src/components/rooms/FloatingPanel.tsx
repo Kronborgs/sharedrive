@@ -20,7 +20,7 @@ const viewportMargin = 8
 const panelGap = 8
 
 export function FloatingPanel({ anchorRef, children, open, onOpenChange, ariaLabel, className = '' }: Readonly<FloatingPanelProps>) {
-  const panelRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDialogElement>(null)
   const [position, setPosition] = useState<PanelPosition>()
 
   const updatePosition = useCallback(() => {
@@ -68,15 +68,15 @@ export function FloatingPanel({ anchorRef, children, open, onOpenChange, ariaLab
 
   if (!open) return null
   return createPortal(
-    <div
+    <dialog
       ref={panelRef}
-      role="dialog"
+      open
       aria-label={ariaLabel}
-      className={`fixed z-[100] overflow-y-auto rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-[#34394f] dark:bg-[#1a1d27] ${className}`}
+      className={`fixed m-0 z-[100] overflow-y-auto rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-[#34394f] dark:bg-[#1a1d27] ${className}`}
       style={{ left: position?.left ?? 0, top: position?.top ?? 0, maxHeight: position?.maxHeight, visibility: position ? 'visible' : 'hidden' }}
     >
       {children}
-    </div>,
+    </dialog>,
     document.body,
   )
 }

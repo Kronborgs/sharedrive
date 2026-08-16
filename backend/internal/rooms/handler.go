@@ -20,6 +20,8 @@ import (
 	"github.com/yourname/privatedrive/internal/ratelimit"
 )
 
+const internalErrorMessage = "internal error"
+
 type RoomMailer interface {
 	SendRoomInvitation(ctx context.Context, toEmail, inviterName, roomName, role, inviteLink string) error
 }
@@ -74,7 +76,7 @@ func (handler *Handler) RequireEnabled(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, request *http.Request) {
 		enabled, err := handler.service.Enabled(request.Context())
 		if err != nil {
-			httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+			httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
 			return
 		}
 		if !enabled {
@@ -84,7 +86,7 @@ func (handler *Handler) RequireEnabled(next http.HandlerFunc) http.HandlerFunc {
 		if currentUser := middleware.UserFromContext(request.Context()); currentUser != nil {
 			allowed, accessErr := handler.service.UserAccessEnabled(request.Context(), currentUser.ID)
 			if accessErr != nil {
-				httputil.RespondError(w, http.StatusInternalServerError, "internal error")
+				httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
 				return
 			}
 			if !allowed {
@@ -391,6 +393,36 @@ func (handler *Handler) ListMembers(w http.ResponseWriter, request *http.Request
 	httputil.Respond(w, http.StatusOK, members)
 }
 
+type addMemberOutcome struct {
+	recipientEmail string
+	inviteLink     string
+	pendingAccount bool
+}
+
+func (handler *Handler) addMemberOrInvite(ctx context.Context, actorID, roomID uuid.UUID, input addMemberRequest) (addMemberOutcome, error) {
+	result := addMemberOutcome{recipientEmail: strings.TrimSpace(input.Email)}
+	if input.UserID != uuid.Nil {
+		if err := handler.service.AddMember(ctx, actorID, roomID, input.UserID, input.Role); err != nil {
+			return result, err
+		}
+		email, err := handler.service.MemberEmail(ctx, input.UserID)
+		result.recipientEmail = email
+		return result, err
+	}
+
+	err := handler.service.AddMemberByEmail(ctx, actorID, roomID, result.recipientEmail, input.Role)
+	if !errors.Is(err, ErrMemberNotFound) {
+		return result, err
+	}
+	rawToken, err := handler.service.InviteMemberByEmail(ctx, actorID, roomID, result.recipientEmail, input.Role)
+	if err != nil {
+		return result, err
+	}
+	result.pendingAccount = true
+	result.inviteLink = strings.TrimRight(handler.appURL, "/") + "/accept-invite?token=" + url.QueryEscape(rawToken)
+	return result, nil
+}
+
 func (handler *Handler) AddMember(w http.ResponseWriter, request *http.Request) {
 	roomID, ok := roomIDParam(w, request)
 	if !ok {
@@ -401,26 +433,7 @@ func (handler *Handler) AddMember(w http.ResponseWriter, request *http.Request) 
 		return
 	}
 	actor := middleware.UserFromContext(request.Context())
-	var err error
-	recipientEmail := strings.TrimSpace(input.Email)
-	inviteLink := ""
-	pendingAccount := false
-	if input.UserID != uuid.Nil {
-		err = handler.service.AddMember(request.Context(), actor.ID, roomID, input.UserID, input.Role)
-		if err == nil {
-			recipientEmail, err = handler.service.MemberEmail(request.Context(), input.UserID)
-		}
-	} else {
-		err = handler.service.AddMemberByEmail(request.Context(), actor.ID, roomID, recipientEmail, input.Role)
-		if errors.Is(err, ErrMemberNotFound) {
-			var rawToken string
-			rawToken, err = handler.service.InviteMemberByEmail(request.Context(), actor.ID, roomID, recipientEmail, input.Role)
-			if err == nil {
-				pendingAccount = true
-				inviteLink = strings.TrimRight(handler.appURL, "/") + "/accept-invite?token=" + url.QueryEscape(rawToken)
-			}
-		}
-	}
+	result, err := handler.addMemberOrInvite(request.Context(), actor.ID, roomID, input)
 	if err != nil {
 		handler.respondError(w, err)
 		return
@@ -430,17 +443,17 @@ func (handler *Handler) AddMember(w http.ResponseWriter, request *http.Request) 
 		handler.respondError(w, err)
 		return
 	}
-	if inviteLink == "" {
-		inviteLink = strings.TrimRight(handler.appURL, "/") + "/rooms/" + room.ID.String()
+	if result.inviteLink == "" {
+		result.inviteLink = strings.TrimRight(handler.appURL, "/") + "/rooms/" + room.ID.String()
 	}
 	mailRole := input.Role
-	if pendingAccount {
+	if result.pendingAccount {
 		mailRole = "room_" + input.Role
 	}
-	mailSent := handler.sendRoomInvitation(request.Context(), recipientEmail, actor.DisplayName, actor.Email, room, mailRole, inviteLink)
+	mailSent := handler.sendRoomInvitation(request.Context(), result.recipientEmail, actor.DisplayName, actor.Email, room, mailRole, result.inviteLink)
 	response := map[string]any{"ok": true, "mail_sent": mailSent}
-	if pendingAccount {
-		response["invite_url"] = inviteLink
+	if result.pendingAccount {
+		response["invite_url"] = result.inviteLink
 	}
 	httputil.Respond(w, http.StatusCreated, response)
 }
@@ -499,7 +512,7 @@ func (handler *Handler) sendRoomInvitation(ctx context.Context, toEmail, display
 
 func (handler *Handler) respondError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
-	message := "internal error"
+	message := internalErrorMessage
 	switch {
 	case errors.Is(err, ErrInvalidName), errors.Is(err, ErrInvalidRole):
 		status, message = http.StatusBadRequest, err.Error()

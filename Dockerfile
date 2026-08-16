@@ -14,7 +14,7 @@ RUN APP_VERSION=${VERSION} npm run build
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: Build backend (embeds frontend dist)
 # ─────────────────────────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS backend-builder
 ARG VERSION=dev
 ARG BUILD_DATE=unknown
 ARG TARGETOS

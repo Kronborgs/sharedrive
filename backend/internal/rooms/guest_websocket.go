@@ -2,6 +2,7 @@ package rooms
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -38,6 +39,14 @@ func (handler *Handler) GuestWebSocket(w http.ResponseWriter, request *http.Requ
 	handler.serveGuestSocket(request.Context(), conn, access, updates)
 }
 
+func guestAccessWasRevoked(payload string, access roomGuestAccess) bool {
+	var event roomEvent
+	if json.Unmarshal([]byte(payload), &event) != nil || event.Type != "guest_session_revoked" {
+		return false
+	}
+	return event.GuestSessionID == access.SessionID.String() || event.InviteID == access.InviteID.String()
+}
+
 func (handler *Handler) serveGuestSocket(ctx context.Context, conn *websocket.Conn, access roomGuestAccess, updates <-chan string) {
 	incoming := readRoomClientEvents(ctx, conn)
 	ping := time.NewTicker(30 * time.Second)
@@ -47,7 +56,10 @@ func (handler *Handler) serveGuestSocket(ctx context.Context, conn *websocket.Co
 		case <-ctx.Done():
 			return
 		case payload, open := <-updates:
-			if !open || conn.Write(ctx, websocket.MessageText, []byte(payload)) != nil {
+			if !open || guestAccessWasRevoked(payload, access) {
+				return
+			}
+			if conn.Write(ctx, websocket.MessageText, []byte(payload)) != nil {
 				return
 			}
 		case event, open := <-incoming:

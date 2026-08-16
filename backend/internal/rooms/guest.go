@@ -261,6 +261,7 @@ func (handler *Handler) RevokeInvite(w http.ResponseWriter, request *http.Reques
 		return
 	}
 	handler.service.log(request.Context(), audit.EventRoomInviteRevoked, actor.ID, room, nil, map[string]any{"invite_id": inviteID})
+	handler.publishRoomEvent(request.Context(), roomID, roomEvent{Type: "guest_session_revoked", InviteID: inviteID.String()})
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

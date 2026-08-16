@@ -276,6 +276,8 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 - Tilladt guest upload gaar gennem normal multipart/TUS-pipeline med MIME-, checksum-, quota-, storage- og rate-limit-kontrol og auditeres med guest/Room metadata.
 - Guest-uploadede filer oprettes som normale Sharedrive-filer ejet af Room-ejeren i en automatisk, systemstyret `Rooms/<room-slug>/Guest uploads`-mappe, der er synlig i ejerens Files. Roomet gemmer kun filreferencen.
 - Standardgraenser er 25 MB pr. fil, 10 filer pr. guest session og 100 guest uploads pr. Room pr. rullende 24 timer. Admin kan saette lavere/hoejere graenser i Rooms-indstillinger; eksisterende konto-/uploadkvoter og den strengeste graense vinder altid.
+- Owner og moderator kan se aktive gaestesessioner og tilbagekalde en enkelt session straks uden at paavirke Roomets oevrige gaester.
+- Chatlinjen samler fil/billede, emoji, tekst og send. Voice og skaermdeling tilfoejes samme sted i deres respektive faser.
 - Session revoke, member removal, invite revoke og fjernelse af Room-referencen sletter aldrig den normale Sharedrive-fil. Permanent sletning bruger fortsat Files/trash-flowet.
 
 ### Phase 5 - optional LiveKit voice

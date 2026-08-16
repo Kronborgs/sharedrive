@@ -7,11 +7,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({ api: mocks }))
 
 import {
-  acceptRoomInvite, addRoomReaction, addRoomResource, createGuestRoomMessage,
+  acceptRoomInvite, addGuestRoomReaction, addRoomReaction, addRoomResource, createGuestRoomMessage,
   createRoomInvite, createRoomMessage, deleteRoomMessage, getGuestRoom,
-  listGuestRoomMessages, listRoomInvites, listRoomMessages, listRoomResources,
-  logoutGuestRoom, markRoomRead, removeRoomReaction, removeRoomResource,
-  revokeRoomInvite, updateRoomMessage,
+  listGuestRoomMessages, listRoomGuestSessions, listRoomInvites, listRoomMessages, listRoomResources,
+  logoutGuestRoom, markRoomRead, removeGuestRoomReaction, removeRoomReaction, removeRoomResource,
+  revokeRoomGuestSession, revokeRoomInvite, updateRoomMessage,
 } from './rooms'
 
 describe('Rooms chat, resources and guest API client', () => {
@@ -42,12 +42,16 @@ describe('Rooms chat, resources and guest API client', () => {
     listRoomInvites('r1')
     createRoomInvite('r1', { label: 'Guest', expires_hours: 24, can_chat: true, can_upload: false, can_voice: false, can_share_screen: false })
     revokeRoomInvite('r1', 'i1')
+    listRoomGuestSessions('r1')
+    revokeRoomGuestSession('r1', 's1')
 
     expect(mocks.get).toHaveBeenCalledWith('/api/v1/rooms/r1/resources', undefined)
     expect(mocks.post).toHaveBeenCalledWith('/api/v1/rooms/r1/resources', { resource_type: 'file', resource_id: 'f1' })
     expect(mocks.delete).toHaveBeenCalledWith('/api/v1/rooms/r1/resources/link1')
     expect(mocks.get).toHaveBeenCalledWith('/api/v1/rooms/r1/invites', undefined)
     expect(mocks.delete).toHaveBeenCalledWith('/api/v1/rooms/r1/invites/i1')
+    expect(mocks.get).toHaveBeenCalledWith('/api/v1/rooms/r1/guest-sessions', undefined)
+    expect(mocks.delete).toHaveBeenCalledWith('/api/v1/rooms/r1/guest-sessions/s1')
   })
 
   it('builds public guest-session requests and encodes the token', () => {
@@ -55,12 +59,16 @@ describe('Rooms chat, resources and guest API client', () => {
     getGuestRoom('r1')
     listGuestRoomMessages('r1')
     createGuestRoomMessage('r1', 'hello')
+    addGuestRoomReaction('r1', 'm1', '🎉')
+    removeGuestRoomReaction('r1', 'm1', '🎉')
     logoutGuestRoom()
 
     expect(mocks.post).toHaveBeenCalledWith('/api/v1/public/rooms/invitations/token%2Fwith%20slash/accept', { display_name: 'External' })
     expect(mocks.get).toHaveBeenCalledWith('/api/v1/guest/rooms/r1', undefined)
     expect(mocks.get).toHaveBeenCalledWith('/api/v1/guest/rooms/r1/messages?limit=50', undefined)
     expect(mocks.post).toHaveBeenCalledWith('/api/v1/guest/rooms/r1/messages', { body: 'hello' })
+    expect(mocks.post).toHaveBeenCalledWith('/api/v1/guest/rooms/r1/messages/m1/reactions', { emoji: '🎉' })
+    expect(mocks.delete).toHaveBeenCalledWith('/api/v1/guest/rooms/r1/messages/m1/reactions?emoji=%F0%9F%8E%89')
     expect(mocks.post).toHaveBeenCalledWith('/api/v1/guest/rooms/logout', {})
   })
 })

@@ -16,6 +16,7 @@ import {
   removeRoomReaction,
   removeRoomResource,
   updateRoomMessage,
+  summarizeRoomReactions,
   type Room,
   type RoomMessage,
   type RoomResource,
@@ -34,14 +35,6 @@ interface MessageCardProps {
   onEdit: (message: RoomMessage) => void
   onDelete: (message: RoomMessage) => void
   onReaction: (message: RoomMessage, emoji: string) => void
-}
-
-function reactionCounts(message: RoomMessage) {
-  const counts = new Map<string, number>()
-  for (const reaction of message.reactions ?? []) {
-    counts.set(reaction.emoji, (counts.get(reaction.emoji) ?? 0) + 1)
-  }
-  return [...counts.entries()]
 }
 
 function MessageActions({ message, currentUserID, canModerate, onReply, onEdit, onDelete }: Readonly<Omit<MessageCardProps, 'onReaction'>>) {
@@ -67,7 +60,7 @@ function MessageCard(props: Readonly<MessageCardProps>) {
     {message.reply_to_message_id && <p className="text-xs text-muted">Svar på en tidligere besked</p>}
     <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{deleted ? 'Beskeden er slettet' : message.body}</p>
     {!deleted && <div className="mt-2 flex flex-wrap items-center gap-1">
-      {reactionCounts(message).map(([emoji, count]) => <button key={emoji} type="button" onClick={() => onReaction(message, emoji)} className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs dark:border-[#3a3f58]">{emoji} {count}</button>)}
+      {summarizeRoomReactions(message.reactions).map(summary => <button key={summary.emoji} type="button" onClick={() => onReaction(message, summary.emoji)} title={`Sat af: ${summary.names.join(`, `)}`} aria-label={`${summary.emoji}, sat af ${summary.names.join(`, `)}`} className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs dark:border-[#3a3f58]">{summary.emoji} {summary.count}</button>)}
       <EmojiPicker userKey={currentUserID ?? 'anonymous'} label="Tilføj reaktion" onSelect={emoji => onReaction(message, emoji)} />
     </div>}
   </article>

@@ -582,8 +582,12 @@ func (service *Service) loadMessageReactions(ctx context.Context, messages []Mes
 		indices[messages[index].ID] = index
 		ids[index] = messages[index].ID
 	}
-	rows, err := service.db.Query(ctx, `SELECT message_id, user_id, guest_session_id, emoji FROM room_reactions
-		WHERE message_id = ANY($1::uuid[]) ORDER BY created_at`, ids)
+	rows, err := service.db.Query(ctx, `SELECT reaction.message_id, reaction.user_id, reaction.guest_session_id, reaction.emoji,
+		COALESCE(account.display_name, account.email, guest.display_name, 'Ukendt bruger')
+		FROM room_reactions reaction
+		LEFT JOIN users account ON account.id = reaction.user_id
+		LEFT JOIN room_guest_sessions guest ON guest.id = reaction.guest_session_id
+		WHERE reaction.message_id = ANY($1::uuid[]) ORDER BY reaction.created_at`, ids)
 	if err != nil {
 		return err
 	}
@@ -591,7 +595,7 @@ func (service *Service) loadMessageReactions(ctx context.Context, messages []Mes
 	for rows.Next() {
 		var messageID uuid.UUID
 		var reaction Reaction
-		if err := rows.Scan(&messageID, &reaction.UserID, &reaction.GuestSessionID, &reaction.Emoji); err != nil {
+		if err := rows.Scan(&messageID, &reaction.UserID, &reaction.GuestSessionID, &reaction.Emoji, &reaction.DisplayName); err != nil {
 			return err
 		}
 		index := indices[messageID]

@@ -116,6 +116,7 @@ type Reaction struct {
 	UserID         *uuid.UUID `json:"user_id,omitempty"`
 	GuestSessionID *uuid.UUID `json:"guest_session_id,omitempty"`
 	Emoji          string     `json:"emoji"`
+	DisplayName    string     `json:"display_name"`
 }
 type MessagePage struct {
 	Messages   []Message `json:"messages"`

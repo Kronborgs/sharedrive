@@ -60,6 +60,31 @@ export function addRoomMember(roomID: string, email: string, role: Exclude<RoomR
 export function removeRoomMember(roomID: string, userID: string): Promise<void> {
   return api.delete(`/api/v1/rooms/${roomID}/members/${userID}`)
 }
+export interface RoomReaction {
+  user_id?: string
+  guest_session_id?: string
+  emoji: string
+  display_name: string
+}
+
+export interface RoomReactionSummary {
+  emoji: string
+  count: number
+  names: string[]
+}
+
+export function summarizeRoomReactions(reactions: RoomReaction[] = []): RoomReactionSummary[] {
+  const summaries = new Map<string, RoomReactionSummary>()
+  for (const reaction of reactions) {
+    const summary = summaries.get(reaction.emoji) ?? { emoji: reaction.emoji, count: 0, names: [] }
+    const displayName = reaction.display_name?.trim() || 'Ukendt bruger'
+    summary.count += 1
+    if (!summary.names.includes(displayName)) summary.names.push(displayName)
+    summaries.set(reaction.emoji, summary)
+  }
+  return [...summaries.values()]
+}
+
 export interface RoomMessage {
   id: string
   room_id: string
@@ -71,7 +96,7 @@ export interface RoomMessage {
   created_at: string
   edited_at?: string
   deleted_at?: string
-  reactions: Array<{ user_id?: string; guest_session_id?: string; emoji: string }>
+  reactions: RoomReaction[]
 }
 
 export interface RoomMessagePage {
@@ -175,6 +200,23 @@ export function revokeRoomInvite(roomID: string, inviteID: string): Promise<void
   return api.delete(`/api/v1/rooms/${roomID}/invites/${inviteID}`)
 }
 
+export interface RoomGuestSession {
+  id: string
+  invite_id: string
+  display_name: string
+  expires_at: string
+  last_accessed_at?: string
+  created_at: string
+}
+
+export function listRoomGuestSessions(roomID: string, signal?: AbortSignal): Promise<RoomGuestSession[]> {
+  return api.get<RoomGuestSession[]>(`/api/v1/rooms/${roomID}/guest-sessions`, signal)
+}
+
+export function revokeRoomGuestSession(roomID: string, sessionID: string): Promise<void> {
+  return api.delete(`/api/v1/rooms/${roomID}/guest-sessions/${sessionID}`)
+}
+
 export function acceptRoomInvite(token: string, displayName: string): Promise<{ room_id: string; session_id: string }> {
   return api.post(`/api/v1/public/rooms/invitations/${encodeURIComponent(token)}/accept`, { display_name: displayName })
 }
@@ -189,6 +231,13 @@ export function listGuestRoomMessages(roomID: string, signal?: AbortSignal): Pro
 
 export function createGuestRoomMessage(roomID: string, body: string): Promise<RoomMessage> {
   return api.post<RoomMessage>(`/api/v1/guest/rooms/${roomID}/messages`, { body })
+}
+export function addGuestRoomReaction(roomID: string, messageID: string, emoji: string): Promise<void> {
+  return api.post(`/api/v1/guest/rooms/${roomID}/messages/${messageID}/reactions`, { emoji })
+}
+
+export function removeGuestRoomReaction(roomID: string, messageID: string, emoji: string): Promise<void> {
+  return api.delete(`/api/v1/guest/rooms/${roomID}/messages/${messageID}/reactions?emoji=${encodeURIComponent(emoji)}`)
 }
 
 export function logoutGuestRoom(): Promise<void> {

@@ -71,15 +71,24 @@ func deletePendingMemberInvitation(ctx context.Context, tx pgx.Tx, roomID uuid.U
 	return err
 }
 
-func storeMemberInvitation(ctx context.Context, tx pgx.Tx, actorID, roomID uuid.UUID, email, role, tokenHash string, expiresAt time.Time) error {
+type memberInvitationRecord struct {
+	actorID   uuid.UUID
+	roomID    uuid.UUID
+	email     string
+	role      string
+	tokenHash string
+	expiresAt time.Time
+}
+
+func storeMemberInvitation(ctx context.Context, tx pgx.Tx, invitation memberInvitationRecord) error {
 	var tokenID uuid.UUID
 	if err := tx.QueryRow(ctx, `INSERT INTO invitation_tokens (email, token_hash, created_by, expires_at)
-		VALUES ($1,$2,$3,$4) RETURNING id`, email, tokenHash, actorID, expiresAt).Scan(&tokenID); err != nil {
+		VALUES ($1,$2,$3,$4) RETURNING id`, invitation.email, invitation.tokenHash, invitation.actorID, invitation.expiresAt).Scan(&tokenID); err != nil {
 		return err
 	}
 	_, err := tx.Exec(ctx, `INSERT INTO room_member_invitations
 		(invitation_token_id,room_id,email,role,created_by,expires_at) VALUES ($1,$2,$3,$4,$5,$6)`,
-		tokenID, roomID, email, role, actorID, expiresAt)
+		tokenID, invitation.roomID, invitation.email, invitation.role, invitation.actorID, invitation.expiresAt)
 	return err
 }
 
@@ -107,7 +116,11 @@ func (service *Service) InviteMemberByEmail(ctx context.Context, actorID, roomID
 		return "", err
 	}
 	expiresAt := time.Now().Add(roomMemberInvitationTTL)
-	if err := storeMemberInvitation(ctx, tx, actorID, roomID, email, role, tokenHash, expiresAt); err != nil {
+	invitation := memberInvitationRecord{
+		actorID: actorID, roomID: roomID, email: email, role: role,
+		tokenHash: tokenHash, expiresAt: expiresAt,
+	}
+	if err := storeMemberInvitation(ctx, tx, invitation); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(ctx); err != nil {

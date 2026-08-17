@@ -1,12 +1,12 @@
 # Implementer Sharedrive Rooms
 
-Status: Phase 0-5 er implementeret og brugertestet. Phase 5 voice er afsluttet med self-hosted LiveKit og adminstyret aktivering. Phase 6 er ikke startet.
+Status: Phase 0-5 er implementeret og brugertestet. Phase 6 er implementeret og klar til afsluttende brugertest efter den seneste popup-rettelse. Phase 5 voice er afsluttet med self-hosted LiveKit og adminstyret aktivering.
 
 ## Aktuel fasestatus
 
 - **Phase 0-4:** Implementeret. Rooms omfatter permanente Rooms, medlemsroller, live chat, reaktioner, filer/Notes, invitationer, link-gaester, Rooms-administration, ulaeste beskeder samt baade integreret hoved-PWA-navigation og en selvstaendig Rooms-PWA.
-- **Phase 5:** Implementeret og brugertestet. Self-hosted LiveKit voice har Room-bundne 15-minutters media-tokens, join/leave, mute/unmute, deltagere, aktiv taler, reconnect-status og fejlhaandtering. Voice aktiveres eksplicit af admin i Rooms-indstillingerne. Kamera, data-kanaler og skaermdeling er fortsat blokeret. Gæster kan kun deltage, naar baade Rooms Voice og invitationens `can_voice` er aktiveret. Lyd er testet på mobil og PC-browser.
-- **Phase 6:** I gang. Skærmdeling bygges oven på den godkendte LiveKit-forbindelse fra Phase 5. Rumoversigten viser en privat, live `Tale i gang`-indikator, når mindst én autoriseret deltager er forbundet til rummets LiveKit-samtale.
+- **Phase 5:** Implementeret og brugertestet. Self-hosted LiveKit voice har Room-bundne 15-minutters media-tokens, join/leave, mute/unmute, deltagere, aktiv taler, reconnect-status og fejlhaandtering. Voice aktiveres eksplicit af admin i Rooms-indstillingerne. Kamera og data-kanaler er fortsat blokeret. Gæster kan kun deltage, naar baade Rooms Voice og invitationens `can_voice` er aktiveret. Lyd er testet på mobil og PC-browser.
+- **Phase 6:** Implementeret og klar til afsluttende brugertest. Skærmdeling bygger oven på LiveKit med Teams-lignende mødehandlinger, start/stop/skift af skærm eller fane, remote rendering, stor popup-visning og mindst privilegerede media-tokens. Rumoversigten og Room-siden viser privat `Tale i gang`/mødestatus uden at eksponere samtaleindhold. Kamera forbliver blokeret.
 - **Phase 7:** Ikke startet. Rooms backup/restore, samlet security/a11y-hardening og deployment-dokumentation hoerer hertil. Den eksisterende Rooms-backupindstilling er kun en forberedende indstilling og betyder ikke, at data allerede indgaar i backup/restore.
 - **Phase 8:** Ikke startet. Fuld regression og sammenligning med baseline afslutter projektet.
 

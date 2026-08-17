@@ -105,9 +105,8 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
     setParticipants([]); setActiveSpeakers([]); setSharedScreens([]); setSharingScreen(false); setMicrophoneEnabled(false); setMuted(false); setStatus('idle')
   }
 
-  const addSharedScreen = (track: RemoteTrack, participantName: string) => {
-    const screenID = track.sid ?? `${participantName}:screen`
-    setSharedScreens(screens => [...screens.filter(screen => screen.id !== screenID), { id: screenID, participantName, track }])
+  const addSharedScreen = (track: RemoteTrack, participantID: string, participantName: string) => {
+    setSharedScreens(screens => [...screens.filter(screen => screen.id !== participantID), { id: participantID, participantName, track }])
   }
 
   const syncSharedScreens = (room: LiveKitRoom) => {
@@ -115,7 +114,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
       participant.trackPublications.forEach(publication => {
         const track = publication.track
         if (publication.source !== Track.Source.ScreenShare || !track || track.kind !== Track.Kind.Video) return
-        addSharedScreen(track as RemoteTrack, participant.name || participant.identity)
+        addSharedScreen(track as RemoteTrack, participant.identity, participant.name || participant.identity)
       })
     })
   }
@@ -140,12 +139,14 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
           audioElements.current.push(element)
         }
         if (track.kind === Track.Kind.Video && publication.source === Track.Source.ScreenShare) {
-          addSharedScreen(track as RemoteTrack, participant.name || participant.identity)
+          addSharedScreen(track as RemoteTrack, participant.identity, participant.name || participant.identity)
         }
       })
-      room.on(RoomEvent.TrackUnsubscribed, (track, publication) => {
+      room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
         track.detach().forEach(element => element.remove())
-        if (publication.source === Track.Source.ScreenShare && track.sid) setSharedScreens(screens => screens.filter(screen => screen.id !== track.sid))
+        if (publication.source === Track.Source.ScreenShare) {
+          window.setTimeout(() => setSharedScreens(screens => screens.filter(screen => screen.id !== participant.identity || screen.track !== track)), 400)
+        }
       })
       room.on(RoomEvent.LocalTrackUnpublished, publication => { if (publication.source === Track.Source.ScreenShare) setSharingScreen(false) })
       await room.connect(details.url, details.token, { autoSubscribe: true })

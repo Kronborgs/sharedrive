@@ -25,7 +25,7 @@ function voiceDescriptionKey(status: string): 'rooms.voiceReconnecting' | 'rooms
   return 'rooms.voiceDescription'
 }
 
-function SharedScreenVideo({ sharedScreen }: Readonly<{ sharedScreen: SharedScreen }>) {
+function SharedScreenVideo({ sharedScreen, captionsLabel }: Readonly<{ sharedScreen: SharedScreen; captionsLabel: string }>) {
   const videoRef = useRef<HTMLVideoElement>(null)
   useEffect(() => {
     const video = videoRef.current
@@ -33,7 +33,7 @@ function SharedScreenVideo({ sharedScreen }: Readonly<{ sharedScreen: SharedScre
     sharedScreen.track.attach(video)
     return () => { sharedScreen.track.detach(video) }
   }, [sharedScreen.track])
-  return <article className="overflow-hidden rounded-lg border border-zinc-200 bg-black dark:border-[#2d3148]"><video ref={videoRef} autoPlay playsInline className="aspect-video w-full" /><p className="bg-white px-3 py-2 text-xs text-zinc-700 dark:bg-[#1a1d27] dark:text-slate-300">{sharedScreen.participantName}</p></article>
+  return <article className="overflow-hidden rounded-lg border border-zinc-200 bg-black dark:border-[#2d3148]"><video ref={videoRef} autoPlay playsInline className="aspect-video w-full"><track kind="captions" srcLang="da" label={captionsLabel} src="data:text/vtt;charset=utf-8,WEBVTT" /></video><p className="bg-white px-3 py-2 text-xs text-zinc-700 dark:bg-[#1a1d27] dark:text-slate-300">{sharedScreen.participantName}</p></article>
 }
 
 export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true }: Readonly<{ roomID: string; guest?: boolean; canShareScreen?: boolean }>) {
@@ -127,6 +127,6 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true }:
     {status === 'connected' && <p className="mt-3 flex items-center gap-2 text-sm text-muted"><Users size={16} /> {t('rooms.voiceParticipants', { names: participants.join(', ') })}</p>}
     {status === 'connected' && activeSpeakers.length > 0 && <p className="mt-1 text-sm text-muted">{t('rooms.voiceSpeaking', { names: activeSpeakers.join(', ') })}</p>}
     {status === 'connected' && canShareScreen && !screenShareSupported && <p className="mt-3 text-sm text-muted">{t('rooms.screenShareUnsupported')}</p>}
-    {sharedScreens.length > 0 && <section className="mt-4" aria-label={t('rooms.screenShares')}><h3 className="mb-2 text-sm font-semibold">{t('rooms.screenShares')}</h3><div className="grid gap-3 lg:grid-cols-2">{sharedScreens.map(sharedScreen => <SharedScreenVideo key={sharedScreen.id} sharedScreen={sharedScreen} />)}</div></section>}
+    {sharedScreens.length > 0 && <section className="mt-4" aria-label={t('rooms.screenShares')}><h3 className="mb-2 text-sm font-semibold">{t('rooms.screenShares')}</h3><div className="grid gap-3 lg:grid-cols-2">{sharedScreens.map(sharedScreen => <SharedScreenVideo key={sharedScreen.id} sharedScreen={sharedScreen} captionsLabel={t('rooms.screenCaptions')} />)}</div></section>}
   </section>
 }

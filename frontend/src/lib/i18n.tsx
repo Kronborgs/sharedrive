@@ -87,6 +87,7 @@ const translations = {
   'rooms.screenShareStart':  { da: 'Del skærm', en: 'Share screen' },
   'rooms.screenShareStop':   { da: 'Stop deling', en: 'Stop sharing' },
   'rooms.screenShares':      { da: 'Delte skærme', en: 'Shared screens' },
+  'rooms.screenCaptions':    { da: 'Undertekster til skærmdeling', en: 'Screen sharing captions' },
   'rooms.screenShareFailed': { da: 'Kunne ikke starte skærmdeling.', en: 'Could not start screen sharing.' },
   'rooms.screenShareUnsupported': { da: 'Denne browser understøtter ikke skærmdeling.', en: 'This browser does not support screen sharing.' },
   'rooms.subtitle':          { da: 'Permanente arbejdsrum for dit team', en: 'Permanent workspaces for your team' },

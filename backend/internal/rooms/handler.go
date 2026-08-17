@@ -13,6 +13,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/livekit/protocol/auth"
+	"github.com/livekit/protocol/livekit"
+	lksdk "github.com/livekit/server-sdk-go/v2"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 
@@ -103,7 +105,7 @@ func (handler *Handler) CreateMediaToken(w http.ResponseWriter, request *http.Re
 		handler.respondError(w, err)
 		return
 	}
-	signed, err := handler.mediaToken(room.ID, "user:"+user.ID.String(), user.DisplayName)
+	signed, err := handler.mediaToken(room.ID, "user:"+user.ID.String(), user.DisplayName, true)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
 		return
@@ -127,7 +129,7 @@ func (handler *Handler) CreateGuestMediaToken(w http.ResponseWriter, request *ht
 		httputil.RespondError(w, http.StatusServiceUnavailable, "voice is not configured")
 		return
 	}
-	signed, err := handler.mediaToken(access.RoomID, "guest:"+access.SessionID.String(), access.DisplayName)
+	signed, err := handler.mediaToken(access.RoomID, "guest:"+access.SessionID.String(), access.DisplayName, access.CanShareScreen)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
 		return
@@ -148,10 +150,14 @@ func (handler *Handler) voiceEnabled(w http.ResponseWriter, request *http.Reques
 	return true
 }
 
-func (handler *Handler) mediaToken(roomID uuid.UUID, identity, name string) (string, error) {
+func (handler *Handler) mediaToken(roomID uuid.UUID, identity, name string, canShareScreen bool) (string, error) {
 	canPublish, canSubscribe, canPublishData := true, true, false
+	publishSources := []string{"microphone"}
+	if canShareScreen {
+		publishSources = append(publishSources, "screen_share")
+	}
 	token := auth.NewAccessToken(handler.liveKitKey, handler.liveKitSecret)
-	token.SetIdentity(identity).SetName(name).SetValidFor(15 * time.Minute).SetVideoGrant(&auth.VideoGrant{RoomJoin: true, Room: handler.mediaRoomName(roomID), CanPublish: &canPublish, CanSubscribe: &canSubscribe, CanPublishData: &canPublishData, CanPublishSources: []string{"microphone"}})
+	token.SetIdentity(identity).SetName(name).SetValidFor(15 * time.Minute).SetVideoGrant(&auth.VideoGrant{RoomJoin: true, Room: handler.mediaRoomName(roomID), CanPublish: &canPublish, CanSubscribe: &canSubscribe, CanPublishData: &canPublishData, CanPublishSources: publishSources})
 	return token.ToJWT()
 }
 
@@ -397,7 +403,40 @@ func (handler *Handler) List(w http.ResponseWriter, request *http.Request) {
 		handler.respondError(w, err)
 		return
 	}
+	handler.setVoiceStatus(request.Context(), result)
 	httputil.Respond(w, http.StatusOK, result)
+}
+
+// setVoiceStatus decorates only rooms already authorised for the requester.
+// LiveKit is optional, so an unavailable media service must never make Rooms
+// listing fail or expose its error details to the client.
+func (handler *Handler) setVoiceStatus(ctx context.Context, rooms []Room) {
+	if len(rooms) == 0 || handler.liveKitURL == "" || handler.liveKitKey == "" || handler.liveKitSecret == "" {
+		return
+	}
+	mediaEnabled, err := handler.service.VoiceEnabled(ctx)
+	if err != nil || !mediaEnabled {
+		return
+	}
+	names := make([]string, 0, len(rooms))
+	for _, room := range rooms {
+		names = append(names, handler.mediaRoomName(room.ID))
+	}
+	statusContext, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	client := lksdk.NewRoomServiceClient(handler.liveKitURL, handler.liveKitKey, handler.liveKitSecret)
+	response, err := client.ListRooms(statusContext, &livekit.ListRoomsRequest{Names: names})
+	if err != nil {
+		log.Debug().Err(err).Msg("rooms: LiveKit status unavailable")
+		return
+	}
+	active := make(map[string]bool, len(response.Rooms))
+	for _, mediaRoom := range response.Rooms {
+		active[mediaRoom.Name] = mediaRoom.NumParticipants > 0
+	}
+	for index := range rooms {
+		rooms[index].VoiceActive = active[handler.mediaRoomName(rooms[index].ID)]
+	}
 }
 
 func (handler *Handler) Create(w http.ResponseWriter, request *http.Request) {

@@ -143,8 +143,9 @@ func setBaseSecurityHeaders(headers http.Header, request *http.Request) {
 	headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	// Sharedrive is a SPA/PWA: its document shell can be served from any route,
 	// including `/`. Rooms requests microphone access only after an explicit user
-	// action, while camera and screen capture remain prohibited everywhere.
-	headers.Set("Permissions-Policy", "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=()")
+	// action. Screen capture is likewise requested only after the explicit Rooms
+	// action, while camera remains prohibited everywhere.
+	headers.Set("Permissions-Policy", "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=(self)")
 	if request.TLS != nil || strings.EqualFold(request.Header.Get("X-Forwarded-Proto"), "https") {
 		headers.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
 	}

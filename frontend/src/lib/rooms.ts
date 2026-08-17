@@ -13,6 +13,7 @@ export interface Room {
   archived_at?: string
   current_role: RoomRole
   unread_count: number
+  voice_active: boolean
 }
 
 export interface PublicRoomSettings {

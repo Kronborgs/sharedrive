@@ -2,7 +2,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { DoorOpen, Plus, Users, X } from 'lucide-react'
+import { DoorOpen, PhoneCall, Plus, Users, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { createRoom, listRooms } from '@/lib/rooms'
@@ -112,6 +112,7 @@ export function RoomListPage() {
             </div>
             <div className="mt-8 flex items-center justify-between text-xs text-muted">
               <span className="flex items-center gap-1.5"><Users size={14} /> {t(`rooms.role.${room.current_role}` as never)}</span>
+              {room.voice_active && <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400" aria-label={t('rooms.voiceActive')}><span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" /><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" /></span><PhoneCall size={14} /> {t('rooms.voiceActive')}</span>}
               <time dateTime={room.updated_at}>{new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'medium' }).format(new Date(room.updated_at))}</time>
             </div>
           </button>

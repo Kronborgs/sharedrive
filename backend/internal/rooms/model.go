@@ -35,6 +35,7 @@ type Room struct {
 	ArchivedAt     *time.Time `json:"archived_at,omitempty"`
 	CurrentRole    string     `json:"current_role"`
 	UnreadCount    int        `json:"unread_count"`
+	VoiceActive    bool       `json:"voice_active"`
 }
 
 type Member struct {

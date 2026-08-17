@@ -13,25 +13,25 @@
   "categories": ["productivity", "utilities"],
   "icons": [
     {
-      "src": "/notes-icon-192.png",
+      "src": "/notes-pwa-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/notes-icon-192.png",
+      "src": "/notes-pwa-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/notes-icon-512.png",
+      "src": "/notes-pwa-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/notes-icon-512.png",
+      "src": "/notes-pwa-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -42,7 +42,7 @@
       "name": "Ny note",
       "short_name": "Ny note",
       "url": "/notes?new=text",
-      "icons": [{ "src": "/notes-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [{ "src": "/notes-pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

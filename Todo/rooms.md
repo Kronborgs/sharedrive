@@ -6,7 +6,7 @@ Status: Phase 0-5 er implementeret og brugertestet. Phase 5 voice er afsluttet m
 
 - **Phase 0-4:** Implementeret. Rooms omfatter permanente Rooms, medlemsroller, live chat, reaktioner, filer/Notes, invitationer, link-gaester, Rooms-administration, ulaeste beskeder samt baade integreret hoved-PWA-navigation og en selvstaendig Rooms-PWA.
 - **Phase 5:** Implementeret og brugertestet. Self-hosted LiveKit voice har Room-bundne 15-minutters media-tokens, join/leave, mute/unmute, deltagere, aktiv taler, reconnect-status og fejlhaandtering. Voice aktiveres eksplicit af admin i Rooms-indstillingerne. Kamera, data-kanaler og skaermdeling er fortsat blokeret. Gæster kan kun deltage, naar baade Rooms Voice og invitationens `can_voice` er aktiveret. Lyd er testet på mobil og PC-browser.
-- **Phase 6:** Ikke startet. Skaermdeling bygges oven paa den godkendte LiveKit-forbindelse fra Phase 5.
+- **Phase 6:** I gang. Skærmdeling bygges oven på den godkendte LiveKit-forbindelse fra Phase 5. Rumoversigten viser en privat, live `Tale i gang`-indikator, når mindst én autoriseret deltager er forbundet til rummets LiveKit-samtale.
 - **Phase 7:** Ikke startet. Rooms backup/restore, samlet security/a11y-hardening og deployment-dokumentation hoerer hertil. Den eksisterende Rooms-backupindstilling er kun en forberedende indstilling og betyder ikke, at data allerede indgaar i backup/restore.
 - **Phase 8:** Ikke startet. Fuld regression og sammenligning med baseline afslutter projektet.
 
@@ -316,6 +316,7 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 
 ### Phase 6 - screen sharing
 
+- Rumoversigten viser `Tale i gang` pr. Room, når LiveKit har mindst én forbundet deltager. Status hentes server-side og viser hverken deltagernavne, lyd eller andet samtaleindhold.
 - Eksplicit `Share screen` bruger LiveKits officielle screen-share API.
 - Start/stop, remote rendering, sharer indicator, cleanup og browser-stop haandteres.
 - Microphone fortsaetter efter screen-share stop.

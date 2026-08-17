@@ -153,7 +153,7 @@ function useRoomLiveSync(roomID: string, currentUserID: string | undefined, refr
   return { notifyTyping, typingName }
 }
 
-export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
+export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ room: Room; fillAvailableHeight?: boolean }>) {
   const { t } = useI18n()
   const roomID = room.id
   const queryClient = useQueryClient()
@@ -243,10 +243,13 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
     action.then(refresh).catch(() => undefined)
   }
 
-  return <section className="mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]" aria-label={t('rooms.chatAria')}>
+  const panelClass = fillAvailableHeight ? 'mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : 'mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]'
+  const timelineClass = fillAvailableHeight ? 'max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148] lg:h-full lg:max-h-none' : 'max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]'
+
+  return <section className={panelClass} aria-label={t('rooms.chatAria')}>
     <h2 className="mb-3 text-lg font-semibold">{t('rooms.chat')}</h2>
-    <div className="relative mb-3">
-    <div ref={chatScrollRef} onScroll={handleChatScroll} className="max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
+    <div className={fillAvailableHeight ? 'relative mb-3 lg:min-h-0 lg:flex-1' : 'relative mb-3'}>
+    <div ref={chatScrollRef} onScroll={handleChatScroll} className={timelineClass}>
       {messages.isLoading && <p className="text-sm text-muted">{t('rooms.chatLoading')}</p>}
       {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}
       {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}
@@ -258,7 +261,7 @@ export function RoomChatPanel({ room }: Readonly<{ room: Room }>) {
     </div>
     {typingName && <p className="mb-2 text-xs text-muted">{t('rooms.typing', { name: typingName })}</p>}
     {replyTo && <div className="mb-2 flex justify-between rounded-lg bg-zinc-100 px-3 py-2 text-xs dark:bg-[#1a1d27]"><span>{t('rooms.replyingTo', { name: replyTo.sender_name })}</span><button type="button" onClick={() => setReplyTo(undefined)}>{t('action.cancel')}</button></div>}
-    <form className="flex items-end gap-1 rounded-2xl border border-zinc-200 bg-white p-1.5 dark:border-[#2d3148] dark:bg-[#0f1117]" onSubmit={event => { event.preventDefault(); if (body.trim()) send.mutate() }}>
+    <form className="shrink-0 flex items-end gap-1 rounded-2xl border border-zinc-200 bg-white p-1.5 dark:border-[#2d3148] dark:bg-[#0f1117]" onSubmit={event => { event.preventDefault(); if (body.trim()) send.mutate() }}>
       <RoomResourcesPanel room={room} />
       <textarea value={body} onChange={event => { setBody(event.target.value); notifyTyping() }} maxLength={10000} rows={2} placeholder={t('rooms.messagePlaceholder')} className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none" />
       <EmojiPicker userKey={user?.id ?? 'anonymous'} onSelect={emoji => setBody(value => value + emoji)} />

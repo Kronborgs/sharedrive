@@ -48,12 +48,12 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   }
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in" aria-labelledby="room-heading">
+    <section className="mx-auto flex w-full max-w-[112rem] flex-col animate-fade-in lg:h-full lg:overflow-hidden" aria-labelledby="room-heading">
       <button type="button" className="mb-5 flex items-center gap-1.5 text-sm text-muted hover:text-zinc-950 dark:hover:text-white" onClick={() => navigate({ to: '/rooms' }).catch(() => undefined)}>
         <ArrowLeft size={16} /> {t('rooms.back' as never)}
       </button>
 
-      <header className="border-b border-zinc-200 pb-6 dark:border-[#2d3148]">
+      <header className="shrink-0 border-b border-zinc-200 pb-6 dark:border-[#2d3148]">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400"><DoorOpen size={21} /></span>
@@ -91,12 +91,12 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
         </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="min-w-0">
+      <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
           {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} />}
-          <RoomChatPanel room={room} />
+          <RoomChatPanel room={room} fillAvailableHeight />
         </div>
-        <aside className="space-y-6 lg:sticky lg:top-5 lg:self-start" aria-label={t('rooms.members' as never)}>
+        <aside className="space-y-6 pr-1 lg:min-h-0 lg:overflow-y-auto" aria-label={t('rooms.members' as never)}>
           <RoomMembersPanel room={room} />
           <RoomInvitesPanel room={room} />
         </aside>

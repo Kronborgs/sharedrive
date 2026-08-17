@@ -12,6 +12,21 @@ interface SharedScreen {
   participantName: string
   track: RemoteTrack
 }
+type Translator = ReturnType<typeof useI18n>['t']
+
+interface MeetingControlsProps {
+  status: 'idle' | 'joining' | 'connected' | 'reconnecting' | 'error'
+  meetingActive: boolean
+  muted: boolean
+  canShareScreen: boolean
+  screenShareSupported: boolean
+  sharingScreen: boolean
+  t: Translator
+  onJoin: (mode: MediaMode) => Promise<void>
+  onToggleMute: () => Promise<void>
+  onToggleScreenShare: () => Promise<void>
+  onLeave: () => Promise<void>
+}
 
 function connectionStatus(state: string): 'idle' | 'joining' | 'connected' | 'reconnecting' {
   if (state === 'reconnecting') return 'reconnecting'
@@ -35,6 +50,22 @@ function SharedScreenVideo({ sharedScreen, captionsLabel }: Readonly<{ sharedScr
     return () => { sharedScreen.track.detach(video) }
   }, [sharedScreen.track])
   return <article className="overflow-hidden rounded-lg border border-zinc-200 bg-black dark:border-[#2d3148]"><video ref={videoRef} autoPlay playsInline className="aspect-video w-full"><track kind="captions" srcLang="da" label={captionsLabel} src="data:text/vtt;charset=utf-8,WEBVTT" /></video><p className="bg-white px-3 py-2 text-xs text-zinc-700 dark:bg-[#1a1d27] dark:text-slate-300">{sharedScreen.participantName}</p></article>
+}
+
+function meetingActionLabel(status: MeetingControlsProps['status'], meetingActive: boolean, t: Translator) {
+  if (status === 'joining') return t('rooms.voiceJoining')
+  if (meetingActive) return t('rooms.joinMeeting')
+  return t('rooms.startMeeting')
+}
+
+function MeetingControls(props: Readonly<MeetingControlsProps>) {
+  const isConnected = props.status === 'connected' || props.status === 'reconnecting'
+  const joinMode: MediaMode = props.meetingActive ? 'watch' : 'voice'
+  const actionLabel = meetingActionLabel(props.status, props.meetingActive, props.t)
+  if (!isConnected) {
+    return <div className="flex flex-wrap gap-2"><button type="button" onClick={() => props.onJoin(joinMode).catch(() => undefined)} disabled={props.status === 'joining'} className="notes-primary-button"><Phone size={16} /> {actionLabel}</button>{props.canShareScreen && props.screenShareSupported && <button type="button" onClick={() => props.onToggleScreenShare().catch(() => undefined)} disabled={props.status === 'joining'} className="notes-secondary-button"><MonitorUp size={16} />{props.t('rooms.screenShareStart')}</button>}</div>
+  }
+  return <div className="flex flex-wrap gap-2"><button type="button" onClick={() => props.onToggleMute().catch(() => undefined)} className="notes-secondary-button">{props.muted ? <MicOff size={16} /> : <Mic size={16} />}{props.muted ? props.t('rooms.voiceUnmute') : props.t('rooms.voiceMute')}</button>{props.canShareScreen && props.screenShareSupported && <button type="button" onClick={() => props.onToggleScreenShare().catch(() => undefined)} className="notes-secondary-button"><MonitorUp size={16} />{props.sharingScreen ? props.t('rooms.screenShareStop') : props.t('rooms.screenShareStart')}</button>}<button type="button" onClick={() => props.onLeave().catch(() => undefined)} className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-600 dark:border-red-900"><PhoneOff size={16} /> {props.t('rooms.voiceLeave')}</button></div>
 }
 
 export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, meetingActive = false }: Readonly<{ roomID: string; guest?: boolean; canShareScreen?: boolean; meetingActive?: boolean }>) {
@@ -153,7 +184,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
   const description = status === 'connected' && !microphoneEnabled && !sharingScreen ? t('rooms.screenShareReady') : t(voiceDescriptionKey(status))
   const screenShareSupported = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getDisplayMedia)
   return <section className="mt-6 rounded-xl border border-zinc-200 p-4 dark:border-[#2d3148]" aria-label={t('rooms.meeting')}>
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-semibold"><Mic size={18} /> {t('rooms.meeting')}</h2><p className="mt-1 text-sm text-muted">{description}</p>{meetingActive && status === 'idle' && <p className="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">{t('rooms.meetingInProgress')}</p>}</div>{status !== 'connected' && status !== 'reconnecting' ? <div className="flex flex-wrap gap-2"><button type="button" onClick={() => join(meetingActive ? 'watch' : 'voice').catch(() => undefined)} disabled={status === 'joining'} className="notes-primary-button"><Phone size={16} /> {status === 'joining' ? t('rooms.voiceJoining') : meetingActive ? t('rooms.joinMeeting') : t('rooms.startMeeting')}</button>{canShareScreen && screenShareSupported && <button type="button" onClick={() => toggleScreenShare().catch(() => undefined)} disabled={status === 'joining'} className="notes-secondary-button"><MonitorUp size={16} />{t('rooms.screenShareStart')}</button>}</div> : <div className="flex flex-wrap gap-2"><button type="button" onClick={() => toggleMute().catch(() => undefined)} className="notes-secondary-button">{muted ? <MicOff size={16} /> : <Mic size={16} />}{muted ? t('rooms.voiceUnmute') : t('rooms.voiceMute')}</button>{canShareScreen && screenShareSupported && <button type="button" onClick={() => toggleScreenShare().catch(() => undefined)} className="notes-secondary-button"><MonitorUp size={16} />{sharingScreen ? t('rooms.screenShareStop') : t('rooms.screenShareStart')}</button>}<button type="button" onClick={() => leave().catch(() => undefined)} className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-600 dark:border-red-900"><PhoneOff size={16} /> {t('rooms.voiceLeave')}</button></div>}</div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-semibold"><Mic size={18} /> {t('rooms.meeting')}</h2><p className="mt-1 text-sm text-muted">{description}</p>{meetingActive && status === 'idle' && <p className="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">{t('rooms.meetingInProgress')}</p>}</div><MeetingControls status={status} meetingActive={meetingActive} muted={muted} canShareScreen={canShareScreen} screenShareSupported={screenShareSupported} sharingScreen={sharingScreen} t={t} onJoin={join} onToggleMute={toggleMute} onToggleScreenShare={toggleScreenShare} onLeave={leave} /></div>
     {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
     {status === 'connected' && <p className="mt-3 flex items-center gap-2 text-sm text-muted"><Users size={16} /> {t('rooms.voiceParticipants', { names: participants.join(', ') })}</p>}
     {status === 'connected' && activeSpeakers.length > 0 && <p className="mt-1 text-sm text-muted">{t('rooms.voiceSpeaking', { names: activeSpeakers.join(', ') })}</p>}

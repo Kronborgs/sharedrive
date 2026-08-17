@@ -26,6 +26,9 @@ import (
 const (
 	internalErrorMessage = "internal error"
 	mediaRoomPrefix      = "sharedrive-room:"
+	mediaModeVoice       = "voice"
+	mediaModeScreen      = "screen"
+	mediaModeWatch       = "watch"
 )
 
 type RoomMailer interface {
@@ -99,13 +102,17 @@ func (handler *Handler) CreateMediaToken(w http.ResponseWriter, request *http.Re
 	if !ok {
 		return
 	}
+	mode, ok := mediaModeFromRequest(w, request)
+	if !ok {
+		return
+	}
 	user := middleware.UserFromContext(request.Context())
 	room, err := handler.service.Get(request.Context(), user.ID, roomID)
 	if err != nil {
 		handler.respondError(w, err)
 		return
 	}
-	signed, err := handler.mediaToken(room.ID, "user:"+user.ID.String(), user.DisplayName, true)
+	signed, err := handler.mediaToken(room.ID, "user:"+user.ID.String(), user.DisplayName, true, mode)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
 		return
@@ -129,7 +136,15 @@ func (handler *Handler) CreateGuestMediaToken(w http.ResponseWriter, request *ht
 		httputil.RespondError(w, http.StatusServiceUnavailable, "voice is not configured")
 		return
 	}
-	signed, err := handler.mediaToken(access.RoomID, "guest:"+access.SessionID.String(), access.DisplayName, access.CanShareScreen)
+	mode, ok := mediaModeFromRequest(w, request)
+	if !ok {
+		return
+	}
+	if mode == mediaModeScreen && !access.CanShareScreen {
+		httputil.RespondError(w, http.StatusForbidden, "screen sharing is not allowed for this guest")
+		return
+	}
+	signed, err := handler.mediaToken(access.RoomID, "guest:"+access.SessionID.String(), access.DisplayName, access.CanShareScreen, mode)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
 		return
@@ -150,15 +165,38 @@ func (handler *Handler) voiceEnabled(w http.ResponseWriter, request *http.Reques
 	return true
 }
 
-func (handler *Handler) mediaToken(roomID uuid.UUID, identity, name string, canShareScreen bool) (string, error) {
-	canPublish, canSubscribe, canPublishData := true, true, false
-	publishSources := []string{"microphone"}
-	if canShareScreen {
-		publishSources = append(publishSources, "screen_share")
+func mediaModeFromRequest(w http.ResponseWriter, request *http.Request) (string, bool) {
+	mode := request.URL.Query().Get("mode")
+	if mode == "" {
+		return mediaModeVoice, true
 	}
+	if mode == mediaModeVoice || mode == mediaModeScreen || mode == mediaModeWatch {
+		return mode, true
+	}
+	httputil.RespondError(w, http.StatusBadRequest, "invalid media mode")
+	return "", false
+}
+
+func (handler *Handler) mediaToken(roomID uuid.UUID, identity, name string, canShareScreen bool, mode string) (string, error) {
+	canPublish, canSubscribe, canPublishData := mode != mediaModeWatch, true, false
+	publishSources := mediaPublishSources(mode, canShareScreen)
 	token := auth.NewAccessToken(handler.liveKitKey, handler.liveKitSecret)
-	token.SetIdentity(identity).SetName(name).SetValidFor(15 * time.Minute).SetVideoGrant(&auth.VideoGrant{RoomJoin: true, Room: handler.mediaRoomName(roomID), CanPublish: &canPublish, CanSubscribe: &canSubscribe, CanPublishData: &canPublishData, CanPublishSources: publishSources})
+	token.SetIdentity(identity).SetName(name).SetMetadata("sharedrive-rooms:" + mode).SetValidFor(15 * time.Minute).SetVideoGrant(&auth.VideoGrant{RoomJoin: true, Room: handler.mediaRoomName(roomID), CanPublish: &canPublish, CanSubscribe: &canSubscribe, CanPublishData: &canPublishData, CanPublishSources: publishSources})
 	return token.ToJWT()
+}
+
+func mediaPublishSources(mode string, canShareScreen bool) []string {
+	if mode == mediaModeScreen {
+		return []string{"screen_share"}
+	}
+	if mode == mediaModeVoice {
+		sources := []string{"microphone"}
+		if canShareScreen {
+			sources = append(sources, "screen_share")
+		}
+		return sources
+	}
+	return nil
 }
 
 func (handler *Handler) mediaRoomName(roomID uuid.UUID) string {
@@ -432,11 +470,30 @@ func (handler *Handler) setVoiceStatus(ctx context.Context, rooms []Room) {
 	}
 	active := make(map[string]bool, len(response.Rooms))
 	for _, mediaRoom := range response.Rooms {
-		active[mediaRoom.Name] = mediaRoom.NumParticipants > 0
+		if mediaRoom.NumParticipants == 0 {
+			continue
+		}
+		participants, participantErr := client.ListParticipants(statusContext, &livekit.ListParticipantsRequest{Room: mediaRoom.Name})
+		if participantErr != nil {
+			log.Debug().Err(participantErr).Str("room", mediaRoom.Name).Msg("rooms: LiveKit participant status unavailable")
+			continue
+		}
+		active[mediaRoom.Name] = hasPublishedRoomMedia(participants.Participants)
 	}
 	for index := range rooms {
 		rooms[index].VoiceActive = active[handler.mediaRoomName(rooms[index].ID)]
 	}
+}
+
+func hasPublishedRoomMedia(participants []*livekit.ParticipantInfo) bool {
+	for _, participant := range participants {
+		for _, track := range participant.Tracks {
+			if track.Source == livekit.TrackSource_MICROPHONE || track.Source == livekit.TrackSource_SCREEN_SHARE {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (handler *Handler) Create(w http.ResponseWriter, request *http.Request) {
@@ -472,6 +529,9 @@ func (handler *Handler) Get(w http.ResponseWriter, request *http.Request) {
 		handler.respondError(w, err)
 		return
 	}
+	rooms := []Room{room}
+	handler.setVoiceStatus(request.Context(), rooms)
+	room = rooms[0]
 	httputil.Respond(w, http.StatusOK, room)
 }
 

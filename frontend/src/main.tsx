@@ -31,7 +31,7 @@ function pwaIdentity(pathname: string): PwaIdentity {
     return { title: 'Sharedrive Noter', shortTitle: 'Noter', description: 'Noter og huskelister i Sharedrive', manifest: '/notes.webmanifest', appleIcon: '/notes-icon-192.png' }
   }
   if (pathname === '/rooms' || pathname.startsWith('/rooms/')) {
-    return { title: 'Sharedrive Rooms', shortTitle: 'Rooms', description: 'Samtaler og samarbejdsrum i Sharedrive', manifest: '/rooms.webmanifest', appleIcon: '/icon-192.png' }
+    return { title: 'Sharedrive Rooms', shortTitle: 'Rooms', description: 'Samtaler og samarbejdsrum i Sharedrive', manifest: '/rooms.webmanifest', appleIcon: '/rooms-icon-192.png' }
   }
   return sharedriveIdentity
 }

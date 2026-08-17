@@ -8,6 +8,7 @@ import { RoomMembersPanel } from '@/components/rooms/RoomMembersPanel'
 import { RoomChatPanel } from '@/components/rooms/RoomChatPanel'
 import { RoomInvitesPanel } from '@/components/rooms/RoomInvitesPanel'
 import { RoomVoicePanel } from '@/components/rooms/RoomVoicePanel'
+import { RoomsInstallButton } from '@/components/rooms/RoomsInstallButton'
 
 export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const { t } = useI18n()
@@ -16,6 +17,8 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const roomQuery = useQuery({
     queryKey: ['rooms', roomID],
     queryFn: ({ signal }) => getRoom(roomID, signal),
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
   })
   const settingsQuery = useQuery({
     queryKey: ['system', 'settings'],
@@ -60,6 +63,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <RoomsInstallButton />
             <button type="button" className="flex items-center gap-1.5 rounded-md border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100 dark:border-[#3a3f58] dark:hover:bg-[#2d3148]" onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>
               <Copy size={16} /> {t('rooms.copyLink' as never)}
             </button>
@@ -87,13 +91,16 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
         </div>
       </header>
 
-      {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} />}
-      <RoomChatPanel room={room} />
-
-
-      <RoomMembersPanel room={room} />
-
-      <RoomInvitesPanel room={room} />
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="min-w-0">
+          {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} />}
+          <RoomChatPanel room={room} />
+        </div>
+        <aside className="space-y-6 lg:sticky lg:top-5 lg:self-start" aria-label={t('rooms.members' as never)}>
+          <RoomMembersPanel room={room} />
+          <RoomInvitesPanel room={room} />
+        </aside>
+      </div>
     </section>
   )
 }

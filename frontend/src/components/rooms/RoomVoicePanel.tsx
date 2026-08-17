@@ -56,7 +56,10 @@ export function RoomVoicePanel({ roomID, guest = false }: Readonly<{ roomID: str
       await room.connect(details.url, details.token)
       await room.localParticipant.setMicrophoneEnabled(true)
       setMuted(false); syncParticipants()
-    } catch (cause) { await leave(); setError(cause instanceof Error ? cause.message : t('rooms.voiceConnectFailed')) }
+    } catch {
+      await leave()
+      setError(t('rooms.voiceConnectFailed'))
+    }
   }
 
   const toggleMute = async () => {

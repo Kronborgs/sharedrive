@@ -1,0 +1,21 @@
+# Optional Rooms voice service. Start it together with Sharedrive using:
+# docker compose -f docker-compose.yml -f docker-compose.voice.yml --profile voice up -d
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: sharedrive-livekit
+    restart: unless-stopped
+    profiles: ["voice"]
+    command: --config /etc/livekit/livekit.yaml
+    volumes:
+      - ${LIVEKIT_CONFIG_PATH:-./livekit.yaml}:/etc/livekit/livekit.yaml:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "7880:7880/tcp"
+      - "7881:7881/tcp"
+      - "3478:3478/udp"
+      - "52000-52999:52000-52999/udp"
+    networks:
+      - sharedrive-net

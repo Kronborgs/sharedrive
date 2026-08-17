@@ -30,6 +30,7 @@ interface SystemSettings {
   onlyoffice_jwt_secret: string
   playlist_max_tracks: number
   rooms_enabled: boolean
+  rooms_voice_enabled: boolean
   rooms_chat_max_length: number
   rooms_message_retention_days: number
   rooms_backup_enabled: boolean
@@ -57,6 +58,7 @@ const settingsSchema = z.object({
   smtp_tls: z.boolean(),
   playlist_max_tracks: z.coerce.number().min(1).max(10000),
   rooms_enabled: z.boolean(),
+  rooms_voice_enabled: z.boolean(),
   rooms_chat_max_length: z.coerce.number().int().min(1).max(10000),
   rooms_message_retention_days: z.coerce.number().int().min(0).max(3650),
   rooms_backup_enabled: z.boolean(),
@@ -147,7 +149,7 @@ function SettingsPage() {
   const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(settingsSchema),
     values: data
-      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '', playlist_max_tracks: data.playlist_max_tracks ?? 200, rooms_enabled: data.rooms_enabled ?? false, rooms_chat_max_length: data.rooms_chat_max_length ?? 4000, rooms_message_retention_days: data.rooms_message_retention_days ?? 0, rooms_backup_enabled: data.rooms_backup_enabled ?? true, rooms_max_data_bytes: MB(data.rooms_max_data_bytes ?? 500 * 1024 * 1024), rooms_guest_uploads_enabled: data.rooms_guest_uploads_enabled ?? false, rooms_guest_upload_max_file_bytes: MB(data.rooms_guest_upload_max_file_bytes ?? 25 * 1024 * 1024), rooms_guest_upload_max_files_session: data.rooms_guest_upload_max_files_session ?? 10, rooms_guest_upload_max_files_room_day: data.rooms_guest_upload_max_files_room_day ?? 100 }
+      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '', playlist_max_tracks: data.playlist_max_tracks ?? 200, rooms_enabled: data.rooms_enabled ?? false, rooms_voice_enabled: data.rooms_voice_enabled ?? false, rooms_chat_max_length: data.rooms_chat_max_length ?? 4000, rooms_message_retention_days: data.rooms_message_retention_days ?? 0, rooms_backup_enabled: data.rooms_backup_enabled ?? true, rooms_max_data_bytes: MB(data.rooms_max_data_bytes ?? 500 * 1024 * 1024), rooms_guest_uploads_enabled: data.rooms_guest_uploads_enabled ?? false, rooms_guest_upload_max_file_bytes: MB(data.rooms_guest_upload_max_file_bytes ?? 25 * 1024 * 1024), rooms_guest_upload_max_files_session: data.rooms_guest_upload_max_files_session ?? 10, rooms_guest_upload_max_files_room_day: data.rooms_guest_upload_max_files_room_day ?? 100 }
       : undefined,
   })
 
@@ -458,6 +460,13 @@ function SettingsPage() {
               </div>
             )}
             <Toggle label={t('settings.roomsEnabled')} description={t('settings.roomsEnabledDesc')} name="rooms_enabled" register={register} />
+            <Toggle label={t('settings.roomsVoiceEnabled')} description={t('settings.roomsVoiceEnabledDesc')} name="rooms_voice_enabled" register={register} />
+            {watch('rooms_voice_enabled') && (
+              <div className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-950 dark:border-brand-900/60 dark:bg-brand-950/30 dark:text-brand-100">
+                <p>{t('settings.roomsVoiceSetup')}</p>
+                <a className="mt-1 inline-block font-medium text-brand-700 underline hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200" href="https://github.com/Kronborgs/sharedrive#optional-rooms-voice-livekit" target="_blank" rel="noreferrer">{t('settings.roomsVoiceGuide')}</a>
+              </div>
+            )}
             <Field label={t('settings.roomsChatLength')} error={errors.rooms_chat_max_length?.message}>
               <input type="number" step="1" min="1" max="10000" {...register('rooms_chat_max_length')} className={inputClass} />
               <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">{t('settings.roomsChatLengthDesc')}</p>
@@ -556,4 +565,3 @@ function Toggle({
     </label>
   )
 }
-

@@ -15,6 +15,15 @@ export interface Room {
   unread_count: number
 }
 
+export interface PublicRoomSettings {
+  rooms_enabled?: boolean
+  rooms_voice_enabled?: boolean
+}
+
+export function getPublicRoomSettings(signal?: AbortSignal): Promise<PublicRoomSettings> {
+  return api.get<PublicRoomSettings>('/api/v1/system/settings', signal)
+}
+
 export function totalRoomUnread(rooms: Room[]): number {
   return rooms.reduce((total, room) => total + Math.max(0, room.unread_count ?? 0), 0)
 }

@@ -10,6 +10,7 @@ import {
   addGuestRoomReaction,
   createGuestRoomMessage,
   getGuestRoom,
+  getPublicRoomSettings,
   listGuestRoomMessages,
   logoutGuestRoom,
   removeGuestRoomReaction,
@@ -43,6 +44,7 @@ export function GuestRoomPage({ roomID }: Readonly<{ roomID: string }>) {
   const [body, setBody] = useState('')
   const queryKey = ['guest-room', roomID, 'messages']
   const room = useQuery({ queryKey: ['guest-room', roomID], queryFn: ({ signal }) => getGuestRoom(roomID, signal), retry: false })
+  const settings = useQuery({ queryKey: ['system', 'settings'], queryFn: ({ signal }) => getPublicRoomSettings(signal), staleTime: 60_000 })
   const messages = useQuery({ queryKey, queryFn: ({ signal }) => listGuestRoomMessages(roomID, signal), enabled: room.isSuccess, refetchInterval: 1500 })
   const refreshMessages = () => queryClient.invalidateQueries({ queryKey }).catch(() => undefined)
   const send = useMutation({ mutationFn: () => createGuestRoomMessage(roomID, body), onSuccess: () => { setBody(''); refreshMessages() } })
@@ -66,7 +68,7 @@ export function GuestRoomPage({ roomID }: Readonly<{ roomID: string }>) {
         <button type="button" className="flex items-center gap-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-[#3a3f58]" onClick={() => logoutGuestRoom().finally(() => window.location.replace('/login'))}><LogOut size={15} /> {t('rooms.leave')}</button>
       </header>
       <section className="mt-6" aria-label={t('rooms.chatAria')}>
-        {room.data.can_voice && <RoomVoicePanel roomID={roomID} guest />}
+        {settings.data?.rooms_voice_enabled && room.data.can_voice && <RoomVoicePanel roomID={roomID} guest />}
         <h2 className="mb-3 text-lg font-semibold">{t('rooms.chat')}</h2>
         <div className="mb-3 max-h-[55vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
           {[...(messages.data?.messages ?? [])].reverse().map(message => <GuestMessageCard key={message.id} message={message} canReact={room.data.can_chat} userKey={guestUserKey} onReaction={(selected, emoji) => reaction.mutate({ message: selected, emoji })} />)}

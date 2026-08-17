@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Archive, ArrowLeft, Copy, DoorOpen, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
-import { archiveRoom, getRoom, updateRoom } from '@/lib/rooms'
+import { archiveRoom, getPublicRoomSettings, getRoom, updateRoom } from '@/lib/rooms'
 import { RoomMembersPanel } from '@/components/rooms/RoomMembersPanel'
 import { RoomChatPanel } from '@/components/rooms/RoomChatPanel'
 import { RoomInvitesPanel } from '@/components/rooms/RoomInvitesPanel'
@@ -16,6 +16,11 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const roomQuery = useQuery({
     queryKey: ['rooms', roomID],
     queryFn: ({ signal }) => getRoom(roomID, signal),
+  })
+  const settingsQuery = useQuery({
+    queryKey: ['system', 'settings'],
+    queryFn: ({ signal }) => getPublicRoomSettings(signal),
+    staleTime: 60_000,
   })
   const archiveMutation = useMutation({
     mutationFn: () => {
@@ -82,7 +87,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
         </div>
       </header>
 
-      <RoomVoicePanel roomID={room.id} />
+      {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} />}
       <RoomChatPanel room={room} />
 
 

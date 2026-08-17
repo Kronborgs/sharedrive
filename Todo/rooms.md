@@ -25,6 +25,17 @@ Eksisterende Sharedrive-funktionalitet maa ikke oedelægges, erstattes eller uno
 - Vaelg altid den mindst invasive integration.
 - Stop og dokumenter design/migration foer fundamentale aendringer af file IDs, blobs, ownership, authentication, permission semantics, Notes authorization, WebDAV, OnlyOffice URLs, backups, gamle migrations eller generelle security headers.
 
+## Ufravigelig regel: sikker opgradering af eksisterende installationer
+
+Sharedrive-testserveren er i aktiv brug og behandles som produktion. Nye Rooms-funktioner skal derfor altid kunne rulles ud som en in-place opgradering:
+
+- Ingen ny installation, sletning, nulstilling eller udskiftning af PostgreSQL-, Redis-, fil-, Notes- eller backup-data.
+- Eksisterende container-navne, mounts, netværk, miljøvariabler og database bevares bagudkompatibelt.
+- Nye afhængigheder, som LiveKit, leveres som valgfrie søster-services. De må aldrig forhindre eksisterende Files, Notes, chat eller login i at starte, hvis de ikke er konfigureret eller er nede.
+- Feature-aktivering sker først efter deploy og funktionel test; en tom eller manglende LiveKit-konfiguration skal give en forståelig voice-fejl, ikke ændre eller blokere Sharedrive.
+- Før enhver migration eller deployment med data-/infrastrukturændring tages og verificeres en eksisterende backup. Rollback skal kunne ske ved at gå tilbage til forrige Sharedrive-image uden at gendanne data.
+- Nye standardinstallationer må gerne bruge den samlede Compose-stack, men eksisterende Unraid-installationer migreres trinvist og uden at genskabe containere eller data.
+
 ## Produktvision og scope
 
 Sharedrive Rooms er et permanent, self-hosted samarbejdsworkspace omkring eksisterende Sharedrive-ressourcer:

@@ -86,6 +86,9 @@ type createMessageRequest struct {
 }
 
 func (handler *Handler) CreateMediaToken(w http.ResponseWriter, request *http.Request) {
+	if !handler.voiceEnabled(w, request) {
+		return
+	}
 	if handler.liveKitURL == "" || handler.liveKitKey == "" || handler.liveKitSecret == "" {
 		httputil.RespondError(w, http.StatusServiceUnavailable, "voice is not configured")
 		return
@@ -117,6 +120,9 @@ func (handler *Handler) CreateGuestMediaToken(w http.ResponseWriter, request *ht
 		httputil.RespondError(w, http.StatusForbidden, "voice is not allowed for this guest")
 		return
 	}
+	if !handler.voiceEnabled(w, request) {
+		return
+	}
 	if handler.liveKitURL == "" || handler.liveKitKey == "" || handler.liveKitSecret == "" {
 		httputil.RespondError(w, http.StatusServiceUnavailable, "voice is not configured")
 		return
@@ -127,6 +133,19 @@ func (handler *Handler) CreateGuestMediaToken(w http.ResponseWriter, request *ht
 		return
 	}
 	httputil.Respond(w, http.StatusOK, map[string]string{"url": handler.liveKitURL, "token": signed, "room": handler.mediaRoomName(access.RoomID)})
+}
+
+func (handler *Handler) voiceEnabled(w http.ResponseWriter, request *http.Request) bool {
+	enabled, err := handler.service.VoiceEnabled(request.Context())
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
+		return false
+	}
+	if !enabled {
+		httputil.RespondError(w, http.StatusNotFound, "voice is disabled")
+		return false
+	}
+	return true
 }
 
 func (handler *Handler) mediaToken(roomID uuid.UUID, identity, name string) (string, error) {

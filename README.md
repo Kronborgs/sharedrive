@@ -367,6 +367,46 @@ curl -O https://raw.githubusercontent.com/Kronborgs/sharedrive/master/docker-com
 docker compose up -d
 ```
 
+### Optional Rooms voice (LiveKit)
+
+Voice is **off by default**. Install LiveKit separately (for example with the
+Unraid Community Apps template), then enable it in **Admin → Settings → Rooms**
+only after the connection has been verified. Sharedrive keeps its own data,
+PostgreSQL, Redis and files unchanged; LiveKit is only the real-time voice
+service.
+
+1. Create two different values in the Sharedrive template:
+   `LIVEKIT_API_KEY` (the identifier) and `LIVEKIT_API_SECRET` (the secret).
+2. Set `LIVEKIT_URL=wss://livekit.yourdomain.com` in Sharedrive.
+3. In LiveKit's `config.yaml`, use the *same values* as an API-key map — the
+   Sharedrive API key on the left and the Sharedrive secret on the right:
+
+   ```yaml
+   port: 7880
+   rtc:
+     tcp_port: 7881
+     port_range_start: 52000
+     port_range_end: 52999
+     use_external_ip: true
+   redis:
+     address: your-redis-host:6379
+   keys:
+     "value-of-LIVEKIT_API_KEY": "value-of-LIVEKIT_API_SECRET"
+   ```
+
+4. Put `livekit.yourdomain.com` behind a WebSocket-capable HTTPS reverse proxy
+   to the **LiveKit container's own IP** on TCP 7880. Do not proxy it to the
+   Sharedrive container.
+5. Open TCP 7881 and UDP 3478 plus the configured UDP media range (above:
+   52000–52999) to the LiveKit host. Do not expose the Sharedrive API key or
+   secret in a browser, client-side file or email.
+6. Restart both Sharedrive and LiveKit after changing keys/configuration, then
+   enable **Tale i Rooms** in Admin → Settings → Rooms.
+
+LiveKit's `keys` map is deliberately asymmetric: the key is a public
+identifier used in signed token metadata; the secret is only used by Sharedrive
+and LiveKit to sign and validate those tokens.
+
 ### 4. First-run wizard
 
 Open `https://drive.yourdomain.com`. An empty database triggers an automatic redirect to `/setup`. The three-step wizard takes under two minutes:

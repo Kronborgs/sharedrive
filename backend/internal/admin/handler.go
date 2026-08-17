@@ -58,6 +58,7 @@ type settingsResponse struct {
 	OnlyOfficeJWTSecretSet    bool   `json:"onlyoffice_jwt_secret_set"` // true when a secret is stored
 	PlaylistMaxTracks         int    `json:"playlist_max_tracks"`
 	RoomsEnabled              bool   `json:"rooms_enabled"`
+	RoomsVoiceEnabled         bool   `json:"rooms_voice_enabled"`
 	RoomsChatMaxLength        int    `json:"rooms_chat_max_length"`
 	RoomsMessageRetentionDays int    `json:"rooms_message_retention_days"`
 	RoomsBackupEnabled        bool   `json:"rooms_backup_enabled"`
@@ -150,6 +151,7 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		OnlyOfficeJWTSecretSet:    kv["onlyoffice_jwt_secret"] != "",
 		PlaylistMaxTracks:         settingInt(kv, "playlist_max_tracks", 200, 1, 0),
 		RoomsEnabled:              kv["rooms_enabled"] == "true",
+		RoomsVoiceEnabled:         kv["rooms_voice_enabled"] == "true",
 		RoomsChatMaxLength:        settingInt(kv, "rooms_chat_max_length", 4000, 1, 10000),
 		RoomsMessageRetentionDays: settingInt(kv, "rooms_message_retention_days", 0, 0, 3650),
 		RoomsBackupEnabled:        kv["rooms_backup_enabled"] != "false",
@@ -170,7 +172,7 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	rows, err := h.db.Query(ctx,
-		`SELECT key, value FROM system_settings WHERE key IN ('direct_upload_url','onlyoffice_url','playlist_max_tracks','rooms_enabled')`)
+		`SELECT key, value FROM system_settings WHERE key IN ('direct_upload_url','onlyoffice_url','playlist_max_tracks','rooms_enabled','rooms_voice_enabled')`)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
@@ -190,10 +192,10 @@ func (h *Handler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
 			playlistMax = n
 		}
 	}
-	httputil.Respond(w, http.StatusOK, publicSettingsResponse(kv, playlistMax, kv["rooms_enabled"] == "true"))
+	httputil.Respond(w, http.StatusOK, publicSettingsResponse(kv, playlistMax, kv["rooms_enabled"] == "true", kv["rooms_voice_enabled"] == "true"))
 }
 
-func publicSettingsResponse(kv map[string]string, playlistMax int, roomsEnabled bool) map[string]any {
+func publicSettingsResponse(kv map[string]string, playlistMax int, roomsEnabled, roomsVoiceEnabled bool) map[string]any {
 	directUploadURL, directUploadsEnabled, uploadEndpoint := directUploadPublicSettings(kv["direct_upload_url"])
 	return map[string]any{
 		"direct_upload_url":      directUploadURL,
@@ -202,6 +204,7 @@ func publicSettingsResponse(kv map[string]string, playlistMax int, roomsEnabled 
 		"onlyoffice_url":         kv["onlyoffice_url"],
 		"playlist_max_tracks":    playlistMax,
 		"rooms_enabled":          roomsEnabled,
+		"rooms_voice_enabled":    roomsVoiceEnabled,
 	}
 }
 
@@ -230,6 +233,7 @@ type updateSettingsRequest struct {
 	OnlyOfficeJWTSecret       *string `json:"onlyoffice_jwt_secret"`
 	PlaylistMaxTracks         *int    `json:"playlist_max_tracks"`
 	RoomsEnabled              *bool   `json:"rooms_enabled"`
+	RoomsVoiceEnabled         *bool   `json:"rooms_voice_enabled"`
 	RoomsChatMaxLength        *int    `json:"rooms_chat_max_length"`
 	RoomsRetentionDays        *int    `json:"rooms_message_retention_days"`
 	RoomsBackupEnabled        *bool   `json:"rooms_backup_enabled"`
@@ -343,6 +347,7 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	upserter.setNonEmptyString("onlyoffice_jwt_secret", req.OnlyOfficeJWTSecret)
 	upserter.setPositiveInt("playlist_max_tracks", req.PlaylistMaxTracks)
 	upserter.setBool("rooms_enabled", req.RoomsEnabled)
+	upserter.setBool("rooms_voice_enabled", req.RoomsVoiceEnabled)
 	upserter.setBoundedInt("rooms_chat_max_length", req.RoomsChatMaxLength, 1, 10000)
 	upserter.setBoundedInt("rooms_message_retention_days", req.RoomsRetentionDays, 0, 3650)
 	upserter.setBool("rooms_backup_enabled", req.RoomsBackupEnabled)

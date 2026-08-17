@@ -141,17 +141,13 @@ func setBaseSecurityHeaders(headers http.Header, request *http.Request) {
 	headers.Set("X-Content-Type-Options", "nosniff")
 	headers.Set("X-Frame-Options", "DENY")
 	headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-	headers.Set("Permissions-Policy", permissionsPolicy(request.URL.Path))
+	// Sharedrive is a SPA/PWA: its document shell can be served from any route,
+	// including `/`. Rooms requests microphone access only after an explicit user
+	// action, while camera and screen capture remain prohibited everywhere.
+	headers.Set("Permissions-Policy", "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=()")
 	if request.TLS != nil || strings.EqualFold(request.Header.Get("X-Forwarded-Proto"), "https") {
 		headers.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
 	}
-}
-
-func permissionsPolicy(path string) string {
-	if strings.HasPrefix(path, "/rooms") {
-		return "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=()"
-	}
-	return "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=()"
 }
 
 // websocketOrigin returns the concrete, same-origin WSS endpoint used by the

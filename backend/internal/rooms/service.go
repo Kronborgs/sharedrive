@@ -50,8 +50,18 @@ func (service *Service) ChatEncryptionReady() bool { return service.cryptor != n
 // Enabled reports whether the administrator has enabled the Rooms feature.
 // The setting is stored in system_settings so it takes effect without a restart.
 func (service *Service) Enabled(ctx context.Context) (bool, error) {
+	return service.boolSetting(ctx, "rooms_enabled")
+}
+
+// VoiceEnabled reports whether an administrator has enabled the optional
+// LiveKit voice feature. A missing setting deliberately keeps voice disabled.
+func (service *Service) VoiceEnabled(ctx context.Context) (bool, error) {
+	return service.boolSetting(ctx, "rooms_voice_enabled")
+}
+
+func (service *Service) boolSetting(ctx context.Context, key string) (bool, error) {
 	var value string
-	err := service.db.QueryRow(ctx, `SELECT value FROM system_settings WHERE key = 'rooms_enabled'`).Scan(&value)
+	err := service.db.QueryRow(ctx, `SELECT value FROM system_settings WHERE key = $1`, key).Scan(&value)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}

@@ -1,0 +1,23 @@
+# Copy to livekit.yaml (or set LIVEKIT_CONFIG_PATH to an absolute path).
+# The key and secret must exactly match LIVEKIT_API_KEY and LIVEKIT_API_SECRET
+# configured on the Sharedrive application container.
+port: 7880
+log_level: info
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 52000
+  port_range_end: 52999
+  use_external_ip: true
+
+redis:
+  address: sharedrive-redis:6379
+
+keys:
+  replace_with_livekit_api_key: replace_with_livekit_api_secret
+
+turn:
+  enabled: true
+  udp_port: 3478
+  domain: livekit.yourdomain.com
+

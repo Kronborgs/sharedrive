@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>sharedrive-livekit</Name>
+  <Repository>livekit/livekit-server:latest</Repository>
+  <Registry>https://hub.docker.com/r/livekit/livekit-server</Registry>
+  <Network>sharedrive-net</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Kronborgs/sharedrive/issues</Support>
+  <Project>https://github.com/Kronborgs/sharedrive</Project>
+  <Overview>Optional self-hosted LiveKit media server for Sharedrive Rooms voice. Install only when Rooms voice is enabled. The API key and secret in its configuration must match the LIVEKIT_API_KEY and LIVEKIT_API_SECRET variables on Sharedrive.</Overview>
+  <Category>Cloud: Tools:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/Kronborgs/sharedrive/master/unraid/sharedrive-livekit.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Kronborgs/sharedrive/master/pics/logo.png</Icon>
+  <PostArgs>--config /config/livekit.yaml</PostArgs>
+  <CPUset/>
+  <Requires>
+    1. Docker network "sharedrive-net" must exist.
+    2. Create /mnt/user/appdata/sharedrive/livekit/livekit.yaml from the repository's livekit.yaml.example.
+    3. Configure the same API key and secret as the Sharedrive container, then set LIVEKIT_URL on Sharedrive to the public WSS URL.
+    4. Reverse proxy the LiveKit container's port 7880 with WebSocket support. Open TCP 7881, UDP 3478 and UDP 52000-52999 to this container.
+  </Requires>
+  <Config Name="LiveKit configuration" Target="/config" Default="/mnt/user/appdata/sharedrive/livekit" Mode="rw" Description="Host folder containing livekit.yaml. Copy livekit.yaml.example from the Sharedrive repository to this folder as livekit.yaml, then set the matching API key, secret and public domain." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/sharedrive/livekit</Config>
+  <Config Name="HTTP / WebSocket signal" Target="7880" Default="7880" Mode="tcp" Description="LiveKit HTTP and WebSocket signal endpoint. Reverse proxy this port with WebSocket support." Type="Port" Display="always" Required="true" Mask="false">7880</Config>
+  <Config Name="TCP ICE fallback" Target="7881" Default="7881" Mode="tcp" Description="WebRTC TCP fallback. Expose this port on the LiveKit container/network." Type="Port" Display="advanced" Required="true" Mask="false">7881</Config>
+  <Config Name="TURN / STUN UDP" Target="3478" Default="3478" Mode="udp" Description="TURN/STUN UDP port." Type="Port" Display="advanced" Required="true" Mask="false">3478</Config>
+  <Config Name="UDP media range" Target="52000-52999" Default="52000-52999" Mode="udp" Description="WebRTC UDP media ports. The range must match livekit.yaml and firewall rules." Type="Port" Display="advanced" Required="true" Mask="false">52000-52999</Config>
+</Container>

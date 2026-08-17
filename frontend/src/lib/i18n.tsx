@@ -82,6 +82,7 @@ const translations = {
   'rooms.voiceReconnecting': { da: 'Genforbinder…', en: 'Reconnecting…' },
   'rooms.voiceConnectFailed':{ da: 'Kunne ikke forbinde til tale.', en: 'Could not connect to voice.' },
   'rooms.voiceParticipants': { da: 'Deltagere: {names}', en: 'Participants: {names}' },
+  'rooms.voiceSpeaking':     { da: 'Taler nu: {names}', en: 'Speaking now: {names}' },
   'rooms.subtitle':          { da: 'Permanente arbejdsrum for dit team', en: 'Permanent workspaces for your team' },
   'rooms.create':            { da: 'Opret rum', en: 'Create Room' },
   'rooms.createDescription': { da: 'Opret et arbejdsrum og tilføj medlemmer.', en: 'Create a workspace and add members.' },

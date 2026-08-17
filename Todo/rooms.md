@@ -1,11 +1,11 @@
 # Implementer Sharedrive Rooms
 
-Status: Phase 0-4 er implementeret og brugertestet. Phase 5 voice er implementeret lokalt og klar til foerste brugertest efter GitLab-testdeploy med LiveKit-konfiguration.
+Status: Phase 0-5 er implementeret og brugertestet. Phase 5 voice er afsluttet med self-hosted LiveKit og adminstyret aktivering. Phase 6 er ikke startet.
 
 ## Aktuel fasestatus
 
 - **Phase 0-4:** Implementeret. Rooms omfatter permanente Rooms, medlemsroller, live chat, reaktioner, filer/Notes, invitationer, link-gaester, Rooms-administration, ulaeste beskeder samt baade integreret hoved-PWA-navigation og en selvstaendig Rooms-PWA.
-- **Phase 5:** Klar til foerste brugertest. Self-hosted LiveKit voice er tilfoejet med Room-bundne 15-minutters media-tokens, join/leave, mute/unmute, deltagere, reconnect-status og fejlhaandtering. Kamera, data-kanaler og skaermdeling er fortsat blokeret. Gæster kan kun deltage, naar invitationens `can_voice` er givet. Der mangler stadig funktionel test mod den deployede LiveKit-server.
+- **Phase 5:** Implementeret og brugertestet. Self-hosted LiveKit voice har Room-bundne 15-minutters media-tokens, join/leave, mute/unmute, deltagere, aktiv taler, reconnect-status og fejlhaandtering. Voice aktiveres eksplicit af admin i Rooms-indstillingerne. Kamera, data-kanaler og skaermdeling er fortsat blokeret. Gæster kan kun deltage, naar baade Rooms Voice og invitationens `can_voice` er aktiveret. Lyd er testet på mobil og PC-browser.
 - **Phase 6:** Ikke startet. Skaermdeling bygges oven paa den godkendte LiveKit-forbindelse fra Phase 5.
 - **Phase 7:** Ikke startet. Rooms backup/restore, samlet security/a11y-hardening og deployment-dokumentation hoerer hertil. Den eksisterende Rooms-backupindstilling er kun en forberedende indstilling og betyder ikke, at data allerede indgaar i backup/restore.
 - **Phase 8:** Ikke startet. Fuld regression og sammenligning med baseline afslutter projektet.

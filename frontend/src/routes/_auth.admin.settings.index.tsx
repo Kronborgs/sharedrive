@@ -462,9 +462,9 @@ function SettingsPage() {
             <Toggle label={t('settings.roomsEnabled')} description={t('settings.roomsEnabledDesc')} name="rooms_enabled" register={register} />
             <Toggle label={t('settings.roomsVoiceEnabled')} description={t('settings.roomsVoiceEnabledDesc')} name="rooms_voice_enabled" register={register} />
             {watch('rooms_voice_enabled') && (
-              <div className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-950 dark:border-brand-900/60 dark:bg-brand-950/30 dark:text-brand-100">
+              <div className="rounded-lg bg-zinc-100 px-3 py-2 text-xs text-muted dark:bg-[#0f1117]">
                 <p>{t('settings.roomsVoiceSetup')}</p>
-                <a className="mt-1 inline-block font-medium text-brand-700 underline hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200" href="https://github.com/Kronborgs/sharedrive#optional-rooms-voice-livekit" target="_blank" rel="noreferrer">{t('settings.roomsVoiceGuide')}</a>
+                <a className="mt-1 inline-block font-medium text-brand-700 underline hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-300" href="https://github.com/Kronborgs/sharedrive#optional-rooms-voice-livekit" target="_blank" rel="noreferrer">{t('settings.roomsVoiceGuide')}</a>
               </div>
             )}
             <Field label={t('settings.roomsChatLength')} error={errors.rooms_chat_max_length?.message}>

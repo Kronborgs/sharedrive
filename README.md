@@ -367,13 +367,28 @@ curl -O https://raw.githubusercontent.com/Kronborgs/sharedrive/master/docker-com
 docker compose up -d
 ```
 
-### Optional Rooms voice (LiveKit)
+### Optional Rooms voice and video (LiveKit)
 
 Voice is **off by default**. Install LiveKit separately (for example with the
 Unraid Community Apps template), then enable it in **Admin → Settings → Rooms**
 only after the connection has been verified. Sharedrive keeps its own data,
 PostgreSQL, Redis and files unchanged; LiveKit is only the real-time voice
-service.
+service. Camera access is requested only when a participant explicitly presses
+**Start camera** in an active Rooms meeting; it is never enabled on page load.
+
+Screenshots can be added without changing this document structure:
+
+```text
+docs/images/rooms/rooms-workspace.png
+docs/images/rooms/rooms-meeting.png
+docs/images/rooms/rooms-video.png
+```
+
+<!-- Add committed screenshots here when available:
+![Rooms workspace](docs/images/rooms/rooms-workspace.png)
+![Rooms meeting](docs/images/rooms/rooms-meeting.png)
+![Rooms video](docs/images/rooms/rooms-video.png)
+-->
 
 1. Create two different values in the Sharedrive template:
    `LIVEKIT_API_KEY` (the identifier) and `LIVEKIT_API_SECRET` (the secret).
@@ -402,6 +417,11 @@ service.
    secret in a browser, client-side file or email.
 6. Restart both Sharedrive and LiveKit after changing keys/configuration, then
    enable **Tale i Rooms** in Admin → Settings → Rooms.
+
+Voice, camera and screen sharing use the same LiveKit connection. Sharedrive
+issues short-lived server-side tokens and never sends `LIVEKIT_API_SECRET` to a
+browser. Keep LiveKit behind HTTPS/WSS and expose only its documented media
+ports to the internet.
 
 LiveKit's `keys` map is deliberately asymmetric: the key is a public
 identifier used in signed token metadata; the secret is only used by Sharedrive

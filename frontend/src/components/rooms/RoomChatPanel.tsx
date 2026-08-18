@@ -56,13 +56,13 @@ function MessageCard(props: Readonly<MessageCardProps>) {
   const { message, currentUserID, canModerate, groupedWithPrevious, onReply, onEdit, onDelete, onReaction } = props
   const deleted = Boolean(message.deleted_at)
   const isOwnMessage = message.sender_user_id === currentUserID
-  const alignmentClass = isOwnMessage ? 'items-end self-end' : 'items-start self-start'
+  const alignmentClass = isOwnMessage ? 'items-end self-end text-right' : 'items-start self-start text-left'
   const bubbleClass = isOwnMessage
     ? 'bg-brand-50 dark:bg-brand-900/30'
     : 'bg-surface'
 
   return <article className={`group flex max-w-[70%] flex-col ${alignmentClass} ${groupedWithPrevious ? 'mt-1' : 'mt-3'}`}>
-    {!groupedWithPrevious && <div className="mb-1 flex items-center gap-2 px-1">
+    {!groupedWithPrevious && <div className={`mb-1 flex items-center gap-2 px-1 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
       <p className="text-sm font-medium">{message.sender_name}</p>
       <div className="flex items-center gap-2"><time dateTime={message.created_at} className="text-[11px] text-muted">{new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>
     </div>}

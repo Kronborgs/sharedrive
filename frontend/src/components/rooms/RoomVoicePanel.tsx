@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { Maximize2, MonitorUp, Mic, MicOff, Phone, PhoneOff, RefreshCw, Users, X } from 'lucide-react'
+import { Camera, CameraOff, Maximize2, MonitorUp, Mic, MicOff, Phone, PhoneOff, RefreshCw, Users, X } from 'lucide-react'
 import { Room as LiveKitRoom, RoomEvent, Track, type RemoteTrack } from 'livekit-client'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
@@ -14,6 +14,7 @@ interface SharedScreen {
   track: RemoteTrack
   isSwitching: boolean
 }
+interface RemoteCamera { id: string; participantName: string; track: RemoteTrack }
 type SharedScreenSetter = Dispatch<SetStateAction<SharedScreen[]>>
 type Translator = ReturnType<typeof useI18n>['t']
 
@@ -24,11 +25,13 @@ interface MeetingControlsProps {
   canShareScreen: boolean
   screenShareSupported: boolean
   sharingScreen: boolean
+  cameraEnabled: boolean
   t: Translator
   onJoin: (mode: MediaMode) => Promise<void>
   onToggleMute: () => Promise<void>
   onToggleScreenShare: () => Promise<void>
   onChangeScreenShare: () => Promise<void>
+  onToggleCamera: () => Promise<void>
   onLeave: () => Promise<void>
 }
 
@@ -88,6 +91,10 @@ function SharedScreenTrackVideo({ track, captionsLabel, className }: Readonly<{ 
   return <video ref={videoRef} autoPlay playsInline disablePictureInPicture className={className}><track kind="captions" srcLang="da" label={captionsLabel} src="data:text/vtt;charset=utf-8,WEBVTT" /></video>
 }
 
+function RemoteCameraVideo({ camera, captionsLabel }: Readonly<{ camera: RemoteCamera; captionsLabel: string }>) {
+  return <article className="overflow-hidden rounded-lg border border-subtle bg-surface"><SharedScreenTrackVideo track={camera.track} captionsLabel={captionsLabel} className="aspect-video w-full object-cover" /><p className="px-3 py-2 text-xs text-muted">{camera.participantName}</p></article>
+}
+
 function SharedScreenVideo({ sharedScreen, captionsLabel }: Readonly<{ sharedScreen: SharedScreen; captionsLabel: string }>) {
   const { t } = useI18n()
   const [popupOpen, setPopupOpen] = useState(false)
@@ -108,7 +115,7 @@ function MeetingControls(props: Readonly<MeetingControlsProps>) {
   if (!isConnected) {
     return <div className="flex flex-wrap gap-2"><button type="button" onClick={() => props.onJoin(joinMode).catch(() => undefined)} disabled={props.status === 'joining'} className="notes-primary-button"><Phone size={16} /> {actionLabel}</button>{props.canShareScreen && props.screenShareSupported && <button type="button" onClick={() => props.onToggleScreenShare().catch(() => undefined)} disabled={props.status === 'joining'} className="notes-secondary-button"><MonitorUp size={16} />{props.t('rooms.screenShareStart')}</button>}</div>
   }
-  return <div className="flex flex-wrap gap-2"><button type="button" onClick={() => props.onToggleMute().catch(() => undefined)} className="notes-secondary-button">{props.muted ? <MicOff size={16} /> : <Mic size={16} />}{props.muted ? props.t('rooms.voiceUnmute') : props.t('rooms.voiceMute')}</button>{props.canShareScreen && props.screenShareSupported && <>{props.sharingScreen && <button type="button" onClick={() => props.onChangeScreenShare().catch(() => undefined)} className="notes-secondary-button"><RefreshCw size={16} />{props.t('rooms.screenShareChange')}</button>}<button type="button" onClick={() => props.onToggleScreenShare().catch(() => undefined)} className="notes-secondary-button"><MonitorUp size={16} />{props.sharingScreen ? props.t('rooms.screenShareStop') : props.t('rooms.screenShareStart')}</button></>}<button type="button" onClick={() => props.onLeave().catch(() => undefined)} className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-600 dark:border-red-900"><PhoneOff size={16} /> {props.t('rooms.voiceLeave')}</button></div>
+  return <div className="flex flex-wrap gap-2"><button type="button" onClick={() => props.onToggleMute().catch(() => undefined)} className="notes-secondary-button">{props.muted ? <MicOff size={16} /> : <Mic size={16} />}{props.muted ? props.t('rooms.voiceUnmute') : props.t('rooms.voiceMute')}</button><button type="button" onClick={() => props.onToggleCamera().catch(() => undefined)} className="notes-secondary-button">{props.cameraEnabled ? <CameraOff size={16} /> : <Camera size={16} />}{props.cameraEnabled ? props.t('rooms.cameraStop') : props.t('rooms.cameraStart')}</button>{props.canShareScreen && props.screenShareSupported && <>{props.sharingScreen && <button type="button" onClick={() => props.onChangeScreenShare().catch(() => undefined)} className="notes-secondary-button"><RefreshCw size={16} />{props.t('rooms.screenShareChange')}</button>}<button type="button" onClick={() => props.onToggleScreenShare().catch(() => undefined)} className="notes-secondary-button"><MonitorUp size={16} />{props.sharingScreen ? props.t('rooms.screenShareStop') : props.t('rooms.screenShareStart')}</button></>}<button type="button" onClick={() => props.onLeave().catch(() => undefined)} className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-600 dark:border-red-900"><PhoneOff size={16} /> {props.t('rooms.voiceLeave')}</button></div>
 }
 
 export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, meetingActive = false, compact = false }: Readonly<{ roomID: string; guest?: boolean; canShareScreen?: boolean; meetingActive?: boolean; compact?: boolean }>) {
@@ -122,8 +129,10 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
   const [participants, setParticipants] = useState<string[]>([])
   const [activeSpeakers, setActiveSpeakers] = useState<string[]>([])
   const [sharedScreens, setSharedScreens] = useState<SharedScreen[]>([])
+  const [remoteCameras, setRemoteCameras] = useState<RemoteCamera[]>([])
   const [sharingScreen, setSharingScreen] = useState(false)
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false)
+  const [cameraEnabled, setCameraEnabled] = useState(false)
   const [error, setError] = useState('')
 
   const syncParticipants = () => {
@@ -139,12 +148,13 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
     audioElements.current.forEach(element => element.remove())
     audioElements.current = []
     changingScreenRef.current = false
-    setParticipants([]); setActiveSpeakers([]); setSharedScreens([]); setSharingScreen(false); setMicrophoneEnabled(false); setMuted(false); setStatus('idle')
+    setParticipants([]); setActiveSpeakers([]); setSharedScreens([]); setRemoteCameras([]); setSharingScreen(false); setMicrophoneEnabled(false); setCameraEnabled(false); setMuted(false); setStatus('idle')
   }
 
   const addSharedScreen = (track: RemoteTrack, participantID: string, participantName: string) => {
     setSharedScreens(screens => [...screens.filter(screen => screen.id !== participantID), { id: participantID, participantName, track, isSwitching: false }])
   }
+  const addRemoteCamera = (track: RemoteTrack, participantID: string, participantName: string) => setRemoteCameras(cameras => [...cameras.filter(camera => camera.id !== participantID), { id: participantID, participantName, track }])
 
   const syncSharedScreens = (room: LiveKitRoom) => {
     room.remoteParticipants.forEach(participant => {
@@ -178,6 +188,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
         if (track.kind === Track.Kind.Video && publication.source === Track.Source.ScreenShare) {
           addSharedScreen(track as RemoteTrack, participant.identity, participant.name || participant.identity)
         }
+        if (track.kind === Track.Kind.Video && publication.source === Track.Source.Camera) addRemoteCamera(track as RemoteTrack, participant.identity, participant.name || participant.identity)
       })
       room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
         if (track.kind === Track.Kind.Audio) track.detach().forEach(element => element.remove())
@@ -185,6 +196,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
         if (publication.source === Track.Source.ScreenShare) {
           removeSharedScreenAfterTrackChange(setSharedScreens, participant.identity, track as RemoteTrack)
         }
+        if (publication.source === Track.Source.Camera) setRemoteCameras(cameras => cameras.filter(camera => camera.id !== participant.identity || camera.track !== track))
       })
       room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
         const signal = screenShareSignal(payload, topic)
@@ -215,6 +227,15 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
     }
     await room.localParticipant.setMicrophoneEnabled(muted)
     setMuted(value => !value); setMicrophoneEnabled(muted)
+  }
+  const toggleCamera = async () => {
+    const room = roomRef.current
+    if (!room) return
+    setError('')
+    try {
+      await room.localParticipant.setCameraEnabled(!cameraEnabled)
+      setCameraEnabled(value => !value)
+    } catch { setError(t('rooms.cameraFailed')) }
   }
 
   const toggleScreenShare = async () => {
@@ -262,11 +283,12 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
   const sectionClass = compact ? 'min-w-0' : 'mt-6 rounded-xl border border-subtle p-4'
   const titleClass = compact ? 'text-sm' : 'text-lg'
   return <section className={sectionClass} aria-label={t('rooms.meeting')}>
-    <div className="flex flex-wrap items-center justify-between gap-3"><div>{!compact && <h2 className={`flex items-center gap-2 font-semibold ${titleClass}`}><Mic size={18} /> {t('rooms.meeting')}</h2>}<p className={compact ? 'flex items-center gap-1 text-sm text-muted' : 'mt-1 text-sm text-muted'}>{compact && <Mic size={15} />}{description}</p>{meetingActive && status === 'idle' && <p className="mt-1 text-sm font-medium text-emerald-700 dark:text-emerald-400">{t('rooms.meetingInProgress')}</p>}</div><MeetingControls status={status} meetingActive={meetingActive} muted={muted} canShareScreen={canShareScreen} screenShareSupported={screenShareSupported} sharingScreen={sharingScreen} t={t} onJoin={join} onToggleMute={toggleMute} onToggleScreenShare={toggleScreenShare} onChangeScreenShare={changeScreenShare} onLeave={leave} /></div>
+    <div className={compact ? 'flex flex-nowrap items-center gap-3' : 'flex flex-wrap items-center justify-between gap-3'}><div className={compact ? 'shrink-0' : undefined}>{!compact && <h2 className={`flex items-center gap-2 font-semibold ${titleClass}`}><Mic size={18} /> {t('rooms.meeting')}</h2>}<p className={compact ? 'flex items-center gap-1 text-sm text-muted' : 'mt-1 text-sm text-muted'}>{compact && <Mic size={15} />}{description}</p>{meetingActive && status === 'idle' && <p className="mt-1 text-sm font-medium text-emerald-700 dark:text-emerald-400">{t('rooms.meetingInProgress')}</p>}</div><MeetingControls status={status} meetingActive={meetingActive} muted={muted} cameraEnabled={cameraEnabled} canShareScreen={canShareScreen} screenShareSupported={screenShareSupported} sharingScreen={sharingScreen} t={t} onJoin={join} onToggleMute={toggleMute} onToggleCamera={toggleCamera} onToggleScreenShare={toggleScreenShare} onChangeScreenShare={changeScreenShare} onLeave={leave} /></div>
     {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
     {status === 'connected' && <p className="mt-3 flex items-center gap-2 text-sm text-muted"><Users size={16} /> {t('rooms.voiceParticipants', { names: participants.join(', ') })}</p>}
     {status === 'connected' && activeSpeakers.length > 0 && <p className="mt-1 text-sm text-muted">{t('rooms.voiceSpeaking', { names: activeSpeakers.join(', ') })}</p>}
     {status === 'connected' && canShareScreen && !screenShareSupported && <p className="mt-3 text-sm text-muted">{t('rooms.screenShareUnsupported')}</p>}
     {sharedScreens.length > 0 && <section className="mt-4" aria-label={t('rooms.screenShares')}><h3 className="mb-2 text-sm font-semibold">{t('rooms.screenShares')}</h3><div className="grid gap-3 lg:grid-cols-2">{sharedScreens.map(sharedScreen => <SharedScreenVideo key={sharedScreen.id} sharedScreen={sharedScreen} captionsLabel={t('rooms.screenCaptions')} />)}</div></section>}
+    {remoteCameras.length > 0 && <section className="mt-4" aria-label={t('rooms.cameraStreams')}><h3 className="mb-2 text-sm font-semibold">{t('rooms.cameraStreams')}</h3><div className="grid gap-3 sm:grid-cols-2">{remoteCameras.map(camera => <RemoteCameraVideo key={camera.id} camera={camera} captionsLabel={t('rooms.cameraCaptions')} />)}</div></section>}
   </section>
 }

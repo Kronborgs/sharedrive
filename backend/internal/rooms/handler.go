@@ -190,7 +190,7 @@ func mediaPublishSources(mode string, canShareScreen bool) []string {
 		return []string{"screen_share"}
 	}
 	if mode == mediaModeVoice {
-		sources := []string{"microphone"}
+		sources := []string{"microphone", "camera"}
 		if canShareScreen {
 			sources = append(sources, "screen_share")
 		}

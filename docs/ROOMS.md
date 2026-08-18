@@ -16,8 +16,10 @@ system.
   installation; a replacement key cannot decrypt existing chat history.
 - HTTPS/WSS protects browser traffic. The application CSP permits only the
   configured LiveKit origin and the same-origin Rooms WebSocket endpoint.
-- Camera remains disabled by Permissions-Policy. Microphone and screen capture
-  are requested only after an explicit Rooms action.
+- Camera, microphone and screen capture are requested only after an explicit
+  Rooms meeting action. Camera remains off until the participant chooses
+  **Start camera**; it is not requested while opening a Room or joining as a
+  listener.
 - Guest links are time-limited and can be revoked. Raw invitation and guest
   session tokens are never logged or written to a backup.
 
@@ -44,9 +46,9 @@ restore. A backup that does not include Rooms is refused when restoring into an
 installation that already contains Rooms. Take and verify a current backup
 before upgrades or a restore operation.
 
-## Optional LiveKit voice and screen sharing
+## Optional LiveKit voice, video and screen sharing
 
-Voice and screen sharing are optional. Files, Notes, chat and login work when
+Voice, video and screen sharing are optional. Files, Notes, chat and login work when
 LiveKit is absent, disabled or temporarily unavailable.
 
 1. Create distinct `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` values. Set both
@@ -61,6 +63,29 @@ LiveKit is absent, disabled or temporarily unavailable.
    Sharedrive API or the LiveKit secret to browsers.
 5. Restart the affected services after key/configuration changes, then enable
    **Voice in Rooms** in Sharedrive.
+
+### Media permissions
+
+- **Microphone:** enabled only after joining voice.
+- **Camera:** enabled only after pressing **Start camera**. Stopping camera
+  unpublishes the camera track without leaving the meeting.
+- **Screen sharing:** enabled only after choosing **Share screen** and is
+  separate from camera.
+- **Guests:** still require their existing voice permission; screen sharing
+  additionally requires the invitation's screen-share permission.
+
+### Screenshot placeholders
+
+Store committed documentation screenshots under `docs/images/rooms/`:
+
+```text
+rooms-workspace.png
+rooms-meeting.png
+rooms-video.png
+```
+
+Reference them in release notes or this document after the files exist. The
+placeholders intentionally do not reference missing image files.
 
 For current port, TURN/TLS and NAT guidance, consult the official
 [LiveKit ports and firewall documentation](https://docs.livekit.io/transport/self-hosting/ports-firewall/)

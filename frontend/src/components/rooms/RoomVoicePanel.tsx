@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { Maximize2, MonitorUp, Mic, MicOff, Phone, PhoneOff, RefreshCw, Users, X } from 'lucide-react'
 import { Room as LiveKitRoom, RoomEvent, Track, type RemoteTrack } from 'livekit-client'
 import { api } from '@/lib/api'
@@ -13,6 +13,7 @@ interface SharedScreen {
   participantName: string
   track: RemoteTrack
 }
+type SharedScreenSetter = Dispatch<SetStateAction<SharedScreen[]>>
 type Translator = ReturnType<typeof useI18n>['t']
 
 interface MeetingControlsProps {
@@ -41,6 +42,12 @@ function voiceDescriptionKey(status: string): 'rooms.voiceReconnecting' | 'rooms
   if (status === 'reconnecting') return 'rooms.voiceReconnecting'
   if (status === 'connected') return 'rooms.voiceConnected'
   return 'rooms.voiceDescription'
+}
+
+function removeSharedScreenAfterTrackChange(setSharedScreens: SharedScreenSetter, participantID: string, track: RemoteTrack) {
+  window.setTimeout(() => {
+    setSharedScreens(screens => screens.filter(screen => screen.id !== participantID || screen.track !== track))
+  }, 400)
 }
 
 function SharedScreenTrackVideo({ track, captionsLabel, className }: Readonly<{ track: RemoteTrack; captionsLabel: string; className: string }>) {
@@ -145,7 +152,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
       room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
         track.detach().forEach(element => element.remove())
         if (publication.source === Track.Source.ScreenShare) {
-          window.setTimeout(() => setSharedScreens(screens => screens.filter(screen => screen.id !== participant.identity || screen.track !== track)), 400)
+          removeSharedScreenAfterTrackChange(setSharedScreens, participant.identity, track as RemoteTrack)
         }
       })
       room.on(RoomEvent.LocalTrackUnpublished, publication => { if (publication.source === Track.Source.ScreenShare) setSharingScreen(false) })

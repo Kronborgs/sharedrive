@@ -10,9 +10,10 @@ interface PwaInstallButtonProps {
   title: string
   className: string
   iconSize?: number
+  unavailableMessage?: string
 }
 
-export function PwaInstallButton({ label, title, className, iconSize = 17 }: Readonly<PwaInstallButtonProps>) {
+export function PwaInstallButton({ label, title, className, iconSize = 17, unavailableMessage }: Readonly<PwaInstallButtonProps>) {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(() => getInstallPrompt())
 
   useEffect(() => {
@@ -25,10 +26,14 @@ export function PwaInstallButton({ label, title, className, iconSize = 17 }: Rea
     }
   }, [])
 
-  if (!installPrompt || isStandalone()) return null
+  if (isStandalone()) return null
 
   return (
     <button type="button" className={className} title={title} onClick={() => {
+      if (!installPrompt) {
+        window.alert(unavailableMessage ?? title)
+        return
+      }
       installPrompt.prompt().then(() => {
         clearInstallPrompt()
         setInstallPrompt(null)

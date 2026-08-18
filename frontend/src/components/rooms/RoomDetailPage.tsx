@@ -56,8 +56,8 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
 
   const memberCount = membersQuery.data?.length
   const detailGridClass = contextVisible
-    ? 'lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[17rem_minmax(0,1fr)_19rem]'
-    : 'lg:grid-cols-[minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]'
+    ? 'lg:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)] xl:grid-cols-[minmax(12rem,16rem)_minmax(26rem,1fr)_minmax(14rem,18rem)]'
+    : 'lg:grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(12rem,16rem)_minmax(26rem,1fr)]'
 
   return (
     <section className="mx-auto flex w-full max-w-[112rem] flex-col animate-fade-in lg:h-full lg:overflow-hidden" aria-labelledby="room-heading">
@@ -81,7 +81,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
           <div className="flex min-w-0 flex-wrap items-center gap-2 pb-1">
             {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} compact />}
             <button type="button" className="notes-icon-button" onClick={() => setContextVisible(value => !value)} aria-label={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)} title={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)}>{contextVisible ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button>
-            <RoomsInstallButton compact />
+            <RoomsInstallButton />
             <button type="button" className="notes-secondary-button shrink-0" title={t('rooms.copyLink' as never)} onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>
               <Copy size={16} /> <span className="hidden sm:inline 2xl:inline">{t('rooms.copyLink' as never)}</span>
             </button>

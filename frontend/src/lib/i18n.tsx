@@ -78,6 +78,7 @@ const translations = {
   'rooms.hideContext':       { da: 'Skjul rumoplysninger', en: 'Hide Room context' },
   'rooms.showContext':       { da: 'Vis rumoplysninger', en: 'Show Room context' },
   'rooms.installApp':        { da: 'Installér Rooms', en: 'Install Rooms' },
+  'rooms.installAppHelp':    { da: 'Vælg “Installér app” eller “Føj til startskærm” i browserens menu for at installere Rooms.', en: 'Choose “Install app” or “Add to Home Screen” in your browser menu to install Rooms.' },
   'rooms.newMessagesBelow':  { da: 'Nye beskeder', en: 'New messages' },
   'rooms.voice':             { da: 'Tale', en: 'Voice' },
   'rooms.voiceDescription':  { da: 'Deltag i tale med mikrofon. Kamera aktiveres særskilt, når video er klar.', en: 'Join voice with your microphone. Camera is enabled separately when video is ready.' },

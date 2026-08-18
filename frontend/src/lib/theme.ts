@@ -1,13 +1,11 @@
-// Theme: dark | light. Persisted in localStorage, defaults to system preference.
-
 const STORAGE_KEY = 'privatedrive-theme'
 
-export type Theme = 'dark' | 'light'
+export type Theme = 'dark'
 
 export function getStoredTheme(): Theme | null {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored === 'dark' || stored === 'light') return stored
+    if (stored === 'dark') return stored
   } catch {
     // localStorage unavailable
   }
@@ -15,32 +13,21 @@ export function getStoredTheme(): Theme | null {
 }
 
 export function getSystemTheme(): Theme {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  return 'dark'
 }
 
-export function applyTheme(theme: Theme) {
+export function applyTheme(_theme: Theme = 'dark') {
   const root = document.documentElement
-  if (theme === 'dark') {
-    root.classList.add('dark')
-  } else {
-    root.classList.remove('dark')
-  }
+  root.classList.add('dark')
   try {
-    localStorage.setItem(STORAGE_KEY, theme)
+    localStorage.setItem(STORAGE_KEY, 'dark')
   } catch {
     // ignore
   }
 }
 
-export function toggleTheme(current: Theme): Theme {
-  const next: Theme = current === 'dark' ? 'light' : 'dark'
-  applyTheme(next)
-  return next
-}
-
 // Call once on app load before first render to prevent flash
 export function initTheme() {
-  const theme = getStoredTheme() ?? getSystemTheme()
-  applyTheme(theme)
-  return theme
+  applyTheme()
+  return 'dark' as const
 }

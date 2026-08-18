@@ -1,5 +1,4 @@
-import { Search, Moon, Sun, Menu, File, Folder, X } from 'lucide-react'
-import { toggleTheme } from '@/lib/theme'
+import { Search, Menu, File, Folder, X } from 'lucide-react'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { api } from '@/lib/api'
@@ -10,7 +9,6 @@ import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types
 import { ignorePromise } from '@/lib/ignore-promise'
 
 export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuToggle?: () => void }>) {
-  const [isDark, setIsDark] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<FileItem[]>([])
   const [open, setOpen] = useState(false)
@@ -20,16 +18,6 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const { t } = useI18n()
-
-  useEffect(() => {
-    setIsDark(document.documentElement.classList.contains('dark'))
-  }, [])
-
-  const handleTheme = () => {
-    const current: import('@/lib/theme').Theme = isDark ? 'dark' : 'light'
-    toggleTheme(current)
-    setIsDark(v => !v)
-  }
 
   // Debounced search
   useEffect(() => {
@@ -176,16 +164,6 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
         )}
       </div>
 
-      <div className="flex items-center gap-1 ml-auto">
-        {/* Theme toggle */}
-        <button type="button"
-          onClick={handleTheme}
-          aria-label="Toggle theme"
-          className="p-2 rounded-lg text-zinc-500 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
-        >
-          {isDark ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
-      </div>
     </header>
   )
 }

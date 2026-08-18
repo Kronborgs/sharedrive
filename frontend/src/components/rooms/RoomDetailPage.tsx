@@ -1,19 +1,22 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Archive, ArrowLeft, Copy, DoorOpen, Users } from 'lucide-react'
+import { Archive, ArrowLeft, Copy, DoorOpen, PanelRightClose, PanelRightOpen, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
-import { archiveRoom, getPublicRoomSettings, getRoom, updateRoom } from '@/lib/rooms'
+import { archiveRoom, getPublicRoomSettings, getRoom, listRoomMembers, updateRoom } from '@/lib/rooms'
 import { RoomMembersPanel } from '@/components/rooms/RoomMembersPanel'
 import { RoomChatPanel } from '@/components/rooms/RoomChatPanel'
 import { RoomInvitesPanel } from '@/components/rooms/RoomInvitesPanel'
 import { RoomVoicePanel } from '@/components/rooms/RoomVoicePanel'
 import { RoomsInstallButton } from '@/components/rooms/RoomsInstallButton'
+import { RoomConversationSidebar } from '@/components/rooms/RoomConversationSidebar'
 
 export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [contextVisible, setContextVisible] = useState(true)
   const roomQuery = useQuery({
     queryKey: ['rooms', roomID],
     queryFn: ({ signal }) => getRoom(roomID, signal),
@@ -24,6 +27,10 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
     queryKey: ['system', 'settings'],
     queryFn: ({ signal }) => getPublicRoomSettings(signal),
     staleTime: 60_000,
+  })
+  const membersQuery = useQuery({
+    queryKey: ['rooms', roomID, 'members'],
+    queryFn: ({ signal }) => listRoomMembers(roomID, signal),
   })
   const archiveMutation = useMutation({
     mutationFn: () => {
@@ -47,22 +54,32 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
     toast.success(t('rooms.linkCopied' as never))
   }
 
+  const memberCount = membersQuery.data?.length
+  const detailGridClass = contextVisible
+    ? 'lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[17rem_minmax(0,1fr)_19rem]'
+    : 'lg:grid-cols-[minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]'
+
   return (
     <section className="mx-auto flex w-full max-w-[112rem] flex-col animate-fade-in lg:h-full lg:overflow-hidden" aria-labelledby="room-heading">
-      <button type="button" className="mb-5 flex items-center gap-1.5 text-sm text-muted hover:text-zinc-950 dark:hover:text-white" onClick={() => navigate({ to: '/rooms' }).catch(() => undefined)}>
+      <button type="button" className="mb-3 flex items-center gap-1.5 text-sm text-muted hover:text-zinc-950 dark:hover:text-white" onClick={() => navigate({ to: '/rooms' }).catch(() => undefined)}>
         <ArrowLeft size={16} /> {t('rooms.back' as never)}
       </button>
 
-      <header className="shrink-0 border-b border-zinc-200 pb-6 dark:border-[#2d3148]">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className={`grid min-h-0 gap-4 lg:flex-1 lg:overflow-hidden ${detailGridClass}`}>
+        <RoomConversationSidebar activeRoomID={room.id} />
+        <main className="flex min-w-0 flex-col lg:min-h-0">
+          <header className="shrink-0 border-b border-subtle pb-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400"><DoorOpen size={21} /></span>
             <div className="min-w-0">
               <h1 id="room-heading" className="truncate text-2xl font-semibold text-zinc-950 dark:text-white">{room.name}</h1>
-              <p className="mt-1 flex items-center gap-1.5 text-sm text-muted"><Users size={15} /> {t(`rooms.role.${room.current_role}` as never)}</p>
+              <p className="mt-1 flex items-center gap-1.5 text-sm text-muted"><Users size={15} /> {memberCount === undefined ? t(`rooms.role.${room.current_role}` as never) : `${t('rooms.permanentWorkspace' as never)} · ${t('rooms.roomMembers' as never, { count: memberCount })}`}</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} compact />}
+            <button type="button" className="notes-icon-button" onClick={() => setContextVisible(value => !value)} aria-label={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)} title={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)}>{contextVisible ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button>
             <RoomsInstallButton />
             <button type="button" className="flex items-center gap-1.5 rounded-md border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100 dark:border-[#3a3f58] dark:hover:bg-[#2d3148]" onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>
               <Copy size={16} /> {t('rooms.copyLink' as never)}
@@ -88,18 +105,14 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
               </button>
             )}
           </div>
-        </div>
-      </header>
-
-      <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
-          {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} />}
+          </div>
+          </header>
           <RoomChatPanel room={room} fillAvailableHeight />
-        </div>
-        <aside className="space-y-6 pr-1 lg:min-h-0 lg:overflow-y-auto" aria-label={t('rooms.members' as never)}>
+        </main>
+        {contextVisible && <aside className="space-y-6 border-t border-subtle pt-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0" aria-label={t('rooms.members' as never)}>
           <RoomMembersPanel room={room} />
           <RoomInvitesPanel room={room} />
-        </aside>
+        </aside>}
       </div>
     </section>
   )

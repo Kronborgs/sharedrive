@@ -32,18 +32,19 @@ interface MessageCardProps {
   message: RoomMessage
   currentUserID?: string
   canModerate: boolean
+  groupedWithPrevious: boolean
   onReply: (message: RoomMessage) => void
   onEdit: (message: RoomMessage) => void
   onDelete: (message: RoomMessage) => void
   onReaction: (message: RoomMessage, emoji: string) => void
 }
 
-function MessageActions({ message, currentUserID, canModerate, onReply, onEdit, onDelete }: Readonly<Omit<MessageCardProps, 'onReaction'>>) {
+function MessageActions({ message, currentUserID, canModerate, onReply, onEdit, onDelete }: Readonly<Omit<MessageCardProps, 'onReaction' | 'groupedWithPrevious'>>) {
   const { t } = useI18n()
   const isAuthor = message.sender_user_id === currentUserID
   const canChange = !message.deleted_at
 
-  return <div className="flex items-center gap-1 text-muted">
+  return <div className="flex items-center gap-1 text-muted opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
     <button type="button" onClick={() => onReply(message)} aria-label={t('rooms.reply')}><Reply size={14} /></button>
     {canChange && isAuthor && <button type="button" onClick={() => onEdit(message)} aria-label={t('rooms.edit')}><Pencil size={14} /></button>}
     {canChange && (isAuthor || canModerate) && <button type="button" onClick={() => onDelete(message)} aria-label={t('rooms.delete')}><Trash2 size={14} /></button>}
@@ -52,21 +53,38 @@ function MessageActions({ message, currentUserID, canModerate, onReply, onEdit, 
 
 function MessageCard(props: Readonly<MessageCardProps>) {
   const { t, locale } = useI18n()
-  const { message, currentUserID, canModerate, onReply, onEdit, onDelete, onReaction } = props
+  const { message, currentUserID, canModerate, groupedWithPrevious, onReply, onEdit, onDelete, onReaction } = props
   const deleted = Boolean(message.deleted_at)
+  const isOwnMessage = message.sender_user_id === currentUserID
+  const alignmentClass = isOwnMessage ? 'items-end' : 'items-start'
+  const bubbleClass = isOwnMessage
+    ? 'bg-brand-50 dark:bg-brand-900/30'
+    : 'bg-surface'
 
-  return <article className="rounded-lg bg-zinc-50 px-3 py-2 dark:bg-[#1a1d27]">
-    <div className="flex items-center justify-between gap-2">
+  return <article className={`group flex max-w-[70%] flex-col ${alignmentClass} ${groupedWithPrevious ? 'mt-1' : 'mt-3'}`}>
+    {!groupedWithPrevious && <div className="mb-1 flex w-full items-center justify-between gap-2 px-1">
       <p className="text-sm font-medium">{message.sender_name}</p>
       <div className="flex items-center gap-2"><time dateTime={message.created_at} className="text-[11px] text-muted">{new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>
-    </div>
+    </div>}
+    <div className={`w-fit max-w-full rounded-2xl px-3 py-2 ${bubbleClass}`}>
+    {groupedWithPrevious && <div className="flex justify-end"><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>}
     {message.reply_to_message_id && <p className="text-xs text-muted">{t('rooms.replyContext')}</p>}
     <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{deleted ? t('rooms.messageDeleted') : message.body}</p>
     {!deleted && <div className="mt-2 flex flex-wrap items-center gap-1">
       {summarizeRoomReactions(message.reactions).map(summary => <button key={summary.emoji} type="button" onClick={() => onReaction(message, summary.emoji)} title={t('rooms.reactedBy', { names: summary.names.join(', ') })} aria-label={t('rooms.reactionAria', { emoji: summary.emoji, names: summary.names.join(', ') })} className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs dark:border-[#3a3f58]">{summary.emoji} {summary.count}</button>)}
       <EmojiPicker userKey={currentUserID ?? 'anonymous'} label={t('rooms.addReaction')} onSelect={emoji => onReaction(message, emoji)} />
     </div>}
+    </div>
   </article>
+}
+
+function isGroupedMessage(timeline: TimelineItem[], index: number) {
+  const item = timeline[index]
+  const previous = timeline[index - 1]
+  if (!item || item.kind !== 'message' || !previous || previous.kind !== 'message') return false
+  const sameSender = item.value.sender_user_id === previous.value.sender_user_id && item.value.sender_guest_session_id === previous.value.sender_guest_session_id
+  const millisecondsBetween = new Date(item.value.created_at).getTime() - new Date(previous.value.created_at).getTime()
+  return sameSender && millisecondsBetween >= 0 && millisecondsBetween <= 300_000
 }
 
 function ResourceName({ resource, onPreview }: Readonly<{ resource: RoomResource; onPreview: (id: string) => void }>) {
@@ -244,7 +262,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   }
 
   const panelClass = fillAvailableHeight ? 'mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : 'mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]'
-  const timelineClass = fillAvailableHeight ? 'max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148] lg:h-full lg:max-h-none' : 'max-h-[60vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]'
+  const timelineClass = fillAvailableHeight ? 'max-h-[60vh] overflow-y-auto rounded-xl border border-subtle p-3 lg:h-full lg:max-h-none' : 'max-h-[60vh] overflow-y-auto rounded-xl border border-subtle p-3'
 
   return <section className={panelClass} aria-label={t('rooms.chatAria')}>
     <h2 className="mb-3 text-lg font-semibold">{t('rooms.chat')}</h2>
@@ -253,8 +271,8 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
       {messages.isLoading && <p className="text-sm text-muted">{t('rooms.chatLoading')}</p>}
       {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}
       {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}
-      {timeline.map(item => item.kind === 'message'
-        ? <MessageCard key={`message-${item.value.id}`} message={item.value} currentUserID={user?.id} canModerate={canModerate} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} />
+      {timeline.map((item, index) => item.kind === 'message'
+        ? <MessageCard key={`message-${item.value.id}`} message={item.value} currentUserID={user?.id} canModerate={canModerate} groupedWithPrevious={isGroupedMessage(timeline, index)} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} />
         : <ResourceCard key={`resource-${item.value.id}`} resource={item.value} canModerate={canModerate} onPreview={setPreviewID} onRemove={removeResourceMutation.mutate} />)}
     </div>
     {hasNewMessagesBelow && <button type="button" onClick={() => scrollToLatest()} className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-brand-600 px-3 py-1.5 text-xs font-medium text-white shadow-lg"><ArrowDown size={14} /> {t('rooms.newMessagesBelow')}</button>}

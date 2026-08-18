@@ -69,6 +69,13 @@ const translations = {
 
   // ── Rooms ───────────────────────────────────────────────────────────────
   'rooms.title':             { da: 'Rum', en: 'Rooms' },
+  'rooms.conversations':     { da: 'Samtaler', en: 'Conversations' },
+  'rooms.searchConversations': { da: 'Søg i samtaler…', en: 'Search conversations…' },
+  'rooms.noMatchingRooms':   { da: 'Ingen rum matcher din søgning.', en: 'No Rooms match your search.' },
+  'rooms.permanentWorkspace': { da: 'Permanent arbejdsrum', en: 'Permanent workspace' },
+  'rooms.roomMembers':       { da: '{count} medlemmer', en: '{count} members' },
+  'rooms.hideContext':       { da: 'Skjul rumoplysninger', en: 'Hide Room context' },
+  'rooms.showContext':       { da: 'Vis rumoplysninger', en: 'Show Room context' },
   'rooms.installApp':        { da: 'Installér Rooms', en: 'Install Rooms' },
   'rooms.newMessagesBelow':  { da: 'Nye beskeder', en: 'New messages' },
   'rooms.voice':             { da: 'Tale', en: 'Voice' },

@@ -140,11 +140,11 @@ function MemberList({ members, room, onRemove }: Readonly<{ members: RoomMember[
   return <ul className="mt-4 divide-y divide-zinc-200 border-y border-zinc-200 dark:divide-[#2d3148] dark:border-[#2d3148]">
     {members.map(member => {
       const canRemove = member.role !== 'owner' && (room.current_role === 'owner' || member.role === 'member')
-      return <li key={member.user_id} className="flex min-h-16 items-center gap-3 py-3">
+      return <li key={member.user_id} className="group flex min-h-16 items-center gap-3 py-3">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-50 text-brand-700"><UserRound size={17} /></span>
         <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{member.display_name || member.email}</span><span className="block truncate text-xs text-muted">{member.email}</span></span>
         <span className="text-xs text-muted">{t(`rooms.role.${member.role}` as never)}</span>
-        {canManage && canRemove && <button type="button" className="notes-icon-button text-red-600" aria-label={t('rooms.removeMember' as never)} onClick={() => onRemove(member.user_id)}><Trash2 size={15} /></button>}
+        {canManage && canRemove && <button type="button" className="notes-icon-button text-red-600 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100" aria-label={t('rooms.removeMember' as never)} onClick={() => onRemove(member.user_id)}><Trash2 size={15} /></button>}
       </li>
     })}
   </ul>
@@ -164,9 +164,10 @@ export function RoomMembersPanel({ room }: Readonly<{ room: Room }>) {
   })
   const canManage = room.current_role === 'owner' || room.current_role === 'moderator'
 
-  return <section className="border-t border-zinc-200 pt-6 dark:border-[#2d3148]" aria-labelledby="room-members-heading">
+  const countLabel = membersQuery.data ? ` (${membersQuery.data.length})` : ''
+  return <section aria-labelledby="room-members-heading">
     <div className="flex items-center justify-between gap-3">
-      <h2 id="room-members-heading" className="text-base font-semibold text-zinc-950 dark:text-white">{t('rooms.members' as never)}</h2>
+      <h2 id="room-members-heading" className="text-base font-semibold text-zinc-950 dark:text-white">{t('rooms.members' as never)}{countLabel}</h2>
       {canManage && <AddPersonDialog room={room} />}
     </div>
     {membersQuery.isLoading && <p className="mt-4 text-sm text-muted">{t('rooms.loadingMembers' as never)}</p>}

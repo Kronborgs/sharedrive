@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Archive, ArrowLeft, Copy, DoorOpen, PanelRightClose, PanelRightOpen, Users } from 'lucide-react'
+import { Archive, ArrowLeft, Copy, DoorOpen, PanelRightClose, PanelRightOpen, Pencil, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { archiveRoom, getPublicRoomSettings, getRoom, listRoomMembers, updateRoom } from '@/lib/rooms'
@@ -80,12 +80,12 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
           <div className="flex flex-wrap gap-2">
             {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} compact />}
             <button type="button" className="notes-icon-button" onClick={() => setContextVisible(value => !value)} aria-label={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)} title={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)}>{contextVisible ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button>
-            <RoomsInstallButton />
-            <button type="button" className="flex items-center gap-1.5 rounded-md border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100 dark:border-[#3a3f58] dark:hover:bg-[#2d3148]" onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>
-              <Copy size={16} /> {t('rooms.copyLink' as never)}
+            <RoomsInstallButton compact />
+            <button type="button" className="notes-secondary-button" title={t('rooms.copyLink' as never)} onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>
+              <Copy size={16} /> <span className="hidden 2xl:inline">{t('rooms.copyLink' as never)}</span>
             </button>
             {(room.current_role === 'owner' || room.current_role === 'moderator') && (
-              <button type="button" className="flex items-center gap-1.5 rounded-md border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100 dark:border-[#3a3f58] dark:hover:bg-[#2d3148]" onClick={() => {
+              <button type="button" className="notes-secondary-button" title={t('action.rename')} onClick={() => {
                 const name = window.prompt(t('rooms.name' as never), room.name)
                 if (!name?.trim() || name.trim() === room.name) return
                 updateRoom(room.id, name.trim())
@@ -96,12 +96,12 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
                   })
                   .catch(() => toast.error(t('rooms.createFailed' as never)))
               }}>
-                {t('action.rename')}
+                <Pencil size={16} /> <span className="hidden 2xl:inline">{t('action.rename')}</span>
               </button>
             )}
             {room.current_role === 'owner' && (
-              <button type="button" className="flex items-center gap-1.5 rounded-md border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30" onClick={() => archiveMutation.mutate()} disabled={archiveMutation.isPending}>
-                <Archive size={16} /> {t('rooms.archive' as never)}
+              <button type="button" className="flex items-center gap-1.5 rounded-md border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30" title={t('rooms.archive' as never)} onClick={() => archiveMutation.mutate()} disabled={archiveMutation.isPending}>
+                <Archive size={16} /> <span className="hidden 2xl:inline">{t('rooms.archive' as never)}</span>
               </button>
             )}
           </div>
@@ -109,7 +109,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
           </header>
           <RoomChatPanel room={room} fillAvailableHeight />
         </main>
-        {contextVisible && <aside className="space-y-6 border-t border-subtle pt-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0" aria-label={t('rooms.members' as never)}>
+        {contextVisible && <aside className="space-y-6 border-t border-subtle pt-4 lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:pl-4 lg:pt-0" aria-label={t('rooms.members' as never)}>
           <RoomMembersPanel room={room} />
           <RoomInvitesPanel room={room} />
         </aside>}

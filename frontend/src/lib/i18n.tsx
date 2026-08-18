@@ -72,6 +72,7 @@ const translations = {
   'rooms.conversations':     { da: 'Samtaler', en: 'Conversations' },
   'rooms.searchConversations': { da: 'Søg i samtaler…', en: 'Search conversations…' },
   'rooms.noMatchingRooms':   { da: 'Ingen rum matcher din søgning.', en: 'No Rooms match your search.' },
+  'rooms.selectConversation': { da: 'Vælg et rum fra samtalerne, eller opret et nyt rum.', en: 'Choose a Room from conversations, or create a new Room.' },
   'rooms.permanentWorkspace': { da: 'Permanent arbejdsrum', en: 'Permanent workspace' },
   'rooms.roomMembers':       { da: '{count} medlemmer', en: '{count} members' },
   'rooms.hideContext':       { da: 'Skjul rumoplysninger', en: 'Hide Room context' },

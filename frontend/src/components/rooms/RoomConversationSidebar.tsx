@@ -1,15 +1,17 @@
+import * as Dialog from '@radix-ui/react-dialog'
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { DoorOpen, PhoneCall, Search } from 'lucide-react'
+import { DoorOpen, PhoneCall, Plus, Search, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
-import { listRooms, type Room } from '@/lib/rooms'
+import { createRoom, listRooms, type Room } from '@/lib/rooms'
 
 function roomTimestamp(updatedAt: string, locale: string) {
   return new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { hour: '2-digit', minute: '2-digit' }).format(new Date(updatedAt))
 }
 
-function RoomConversationRow({ room, activeRoomID, locale }: Readonly<{ room: Room; activeRoomID: string; locale: string }>) {
+function RoomConversationRow({ room, activeRoomID, locale }: Readonly<{ room: Room; activeRoomID?: string; locale: string }>) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const isActive = room.id === activeRoomID || room.slug === activeRoomID
@@ -29,19 +31,37 @@ function RoomConversationRow({ room, activeRoomID, locale }: Readonly<{ room: Ro
   </button>
 }
 
-export function RoomConversationSidebar({ activeRoomID }: Readonly<{ activeRoomID: string }>) {
+export function RoomConversationSidebar({ activeRoomID }: Readonly<{ activeRoomID?: string }>) {
   const { t, locale } = useI18n()
   const [query, setQuery] = useState('')
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [roomName, setRoomName] = useState('')
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const roomsQuery = useQuery({ queryKey: ['rooms'], queryFn: ({ signal }) => listRooms(signal), refetchInterval: 5_000, refetchIntervalInBackground: true })
   const normalizedQuery = query.trim().toLocaleLowerCase(locale === 'da' ? 'da-DK' : 'en-US')
   const rooms = useMemo(() => (roomsQuery.data ?? []).filter(room => room.name.toLocaleLowerCase(locale === 'da' ? 'da-DK' : 'en-US').includes(normalizedQuery)), [locale, normalizedQuery, roomsQuery.data])
+  const createMutation = useMutation({
+    mutationFn: () => createRoom(roomName),
+    onSuccess: room => {
+      setDialogOpen(false)
+      setRoomName('')
+      queryClient.invalidateQueries({ queryKey: ['rooms'] }).catch(() => undefined)
+      navigate({ to: '/rooms/$roomID', params: { roomID: room.slug } }).catch(() => undefined)
+    },
+    onError: () => toast.error(t('rooms.createFailed' as never)),
+  })
 
-  return <aside className="hidden min-h-0 border-r border-subtle pr-3 lg:flex lg:w-60 lg:shrink-0 lg:flex-col xl:w-72" aria-label={t('rooms.conversations' as never)}>
+  return <aside className="hidden min-h-0 pr-3 lg:flex lg:w-60 lg:shrink-0 lg:flex-col xl:w-72" aria-label={t('rooms.conversations' as never)}>
     <label className="relative mb-3 block"><span className="sr-only">{t('rooms.searchConversations' as never)}</span><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('rooms.searchConversations' as never)} className="notes-input w-full pl-9" /></label>
     <h2 className="mb-2 px-2 text-sm font-semibold">{t('rooms.conversations' as never)}</h2>
     <div className="min-h-0 space-y-1 overflow-y-auto pb-3">
       {rooms.map(room => <RoomConversationRow key={room.id} room={room} activeRoomID={activeRoomID} locale={locale} />)}
       {!roomsQuery.isLoading && rooms.length === 0 && <p className="px-2 py-4 text-sm text-muted">{t('rooms.noMatchingRooms' as never)}</p>}
     </div>
+    <Dialog.Root open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog.Trigger asChild><button type="button" className="notes-secondary-button mt-auto w-full"><Plus size={17} /> {t('rooms.create' as never)}</button></Dialog.Trigger>
+      <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" /><Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-subtle bg-surface p-5 shadow-xl"><div className="flex items-start justify-between gap-4"><div><Dialog.Title className="text-lg font-semibold">{t('rooms.create' as never)}</Dialog.Title><Dialog.Description className="mt-1 text-sm text-muted">{t('rooms.createDescription' as never)}</Dialog.Description></div><Dialog.Close asChild><button type="button" className="notes-icon-button" aria-label={t('action.close')}><X size={17} /></button></Dialog.Close></div><form className="mt-5" onSubmit={event => { event.preventDefault(); createMutation.mutate() }}><label className="block text-sm font-medium" htmlFor="sidebar-room-name">{t('rooms.name' as never)}<input id="sidebar-room-name" autoFocus required maxLength={120} value={roomName} onChange={event => setRoomName(event.target.value)} placeholder={t('rooms.namePlaceholder' as never)} className="notes-input mt-2 w-full" /></label><div className="mt-5 flex justify-end gap-2"><Dialog.Close asChild><button type="button" className="notes-secondary-button">{t('action.cancel')}</button></Dialog.Close><button type="submit" className="notes-primary-button" disabled={createMutation.isPending || !roomName.trim()}>{t('rooms.create' as never)}</button></div></form></Dialog.Content></Dialog.Portal>
+    </Dialog.Root>
   </aside>
 }

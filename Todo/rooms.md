@@ -1,13 +1,13 @@
 # Implementer Sharedrive Rooms
 
-Status: Phase 0-5 er implementeret og brugertestet. Phase 6 er implementeret og klar til afsluttende brugertest efter den seneste popup-rettelse. Phase 5 voice er afsluttet med self-hosted LiveKit og adminstyret aktivering.
+Status: Phase 0-5 er implementeret og brugertestet. Phase 6 er implementeret og accepteret til videre arbejde efter bruger-test af møde, tale og skærmdeling. Phase 7 er i gang med Rooms backup/restore, hardening og dokumentation.
 
 ## Aktuel fasestatus
 
 - **Phase 0-4:** Implementeret. Rooms omfatter permanente Rooms, medlemsroller, live chat, reaktioner, filer/Notes, invitationer, link-gaester, Rooms-administration, ulaeste beskeder samt baade integreret hoved-PWA-navigation og en selvstaendig Rooms-PWA.
-- **Phase 5:** Implementeret og brugertestet. Self-hosted LiveKit voice har Room-bundne 15-minutters media-tokens, join/leave, mute/unmute, deltagere, aktiv taler, reconnect-status og fejlhaandtering. Voice aktiveres eksplicit af admin i Rooms-indstillingerne. Kamera og data-kanaler er fortsat blokeret. Gæster kan kun deltage, naar baade Rooms Voice og invitationens `can_voice` er aktiveret. Lyd er testet på mobil og PC-browser.
-- **Phase 6:** Implementeret og klar til afsluttende brugertest. Skærmdeling bygger oven på LiveKit med Teams-lignende mødehandlinger, start/stop/skift af skærm eller fane, remote rendering, stor popup-visning og mindst privilegerede media-tokens. Rumoversigten og Room-siden viser privat `Tale i gang`/mødestatus uden at eksponere samtaleindhold. Kamera forbliver blokeret.
-- **Phase 7:** Ikke startet. Rooms backup/restore, samlet security/a11y-hardening og deployment-dokumentation hoerer hertil. Den eksisterende Rooms-backupindstilling er kun en forberedende indstilling og betyder ikke, at data allerede indgaar i backup/restore.
+- **Phase 5:** Implementeret og brugertestet. Self-hosted LiveKit voice har Room-bundne 15-minutters media-tokens, join/leave, mute/unmute, deltagere, aktiv taler, reconnect-status og fejlhaandtering. Voice aktiveres eksplicit af admin i Rooms-indstillingerne. Kamera forbliver blokeret; LiveKit-data bruges kun til det interne signal ved skift af skærmdeling. Gæster kan kun deltage, naar baade Rooms Voice og invitationens `can_voice` er aktiveret. Lyd er testet på mobil og PC-browser.
+- **Phase 6:** Implementeret og accepteret til videre arbejde. Skærmdeling bygger oven på LiveKit med Teams-lignende mødehandlinger, start/stop/skift af skærm eller fane, remote rendering, stor popup-visning og mindst privilegerede media-tokens. Rumoversigten og Room-siden viser privat `Tale i gang`/mødestatus uden at eksponere samtaleindhold. Kamera forbliver blokeret.
+- **Phase 7:** I gang. Admin-backupformatet er udvidet med valgfri Rooms-serialisering og sikker restore: chat-/medlemshistorik bevares, mens gæstelinks og gæstesessioner altid gendannes tilbagekaldt. Ældre backupper uden Rooms blokeres sikkert, hvis target allerede har Rooms. Rooms/LiveKit-dokumentation er tilføjet; afsluttende hardening og bruger-test mangler.
 - **Phase 8:** Ikke startet. Fuld regression og sammenligning med baseline afslutter projektet.
 
 Denne fil er den kanoniske arbejdsbeskrivelse for Sharedrive Rooms. Repositoryets faktiske kode er altid source of truth. Arbejdet udføres fasevist, uden automatiske commits eller versionsbump.
@@ -495,7 +495,7 @@ room.screen_share.stop
 
 Typing/presence og andet meget stoejende ephemeral state auditeres ikke.
 
-Backup/restore inkluderer Rooms, membership, messages, resource relations, reactions, relevant read state og aktiv invitation configuration. Det inkluderer ikke connections, typing, presence, guest session cookies/tokens, raw invite tokens eller LiveKit sessions/media state.
+Backup/restore inkluderer Rooms, membership, messages, resource relations, reactions, relevant read state og invitation configuration. Det inkluderer ikke connections, typing, presence, raw guest session cookies/tokens, raw invite tokens eller LiveKit sessions/media state. Gæsteinvitationer og gæstesessioner gendannes alene for at bevare historiske relationer og markeres altid tilbagekaldt.
 
 ## Room lifecycle
 

@@ -407,6 +407,9 @@ LiveKit's `keys` map is deliberately asymmetric: the key is a public
 identifier used in signed token metadata; the secret is only used by Sharedrive
 and LiveKit to sign and validate those tokens.
 
+For the complete Rooms security, backup and operational model, see
+[Rooms architecture and operations](docs/ROOMS.md).
+
 ### 4. First-run wizard
 
 Open `https://drive.yourdomain.com`. An empty database triggers an automatic redirect to `/setup`. The three-step wizard takes under two minutes:
@@ -804,7 +807,7 @@ SMTP credentials can be set via environment variables (`SMTP_HOST`, `SMTP_PORT`,
 ## Backup & Restore
 
 ### Export
-Admin → Backup → **Export backup**. Choose full or selective export (pick specific folders). Downloads a gzip-compressed JSON file (`.zip`) containing all metadata: users, groups, tags, files (metadata + SHA-256 checksums), shares, TOTP credentials, app passwords, and system settings. **File blobs are not included.**
+Admin → Backup → **Export backup**. Choose full or selective export (pick specific folders). Downloads a gzip-compressed JSON file (`.zip`) containing all metadata: users, groups, tags, files (metadata + SHA-256 checksums), shares, TOTP credentials, app passwords, system settings and — when **Include Rooms in backup** is enabled — Rooms, membership, chat, reactions, read state and resource references. **File blobs are not included.**
 
 The export is HMAC-SHA256 signed using `BACKUP_HMAC_SECRET` to detect tampering.
 
@@ -819,6 +822,8 @@ Auto-backup can run on a schedule (hourly / daily / weekly) and only creates a n
 Admin → Backup → **Restore from backup** — upload the `.zip` file. The HMAC is verified before applying. All metadata is overwritten; files on disk are unaffected.
 
 Restore is also available during the **first-run wizard** (step 1) to migrate from another instance.
+
+Rooms restore preserves chat history and references to existing Files and Notes, but never restores working guest access: all guest invitations and guest browser sessions are revoked during restore. Backups created before Rooms, or with Rooms excluded, are refused when the target contains Rooms, preventing an accidental loss of Room data.
 
 ---
 

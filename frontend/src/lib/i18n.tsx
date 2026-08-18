@@ -687,7 +687,7 @@ const translations = {
   'settings.roomsRetention':         { da: 'Besked-retention (dage)',                en: 'Message retention (days)' },
   'settings.roomsRetentionDesc':     { da: '0 betyder permanent opbevaring, medmindre Rooms-lagergrænsen kræver oprydning.', en: '0 means permanent storage unless the Rooms storage limit requires cleanup.' },
   'settings.roomsBackup':            { da: 'Inkludér Rooms i backup',                en: 'Include Rooms in backup' },
-  'settings.roomsBackupDesc':        { da: 'Slås til som standard, når Rooms-backup kommer i Phase 7.', en: 'Enabled by default when Rooms backup arrives in Phase 7.' },
+  'settings.roomsBackupDesc':        { da: 'Medtager Rooms, medlemmer, chat, reaktioner og fil-/Note-referencer i admin-backup. Gæstelinks og gæstesessioner gendannes altid tilbagekaldt.', en: 'Includes Rooms, members, chat, reactions and File/Note references in the admin backup. Guest links and guest sessions are always restored as revoked.' },
   'settings.roomsUsage':             { da: 'Aktuelt Rooms-chatforbrug: {used} MB.', en: 'Current Rooms chat usage: {used} MB.' },
   'settings.roomsLastCleanup':       { da: 'Seneste oprydning: {date}.', en: 'Last cleanup: {date}.' },
   'settings.roomsNoCleanup':         { da: 'Der har endnu ikke været behov for oprydning.', en: 'No cleanup has been needed yet.' },

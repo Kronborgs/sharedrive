@@ -66,6 +66,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
       </button>
 
       <div className={`grid min-h-0 gap-4 lg:flex-1 lg:overflow-hidden ${detailGridClass}`}>
+        <RoomConversationSidebar activeRoomID={room.id} mobile />
         <RoomConversationSidebar activeRoomID={room.id} />
         <main className="flex min-w-0 flex-col lg:min-h-0">
           <header className="shrink-0 border-b border-subtle pb-4">

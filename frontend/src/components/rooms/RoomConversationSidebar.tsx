@@ -31,7 +31,7 @@ function RoomConversationRow({ room, activeRoomID, locale }: Readonly<{ room: Ro
   </button>
 }
 
-export function RoomConversationSidebar({ activeRoomID }: Readonly<{ activeRoomID?: string }>) {
+export function RoomConversationSidebar({ activeRoomID, mobile = false }: Readonly<{ activeRoomID?: string; mobile?: boolean }>) {
   const { t, locale } = useI18n()
   const [query, setQuery] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -52,7 +52,10 @@ export function RoomConversationSidebar({ activeRoomID }: Readonly<{ activeRoomI
     onError: () => toast.error(t('rooms.createFailed' as never)),
   })
 
-  return <aside className="hidden min-h-0 pr-3 lg:flex lg:w-60 lg:shrink-0 lg:flex-col xl:w-72" aria-label={t('rooms.conversations' as never)}>
+  const sidebarClass = mobile
+    ? 'mb-4 flex max-h-[50vh] min-h-0 flex-col lg:hidden'
+    : 'hidden min-h-0 pr-3 lg:flex lg:w-60 lg:shrink-0 lg:flex-col xl:w-72'
+  return <aside className={sidebarClass} aria-label={t('rooms.conversations' as never)}>
     <label className="relative mb-3 block"><span className="sr-only">{t('rooms.searchConversations' as never)}</span><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('rooms.searchConversations' as never)} className="notes-input w-full pl-9" /></label>
     <h2 className="mb-2 px-2 text-sm font-semibold">{t('rooms.conversations' as never)}</h2>
     <div className="min-h-0 space-y-1 overflow-y-auto pb-3">

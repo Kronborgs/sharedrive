@@ -9,7 +9,7 @@
     "check:openmoji": "node scripts/check-openmoji-version.mjs",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "test": "vitest run --pool=threads --maxWorkers=1",
+    "test": "vitest run --pool=vmThreads --maxWorkers=1 --no-file-parallelism",
     "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.reporter=lcov",
     "type-check": "tsc --noEmit"
   },

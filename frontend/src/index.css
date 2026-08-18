@@ -32,6 +32,33 @@
   --animate-fade-in: fadeIn 0.15s ease-out;
 }
 
+
+/* Retro media controls use a light material palette outside dark mode. */
+:root {
+  --retro-rim: #e5e9f0;
+  --retro-rim-pressed: #dce2eb;
+  --retro-face-gradient: radial-gradient(circle at 35% 32%, #ffffff, #e8edf4);
+  --retro-face-pressed: radial-gradient(circle at 40% 40%, #f1f5f9, #dbe3ed);
+  --retro-shadow: 3px 3px 8px #cbd3df, -2px -2px 6px #ffffff;
+  --retro-shadow-inset: inset 2px 2px 6px #cbd3df, inset -2px -2px 6px #ffffff;
+  --retro-shadow-face: inset -1px -1px 4px #cbd3df, inset 1px 1px 3px #ffffff;
+  --retro-muted: #64748b;
+  --retro-disabled: #cbd5e1;
+  --retro-dot-inactive: #cbd5e1;
+}
+
+.dark {
+  --retro-rim: #1c1f2e;
+  --retro-rim-pressed: #1a1d2e;
+  --retro-face-gradient: radial-gradient(circle at 35% 32%, #272b3e, #1a1d2e);
+  --retro-face-pressed: radial-gradient(circle at 40% 40%, #1e2133, #12151f);
+  --retro-shadow: 3px 3px 8px #0d0f18, -2px -2px 6px #2b2f45;
+  --retro-shadow-inset: inset 2px 2px 6px #0d0f18, inset -2px -2px 6px #2b2f45;
+  --retro-shadow-face: inset -1px -1px 4px #0d0f18, inset 1px 1px 3px #2b2f45;
+  --retro-muted: #8b90a8;
+  --retro-disabled: #3a3d4a;
+  --retro-dot-inactive: #3a3d4a;
+}
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }

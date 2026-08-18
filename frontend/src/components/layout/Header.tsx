@@ -110,7 +110,9 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
         <Menu size={18} />
       </button>
       {/* Logo */}
-      <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto shrink-0" />
+      <div className="shrink-0 rounded-md bg-[#171b27] px-1.5 py-1 shadow-sm dark:bg-transparent dark:px-0 dark:py-0 dark:shadow-none">
+        <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
+      </div>
 
       {/* Search */}
       <div className="flex-1 max-w-md relative" ref={containerRef}>

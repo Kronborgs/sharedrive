@@ -773,7 +773,9 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
         'md:relative md:translate-x-0 md:z-auto',
       ].join(' ')}>
         <div className="px-4 h-14 flex items-center border-b border-zinc-200 dark:border-[#2d3148] shrink-0">
-          <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
+          <div className="rounded-md bg-[#171b27] px-1.5 py-1 shadow-sm dark:bg-transparent dark:px-0 dark:py-0 dark:shadow-none">
+            <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0">

@@ -176,7 +176,7 @@ export function Dial({ value, onChange, label, color, size = 88, min, max, step 
                 key={i}
                 cx={cx} cy={cy}
                 r={active ? dotRActive : dotR}
-                fill={active ? color : '#3a3d4a'}
+                fill={active ? color : 'var(--retro-dot-inactive)'}
                 style={{ filter: active ? `drop-shadow(0 0 2.5px ${color})` : 'none' }}
               />
             )
@@ -188,8 +188,8 @@ export function Dial({ value, onChange, label, color, size = 88, min, max, step 
           className="absolute rounded-full"
           style={{
             inset: outerInset,
-            background: '#1c1f2e',
-            boxShadow: '5px 5px 12px #0d0f18, -3px -3px 9px #2b2f45',
+            background: 'var(--retro-rim)',
+            boxShadow: 'var(--retro-shadow)',
           }}
         />
 
@@ -198,8 +198,8 @@ export function Dial({ value, onChange, label, color, size = 88, min, max, step 
           className="absolute rounded-full"
           style={{
             inset: innerInset,
-            background: 'radial-gradient(circle at 35% 35%, #2a2d3e, #16192a)',
-            boxShadow: 'inset 2px 2px 7px #0d0f18, inset -2px -2px 5px #2b2f45',
+            background: 'var(--retro-face-gradient)',
+            boxShadow: 'var(--retro-shadow-inset)',
           }}
         >
           {/* Indicator dot */}
@@ -219,7 +219,7 @@ export function Dial({ value, onChange, label, color, size = 88, min, max, step 
         </div>
       </div>
       <span
-        className="font-medium tracking-wider uppercase text-zinc-400"
+        className="font-medium tracking-wider uppercase text-slate-500 dark:text-zinc-400"
         style={{ fontSize: Math.max(9, Math.round(size * 0.13)) }}
       >
         {label}
@@ -346,15 +346,15 @@ export function RetroButton({
   const r = size / 2
   const [pressed, setPressed] = useState(false)
   const isDown = (active || pressed) && !disabled
-  let rimShadow = '3px 3px 8px #0d0f18, -2px -2px 6px #2b2f45'
+  let rimShadow = 'var(--retro-shadow)'
   if (disabled) {
     rimShadow = 'none'
   } else if (isDown) {
-    rimShadow = `inset 3px 3px 8px #0d0f18, inset -2px -2px 6px #2b2f45, 0 0 8px ${color}55`
+    rimShadow = `var(--retro-shadow-inset), 0 0 8px ${color}55`
   }
-  let iconColor = '#8b90a8'
+  let iconColor = 'var(--retro-muted)'
   if (disabled) {
-    iconColor = '#3a3d4a'
+    iconColor = 'var(--retro-disabled)'
   } else if (isDown) {
     iconColor = color
   }
@@ -376,7 +376,7 @@ export function RetroButton({
       <span
         className="absolute inset-0 rounded-full transition-all duration-75"
         style={{
-          background: isDown ? '#1a1d2e' : '#1c1f2e',
+          background: isDown ? 'var(--retro-rim-pressed)' : 'var(--retro-rim)',
           boxShadow: rimShadow,
         }}
       />
@@ -385,12 +385,8 @@ export function RetroButton({
         className="absolute rounded-full transition-all duration-75"
         style={{
           inset: Math.round(size * 0.1),
-          background: isDown
-            ? `radial-gradient(circle at 40% 40%, #1e2133, #12151f)`
-            : `radial-gradient(circle at 35% 32%, #272b3e, #1a1d2e)`,
-          boxShadow: isDown
-            ? `inset 2px 2px 6px #0d0f18, inset -1px -1px 4px #2b2f45`
-            : `inset -1px -1px 4px #0d0f18, inset 1px 1px 3px #2b2f45`,
+          background: isDown ? 'var(--retro-face-pressed)' : 'var(--retro-face-gradient)',
+          boxShadow: isDown ? 'var(--retro-shadow-inset)' : 'var(--retro-shadow-face)',
         }}
       />
       {/* Icon */}

@@ -56,13 +56,13 @@ function MessageCard(props: Readonly<MessageCardProps>) {
   const { message, currentUserID, canModerate, groupedWithPrevious, onReply, onEdit, onDelete, onReaction } = props
   const deleted = Boolean(message.deleted_at)
   const isOwnMessage = message.sender_user_id === currentUserID
-  const alignmentClass = isOwnMessage ? 'items-end' : 'items-start'
+  const alignmentClass = isOwnMessage ? 'items-end self-end' : 'items-start self-start'
   const bubbleClass = isOwnMessage
     ? 'bg-brand-50 dark:bg-brand-900/30'
     : 'bg-surface'
 
   return <article className={`group flex max-w-[70%] flex-col ${alignmentClass} ${groupedWithPrevious ? 'mt-1' : 'mt-3'}`}>
-    {!groupedWithPrevious && <div className="mb-1 flex w-full items-center justify-between gap-2 px-1">
+    {!groupedWithPrevious && <div className="mb-1 flex items-center gap-2 px-1">
       <p className="text-sm font-medium">{message.sender_name}</p>
       <div className="flex items-center gap-2"><time dateTime={message.created_at} className="text-[11px] text-muted">{new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>
     </div>}
@@ -262,7 +262,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   }
 
   const panelClass = fillAvailableHeight ? 'mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : 'mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]'
-  const timelineClass = fillAvailableHeight ? 'max-h-[60vh] overflow-y-auto rounded-xl border border-subtle p-3 lg:h-full lg:max-h-none' : 'max-h-[60vh] overflow-y-auto rounded-xl border border-subtle p-3'
+  const timelineClass = fillAvailableHeight ? 'flex max-h-[60vh] flex-col overflow-y-auto rounded-xl border border-subtle p-3 lg:h-full lg:max-h-none' : 'flex max-h-[60vh] flex-col overflow-y-auto rounded-xl border border-subtle p-3'
 
   return <section className={panelClass} aria-label={t('rooms.chatAria')}>
     <h2 className="mb-3 text-lg font-semibold">{t('rooms.chat')}</h2>

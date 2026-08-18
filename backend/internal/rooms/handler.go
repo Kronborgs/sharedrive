@@ -178,7 +178,7 @@ func mediaModeFromRequest(w http.ResponseWriter, request *http.Request) (string,
 }
 
 func (handler *Handler) mediaToken(roomID uuid.UUID, identity, name string, canShareScreen bool, mode string) (string, error) {
-	canPublish, canSubscribe, canPublishData := mode != mediaModeWatch, true, false
+	canPublish, canSubscribe, canPublishData := mode != mediaModeWatch, true, mode != mediaModeWatch
 	publishSources := mediaPublishSources(mode, canShareScreen)
 	token := auth.NewAccessToken(handler.liveKitKey, handler.liveKitSecret)
 	token.SetIdentity(identity).SetName(name).SetMetadata("sharedrive-rooms:" + mode).SetValidFor(15 * time.Minute).SetVideoGrant(&auth.VideoGrant{RoomJoin: true, Room: handler.mediaRoomName(roomID), CanPublish: &canPublish, CanSubscribe: &canSubscribe, CanPublishData: &canPublishData, CanPublishSources: publishSources})

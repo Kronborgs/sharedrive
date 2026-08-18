@@ -91,6 +91,7 @@ const translations = {
   'rooms.screenShareStart':  { da: 'Del skærm', en: 'Share screen' },
   'rooms.screenShareStop':   { da: 'Stop deling', en: 'Stop sharing' },
   'rooms.screenShareChange': { da: 'Skift skærm eller fane', en: 'Change screen or tab' },
+  'rooms.screenShareChanging': { da: 'Afsender skifter skærm eller fane…', en: 'The presenter is changing screen or tab…' },
   'rooms.screenShares':      { da: 'Delte skærme', en: 'Shared screens' },
   'rooms.screenCaptions':    { da: 'Undertekster til skærmdeling', en: 'Screen sharing captions' },
   'rooms.screenShareFailed': { da: 'Kunne ikke starte skærmdeling.', en: 'Could not start screen sharing.' },

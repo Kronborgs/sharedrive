@@ -12,6 +12,7 @@ interface SharedScreen {
   id: string
   participantName: string
   track: RemoteTrack
+  isSwitching: boolean
 }
 type SharedScreenSetter = Dispatch<SetStateAction<SharedScreen[]>>
 type Translator = ReturnType<typeof useI18n>['t']
@@ -44,10 +45,36 @@ function voiceDescriptionKey(status: string): 'rooms.voiceReconnecting' | 'rooms
   return 'rooms.voiceDescription'
 }
 
+type ScreenShareSignal = 'switching' | 'stopped'
+
 function removeSharedScreenAfterTrackChange(setSharedScreens: SharedScreenSetter, participantID: string, track: RemoteTrack) {
   window.setTimeout(() => {
-    setSharedScreens(screens => screens.filter(screen => screen.id !== participantID || screen.track !== track))
-  }, 400)
+    setSharedScreens(screens => screens.filter(screen => screen.id !== participantID || screen.track !== track || screen.isSwitching))
+  }, 3000)
+}
+
+function screenShareSignal(payload: Uint8Array, topic: string | undefined): ScreenShareSignal | undefined {
+  if (topic !== 'sharedrive.rooms.screen-share') return undefined
+  try {
+    const message = JSON.parse(new TextDecoder().decode(payload)) as { state?: unknown }
+    if (message.state === 'switching' || message.state === 'stopped') return message.state
+  } catch {
+    return undefined
+  }
+  return undefined
+}
+
+async function publishScreenShareSignal(room: LiveKitRoom, state: ScreenShareSignal) {
+  const payload = new TextEncoder().encode(JSON.stringify({ state }))
+  await room.localParticipant.publishData(payload, { reliable: true, topic: 'sharedrive.rooms.screen-share' })
+}
+
+function applyScreenShareSignal(setSharedScreens: SharedScreenSetter, participantID: string, signal: ScreenShareSignal) {
+  if (signal === 'switching') {
+    setSharedScreens(screens => screens.map(screen => screen.id === participantID ? { ...screen, isSwitching: true } : screen))
+    return
+  }
+  setSharedScreens(screens => screens.filter(screen => screen.id !== participantID))
 }
 
 function SharedScreenTrackVideo({ track, captionsLabel, className }: Readonly<{ track: RemoteTrack; captionsLabel: string; className: string }>) {
@@ -64,7 +91,8 @@ function SharedScreenTrackVideo({ track, captionsLabel, className }: Readonly<{ 
 function SharedScreenVideo({ sharedScreen, captionsLabel }: Readonly<{ sharedScreen: SharedScreen; captionsLabel: string }>) {
   const { t } = useI18n()
   const [popupOpen, setPopupOpen] = useState(false)
-  return <><article className="relative overflow-hidden rounded-lg border border-zinc-200 bg-black dark:border-[#2d3148]"><SharedScreenTrackVideo track={sharedScreen.track} captionsLabel={captionsLabel} className="aspect-video w-full" /><button type="button" onClick={() => setPopupOpen(true)} className="absolute right-3 top-3 flex items-center gap-2 rounded-md bg-black/75 px-3 py-2 text-sm font-medium text-white shadow hover:bg-black/90" aria-label={t('rooms.viewScreenPopup')} title={t('rooms.viewScreenPopup')}><Maximize2 size={18} /> {t('rooms.viewScreenPopup')}</button><p className="bg-white px-3 py-2 text-xs text-zinc-700 dark:bg-[#1a1d27] dark:text-slate-300">{sharedScreen.participantName}</p></article><Dialog.Root open={popupOpen} onOpenChange={setPopupOpen}><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[110] bg-black/75" /><Dialog.Content className="fixed left-1/2 top-1/2 z-[111] flex max-h-[94vh] w-[min(96vw,90rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-black shadow-2xl dark:border-[#34394f]"><div className="flex shrink-0 items-center justify-between bg-white px-4 py-3 dark:bg-[#1a1d27]"><Dialog.Title className="text-sm font-semibold">{t('rooms.screenPopupTitle', { name: sharedScreen.participantName })}</Dialog.Title><Dialog.Close asChild><button type="button" className="notes-icon-button" aria-label={t('action.close')}><X size={18} /></button></Dialog.Close></div><SharedScreenTrackVideo track={sharedScreen.track} captionsLabel={captionsLabel} className="min-h-0 w-full object-contain" /></Dialog.Content></Dialog.Portal></Dialog.Root></>
+  const switchingOverlay = <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-4 text-center text-sm font-medium text-white">{t('rooms.screenShareChanging')}</div>
+  return <><article className="relative overflow-hidden rounded-lg border border-zinc-200 bg-black dark:border-[#2d3148]"><SharedScreenTrackVideo track={sharedScreen.track} captionsLabel={captionsLabel} className="aspect-video w-full" />{sharedScreen.isSwitching && switchingOverlay}<button type="button" onClick={() => setPopupOpen(true)} className="absolute right-3 top-3 flex items-center gap-2 rounded-md bg-black/75 px-3 py-2 text-sm font-medium text-white shadow hover:bg-black/90" aria-label={t('rooms.viewScreenPopup')} title={t('rooms.viewScreenPopup')}><Maximize2 size={18} /> {t('rooms.viewScreenPopup')}</button><p className="bg-white px-3 py-2 text-xs text-zinc-700 dark:bg-[#1a1d27] dark:text-slate-300">{sharedScreen.participantName}</p></article><Dialog.Root open={popupOpen} onOpenChange={setPopupOpen}><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[110] bg-black/75" /><Dialog.Content className="fixed left-1/2 top-1/2 z-[111] flex max-h-[94vh] w-[min(96vw,90rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-black shadow-2xl dark:border-[#34394f]"><div className="flex shrink-0 items-center justify-between bg-white px-4 py-3 dark:bg-[#1a1d27]"><Dialog.Title className="text-sm font-semibold">{t('rooms.screenPopupTitle', { name: sharedScreen.participantName })}</Dialog.Title><Dialog.Close asChild><button type="button" className="notes-icon-button" aria-label={t('action.close')}><X size={18} /></button></Dialog.Close></div><div className="relative min-h-0"><SharedScreenTrackVideo track={sharedScreen.track} captionsLabel={captionsLabel} className="min-h-0 w-full object-contain" />{sharedScreen.isSwitching && switchingOverlay}</div></Dialog.Content></Dialog.Portal></Dialog.Root></>
 }
 
 function meetingActionLabel(status: MeetingControlsProps['status'], meetingActive: boolean, t: Translator) {
@@ -87,6 +115,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
   const { t } = useI18n()
   const roomRef = useRef<LiveKitRoom | undefined>(undefined)
   const mediaModeRef = useRef<MediaMode | undefined>(undefined)
+  const changingScreenRef = useRef(false)
   const audioElements = useRef<HTMLAudioElement[]>([])
   const [status, setStatus] = useState<'idle' | 'joining' | 'connected' | 'reconnecting' | 'error'>('idle')
   const [muted, setMuted] = useState(false)
@@ -109,11 +138,12 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
     mediaModeRef.current = undefined
     audioElements.current.forEach(element => element.remove())
     audioElements.current = []
+    changingScreenRef.current = false
     setParticipants([]); setActiveSpeakers([]); setSharedScreens([]); setSharingScreen(false); setMicrophoneEnabled(false); setMuted(false); setStatus('idle')
   }
 
   const addSharedScreen = (track: RemoteTrack, participantID: string, participantName: string) => {
-    setSharedScreens(screens => [...screens.filter(screen => screen.id !== participantID), { id: participantID, participantName, track }])
+    setSharedScreens(screens => [...screens.filter(screen => screen.id !== participantID), { id: participantID, participantName, track, isSwitching: false }])
   }
 
   const syncSharedScreens = (room: LiveKitRoom) => {
@@ -150,12 +180,22 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
         }
       })
       room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-        track.detach().forEach(element => element.remove())
+        if (track.kind === Track.Kind.Audio) track.detach().forEach(element => element.remove())
+        else track.detach()
         if (publication.source === Track.Source.ScreenShare) {
           removeSharedScreenAfterTrackChange(setSharedScreens, participant.identity, track as RemoteTrack)
         }
       })
-      room.on(RoomEvent.LocalTrackUnpublished, publication => { if (publication.source === Track.Source.ScreenShare) setSharingScreen(false) })
+      room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
+        const signal = screenShareSignal(payload, topic)
+        if (!signal || !participant) return
+        applyScreenShareSignal(setSharedScreens, participant.identity, signal)
+      })
+      room.on(RoomEvent.LocalTrackUnpublished, publication => {
+        if (publication.source !== Track.Source.ScreenShare) return
+        setSharingScreen(false)
+        if (!changingScreenRef.current) publishScreenShareSignal(room, 'stopped').catch(() => undefined)
+      })
       await room.connect(details.url, details.token, { autoSubscribe: true })
       if (withMicrophone) await room.localParticipant.setMicrophoneEnabled(true)
       setMicrophoneEnabled(withMicrophone); setMuted(!withMicrophone); syncParticipants(); syncSharedScreens(room)
@@ -187,6 +227,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
     if (!room) return
     setError('')
     try {
+      if (sharingScreen) await publishScreenShareSignal(room, 'stopped')
       await room.localParticipant.setScreenShareEnabled(!sharingScreen, { audio: false, contentHint: 'detail' })
       setSharingScreen(value => !value)
       if (sharingScreen && !microphoneEnabled) await leave()
@@ -200,12 +241,17 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
     if (!room || !sharingScreen) return
     setError('')
     try {
+      changingScreenRef.current = true
+      await publishScreenShareSignal(room, 'switching')
       await room.localParticipant.setScreenShareEnabled(false)
       setSharingScreen(false)
       await room.localParticipant.setScreenShareEnabled(true, { audio: false, contentHint: 'detail' })
       setSharingScreen(true)
     } catch {
+      await publishScreenShareSignal(room, 'stopped').catch(() => undefined)
       setError(t('rooms.screenShareFailed'))
+    } finally {
+      changingScreenRef.current = false
     }
   }
 

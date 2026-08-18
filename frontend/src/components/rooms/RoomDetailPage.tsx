@@ -78,15 +78,15 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
               <p className="mt-1 flex items-center gap-1.5 text-sm text-muted"><Users size={15} /> {memberCount === undefined ? t(`rooms.role.${room.current_role}` as never) : `${t('rooms.permanentWorkspace' as never)} · ${t('rooms.roomMembers' as never, { count: memberCount })}`}</p>
             </div>
           </div>
-          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 pb-1">
             {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} compact />}
             <button type="button" className="notes-icon-button" onClick={() => setContextVisible(value => !value)} aria-label={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)} title={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)}>{contextVisible ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button>
             <RoomsInstallButton compact />
-            <button type="button" className="notes-secondary-button" title={t('rooms.copyLink' as never)} onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>
-              <Copy size={16} /> <span className="hidden 2xl:inline">{t('rooms.copyLink' as never)}</span>
+            <button type="button" className="notes-secondary-button shrink-0" title={t('rooms.copyLink' as never)} onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>
+              <Copy size={16} /> <span className="hidden sm:inline 2xl:inline">{t('rooms.copyLink' as never)}</span>
             </button>
             {(room.current_role === 'owner' || room.current_role === 'moderator') && (
-              <button type="button" className="notes-secondary-button" title={t('action.rename')} onClick={() => {
+              <button type="button" className="notes-secondary-button shrink-0" title={t('action.rename')} onClick={() => {
                 const name = window.prompt(t('rooms.name' as never), room.name)
                 if (!name?.trim() || name.trim() === room.name) return
                 updateRoom(room.id, name.trim())
@@ -97,12 +97,12 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
                   })
                   .catch(() => toast.error(t('rooms.createFailed' as never)))
               }}>
-                <Pencil size={16} /> <span className="hidden 2xl:inline">{t('action.rename')}</span>
+                <Pencil size={16} /> <span className="hidden sm:inline 2xl:inline">{t('action.rename')}</span>
               </button>
             )}
             {room.current_role === 'owner' && (
-              <button type="button" className="flex items-center gap-1.5 rounded-md border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30" title={t('rooms.archive' as never)} onClick={() => archiveMutation.mutate()} disabled={archiveMutation.isPending}>
-                <Archive size={16} /> <span className="hidden 2xl:inline">{t('rooms.archive' as never)}</span>
+              <button type="button" className="flex shrink-0 items-center gap-1.5 rounded-md border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30" title={t('rooms.archive' as never)} onClick={() => archiveMutation.mutate()} disabled={archiveMutation.isPending}>
+                <Archive size={16} /> <span className="hidden sm:inline 2xl:inline">{t('rooms.archive' as never)}</span>
               </button>
             )}
           </div>

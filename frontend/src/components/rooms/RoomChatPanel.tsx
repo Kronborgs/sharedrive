@@ -81,7 +81,7 @@ function MessageCard(props: Readonly<MessageCardProps>) {
 function isGroupedMessage(timeline: TimelineItem[], index: number) {
   const item = timeline[index]
   const previous = timeline[index - 1]
-  if (!item || item.kind !== 'message' || !previous || previous.kind !== 'message') return false
+  if (item?.kind !== 'message' || previous?.kind !== 'message') return false
   const sameSender = item.value.sender_user_id === previous.value.sender_user_id && item.value.sender_guest_session_id === previous.value.sender_guest_session_id
   const millisecondsBetween = new Date(item.value.created_at).getTime() - new Date(previous.value.created_at).getTime()
   return sameSender && millisecondsBetween >= 0 && millisecondsBetween <= 300_000

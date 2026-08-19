@@ -56,6 +56,13 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
     queryClient.setQueryData(['rooms', roomID], updated)
     queryClient.invalidateQueries({ queryKey: ['rooms'] }).catch(() => undefined)
   }
+  const handleIconChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      uploadIcon(file).catch(() => toast.error(t('rooms.fileUploadFailed' as never)))
+    }
+    event.currentTarget.value = ''
+  }
 
   const memberCount = membersQuery.data?.length
   const detailGridClass = contextVisible
@@ -75,7 +82,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
           <header className="shrink-0 border-b border-subtle pb-4">
           <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 items-start gap-3">
-              <span className="relative mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400">{room.icon_file_id ? <img src={`/api/v1/files/${room.icon_file_id}/thumbnail`} alt="" className="h-full w-full object-cover" /> : <DoorOpen size={21} />}{(room.current_role === 'owner' || room.current_role === 'moderator') && <label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/55 text-white opacity-0 transition-opacity hover:opacity-100" title={t('rooms.changeIcon' as never)}><ImagePlus size={17} /><input ref={iconInputRef} type="file" accept="image/*" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) uploadIcon(file).catch(() => toast.error(t('rooms.fileUploadFailed' as never))); event.currentTarget.value = '' }} /></label>}</span>
+              <span className="relative mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400">{room.icon_file_id ? <img src={`/api/v1/files/${room.icon_file_id}/thumbnail`} alt="" className="h-full w-full object-cover" /> : <DoorOpen size={21} />}{(room.current_role === 'owner' || room.current_role === 'moderator') && <label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/55 text-white opacity-0 transition-opacity hover:opacity-100" title={t('rooms.changeIcon' as never)}><ImagePlus size={17} /><input ref={iconInputRef} type="file" accept="image/*" className="sr-only" onChange={handleIconChange} /></label>}</span>
               <div className="min-w-0">
                 <h1 id="room-heading" className="truncate text-2xl font-semibold text-zinc-950 dark:text-white">{room.name}</h1>
                 <p className="mt-1 flex items-center gap-1.5 text-sm text-muted"><Users size={15} /> {memberCount === undefined ? t(`rooms.role.${room.current_role}` as never) : `${t('rooms.permanentWorkspace' as never)} · ${t('rooms.roomMembers' as never, { count: memberCount })}`}</p>

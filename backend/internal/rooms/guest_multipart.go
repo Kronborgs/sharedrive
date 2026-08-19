@@ -56,7 +56,7 @@ func (handler *Handler) storeGuestUploadResource(ctx context.Context, access roo
 	if err != nil {
 		return ResourceView{}, err
 	}
-	resource, err := handler.service.AddResource(ctx, access.OwnerID, access.RoomID, ResourceFile, uploaded.ID)
+	resource, err := handler.service.AddResource(ctx, access.OwnerID, access.RoomID, ResourceFile, uploaded.ID, nil)
 	if err != nil {
 		return ResourceView{}, err
 	}

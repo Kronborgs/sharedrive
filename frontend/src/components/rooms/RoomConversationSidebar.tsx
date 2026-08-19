@@ -19,7 +19,7 @@ function RoomConversationRow({ room, activeRoomID, locale }: Readonly<{ room: Ro
 
   return <button type="button" onClick={() => navigate({ to: '/rooms/$roomID', params: { roomID: room.slug } }).catch(() => undefined)} className={`w-full rounded-lg p-3 text-left transition-colors ${activeClass}`} aria-current={isActive ? 'page' : undefined}>
     <span className="flex items-start gap-3">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface text-brand-600"><DoorOpen size={18} /></span>
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface text-brand-600">{room.icon_file_id ? <img src={`/api/v1/files/${room.icon_file_id}/thumbnail`} alt="" className="h-full w-full object-cover" /> : <DoorOpen size={18} />}</span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center justify-between gap-2"><span className="truncate text-sm font-medium">{room.name}</span><time dateTime={room.updated_at} className="shrink-0 text-xs text-muted">{roomTimestamp(room.updated_at, locale)}</time></span>
         <span className="mt-1 flex items-center justify-between gap-2 text-xs text-muted">
@@ -54,7 +54,7 @@ export function RoomConversationSidebar({ activeRoomID, mobile = false }: Readon
 
   const sidebarClass = mobile
     ? 'mb-4 lg:hidden'
-    : 'hidden min-h-0 pr-3 lg:flex lg:w-60 lg:shrink-0 lg:flex-col xl:w-72'
+    : 'hidden min-h-0 border-r border-subtle pr-4 lg:flex lg:w-full lg:shrink-0 lg:flex-col'
   const content = <><label className="relative mb-3 block"><span className="sr-only">{t('rooms.searchConversations' as never)}</span><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('rooms.searchConversations' as never)} className="notes-input w-full pl-9" /></label>
     <h2 className="mb-2 px-2 text-sm font-semibold">{t('rooms.conversations' as never)}</h2>
     <div className="min-h-0 space-y-1 overflow-y-auto pb-3">

@@ -7,6 +7,7 @@ export interface Room {
   name: string
   slug: string
   owner_id: string
+	icon_file_id?: string
   created_by?: string
   created_at: string
   updated_at: string
@@ -57,6 +58,10 @@ export function updateRoom(roomID: string, name: string): Promise<Room> {
 
 export function archiveRoom(roomID: string): Promise<Room> {
   return api.post<Room>(`/api/v1/rooms/${roomID}/archive`, {})
+}
+
+export function updateRoomIcon(roomID: string, iconFileID: string): Promise<Room> {
+  return api.patch<Room>(`/api/v1/rooms/${roomID}`, { icon_file_id: iconFileID })
 }
 
 export function listRoomMembers(roomID: string, signal?: AbortSignal): Promise<RoomMember[]> {
@@ -135,6 +140,7 @@ export interface RoomResource {
   resource_type: RoomResourceType
   resource_id: string
   added_by?: string
+  message_id?: string
   created_at: string
   accessible: boolean
   name?: string
@@ -145,8 +151,8 @@ export interface RoomResource {
 export function listRoomResources(roomID: string, signal?: AbortSignal): Promise<RoomResource[]> {
   return api.get<RoomResource[]>(`/api/v1/rooms/${roomID}/resources`, signal)
 }
-export function addRoomResource(roomID: string, resourceType: RoomResourceType, resourceID: string): Promise<RoomResource> {
-  return api.post<RoomResource>(`/api/v1/rooms/${roomID}/resources`, { resource_type: resourceType, resource_id: resourceID })
+export function addRoomResource(roomID: string, resourceType: RoomResourceType, resourceID: string, messageID?: string): Promise<RoomResource> {
+  return api.post<RoomResource>(`/api/v1/rooms/${roomID}/resources`, { resource_type: resourceType, resource_id: resourceID, message_id: messageID })
 }
 export function removeRoomResource(roomID: string, linkID: string): Promise<void> {
   return api.delete(`/api/v1/rooms/${roomID}/resources/${linkID}`)

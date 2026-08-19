@@ -69,12 +69,14 @@ type createRoomRequest struct {
 }
 
 type updateRoomRequest struct {
-	Name *string `json:"name"`
+	Name       *string    `json:"name"`
+	IconFileID *uuid.UUID `json:"icon_file_id"`
 }
 
 type addResourceRequest struct {
 	ResourceType ResourceType `json:"resource_type"`
 	ResourceID   uuid.UUID    `json:"resource_id"`
+	MessageID    *uuid.UUID   `json:"message_id,omitempty"`
 }
 type updateMessageRequest struct {
 	Body string `json:"body"`
@@ -262,7 +264,7 @@ func (handler *Handler) AddResource(w http.ResponseWriter, request *http.Request
 		return
 	}
 	user := middleware.UserFromContext(request.Context())
-	resource, err := handler.service.AddResource(request.Context(), user.ID, roomID, input.ResourceType, input.ResourceID)
+	resource, err := handler.service.AddResource(request.Context(), user.ID, roomID, input.ResourceType, input.ResourceID, input.MessageID)
 	if err != nil {
 		handler.respondError(w, err)
 		return
@@ -544,12 +546,18 @@ func (handler *Handler) Update(w http.ResponseWriter, request *http.Request) {
 	if !decodeRequest(w, request, &input) {
 		return
 	}
-	if input.Name == nil {
+	if input.Name == nil && input.IconFileID == nil {
 		httputil.RespondError(w, http.StatusBadRequest, "name is required")
 		return
 	}
 	user := middleware.UserFromContext(request.Context())
-	room, err := handler.service.UpdateName(request.Context(), user.ID, roomID, *input.Name)
+	var room Room
+	var err error
+	if input.Name != nil {
+		room, err = handler.service.UpdateName(request.Context(), user.ID, roomID, *input.Name)
+	} else {
+		room, err = handler.service.UpdateIcon(request.Context(), user.ID, roomID, *input.IconFileID)
+	}
 	if err != nil {
 		handler.respondError(w, err)
 		return

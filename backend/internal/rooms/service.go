@@ -72,26 +72,26 @@ func (service *Service) boolSetting(ctx context.Context, key string) (bool, erro
 }
 
 const roomColumns = `r.id, r.name, r.slug, r.owner_id, r.managed_group_id,
- r.created_by, r.created_at, r.updated_at, r.archived_at`
+ r.icon_file_id, r.created_by, r.created_at, r.updated_at, r.archived_at`
 
 func scanRoom(row pgx.Row) (Room, error) {
 	var room Room
 	err := row.Scan(&room.ID, &room.Name, &room.Slug, &room.OwnerID, &room.ManagedGroupID,
-		&room.CreatedBy, &room.CreatedAt, &room.UpdatedAt, &room.ArchivedAt)
+		&room.IconFileID, &room.CreatedBy, &room.CreatedAt, &room.UpdatedAt, &room.ArchivedAt)
 	return room, err
 }
 
 func scanRoomWithRole(row pgx.Row) (Room, error) {
 	var room Room
 	err := row.Scan(&room.ID, &room.Name, &room.Slug, &room.OwnerID, &room.ManagedGroupID,
-		&room.CreatedBy, &room.CreatedAt, &room.UpdatedAt, &room.ArchivedAt, &room.CurrentRole)
+		&room.IconFileID, &room.CreatedBy, &room.CreatedAt, &room.UpdatedAt, &room.ArchivedAt, &room.CurrentRole)
 	return room, err
 }
 
 func scanRoomWithRoleAndUnread(row pgx.Row) (Room, error) {
 	var room Room
 	err := row.Scan(&room.ID, &room.Name, &room.Slug, &room.OwnerID, &room.ManagedGroupID,
-		&room.CreatedBy, &room.CreatedAt, &room.UpdatedAt, &room.ArchivedAt, &room.CurrentRole,
+		&room.IconFileID, &room.CreatedBy, &room.CreatedAt, &room.UpdatedAt, &room.ArchivedAt, &room.CurrentRole,
 		&room.UnreadCount)
 	return room, err
 }
@@ -134,7 +134,7 @@ func (service *Service) Create(ctx context.Context, actorID uuid.UUID, name stri
 	room, err := scanRoom(tx.QueryRow(ctx, `INSERT INTO rooms
 		(id, name, slug, owner_id, managed_group_id, created_by)
 		VALUES ($1, $2, $3, $4, $5, $4)
-		RETURNING id, name, slug, owner_id, managed_group_id, created_by, created_at, updated_at, archived_at`,
+		RETURNING id, name, slug, owner_id, managed_group_id, icon_file_id, created_by, created_at, updated_at, archived_at`,
 		roomID, normalizedName, slug, actorID, managedGroupID))
 	if err != nil {
 		return Room{}, err
@@ -243,6 +243,44 @@ func (service *Service) UpdateName(ctx context.Context, actorID, roomID uuid.UUI
 		SET name = $2, updated_at = NOW()
 		WHERE r.id = $1
 		RETURNING `+strings.ReplaceAll(roomColumns, "r.", ""), roomID, normalizedName))
+	if err != nil {
+		return Room{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Room{}, err
+	}
+	room.CurrentRole = access.actorRole
+	return room, nil
+}
+
+func (service *Service) UpdateIcon(ctx context.Context, actorID, roomID, fileID uuid.UUID) (Room, error) {
+	tx, err := service.db.Begin(ctx)
+	if err != nil {
+		return Room{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	access, err := loadAccessForUpdate(ctx, tx, roomID, actorID)
+	if err != nil {
+		return Room{}, err
+	}
+	if access.archived {
+		return Room{}, ErrArchived
+	}
+	if access.actorRole != RoleOwner && access.actorRole != RoleModerator {
+		return Room{}, ErrForbidden
+	}
+	if err := service.authorizeResourceAttach(ctx, actorID, ResourceFile, fileID); err != nil {
+		return Room{}, err
+	}
+	if err := ensureRoomFileShare(ctx, tx, actorID, access.managedGroupID, fileID); err != nil {
+		return Room{}, err
+	}
+
+	room, err := scanRoom(tx.QueryRow(ctx, `UPDATE rooms r
+		SET icon_file_id = $2, updated_at = NOW()
+		WHERE r.id = $1
+		RETURNING `+strings.ReplaceAll(roomColumns, "r.", ""), roomID, fileID))
 	if err != nil {
 		return Room{}, err
 	}

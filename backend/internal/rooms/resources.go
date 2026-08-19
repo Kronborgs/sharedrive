@@ -22,7 +22,7 @@ type ResourceView struct {
 	NoteType   string `json:"note_type,omitempty"`
 }
 
-func (service *Service) AddResource(ctx context.Context, actorID, roomID uuid.UUID, resourceType ResourceType, resourceID uuid.UUID) (ResourceView, error) {
+func (service *Service) AddResource(ctx context.Context, actorID, roomID uuid.UUID, resourceType ResourceType, resourceID uuid.UUID, messageID *uuid.UUID) (ResourceView, error) {
 	room, err := service.Get(ctx, actorID, roomID)
 	if err != nil {
 		return ResourceView{}, err
@@ -33,13 +33,16 @@ func (service *Service) AddResource(ctx context.Context, actorID, roomID uuid.UU
 	if err := service.authorizeResourceAttach(ctx, actorID, resourceType, resourceID); err != nil {
 		return ResourceView{}, err
 	}
+	if err := service.authorizeMessageAttachment(ctx, actorID, roomID, messageID); err != nil {
+		return ResourceView{}, err
+	}
 	tx, err := service.db.Begin(ctx)
 	if err != nil {
 		return ResourceView{}, err
 	}
 	defer tx.Rollback(ctx)
 
-	resource, err := insertRoomResource(ctx, tx, actorID, roomID, resourceType, resourceID)
+	resource, err := insertRoomResource(ctx, tx, actorID, roomID, resourceType, resourceID, messageID)
 	if err != nil {
 		return ResourceView{}, err
 	}
@@ -54,13 +57,31 @@ func (service *Service) AddResource(ctx context.Context, actorID, roomID uuid.UU
 	return service.resolveResource(ctx, actorID, resource)
 }
 
-func insertRoomResource(ctx context.Context, tx pgx.Tx, actorID, roomID uuid.UUID, resourceType ResourceType, resourceID uuid.UUID) (Resource, error) {
+func (service *Service) authorizeMessageAttachment(ctx context.Context, actorID, roomID uuid.UUID, messageID *uuid.UUID) error {
+	if messageID == nil {
+		return nil
+	}
+	var allowed bool
+	err := service.db.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM room_messages
+		WHERE id = $1 AND room_id = $2 AND sender_user_id = $3 AND deleted_at IS NULL
+	)`, *messageID, roomID, actorID).Scan(&allowed)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func insertRoomResource(ctx context.Context, tx pgx.Tx, actorID, roomID uuid.UUID, resourceType ResourceType, resourceID uuid.UUID, messageID *uuid.UUID) (Resource, error) {
 	var resource Resource
-	err := tx.QueryRow(ctx, `INSERT INTO room_resources (room_id, resource_type, resource_id, added_by)
-		VALUES ($1, $2, $3, $4)
+	err := tx.QueryRow(ctx, `INSERT INTO room_resources (room_id, resource_type, resource_id, added_by, message_id)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (room_id, resource_type, resource_id) DO NOTHING
-		RETURNING id, room_id, resource_type, resource_id, added_by, created_at`, roomID, resourceType, resourceID, actorID).Scan(
-		&resource.ID, &resource.RoomID, &resource.ResourceType, &resource.ResourceID, &resource.AddedBy, &resource.CreatedAt)
+		RETURNING id, room_id, resource_type, resource_id, added_by, message_id, created_at`, roomID, resourceType, resourceID, actorID, messageID).Scan(
+		&resource.ID, &resource.RoomID, &resource.ResourceType, &resource.ResourceID, &resource.AddedBy, &resource.MessageID, &resource.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Resource{}, ErrResourceExists
 	}
@@ -118,7 +139,7 @@ func (service *Service) ListResources(ctx context.Context, actorID, roomID uuid.
 }
 
 func (service *Service) loadRoomResources(ctx context.Context, roomID uuid.UUID) ([]Resource, []uuid.UUID, []uuid.UUID, error) {
-	rows, err := service.db.Query(ctx, `SELECT id, room_id, resource_type, resource_id, added_by, created_at
+	rows, err := service.db.Query(ctx, `SELECT id, room_id, resource_type, resource_id, added_by, message_id, created_at
 		FROM room_resources WHERE room_id = $1 ORDER BY created_at DESC, id DESC`, roomID)
 	if err != nil {
 		return nil, nil, nil, err
@@ -129,7 +150,7 @@ func (service *Service) loadRoomResources(ctx context.Context, roomID uuid.UUID)
 	noteIDs := make([]uuid.UUID, 0)
 	for rows.Next() {
 		var resource Resource
-		if err := rows.Scan(&resource.ID, &resource.RoomID, &resource.ResourceType, &resource.ResourceID, &resource.AddedBy, &resource.CreatedAt); err != nil {
+		if err := rows.Scan(&resource.ID, &resource.RoomID, &resource.ResourceType, &resource.ResourceID, &resource.AddedBy, &resource.MessageID, &resource.CreatedAt); err != nil {
 			return nil, nil, nil, err
 		}
 		resources = append(resources, resource)

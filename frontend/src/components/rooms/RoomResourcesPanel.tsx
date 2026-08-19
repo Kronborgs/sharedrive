@@ -6,7 +6,7 @@ import { FloatingPanel } from '@/components/rooms/FloatingPanel'
 import { api } from '@/lib/api'
 import { listNotes, type Note } from '@/lib/notes'
 import { useI18n } from '@/lib/i18n'
-import { addRoomResource, type Room, type RoomResourceType } from '@/lib/rooms'
+import { type Room, type RoomResourceType } from '@/lib/rooms'
 import type { FileItem } from '@/types/api'
 
 function ResourceOptions({ type, files, notes }: Readonly<{ type: RoomResourceType; files: FileItem[]; notes: Note[] }>) {
@@ -15,7 +15,14 @@ function ResourceOptions({ type, files, notes }: Readonly<{ type: RoomResourceTy
   return <>{notes.map(note => <option key={note.id} value={note.id}>{note.title || t('rooms.untitledNote')}</option>)}</>
 }
 
-export function RoomResourcesPanel({ room }: Readonly<{ room: Room }>) {
+export interface PendingRoomResource {
+  resourceType: RoomResourceType
+  resourceID: string
+  name: string
+  mimeType?: string
+}
+
+export function RoomResourcesPanel({ room, onQueued }: Readonly<{ room: Room; onQueued: (resource: PendingRoomResource) => void }>) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -27,29 +34,17 @@ export function RoomResourcesPanel({ room }: Readonly<{ room: Room }>) {
   const fileURL = fileSearch.trim() ? `/api/v1/files/search?q=${encodeURIComponent(fileSearch.trim())}` : '/api/v1/files'
   const files = useQuery({ queryKey: ['rooms', room.id, 'available-files', fileSearch], queryFn: ({ signal }) => api.get<FileItem[]>(fileURL, signal), enabled: open })
   const notes = useQuery({ queryKey: ['rooms', room.id, 'available-notes'], queryFn: ({ signal }) => listNotes(new URLSearchParams(), signal), enabled: open })
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['rooms', room.id, 'resources'] }).catch(() => undefined)
-  const add = useMutation({
-    mutationFn: ({ type, id }: { type: RoomResourceType; id: string }) => addRoomResource(room.id, type, id),
-    onSuccess: resource => {
-      setResourceID('')
-      setOpen(false)
-      refresh()
-      toast.success(t('rooms.resourceShared', { name: resource.name || t('rooms.resourceFallback') }))
-    },
-    onError: () => toast.error(t('rooms.resourceShareFailed')),
-  })
   const upload = useMutation({
     mutationFn: async (file: globalThis.File) => {
       const formData = new FormData()
       formData.append('file', file)
       const created = await api.post<FileItem>('/api/v1/files/upload', formData)
-      return addRoomResource(room.id, 'file', created.id)
+      return created
     },
-    onSuccess: resource => {
+    onSuccess: created => {
       setOpen(false)
-      refresh()
       queryClient.invalidateQueries({ queryKey: ['files'] }).catch(() => undefined)
-      toast.success(t('rooms.fileUploaded', { name: resource.name || t('rooms.fileFallback') }))
+      onQueued({ resourceType: 'file', resourceID: created.id, name: created.name, mimeType: created.mime_type ?? undefined })
     },
     onError: () => toast.error(t('rooms.fileUploadFailed')),
   })
@@ -58,6 +53,20 @@ export function RoomResourcesPanel({ room }: Readonly<{ room: Room }>) {
   const selectType = (nextType: RoomResourceType) => {
     setResourceType(nextType)
     setResourceID('')
+  }
+  const queueExistingResource = () => {
+    if (!resourceID) return
+    if (resourceType === 'file') {
+      const file = fileOptions.find(item => item.id === resourceID)
+      if (!file) return
+      onQueued({ resourceType, resourceID, name: file.name, mimeType: file.mime_type ?? undefined })
+    } else {
+      const note = noteOptions.find(item => item.id === resourceID)
+      if (!note) return
+      onQueued({ resourceType, resourceID, name: note.title || t('rooms.untitledNote') })
+    }
+    setResourceID('')
+    setOpen(false)
   }
   const selectUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selected = event.target.files?.[0]
@@ -76,7 +85,7 @@ export function RoomResourcesPanel({ room }: Readonly<{ room: Room }>) {
         <select value={resourceType} onChange={event => selectType(event.target.value as RoomResourceType)} aria-label={t('rooms.resourceType')} className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-[#34394f] dark:bg-[#11141e] dark:text-slate-100"><option value="file">{t('rooms.file')}</option><option value="note">{t('rooms.note')}</option></select>
         {resourceType === 'file' && <input type="search" value={fileSearch} onChange={event => setFileSearch(event.target.value)} placeholder={t('rooms.searchFiles')} aria-label={t('rooms.searchFileAria')} className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-[#34394f] dark:bg-[#11141e] dark:text-slate-100" />}
         <select value={resourceID} onChange={event => setResourceID(event.target.value)} aria-label={t('rooms.selectResource')} className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-[#34394f] dark:bg-[#11141e] dark:text-slate-100"><option value="">{t(resourceType === 'file' ? 'rooms.chooseFile' : 'rooms.chooseNote')}</option><ResourceOptions type={resourceType} files={fileOptions} notes={noteOptions} /></select>
-        <button type="button" onClick={() => resourceID && add.mutate({ type: resourceType, id: resourceID })} disabled={!resourceID || add.isPending} className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 dark:border-[#34394f] dark:hover:bg-[#2d3148]"><Link2 size={16} /> {t('rooms.shareInChat')}</button>
+         <button type="button" onClick={queueExistingResource} disabled={!resourceID} className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 dark:border-[#34394f] dark:hover:bg-[#2d3148]"><Link2 size={16} /> {t('rooms.shareInChat')}</button>
       </div>
     </FloatingPanel>
   </span>

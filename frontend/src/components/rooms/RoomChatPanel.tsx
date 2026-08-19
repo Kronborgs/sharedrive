@@ -3,12 +3,13 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { ArrowDown, File, FileText, Pencil, Reply, Send, Trash2 } from 'lucide-react'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { EmojiPicker } from '@/components/rooms/EmojiPicker'
-import { RoomResourcesPanel } from '@/components/rooms/RoomResourcesPanel'
+import { RoomResourcesPanel, type PendingRoomResource } from '@/components/rooms/RoomResourcesPanel'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
 import {
   addRoomReaction,
+  addRoomResource,
   createRoomMessage,
   deleteRoomMessage,
   listRoomMessages,
@@ -33,13 +34,16 @@ interface MessageCardProps {
   currentUserID?: string
   canModerate: boolean
   groupedWithPrevious: boolean
+  resources: RoomResource[]
   onReply: (message: RoomMessage) => void
   onEdit: (message: RoomMessage) => void
   onDelete: (message: RoomMessage) => void
   onReaction: (message: RoomMessage, emoji: string) => void
+  onRemoveResource: (resourceID: string) => void
+  onPreviewResource: (resourceID: string) => void
 }
 
-function MessageActions({ message, currentUserID, canModerate, onReply, onEdit, onDelete }: Readonly<Omit<MessageCardProps, 'onReaction' | 'groupedWithPrevious'>>) {
+function MessageActions({ message, currentUserID, canModerate, onReply, onEdit, onDelete }: Readonly<Omit<MessageCardProps, 'onReaction' | 'groupedWithPrevious' | 'resources' | 'onRemoveResource' | 'onPreviewResource'>>) {
   const { t } = useI18n()
   const isAuthor = message.sender_user_id === currentUserID
   const canChange = !message.deleted_at
@@ -53,7 +57,7 @@ function MessageActions({ message, currentUserID, canModerate, onReply, onEdit, 
 
 function MessageCard(props: Readonly<MessageCardProps>) {
   const { t, locale } = useI18n()
-  const { message, currentUserID, canModerate, groupedWithPrevious, onReply, onEdit, onDelete, onReaction } = props
+  const { message, currentUserID, canModerate, groupedWithPrevious, resources, onReply, onEdit, onDelete, onReaction, onRemoveResource, onPreviewResource } = props
   const deleted = Boolean(message.deleted_at)
   const isOwnMessage = message.sender_user_id === currentUserID
   const alignmentClass = isOwnMessage ? 'items-end self-end text-right' : 'items-start self-start text-left'
@@ -70,6 +74,7 @@ function MessageCard(props: Readonly<MessageCardProps>) {
     {groupedWithPrevious && <div className="flex justify-end"><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>}
     {message.reply_to_message_id && <p className="text-xs text-muted">{t('rooms.replyContext')}</p>}
     <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{deleted ? t('rooms.messageDeleted') : message.body}</p>
+    {!deleted && resources.length > 0 && <div className="mt-2 space-y-2">{resources.map(resource => <ResourceCard key={resource.id} resource={resource} canModerate={canModerate} onPreview={onPreviewResource} onRemove={onRemoveResource} />)}</div>}
     {!deleted && <div className="mt-2 flex flex-wrap items-center gap-1">
       {summarizeRoomReactions(message.reactions).map(summary => <button key={summary.emoji} type="button" onClick={() => onReaction(message, summary.emoji)} title={t('rooms.reactedBy', { names: summary.names.join(', ') })} aria-label={t('rooms.reactionAria', { emoji: summary.emoji, names: summary.names.join(', ') })} className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs dark:border-[#3a3f58]">{summary.emoji} {summary.count}</button>)}
       <EmojiPicker userKey={currentUserID ?? 'anonymous'} label={t('rooms.addReaction')} onSelect={emoji => onReaction(message, emoji)} />
@@ -179,6 +184,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   const [body, setBody] = useState('')
   const [replyTo, setReplyTo] = useState<RoomMessage>()
   const [previewID, setPreviewID] = useState<string>()
+  const [attachments, setAttachments] = useState<PendingRoomResource[]>([])
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const newestTimelineID = useRef<string | undefined>(undefined)
   const scrollAfterSend = useRef(false)
@@ -199,9 +205,17 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   const preview = useQuery({ queryKey: ['rooms', roomID, 'preview-file', previewID], queryFn: ({ signal }) => api.get<FileItem>(`/api/v1/files/${previewID}`, signal), enabled: Boolean(previewID) })
   const messageItems = messages.data?.pages.flatMap(page => page.messages) ?? []
   const canModerate = user?.role === 'admin' || room.current_role === 'owner' || room.current_role === 'moderator'
+  const resourcesByMessage = useMemo(() => {
+    const result = new Map<string, RoomResource[]>()
+    for (const resource of resources.data ?? []) {
+      if (!resource.message_id) continue
+      result.set(resource.message_id, [...(result.get(resource.message_id) ?? []), resource])
+    }
+    return result
+  }, [resources.data])
   const timeline = useMemo<TimelineItem[]>(() => [
     ...messageItems.map(value => ({ kind: 'message' as const, date: value.created_at, value })),
-    ...(resources.data ?? []).map(value => ({ kind: 'resource' as const, date: value.created_at, value })),
+    ...(resources.data ?? []).filter(value => !value.message_id).map(value => ({ kind: 'resource' as const, date: value.created_at, value })),
   ].sort((a, b) => a.date.localeCompare(b.date)), [messageItems, resources.data])
 
   const scrollToLatest = useCallback((behavior: ScrollBehavior = 'smooth') => {
@@ -248,7 +262,15 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
     }
   }, [messages.data, queryClient, roomID])
 
-  const send = useMutation({ mutationFn: () => createRoomMessage(roomID, body, replyTo?.id), onSuccess: () => { scrollAfterSend.current = true; setBody(''); setReplyTo(undefined); refresh() } })
+  const send = useMutation({ mutationFn: async () => {
+    if (!body.trim()) {
+      await Promise.all(attachments.map(attachment => addRoomResource(roomID, attachment.resourceType, attachment.resourceID)))
+      return undefined
+    }
+    const message = await createRoomMessage(roomID, body, replyTo?.id)
+    await Promise.all(attachments.map(attachment => addRoomResource(roomID, attachment.resourceType, attachment.resourceID, message.id)))
+    return message
+  }, onSuccess: () => { scrollAfterSend.current = true; setBody(''); setAttachments([]); setReplyTo(undefined); refresh() } })
   const removeResourceMutation = useMutation({ mutationFn: (resourceID: string) => removeRoomResource(roomID, resourceID), onSuccess: refresh })
   const editMessage = (message: RoomMessage) => {
     const next = window.prompt(t('rooms.editMessagePrompt'), message.body)?.trim()
@@ -272,18 +294,19 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
       {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}
       {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}
       {timeline.map((item, index) => item.kind === 'message'
-        ? <MessageCard key={`message-${item.value.id}`} message={item.value} currentUserID={user?.id} canModerate={canModerate} groupedWithPrevious={isGroupedMessage(timeline, index)} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} />
+        ? <MessageCard key={`message-${item.value.id}`} message={item.value} currentUserID={user?.id} canModerate={canModerate} groupedWithPrevious={isGroupedMessage(timeline, index)} resources={resourcesByMessage.get(item.value.id) ?? []} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} onRemoveResource={removeResourceMutation.mutate} onPreviewResource={setPreviewID} />
         : <ResourceCard key={`resource-${item.value.id}`} resource={item.value} canModerate={canModerate} onPreview={setPreviewID} onRemove={removeResourceMutation.mutate} />)}
     </div>
     {hasNewMessagesBelow && <button type="button" onClick={() => scrollToLatest()} className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-brand-600 px-3 py-1.5 text-xs font-medium text-white shadow-lg"><ArrowDown size={14} /> {t('rooms.newMessagesBelow')}</button>}
     </div>
     {typingName && <p className="mb-2 text-xs text-muted">{t('rooms.typing', { name: typingName })}</p>}
     {replyTo && <div className="mb-2 flex justify-between rounded-lg bg-zinc-100 px-3 py-2 text-xs dark:bg-[#1a1d27]"><span>{t('rooms.replyingTo', { name: replyTo.sender_name })}</span><button type="button" onClick={() => setReplyTo(undefined)}>{t('action.cancel')}</button></div>}
-    <form className="shrink-0 flex items-end gap-1 rounded-2xl border border-zinc-200 bg-white p-1.5 dark:border-[#2d3148] dark:bg-[#0f1117]" onSubmit={event => { event.preventDefault(); if (body.trim()) send.mutate() }}>
-      <RoomResourcesPanel room={room} />
+    {attachments.length > 0 && <div className="mb-2 flex flex-wrap gap-2">{attachments.map(attachment => <span key={`${attachment.resourceType}-${attachment.resourceID}`} className="flex max-w-full items-center gap-2 rounded-lg border border-subtle bg-surface px-2 py-1 text-xs"><span className="truncate">{attachment.name}</span><button type="button" onClick={() => setAttachments(items => items.filter(item => item.resourceID !== attachment.resourceID || item.resourceType !== attachment.resourceType))} aria-label={t('action.close')}><Trash2 size={14} /></button></span>)}</div>}
+    <form className="shrink-0 flex items-end gap-1 rounded-2xl border border-zinc-200 bg-white p-1.5 dark:border-[#2d3148] dark:bg-[#0f1117]" onSubmit={event => { event.preventDefault(); if (body.trim() || attachments.length > 0) send.mutate() }}>
+      <RoomResourcesPanel room={room} onQueued={attachment => setAttachments(items => [...items.filter(item => item.resourceID !== attachment.resourceID || item.resourceType !== attachment.resourceType), attachment])} />
       <textarea value={body} onChange={event => { setBody(event.target.value); notifyTyping() }} maxLength={10000} rows={2} placeholder={t('rooms.messagePlaceholder')} className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none" />
       <EmojiPicker userKey={user?.id ?? 'anonymous'} onSelect={emoji => setBody(value => value + emoji)} />
-      <button type="submit" disabled={!body.trim() || send.isPending} className="rounded-full bg-brand-600 p-2.5 text-white disabled:opacity-50" aria-label={t('rooms.sendMessage')}><Send size={18} /></button>
+      <button type="submit" disabled={(!body.trim() && attachments.length === 0) || send.isPending} className="rounded-full bg-brand-600 p-2.5 text-white disabled:opacity-50" aria-label={t('rooms.sendMessage')}><Send size={18} /></button>
     </form>
     {previewID && preview.data && <PreviewModal item={preview.data} onClose={() => setPreviewID(undefined)} />}
   </section>

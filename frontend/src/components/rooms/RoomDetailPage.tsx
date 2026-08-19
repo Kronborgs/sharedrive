@@ -1,10 +1,12 @@
-import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Archive, ArrowLeft, Copy, DoorOpen, PanelRightClose, PanelRightOpen, Pencil, Users } from 'lucide-react'
+import { ArrowLeft, Copy, DoorOpen, ImagePlus, PanelRightClose, PanelRightOpen, Pencil, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
-import { archiveRoom, getPublicRoomSettings, getRoom, listRoomMembers, updateRoom } from '@/lib/rooms'
+import { getPublicRoomSettings, getRoom, listRoomMembers, updateRoom, updateRoomIcon } from '@/lib/rooms'
+import { api } from '@/lib/api'
+import type { FileItem } from '@/types/api'
 import { RoomMembersPanel } from '@/components/rooms/RoomMembersPanel'
 import { RoomChatPanel } from '@/components/rooms/RoomChatPanel'
 import { RoomInvitesPanel } from '@/components/rooms/RoomInvitesPanel'
@@ -17,6 +19,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [contextVisible, setContextVisible] = useState(true)
+  const iconInputRef = useRef<HTMLInputElement>(null)
   const roomQuery = useQuery({
     queryKey: ['rooms', roomID],
     queryFn: ({ signal }) => getRoom(roomID, signal),
@@ -32,18 +35,6 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
     queryKey: ['rooms', roomID, 'members'],
     queryFn: ({ signal }) => listRoomMembers(roomID, signal),
   })
-  const archiveMutation = useMutation({
-    mutationFn: () => {
-      if (!roomQuery.data) throw new Error('Room is not loaded')
-      return archiveRoom(roomQuery.data.id)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['rooms'] }).catch(() => undefined)
-      toast.success(t('rooms.archived' as never))
-      navigate({ to: '/rooms' }).catch(() => undefined)
-    },
-    onError: () => toast.error(t('rooms.archiveFailed' as never)),
-  })
 
   if (roomQuery.isLoading) return <p className="text-sm text-muted">{t('rooms.loading' as never)}</p>
   if (roomQuery.isError || !roomQuery.data) return <p className="text-sm text-red-600 dark:text-red-400">{t('rooms.loadFailed' as never)}</p>
@@ -52,6 +43,18 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const copyLink = async () => {
     await navigator.clipboard.writeText(window.location.href)
     toast.success(t('rooms.linkCopied' as never))
+  }
+  const uploadIcon = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error(t('rooms.fileUploadFailed' as never))
+      return
+    }
+    const formData = new FormData()
+    formData.append('file', file)
+    const uploaded = await api.post<FileItem>('/api/v1/files/upload', formData)
+    const updated = await updateRoomIcon(room.id, uploaded.id)
+    queryClient.setQueryData(['rooms', roomID], updated)
+    queryClient.invalidateQueries({ queryKey: ['rooms'] }).catch(() => undefined)
   }
 
   const memberCount = membersQuery.data?.length
@@ -72,7 +75,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
           <header className="shrink-0 border-b border-subtle pb-4">
           <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 items-start gap-3">
-              <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400"><DoorOpen size={21} /></span>
+              <span className="relative mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400">{room.icon_file_id ? <img src={`/api/v1/files/${room.icon_file_id}/thumbnail`} alt="" className="h-full w-full object-cover" /> : <DoorOpen size={21} />}{(room.current_role === 'owner' || room.current_role === 'moderator') && <label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/55 text-white opacity-0 transition-opacity hover:opacity-100" title={t('rooms.changeIcon' as never)}><ImagePlus size={17} /><input ref={iconInputRef} type="file" accept="image/*" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) uploadIcon(file).catch(() => toast.error(t('rooms.fileUploadFailed' as never))); event.currentTarget.value = '' }} /></label>}</span>
               <div className="min-w-0">
                 <h1 id="room-heading" className="truncate text-2xl font-semibold text-zinc-950 dark:text-white">{room.name}</h1>
                 <p className="mt-1 flex items-center gap-1.5 text-sm text-muted"><Users size={15} /> {memberCount === undefined ? t(`rooms.role.${room.current_role}` as never) : `${t('rooms.permanentWorkspace' as never)} · ${t('rooms.roomMembers' as never, { count: memberCount })}`}</p>
@@ -98,11 +101,6 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
                   .catch(() => toast.error(t('rooms.createFailed' as never)))
               }}>
                 <Pencil size={16} /> <span className="hidden sm:inline 2xl:inline">{t('action.rename')}</span>
-              </button>
-            )}
-            {room.current_role === 'owner' && (
-              <button type="button" className="flex shrink-0 items-center gap-1.5 rounded-md border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30" title={t('rooms.archive' as never)} onClick={() => archiveMutation.mutate()} disabled={archiveMutation.isPending}>
-                <Archive size={16} /> <span className="hidden sm:inline 2xl:inline">{t('rooms.archive' as never)}</span>
               </button>
             )}
           </div>

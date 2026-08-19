@@ -76,7 +76,7 @@ func (handler *Handler) CompleteGuestTusUpload(ctx context.Context, guestSession
 	if err != nil {
 		return err
 	}
-	if _, err := handler.service.AddResource(ctx, access.OwnerID, access.RoomID, ResourceFile, parsedFileID); err != nil {
+	if _, err := handler.service.AddResource(ctx, access.OwnerID, access.RoomID, ResourceFile, parsedFileID, nil); err != nil {
 		return err
 	}
 	if _, err := handler.service.db.Exec(ctx, `INSERT INTO room_guest_uploads(room_id,guest_session_id,file_id)

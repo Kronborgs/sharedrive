@@ -29,6 +29,7 @@ type Room struct {
 	Slug           string     `json:"slug"`
 	OwnerID        uuid.UUID  `json:"owner_id"`
 	ManagedGroupID uuid.UUID  `json:"-"`
+	IconFileID     *uuid.UUID `json:"icon_file_id,omitempty"`
 	CreatedBy      *uuid.UUID `json:"created_by,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
@@ -146,6 +147,7 @@ type Resource struct {
 	ResourceType ResourceType `json:"resource_type"`
 	ResourceID   uuid.UUID    `json:"resource_id"`
 	AddedBy      *uuid.UUID   `json:"added_by,omitempty"`
+	MessageID    *uuid.UUID   `json:"message_id,omitempty"`
 	CreatedAt    time.Time    `json:"created_at"`
 }
 

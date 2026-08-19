@@ -48,7 +48,7 @@ var backupExportSteps = []exportStep{
 	{name: "totp_credentials", query: `SELECT id, user_id, encrypted_secret, backup_codes, confirmed_at, created_at FROM totp_credentials`, set: func(d *backupData, v []map[string]any) { d.TOTPCreds = v }},
 	{name: "app_passwords", query: `SELECT id, user_id, name, password_hash, scope, last_used_at, revoked_at, created_at FROM app_passwords`, set: func(d *backupData, v []map[string]any) { d.AppPasswords = v }},
 	{name: "system_settings", query: `SELECT key, value, updated_at FROM system_settings`, set: func(d *backupData, v []map[string]any) { d.SystemSettings = v }},
-	{name: "rooms", query: `SELECT id, name, slug, owner_id, managed_group_id, created_by, created_at, updated_at, archived_at FROM rooms`, set: func(d *backupData, v []map[string]any) { d.Rooms = v }},
+	{name: "rooms", query: `SELECT id, name, slug, owner_id, managed_group_id, icon_file_id, created_by, created_at, updated_at, archived_at FROM rooms`, set: func(d *backupData, v []map[string]any) { d.Rooms = v }},
 	{name: "room_members", query: `SELECT room_id, user_id, role, joined_at, added_by FROM room_members`, set: func(d *backupData, v []map[string]any) { d.RoomMembers = v }},
 	{name: "room_invites", query: `SELECT id, room_id, token_hash, label, created_by, can_chat, can_upload, can_voice, can_share_screen, expires_at, revoked_at, created_at FROM room_invites`, set: func(d *backupData, v []map[string]any) { d.RoomInvites = v }},
 	// Guest session secrets are intentionally never exported. The synthetic hash
@@ -58,7 +58,7 @@ var backupExportSteps = []exportStep{
 	{name: "room_reactions", query: `SELECT message_id, user_id, guest_session_id, emoji, created_at FROM room_reactions`, set: func(d *backupData, v []map[string]any) { d.RoomReactions = v }},
 	{name: "room_read_state", query: `SELECT room_id, user_id, last_read_message_id, updated_at FROM room_read_state`, set: func(d *backupData, v []map[string]any) { d.RoomReadState = v }},
 	{name: "room_guest_read_state", query: `SELECT room_id, guest_session_id, last_read_message_id, updated_at FROM room_guest_read_state`, set: func(d *backupData, v []map[string]any) { d.RoomGuestReadState = v }},
-	{name: "room_resources", query: `SELECT id, room_id, resource_type, resource_id, added_by, created_at FROM room_resources`, set: func(d *backupData, v []map[string]any) { d.RoomResources = v }},
+	{name: "room_resources", query: `SELECT id, room_id, resource_type, resource_id, added_by, message_id, created_at FROM room_resources`, set: func(d *backupData, v []map[string]any) { d.RoomResources = v }},
 	{name: "room_guest_uploads", query: `SELECT id, room_id, guest_session_id, file_id, created_at FROM room_guest_uploads`, set: func(d *backupData, v []map[string]any) { d.RoomGuestUploads = v }},
 }
 
@@ -492,7 +492,7 @@ func insertEnvelopeRows(ctx context.Context, tx pgx.Tx, data backupData, include
 		},
 		"totp_credentials":      {"id": true, "user_id": true, "encrypted_secret": true, "backup_codes": true, "confirmed_at": true, "created_at": true},
 		"app_passwords":         {"id": true, "user_id": true, "name": true, "password_hash": true, "scope": true, "last_used_at": true, "revoked_at": true, "created_at": true},
-		"rooms":                 {"id": true, "name": true, "slug": true, "owner_id": true, "managed_group_id": true, "created_by": true, "created_at": true, "updated_at": true, "archived_at": true},
+		"rooms":                 {"id": true, "name": true, "slug": true, "owner_id": true, "managed_group_id": true, "icon_file_id": true, "created_by": true, "created_at": true, "updated_at": true, "archived_at": true},
 		"room_members":          {"room_id": true, "user_id": true, "role": true, "joined_at": true, "added_by": true},
 		"room_invites":          {"id": true, "room_id": true, "token_hash": true, "label": true, "created_by": true, "can_chat": true, "can_upload": true, "can_voice": true, "can_share_screen": true, "expires_at": true, "revoked_at": true, "created_at": true},
 		"room_guest_sessions":   {"id": true, "invite_id": true, "session_token_hash": true, "display_name": true, "expires_at": true, "revoked_at": true, "last_accessed_at": true, "created_at": true},
@@ -500,7 +500,7 @@ func insertEnvelopeRows(ctx context.Context, tx pgx.Tx, data backupData, include
 		"room_reactions":        {"message_id": true, "user_id": true, "guest_session_id": true, "emoji": true, "created_at": true},
 		"room_read_state":       {"room_id": true, "user_id": true, "last_read_message_id": true, "updated_at": true},
 		"room_guest_read_state": {"room_id": true, "guest_session_id": true, "last_read_message_id": true, "updated_at": true},
-		"room_resources":        {"id": true, "room_id": true, "resource_type": true, "resource_id": true, "added_by": true, "created_at": true},
+		"room_resources":        {"id": true, "room_id": true, "resource_type": true, "resource_id": true, "added_by": true, "message_id": true, "created_at": true},
 		"room_guest_uploads":    {"id": true, "room_id": true, "guest_session_id": true, "file_id": true, "created_at": true},
 	}
 

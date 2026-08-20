@@ -24,11 +24,12 @@ import (
 )
 
 const (
-	internalErrorMessage = "internal error"
-	mediaRoomPrefix      = "sharedrive-room:"
-	mediaModeVoice       = "voice"
-	mediaModeScreen      = "screen"
-	mediaModeWatch       = "watch"
+	internalErrorMessage    = "internal error"
+	voiceUnavailableMessage = "voice service is unavailable"
+	mediaRoomPrefix         = "sharedrive-room:"
+	mediaModeVoice          = "voice"
+	mediaModeScreen         = "screen"
+	mediaModeWatch          = "watch"
 )
 
 type RoomMailer interface {
@@ -114,6 +115,10 @@ func (handler *Handler) CreateMediaToken(w http.ResponseWriter, request *http.Re
 		handler.respondError(w, err)
 		return
 	}
+	if !handler.liveKitAvailable(request.Context()) {
+		httputil.RespondError(w, http.StatusServiceUnavailable, voiceUnavailableMessage)
+		return
+	}
 	signed, err := handler.mediaToken(room.ID, "user:"+user.ID.String(), user.DisplayName, true, mode)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
@@ -146,6 +151,10 @@ func (handler *Handler) CreateGuestMediaToken(w http.ResponseWriter, request *ht
 		httputil.RespondError(w, http.StatusForbidden, "screen sharing is not allowed for this guest")
 		return
 	}
+	if !handler.liveKitAvailable(request.Context()) {
+		httputil.RespondError(w, http.StatusServiceUnavailable, voiceUnavailableMessage)
+		return
+	}
 	signed, err := handler.mediaToken(access.RoomID, "guest:"+access.SessionID.String(), access.DisplayName, access.CanShareScreen, mode)
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
@@ -162,6 +171,20 @@ func (handler *Handler) voiceEnabled(w http.ResponseWriter, request *http.Reques
 	}
 	if !enabled {
 		httputil.RespondError(w, http.StatusNotFound, "voice is disabled")
+		return false
+	}
+	return true
+}
+
+// liveKitAvailable performs a short, authenticated probe only when somebody
+// asks to join a meeting. Rooms chat and all other Sharedrive features remain
+// independent from this optional service.
+func (handler *Handler) liveKitAvailable(ctx context.Context) bool {
+	probeContext, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	client := lksdk.NewRoomServiceClient(handler.liveKitURL, handler.liveKitKey, handler.liveKitSecret)
+	if _, err := client.ListRooms(probeContext, &livekit.ListRoomsRequest{}); err != nil {
+		log.Debug().Err(err).Msg("rooms: LiveKit join probe unavailable")
 		return false
 	}
 	return true

@@ -1,14 +1,14 @@
 # Implementer Sharedrive Rooms
 
-Status: Phase 0-5 er implementeret og brugertestet. Phase 6 er implementeret og accepteret til videre arbejde efter bruger-test af møde, tale og skærmdeling. Phase 7 er i gang med Rooms backup/restore, hardening og dokumentation.
+Status: Phase 0-7 er implementeret og brugertestet. Phase 8 er startet: den lokale regression er gron, mens afsluttende testserver-regression og GitLab/Sonar Quality Gate afventer naeste commit og push.
 
 ## Aktuel fasestatus
 
 - **Phase 0-4:** Implementeret. Rooms omfatter permanente Rooms, medlemsroller, live chat, reaktioner, filer/Notes, invitationer, link-gaester, Rooms-administration, ulaeste beskeder samt baade integreret hoved-PWA-navigation og en selvstaendig Rooms-PWA.
-- **Phase 5:** Implementeret og brugertestet. Self-hosted LiveKit voice har Room-bundne 15-minutters media-tokens, join/leave, mute/unmute, deltagere, aktiv taler, reconnect-status og fejlhaandtering. Voice aktiveres eksplicit af admin i Rooms-indstillingerne. Kamera forbliver blokeret; LiveKit-data bruges kun til det interne signal ved skift af skærmdeling. Gæster kan kun deltage, naar baade Rooms Voice og invitationens `can_voice` er aktiveret. Lyd er testet på mobil og PC-browser.
-- **Phase 6:** Implementeret og accepteret til videre arbejde. Skærmdeling bygger oven på LiveKit med Teams-lignende mødehandlinger, start/stop/skift af skærm eller fane, remote rendering, stor popup-visning og mindst privilegerede media-tokens. Rumoversigten og Room-siden viser privat `Tale i gang`/mødestatus uden at eksponere samtaleindhold. Kamera forbliver blokeret.
-- **Phase 7:** I gang. Admin-backupformatet er udvidet med valgfri Rooms-serialisering og sikker restore: chat-/medlemshistorik bevares, mens gæstelinks og gæstesessioner altid gendannes tilbagekaldt. Ældre backupper uden Rooms blokeres sikkert, hvis target allerede har Rooms. Rooms/LiveKit-dokumentation er tilføjet; afsluttende hardening og bruger-test mangler.
-- **Phase 8:** Ikke startet. Fuld regression og sammenligning med baseline afslutter projektet.
+- **Phase 5:** Implementeret og brugertestet. Self-hosted LiveKit har Room-bundne 15-minutters media-tokens, join/leave, mute/unmute, deltagere, reconnect-status samt klare fejl ved manglende LiveKit-forbindelse. Voice og kamera aktiveres eksplicit af admin i Rooms-indstillingerne. Gæster kan kun deltage, naar baade Rooms-media og invitationens `can_voice` er aktiveret.
+- **Phase 6:** Implementeret og brugertestet. Skærmdeling bygger oven på LiveKit med Teams-lignende moedehandlinger, start/stop/skift af skærm eller fane, remote rendering og mindst privilegerede media-tokens. Rumoversigten og Room-siden viser privat `Tale i gang`/moedestatus uden at eksponere samtaleindhold.
+- **Phase 7:** Implementeret og brugertestet. Rooms backup/restore, hardening, rate limits, sikkerhed, responsive UI, accessibility, i18n og dokumentation er med. Restore bevarer chat-/medlemshistorik, mens gæstelinks og gæstesessioner altid gendannes tilbagekaldt.
+- **Phase 8:** I gang. Lokal backend/frontend-regression er gron; afsluttes med testserverens funktionsregression samt GitLab-pipeline og Sonar Quality Gate.
 
 Denne fil er den kanoniske arbejdsbeskrivelse for Sharedrive Rooms. Repositoryets faktiske kode er altid source of truth. Arbejdet udføres fasevist, uden automatiske commits eller versionsbump.
 
@@ -137,7 +137,7 @@ Foer produktionskode:
 - User identity kommer fra server-valideret session context; Rooms maa aldrig acceptere client-supplied user ID.
 - CORS bruger konfigurerede origins og credentials. Rooms WebSocket skal lave en selvstaendig strict Origin-check; buddy-tunnellens `InsecureSkipVerify` er ikke et passende Rooms-pattern.
 - CSP tillader aktuelt brede `ws:` og `wss:` connect sources. LiveKit-fasen skal stramme/validere den konkrete origin i stedet for at stole paa denne bredde.
-- `Permissions-Policy` blokerer aktuelt `camera`, `microphone` og `display-capture`. Kamera skal forblive `()`. Microphone/display-capture aabnes foerst i media-fasen og mindst muligt.
+- `Permissions-Policy` tillader kun mikrofon, kamera og display-capture, hvor Rooms-media bruger dem efter en eksplicit brugerhandling. Kamera og mikrofon anmodes aldrig automatisk.
 
 ### Users, groups og membership
 
@@ -312,7 +312,7 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 - Token bindes til praecis Room og begraenser publish permissions.
 - Join, leave, mute/unmute, participants, speaker/connection state, reconnect og klare fejl.
 - Microphone request sker kun efter eksplicit `Join voice`.
-- Kamera anmodes aldrig og er disabled i UI, token grants og Permissions-Policy.
+- Mikrofon og kamera anmodes kun efter en eksplicit brugerhandling. Media-tokenet giver kun de noedvendige LiveKit-rettigheder.
 
 ### Phase 6 - screen sharing
 
@@ -327,7 +327,7 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 
 - Audit, backup/restore, rate limiting, security review, responsive UI, accessibility, i18n og docs.
 - Route-/context-specifik Permissions-Policy foretraekkes; ellers mindst brede sikre SPA-policy.
-- `camera=()` bevares; microphone/display-capture aabnes mindst muligt.
+- Mikrofon, kamera og display-capture aabnes mindst muligt og kun for den relevante Rooms-mediaoplevelse.
 - CSP udvides kun med valideret LiveKit origin i relevante directives.
 - Existing HSTS/CORS/CSP/security headers svaekkes ikke generelt.
 - Optional Compose profile eller separat compose-fil; eksisterende deployment virker uden media config.
@@ -337,6 +337,15 @@ Chat-retention, byteberegning og automatisk oprydning implementeres først med P
 ### Phase 8 - regression
 
 Koer hele den eksisterende backend/frontend pipeline og sammenlign med Phase 0-baseline. Rooms-relaterede regressioner rettes; eksisterende baselinefejl registreres separat.
+
+Aktuel Phase 8-checkliste:
+
+- [x] Lokal backend: `go test ./... -timeout 60s`.
+- [x] Lokal frontend: tests, typecheck, lint og production build.
+- [ ] Testserver: login/2FA, Files, Notes, Shares, WebDAV, OnlyOffice og backup-flow fungerer som baseline.
+- [ ] Testserver: Rooms chat, vedhaeftning med besked, medlemmer/gæster, unread, PWA og mobil/desktop-layout.
+- [ ] Testserver: LiveKit voice, kamera, skærmdeling og kontrolleret LiveKit-nedetid. Nedetidstesten maa ikke ændre eller slette brugerdata.
+- [ ] GitLab-pipeline og Sonar Quality Gate er gronne efter godkendt commit/push.
 
 ## Datamodel - designudgangspunkt
 
@@ -529,7 +538,7 @@ Hashed/expiring invite valideres, udveksles til HttpOnly guest session og fjerne
 
 ### F - voice
 
-To autoriserede deltagere kan hoere hinanden; mute/unmute og leave virker. Kamera requestes aldrig, og participant state rydder korrekt.
+To autoriserede deltagere kan hoere hinanden; mute/unmute, kamera-toggle og leave virker. Participant state rydder korrekt.
 
 ### G - screen share
 
@@ -549,7 +558,7 @@ Login, Files, Notes og Room chat virker. Voice viser en forstaaelig fejl.
 - [ ] Member removal fjerner kun Room-baseret access.
 - [ ] Notes linkes uden duplikering eller authorization bypass.
 - [ ] Guest link/session er hashed, short-lived, HttpOnly og revocable.
-- [ ] Optional self-hosted LiveKit voice og screen share virker uden kamera.
+- [ ] Optional self-hosted LiveKit voice, kamera og screen share virker.
 - [ ] LiveKit secrets naar aldrig frontend; Sharedrive virker uden/ved nedetid af LiveKit.
 - [ ] Room URL kan kopieres; ingen mail- eller kalenderfunktion er tilfoejet.
 - [ ] Dansk/engelsk i18n, mobil, accessibility, security, rate limits, audit og backup er implementeret.

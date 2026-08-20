@@ -96,7 +96,7 @@ const translations = {
   'rooms.voiceUnmute':       { da: 'Slå lyd til', en: 'Unmute' },
   'rooms.voiceConnected':    { da: 'Forbundet', en: 'Connected' },
   'rooms.voiceReconnecting': { da: 'Genforbinder…', en: 'Reconnecting…' },
-  'rooms.voiceConnectFailed':{ da: 'Kunne ikke forbinde til tale.', en: 'Could not connect to voice.' },
+  'rooms.voiceConnectFailed':{ da: 'Talefunktionen er ikke tilgængelig lige nu. Chatten fortsætter som normalt.', en: 'Voice is unavailable right now. Chat continues as normal.' },
   'rooms.voiceParticipants': { da: 'Deltagere: {names}', en: 'Participants: {names}' },
   'rooms.voiceSpeaking':     { da: 'Taler nu: {names}', en: 'Speaking now: {names}' },
   'rooms.voiceActive':       { da: 'Tale i gang', en: 'Voice active' },

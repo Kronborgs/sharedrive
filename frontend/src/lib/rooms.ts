@@ -154,6 +154,17 @@ export interface DirectMessagePage {
   next_cursor?: string
 }
 
+export interface DirectResource {
+  id: string
+  conversation_id: string
+  file_id: string
+  added_by: string
+  message_id?: string
+  created_at: string
+  name: string
+  mime_type?: string
+}
+
 export function listDirectConversations(signal?: AbortSignal): Promise<DirectConversation[]> {
   return api.get<DirectConversation[]>('/api/v1/rooms/direct-conversations', signal)
 }
@@ -174,6 +185,14 @@ export function createDirectMessage(conversationID: string, body: string, replyT
 
 export function markDirectConversationRead(conversationID: string): Promise<void> {
   return api.post<void>(`/api/v1/rooms/direct-conversations/${conversationID}/read`, {})
+}
+
+export function listDirectResources(conversationID: string, signal?: AbortSignal): Promise<DirectResource[]> {
+  return api.get<DirectResource[]>(`/api/v1/rooms/direct-conversations/${conversationID}/resources`, signal)
+}
+
+export function addDirectFileResource(conversationID: string, fileID: string, messageID: string): Promise<DirectResource> {
+  return api.post<DirectResource>(`/api/v1/rooms/direct-conversations/${conversationID}/resources`, { file_id: fileID, message_id: messageID })
 }
 
 export function listRoomMessages(roomID: string, cursor?: string, signal?: AbortSignal): Promise<RoomMessagePage> {

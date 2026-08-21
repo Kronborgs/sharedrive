@@ -18,6 +18,11 @@ type createDirectConversationRequest struct {
 	RoomID uuid.UUID `json:"room_id"`
 }
 
+type addDirectResourceRequest struct {
+	FileID    uuid.UUID  `json:"file_id"`
+	MessageID *uuid.UUID `json:"message_id,omitempty"`
+}
+
 func directConversationID(w http.ResponseWriter, request *http.Request) (uuid.UUID, bool) {
 	id, err := uuid.Parse(chi.URLParam(request, "conversationID"))
 	if err != nil {
@@ -114,4 +119,71 @@ func (handler *Handler) MarkDirectConversationRead(w http.ResponseWriter, reques
 		return
 	}
 	httputil.Respond(w, http.StatusNoContent, nil)
+}
+
+func (handler *Handler) CreateDirectMediaToken(w http.ResponseWriter, request *http.Request) {
+	if !handler.voiceEnabled(w, request) {
+		return
+	}
+	if handler.liveKitURL == "" || handler.liveKitKey == "" || handler.liveKitSecret == "" {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "voice is not configured")
+		return
+	}
+	conversationID, ok := directConversationID(w, request)
+	if !ok {
+		return
+	}
+	mode, ok := mediaModeFromRequest(w, request)
+	if !ok {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	if _, err := handler.service.directConversationForActor(request.Context(), user.ID, conversationID); err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	if !handler.liveKitAvailable(request.Context()) {
+		httputil.RespondError(w, http.StatusServiceUnavailable, voiceUnavailableMessage)
+		return
+	}
+	mediaRoom := handler.directMediaRoomName(conversationID)
+	signed, err := handler.mediaTokenForRoom(mediaRoom, "user:"+user.ID.String(), user.DisplayName, true, mode)
+	if err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, internalErrorMessage)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]string{"url": handler.liveKitURL, "token": signed, "room": mediaRoom})
+}
+
+func (handler *Handler) ListDirectResources(w http.ResponseWriter, request *http.Request) {
+	conversationID, ok := directConversationID(w, request)
+	if !ok {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	resources, err := handler.service.ListDirectResources(request.Context(), user.ID, conversationID)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, resources)
+}
+
+func (handler *Handler) AddDirectResource(w http.ResponseWriter, request *http.Request) {
+	conversationID, ok := directConversationID(w, request)
+	if !ok {
+		return
+	}
+	var input addDirectResourceRequest
+	if !decodeRequest(w, request, &input) || input.FileID == uuid.Nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid direct file resource")
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	resource, err := handler.service.AddDirectFileResource(request.Context(), user.ID, conversationID, input.FileID, input.MessageID)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusCreated, resource)
 }

@@ -120,7 +120,7 @@ function MeetingControls(props: Readonly<MeetingControlsProps>) {
   return <div className="flex min-w-0 flex-wrap gap-2"><button type="button" onClick={() => props.onToggleMute().catch(() => undefined)} className="notes-secondary-button shrink-0" title={props.muted ? props.t('rooms.voiceUnmute') : props.t('rooms.voiceMute')}>{props.muted ? <MicOff size={16} /> : <Mic size={16} />}<span className={labelClass}>{props.muted ? props.t('rooms.voiceUnmute') : props.t('rooms.voiceMute')}</span></button><button type="button" onClick={() => props.onToggleCamera().catch(() => undefined)} className="notes-secondary-button shrink-0" title={props.cameraEnabled ? props.t('rooms.cameraStop') : props.t('rooms.cameraStart')}>{props.cameraEnabled ? <CameraOff size={16} /> : <Camera size={16} />}<span className={labelClass}>{props.cameraEnabled ? props.t('rooms.cameraStop') : props.t('rooms.cameraStart')}</span></button>{props.canShareScreen && props.screenShareSupported && <>{props.sharingScreen && <button type="button" onClick={() => props.onChangeScreenShare().catch(() => undefined)} className="notes-secondary-button shrink-0" title={props.t('rooms.screenShareChange')}><RefreshCw size={16} /><span className={labelClass}>{props.t('rooms.screenShareChange')}</span></button>}<button type="button" onClick={() => props.onToggleScreenShare().catch(() => undefined)} className="notes-secondary-button shrink-0" title={props.sharingScreen ? props.t('rooms.screenShareStop') : props.t('rooms.screenShareStart')}><MonitorUp size={16} /><span className={labelClass}>{props.sharingScreen ? props.t('rooms.screenShareStop') : props.t('rooms.screenShareStart')}</span></button></>}<button type="button" onClick={() => props.onLeave().catch(() => undefined)} className="flex items-center gap-1.5 rounded-md border border-red-300 px-3 py-2 text-sm text-red-600 dark:border-red-900" title={props.t('rooms.voiceLeave')}><PhoneOff size={16} /><span className={labelClass}> {props.t('rooms.voiceLeave')}</span></button></div>
 }
 
-export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, meetingActive = false, compact = false }: Readonly<{ roomID: string; guest?: boolean; canShareScreen?: boolean; meetingActive?: boolean; compact?: boolean }>) {
+export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, meetingActive = false, compact = false, mediaTokenPath }: Readonly<{ roomID: string; guest?: boolean; canShareScreen?: boolean; meetingActive?: boolean; compact?: boolean; mediaTokenPath?: string }>) {
   const { t } = useI18n()
   const roomRef = useRef<LiveKitRoom | undefined>(undefined)
   const mediaModeRef = useRef<MediaMode | undefined>(undefined)
@@ -173,7 +173,8 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
     setError(''); setStatus('joining')
     try {
       const prefix = guest ? '/api/v1/guest/rooms' : '/api/v1/rooms'
-      const details = await api.post<VoiceToken>(`${prefix}/${roomID}/media-token?mode=${mode}`, {})
+      const endpoint = mediaTokenPath ?? `${prefix}/${roomID}/media-token`
+      const details = await api.post<VoiceToken>(`${endpoint}?mode=${mode}`, {})
       const room = new LiveKitRoom()
       roomRef.current = room
       mediaModeRef.current = mode

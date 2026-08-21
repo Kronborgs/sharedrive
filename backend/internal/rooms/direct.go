@@ -183,3 +183,77 @@ func (service *Service) ListDirectMessages(ctx context.Context, actorID, convers
 	}
 	return page, rows.Err()
 }
+
+func (service *Service) AddDirectFileResource(ctx context.Context, actorID, conversationID, fileID uuid.UUID, messageID *uuid.UUID) (DirectResource, error) {
+	conversation, err := service.directConversationForActor(ctx, actorID, conversationID)
+	if err != nil {
+		return DirectResource{}, err
+	}
+	if err := service.authorizeResourceAttach(ctx, actorID, ResourceFile, fileID); err != nil {
+		return DirectResource{}, err
+	}
+	if messageID != nil {
+		var allowed bool
+		err = service.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM direct_messages WHERE id=$1 AND conversation_id=$2 AND sender_user_id=$3 AND deleted_at IS NULL)`, *messageID, conversationID, actorID).Scan(&allowed)
+		if err != nil || !allowed {
+			return DirectResource{}, ErrNotFound
+		}
+	}
+	otherUserID := conversation.OtherUserID
+	tx, err := service.db.Begin(ctx)
+	if err != nil {
+		return DirectResource{}, err
+	}
+	defer tx.Rollback(ctx)
+	var resource DirectResource
+	err = tx.QueryRow(ctx, `INSERT INTO direct_resources(conversation_id,file_id,added_by,message_id)
+		VALUES($1,$2,$3,$4) ON CONFLICT(conversation_id,file_id) DO NOTHING
+		RETURNING id,conversation_id,file_id,added_by,message_id,created_at`, conversationID, fileID, actorID, messageID).Scan(&resource.ID, &resource.ConversationID, &resource.FileID, &resource.AddedBy, &resource.MessageID, &resource.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DirectResource{}, ErrResourceExists
+	}
+	if err != nil {
+		return DirectResource{}, err
+	}
+	if err := ensureDirectFileShare(ctx, tx, actorID, otherUserID, fileID); err != nil {
+		return DirectResource{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return DirectResource{}, err
+	}
+	file, err := service.fileSvc.GetAccessible(ctx, fileID.String(), actorID.String())
+	if err != nil {
+		return DirectResource{}, err
+	}
+	resource.Name, resource.MimeType = file.Name, file.MimeType
+	return resource, nil
+}
+
+func ensureDirectFileShare(ctx context.Context, tx pgx.Tx, actorID, otherUserID, fileID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `INSERT INTO shares(resource_id,owner_id,grantee_type,grantee_id,can_view,can_upload,can_edit,can_delete,can_reshare,created_by)
+		SELECT file.id,file.owner_id,'user',$2,TRUE,FALSE,FALSE,FALSE,FALSE,$3 FROM files file
+		WHERE file.id=$1 AND file.deleted_at IS NULL
+		AND NOT EXISTS(SELECT 1 FROM shares existing WHERE existing.resource_id=$1 AND existing.grantee_type='user' AND existing.grantee_id=$2 AND existing.revoked_at IS NULL)`, fileID, otherUserID, actorID)
+	return err
+}
+
+func (service *Service) ListDirectResources(ctx context.Context, actorID, conversationID uuid.UUID) ([]DirectResource, error) {
+	if _, err := service.directConversationForActor(ctx, actorID, conversationID); err != nil {
+		return nil, err
+	}
+	rows, err := service.db.Query(ctx, `SELECT resource.id,resource.conversation_id,resource.file_id,resource.added_by,resource.message_id,resource.created_at,file.name,file.mime_type
+		FROM direct_resources resource JOIN files file ON file.id=resource.file_id WHERE resource.conversation_id=$1 AND file.deleted_at IS NULL ORDER BY resource.created_at`, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	resources := make([]DirectResource, 0)
+	for rows.Next() {
+		var resource DirectResource
+		if err := rows.Scan(&resource.ID, &resource.ConversationID, &resource.FileID, &resource.AddedBy, &resource.MessageID, &resource.CreatedAt, &resource.Name, &resource.MimeType); err != nil {
+			return nil, err
+		}
+		resources = append(resources, resource)
+	}
+	return resources, rows.Err()
+}

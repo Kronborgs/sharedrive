@@ -156,6 +156,17 @@ type DirectMessagePage struct {
 	NextCursor string          `json:"next_cursor,omitempty"`
 }
 
+type DirectResource struct {
+	ID             uuid.UUID  `json:"id"`
+	ConversationID uuid.UUID  `json:"conversation_id"`
+	FileID         uuid.UUID  `json:"file_id"`
+	AddedBy        uuid.UUID  `json:"added_by"`
+	MessageID      *uuid.UUID `json:"message_id,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	Name           string     `json:"name"`
+	MimeType       string     `json:"mime_type,omitempty"`
+}
+
 func NormalizeMessage(body string, maxRunes int) (string, error) {
 	normalized := strings.TrimSpace(body)
 	if normalized == "" || utf8.RuneCountInString(normalized) > maxRunes {

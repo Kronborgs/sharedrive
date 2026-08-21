@@ -283,7 +283,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
     action.then(refresh).catch(() => undefined)
   }
 
-  const panelClass = fillAvailableHeight ? 'mt-6 flex min-h-[52vh] flex-col border-t border-zinc-200 pt-6 dark:border-[#2d3148] lg:min-h-0 lg:flex-1' : 'mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]'
+  const panelClass = fillAvailableHeight ? 'mt-6 flex min-h-0 flex-1 flex-col border-t border-zinc-200 pt-6 dark:border-[#2d3148]' : 'mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]'
   const timelineClass = fillAvailableHeight ? 'flex min-h-0 flex-1 flex-col overflow-y-auto rounded-xl border border-subtle p-3' : 'flex max-h-[60vh] flex-col overflow-y-auto rounded-xl border border-subtle p-3'
 
   return <section className={panelClass} aria-label={t('rooms.chatAria')}>

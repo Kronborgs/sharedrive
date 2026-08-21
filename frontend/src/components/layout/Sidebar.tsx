@@ -695,7 +695,8 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
 
   const currentTrack = playlist.tracks[playlist.currentIndex]
   const isGuest = user?.role === 'guest'
-  const canUseMediaPlayer = !isGuest && !user?.rooms_only_account
+  const roomsApp = state.location.pathname === '/rooms' || state.location.pathname.startsWith('/rooms/')
+  const canUseMediaPlayer = !isGuest && !user?.rooms_only_account && !roomsApp
   const roomsAvailable = systemSettings?.rooms_enabled && user?.rooms_access_enabled !== false
   const { data: rooms = [] } = useQuery({
     queryKey: ['rooms'],
@@ -714,7 +715,6 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
 
   useEffect(() => {
     const notesApp = state.location.pathname === '/notes' || state.location.pathname.startsWith('/notes/')
-    const roomsApp = state.location.pathname === '/rooms' || state.location.pathname.startsWith('/rooms/')
     let baseTitle = 'Sharedrive'
     if (notesApp) baseTitle = 'Sharedrive Noter'
     if (roomsApp) baseTitle = 'Sharedrive Rooms'

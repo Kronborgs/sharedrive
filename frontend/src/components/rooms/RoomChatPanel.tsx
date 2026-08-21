@@ -283,8 +283,8 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
     action.then(refresh).catch(() => undefined)
   }
 
-  const panelClass = fillAvailableHeight ? 'mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : 'mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]'
-  const timelineClass = fillAvailableHeight ? 'flex max-h-[60vh] flex-col overflow-y-auto rounded-xl border border-subtle p-3 lg:h-full lg:max-h-none' : 'flex max-h-[60vh] flex-col overflow-y-auto rounded-xl border border-subtle p-3'
+  const panelClass = fillAvailableHeight ? 'mt-6 flex min-h-[52vh] flex-col border-t border-zinc-200 pt-6 dark:border-[#2d3148] lg:min-h-0 lg:flex-1' : 'mt-6 border-t border-zinc-200 pt-6 dark:border-[#2d3148]'
+  const timelineClass = fillAvailableHeight ? 'flex min-h-0 flex-1 flex-col overflow-y-auto rounded-xl border border-subtle p-3' : 'flex max-h-[60vh] flex-col overflow-y-auto rounded-xl border border-subtle p-3'
 
   return <section className={panelClass} aria-label={t('rooms.chatAria')}>
     <h2 className="mb-3 text-lg font-semibold">{t('rooms.chat')}</h2>
@@ -302,7 +302,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
     {typingName && <p className="mb-2 text-xs text-muted">{t('rooms.typing', { name: typingName })}</p>}
     {replyTo && <div className="mb-2 flex justify-between rounded-lg bg-zinc-100 px-3 py-2 text-xs dark:bg-[#1a1d27]"><span>{t('rooms.replyingTo', { name: replyTo.sender_name })}</span><button type="button" onClick={() => setReplyTo(undefined)}>{t('action.cancel')}</button></div>}
     {attachments.length > 0 && <div className="mb-2 flex flex-wrap gap-2">{attachments.map(attachment => <span key={`${attachment.resourceType}-${attachment.resourceID}`} className="flex max-w-full items-center gap-2 rounded-lg border border-subtle bg-surface px-2 py-1 text-xs"><span className="truncate">{attachment.name}</span><button type="button" onClick={() => setAttachments(items => items.filter(item => item.resourceID !== attachment.resourceID || item.resourceType !== attachment.resourceType))} aria-label={t('action.close')}><Trash2 size={14} /></button></span>)}</div>}
-    <form className="shrink-0 flex items-end gap-1 rounded-2xl border border-zinc-200 bg-white p-1.5 dark:border-[#2d3148] dark:bg-[#0f1117]" onSubmit={event => { event.preventDefault(); if (body.trim() || attachments.length > 0) send.mutate() }}>
+    <form className={`z-10 shrink-0 flex items-end gap-1 rounded-2xl border border-zinc-200 bg-white p-1.5 dark:border-[#2d3148] dark:bg-[#0f1117] ${fillAvailableHeight ? 'sticky bottom-0' : ''}`} onSubmit={event => { event.preventDefault(); if (body.trim() || attachments.length > 0) send.mutate() }}>
       <RoomResourcesPanel room={room} onQueued={attachment => setAttachments(items => [...items.filter(item => item.resourceID !== attachment.resourceID || item.resourceType !== attachment.resourceType), attachment])} />
       <textarea value={body} onChange={event => { setBody(event.target.value); notifyTyping() }} maxLength={10000} rows={2} placeholder={t('rooms.messagePlaceholder')} className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none" />
       <EmojiPicker userKey={user?.id ?? 'anonymous'} onSelect={emoji => setBody(value => value + emoji)} />

@@ -44,6 +44,7 @@ import { Route as AuthAdminGroupsIndexRouteImport } from './routes/_auth.admin.g
 import { Route as AuthAdminBlockedIpsIndexRouteImport } from './routes/_auth.admin.blocked-ips.index'
 import { Route as AuthAdminBackupIndexRouteImport } from './routes/_auth.admin.backup.index'
 import { Route as AuthAdminAuditLogsIndexRouteImport } from './routes/_auth.admin.audit-logs.index'
+import { Route as AuthRoomsDirectConversationIDRouteImport } from './routes/_auth.rooms.direct.$conversationID'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -220,6 +221,12 @@ const AuthAdminAuditLogsIndexRoute = AuthAdminAuditLogsIndexRouteImport.update({
   path: '/admin/audit-logs/',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthRoomsDirectConversationIDRoute =
+  AuthRoomsDirectConversationIDRouteImport.update({
+    id: '/rooms/direct/$conversationID',
+    path: '/rooms/direct/$conversationID',
+    getParentRoute: () => AuthRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -248,6 +255,7 @@ export interface FileRoutesByFullPath {
   '/shared-browse/': typeof AuthSharedBrowseIndexRoute
   '/shares/': typeof AuthSharesIndexRoute
   '/trash/': typeof AuthTrashIndexRoute
+  '/rooms/direct/$conversationID': typeof AuthRoomsDirectConversationIDRoute
   '/admin/audit-logs/': typeof AuthAdminAuditLogsIndexRoute
   '/admin/backup/': typeof AuthAdminBackupIndexRoute
   '/admin/blocked-ips/': typeof AuthAdminBlockedIpsIndexRoute
@@ -283,6 +291,7 @@ export interface FileRoutesByTo {
   '/shared-browse': typeof AuthSharedBrowseIndexRoute
   '/shares': typeof AuthSharesIndexRoute
   '/trash': typeof AuthTrashIndexRoute
+  '/rooms/direct/$conversationID': typeof AuthRoomsDirectConversationIDRoute
   '/admin/audit-logs': typeof AuthAdminAuditLogsIndexRoute
   '/admin/backup': typeof AuthAdminBackupIndexRoute
   '/admin/blocked-ips': typeof AuthAdminBlockedIpsIndexRoute
@@ -321,6 +330,7 @@ export interface FileRoutesById {
   '/_auth/shared-browse/': typeof AuthSharedBrowseIndexRoute
   '/_auth/shares/': typeof AuthSharesIndexRoute
   '/_auth/trash/': typeof AuthTrashIndexRoute
+  '/_auth/rooms/direct/$conversationID': typeof AuthRoomsDirectConversationIDRoute
   '/_auth/admin/audit-logs/': typeof AuthAdminAuditLogsIndexRoute
   '/_auth/admin/backup/': typeof AuthAdminBackupIndexRoute
   '/_auth/admin/blocked-ips/': typeof AuthAdminBlockedIpsIndexRoute
@@ -359,6 +369,7 @@ export interface FileRouteTypes {
     | '/shared-browse/'
     | '/shares/'
     | '/trash/'
+    | '/rooms/direct/$conversationID'
     | '/admin/audit-logs/'
     | '/admin/backup/'
     | '/admin/blocked-ips/'
@@ -394,6 +405,7 @@ export interface FileRouteTypes {
     | '/shared-browse'
     | '/shares'
     | '/trash'
+    | '/rooms/direct/$conversationID'
     | '/admin/audit-logs'
     | '/admin/backup'
     | '/admin/blocked-ips'
@@ -431,6 +443,7 @@ export interface FileRouteTypes {
     | '/_auth/shared-browse/'
     | '/_auth/shares/'
     | '/_auth/trash/'
+    | '/_auth/rooms/direct/$conversationID'
     | '/_auth/admin/audit-logs/'
     | '/_auth/admin/backup/'
     | '/_auth/admin/blocked-ips/'
@@ -702,6 +715,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAdminAuditLogsIndexRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/rooms/direct/$conversationID': {
+      id: '/_auth/rooms/direct/$conversationID'
+      path: '/rooms/direct/$conversationID'
+      fullPath: '/rooms/direct/$conversationID'
+      preLoaderRoute: typeof AuthRoomsDirectConversationIDRouteImport
+      parentRoute: typeof AuthRoute
+    }
   }
 }
 
@@ -720,6 +740,7 @@ interface AuthRouteChildren {
   AuthSharedBrowseIndexRoute: typeof AuthSharedBrowseIndexRoute
   AuthSharesIndexRoute: typeof AuthSharesIndexRoute
   AuthTrashIndexRoute: typeof AuthTrashIndexRoute
+  AuthRoomsDirectConversationIDRoute: typeof AuthRoomsDirectConversationIDRoute
   AuthAdminAuditLogsIndexRoute: typeof AuthAdminAuditLogsIndexRoute
   AuthAdminBackupIndexRoute: typeof AuthAdminBackupIndexRoute
   AuthAdminBlockedIpsIndexRoute: typeof AuthAdminBlockedIpsIndexRoute
@@ -745,6 +766,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthSharedBrowseIndexRoute: AuthSharedBrowseIndexRoute,
   AuthSharesIndexRoute: AuthSharesIndexRoute,
   AuthTrashIndexRoute: AuthTrashIndexRoute,
+  AuthRoomsDirectConversationIDRoute: AuthRoomsDirectConversationIDRoute,
   AuthAdminAuditLogsIndexRoute: AuthAdminAuditLogsIndexRoute,
   AuthAdminBackupIndexRoute: AuthAdminBackupIndexRoute,
   AuthAdminBlockedIpsIndexRoute: AuthAdminBlockedIpsIndexRoute,

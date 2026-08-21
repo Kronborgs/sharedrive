@@ -1,12 +1,15 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, UserRound, X } from 'lucide-react'
+import { MessageCircle, Plus, Trash2, UserRound, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { useNavigate } from '@tanstack/react-router'
 import { ApiClientError } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
 import {
   addRoomMember,
+  createDirectConversation,
   createRoomInvite,
   listRoomMembers,
   removeRoomMember,
@@ -133,16 +136,20 @@ function AddPersonDialog({ room }: Readonly<{ room: Room }>) {
   </Dialog.Root>
 }
 
-function MemberList({ members, room, onRemove }: Readonly<{ members: RoomMember[]; room: Room; onRemove: (userID: string) => void }>) {
+function MemberList({ members, room, currentUserID, onDirect, onRemove }: Readonly<{ members: RoomMember[]; room: Room; currentUserID?: string; onDirect: (userID: string) => void; onRemove: (userID: string) => void }>) {
   const { t } = useI18n()
   const canManage = room.current_role === 'owner' || room.current_role === 'moderator'
 
   return <ul className="mt-4 divide-y divide-zinc-200 border-y border-zinc-200 dark:divide-[#2d3148] dark:border-[#2d3148]">
     {members.map(member => {
       const canRemove = member.role !== 'owner' && (room.current_role === 'owner' || member.role === 'member')
+      const canStartDirect = member.user_id !== currentUserID
       return <li key={member.user_id} className="group flex min-h-16 items-center gap-3 py-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-50 text-brand-700"><UserRound size={17} /></span>
-        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{member.display_name || member.email}</span><span className="block truncate text-xs text-muted">{member.email}</span></span>
+        <button type="button" disabled={!canStartDirect} onClick={() => onDirect(member.user_id)} className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default" aria-label={canStartDirect ? t('rooms.startDirect', { name: member.display_name || member.email }) : undefined}>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700"><UserRound size={17} /></span>
+          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{member.display_name || member.email}</span><span className="block truncate text-xs text-muted">{member.email}</span></span>
+          {canStartDirect && <MessageCircle size={16} className="shrink-0 text-muted opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100" />}
+        </button>
         <span className="text-xs text-muted">{t(`rooms.role.${member.role}` as never)}</span>
         {canManage && canRemove && <button type="button" className="notes-icon-button text-red-600 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100" aria-label={t('rooms.removeMember' as never)} onClick={() => onRemove(member.user_id)}><Trash2 size={15} /></button>}
       </li>
@@ -152,6 +159,8 @@ function MemberList({ members, room, onRemove }: Readonly<{ members: RoomMember[
 
 export function RoomMembersPanel({ room }: Readonly<{ room: Room }>) {
   const { t } = useI18n()
+  const { user } = useAuth()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const membersQuery = useQuery({ queryKey: ['rooms', room.id, 'members'], queryFn: ({ signal }) => listRoomMembers(room.id, signal) })
   const removeMutation = useMutation({
@@ -161,6 +170,14 @@ export function RoomMembersPanel({ room }: Readonly<{ room: Room }>) {
       toast.success(t('rooms.memberRemoved' as never))
     },
     onError: () => toast.error(t('rooms.memberRemoveFailed' as never)),
+  })
+  const directMutation = useMutation({
+    mutationFn: (userID: string) => createDirectConversation(room.id, userID),
+    onSuccess: conversation => {
+      queryClient.invalidateQueries({ queryKey: ['rooms', 'direct-conversations'] }).catch(() => undefined)
+      navigate({ to: '/rooms/direct/$conversationID', params: { conversationID: conversation.id } })
+    },
+    onError: () => toast.error(t('rooms.startDirectFailed')),
   })
   const canManage = room.current_role === 'owner' || room.current_role === 'moderator'
 
@@ -172,6 +189,6 @@ export function RoomMembersPanel({ room }: Readonly<{ room: Room }>) {
     </div>
     {membersQuery.isLoading && <p className="mt-4 text-sm text-muted">{t('rooms.loadingMembers' as never)}</p>}
     {membersQuery.isError && <p className="mt-4 text-sm text-red-600">{t('rooms.membersLoadFailed' as never)}</p>}
-    <MemberList members={membersQuery.data ?? []} room={room} onRemove={removeMutation.mutate} />
+    <MemberList members={membersQuery.data ?? []} room={room} currentUserID={user?.id} onDirect={directMutation.mutate} onRemove={removeMutation.mutate} />
   </section>
 }

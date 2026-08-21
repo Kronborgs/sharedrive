@@ -2,10 +2,23 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronDown, DoorOpen, PhoneCall, Plus, Search, X } from 'lucide-react'
+import { ChevronDown, DoorOpen, MessageCircle, PhoneCall, Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
-import { createRoom, listRooms, type Room } from '@/lib/rooms'
+import { createRoom, listDirectConversations, listRooms, type DirectConversation, type Room } from '@/lib/rooms'
+
+type ConversationFilter = 'all' | 'rooms' | 'direct' | 'unread'
+
+function ConversationFilters({ value, onChange }: Readonly<{ value: ConversationFilter; onChange: (filter: ConversationFilter) => void }>) {
+  const { t } = useI18n()
+  const filters: Array<{ id: ConversationFilter; label: string }> = [
+    { id: 'all', label: t('rooms.filterAll') },
+    { id: 'rooms', label: t('rooms.filterRooms') },
+    { id: 'direct', label: t('rooms.direct') },
+    { id: 'unread', label: t('rooms.filterUnread') },
+  ]
+  return <div className="mb-3 flex gap-1 overflow-x-auto lg:hidden">{filters.map(filter => <button key={filter.id} type="button" onClick={() => onChange(filter.id)} className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${value === filter.id ? 'bg-brand-600 text-white' : 'bg-surface text-muted'}`}>{filter.label}</button>)}</div>
+}
 
 function roomTimestamp(updatedAt: string, locale: string) {
   return new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { hour: '2-digit', minute: '2-digit' }).format(new Date(updatedAt))
@@ -31,16 +44,25 @@ function RoomConversationRow({ room, activeRoomID, locale }: Readonly<{ room: Ro
   </button>
 }
 
+function DirectConversationRow({ conversation, activeRoomID, locale }: Readonly<{ conversation: DirectConversation; activeRoomID?: string; locale: string }>) {
+  const navigate = useNavigate()
+  const active = conversation.id === activeRoomID
+  return <button type="button" onClick={() => navigate({ to: '/rooms/direct/$conversationID', params: { conversationID: conversation.id } }).catch(() => undefined)} className={`w-full rounded-lg p-3 text-left transition-colors ${active ? 'bg-brand-50 dark:bg-brand-900/30' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}><span className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300"><MessageCircle size={17} /></span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="truncate text-sm font-medium">{conversation.other_display_name || conversation.other_email}</span><time className="text-xs text-muted">{roomTimestamp(conversation.updated_at, locale)}</time></span><span className="flex items-center justify-between gap-2 pt-1 text-xs text-muted"><span className="truncate">{conversation.source_room_name}</span>{conversation.unread_count > 0 && <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">{conversation.unread_count > 99 ? '99+' : conversation.unread_count}</span>}</span></span></span></button>
+}
+
 export function RoomConversationSidebar({ activeRoomID, mobile = false }: Readonly<{ activeRoomID?: string; mobile?: boolean }>) {
   const { t, locale } = useI18n()
   const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<ConversationFilter>('all')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [roomName, setRoomName] = useState('')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const roomsQuery = useQuery({ queryKey: ['rooms'], queryFn: ({ signal }) => listRooms(signal), refetchInterval: 5_000, refetchIntervalInBackground: true })
+  const directQuery = useQuery({ queryKey: ['rooms', 'direct-conversations'], queryFn: ({ signal }) => listDirectConversations(signal), refetchInterval: 5_000, refetchIntervalInBackground: true })
   const normalizedQuery = query.trim().toLocaleLowerCase(locale === 'da' ? 'da-DK' : 'en-US')
-  const rooms = useMemo(() => (roomsQuery.data ?? []).filter(room => room.name.toLocaleLowerCase(locale === 'da' ? 'da-DK' : 'en-US').includes(normalizedQuery)), [locale, normalizedQuery, roomsQuery.data])
+  const rooms = useMemo(() => (roomsQuery.data ?? []).filter(room => room.name.toLocaleLowerCase(locale === 'da' ? 'da-DK' : 'en-US').includes(normalizedQuery)).filter(room => filter !== 'direct' && (filter !== 'unread' || room.unread_count > 0)), [filter, locale, normalizedQuery, roomsQuery.data])
+  const directConversations = useMemo(() => (directQuery.data ?? []).filter(conversation => `${conversation.other_display_name} ${conversation.other_email}`.toLocaleLowerCase(locale === 'da' ? 'da-DK' : 'en-US').includes(normalizedQuery)).filter(conversation => filter !== 'rooms' && (filter !== 'unread' || conversation.unread_count > 0)), [directQuery.data, filter, locale, normalizedQuery])
   const createMutation = useMutation({
     mutationFn: () => createRoom(roomName),
     onSuccess: room => {
@@ -56,10 +78,11 @@ export function RoomConversationSidebar({ activeRoomID, mobile = false }: Readon
     ? 'mb-4 lg:hidden'
     : 'hidden min-h-0 border-r border-subtle pr-4 lg:flex lg:w-full lg:shrink-0 lg:flex-col'
   const content = <><label className="relative mb-3 block"><span className="sr-only">{t('rooms.searchConversations' as never)}</span><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('rooms.searchConversations' as never)} className="notes-input w-full pl-9" /></label>
-    <h2 className="mb-2 px-2 text-sm font-semibold">{t('rooms.conversations' as never)}</h2>
+    <ConversationFilters value={filter} onChange={setFilter} />
     <div className="min-h-0 space-y-1 overflow-y-auto pb-3">
-      {rooms.map(room => <RoomConversationRow key={room.id} room={room} activeRoomID={activeRoomID} locale={locale} />)}
-      {!roomsQuery.isLoading && rooms.length === 0 && <p className="px-2 py-4 text-sm text-muted">{t('rooms.noMatchingRooms' as never)}</p>}
+      {rooms.length > 0 && <><h2 className="mb-2 px-2 pt-1 text-sm font-semibold">{t('rooms.filterRooms')}</h2>{rooms.map(room => <RoomConversationRow key={room.id} room={room} activeRoomID={activeRoomID} locale={locale} />)}</>}
+      {directConversations.length > 0 && <><h2 className="mb-2 mt-4 px-2 pt-1 text-sm font-semibold">{t('rooms.direct')}</h2>{directConversations.map(conversation => <DirectConversationRow key={conversation.id} conversation={conversation} activeRoomID={activeRoomID} locale={locale} />)}</>}
+      {!roomsQuery.isLoading && rooms.length === 0 && directConversations.length === 0 && <p className="px-2 py-4 text-sm text-muted">{t('rooms.noMatchingRooms' as never)}</p>}
     </div>
     {!activeRoomID && <Dialog.Root open={dialogOpen} onOpenChange={setDialogOpen}>
       <Dialog.Trigger asChild><button type="button" className="notes-secondary-button mt-auto w-full"><Plus size={17} /> {t('rooms.create' as never)}</button></Dialog.Trigger>

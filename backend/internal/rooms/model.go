@@ -126,6 +126,36 @@ type MessagePage struct {
 	NextCursor string    `json:"next_cursor,omitempty"`
 }
 
+type DirectConversation struct {
+	ID               uuid.UUID `json:"id"`
+	SourceRoomID     uuid.UUID `json:"source_room_id"`
+	SourceRoomName   string    `json:"source_room_name"`
+	SourceRoomSlug   string    `json:"source_room_slug"`
+	OtherUserID      uuid.UUID `json:"other_user_id"`
+	OtherDisplayName string    `json:"other_display_name"`
+	OtherEmail       string    `json:"other_email"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	UnreadCount      int       `json:"unread_count"`
+}
+
+type DirectMessage struct {
+	ID               uuid.UUID  `json:"id"`
+	ConversationID   uuid.UUID  `json:"conversation_id"`
+	SenderUserID     uuid.UUID  `json:"sender_user_id"`
+	SenderName       string     `json:"sender_name"`
+	Body             string     `json:"body"`
+	ReplyToMessageID *uuid.UUID `json:"reply_to_message_id,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	EditedAt         *time.Time `json:"edited_at,omitempty"`
+	DeletedAt        *time.Time `json:"deleted_at,omitempty"`
+}
+
+type DirectMessagePage struct {
+	Messages   []DirectMessage `json:"messages"`
+	NextCursor string          `json:"next_cursor,omitempty"`
+}
+
 func NormalizeMessage(body string, maxRunes int) (string, error) {
 	normalized := strings.TrimSpace(body)
 	if normalized == "" || utf8.RuneCountInString(normalized) > maxRunes {

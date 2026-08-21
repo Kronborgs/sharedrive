@@ -347,6 +347,44 @@ Aktuel Phase 8-checkliste:
 - [ ] Testserver: LiveKit voice, kamera, skærmdeling og kontrolleret LiveKit-nedetid. Nedetidstesten maa ikke ændre eller slette brugerdata.
 - [ ] GitLab-pipeline og Sonar Quality Gate er gronne efter godkendt commit/push.
 
+### Forslag til Phase 9 - direkte samtaler og mobil-first Rooms
+
+Maalet er en enkel, mobil-first samtaleoplevelse inspireret af almindelige chat-apps, uden at kopiere Teams eller aendre den eksisterende desktopoplevelse. En bruger skal kunne have baade en faelles Room-chat og en privat 1:1-samtale med en anden bruger, naar de deler mindst et aktivt Room.
+
+#### Afgrænset funktionalitet
+
+- Samtaleoversigten viser blandet og tydeligt adskilt: `Rum` og `Direkte`.
+- `Alle`, `Rum`, `Direkte` og `Ulaeste` er kompakte filtre paa mobil. Room-listen vises direkte ved aabning; den maa ikke kraeve et ekstra klik for at folde ud.
+- En Room-medlemspost faar handlingen `Skriv privat`. Den aabner eller opretter en idempotent 1:1-samtale med den valgte person, knyttet til det Room hvor handlingen blev valgt. Chatten har altid en tydelig `Tilbage til [Room]`-handling.
+- En direkte samtale er et privat par-forhold inden for sit kilde-Room, ikke et nyt Room og ikke en skjult gruppe. Den har egen titel, avatar, read-state, unread-badge, realtime-opdateringer, tekst, replies, redigering/sletning og reactions.
+- Tilfoejes en tredje eller flere personer til en privat samtale, opretter systemet i stedet et nyt almindeligt Room med alle valgte medlemmer. Den eksisterende 1:1-historik og dens adgang aendres aldrig.
+- Room-chatten er fortsat den faelles samtale for alle medlemmer. Den blandes aldrig sammen med private beskeder.
+- Gæster kan ikke opdage, oprette eller bruge direkte samtaler i denne fase.
+
+#### Sikkerhed og medlemskab
+
+- Begge personer skal vaere aktive Sharedrive- eller Rooms-only-konti med `rooms_access_enabled=true` og vaere aktuelle medlemmer af det konkrete, aktive kilde-Room.
+- Kravet kontrolleres server-side ved oprettelse, listevisning, hentning, skrivning, WebSocket og media-token i fremtidige direkte moeder. Et kendt bruger- eller samtale-ID giver aldrig adgang alene.
+- Mister parret deres sidste faelles Room, bliver den direkte samtale straks utilgaengelig for begge. Historikken slettes ikke automatisk; den bevares kun til audit/backup og kan ikke laeses igen uden et aktuelt faelles Room.
+- Rooms-adgang er allerede en per-bruger rettighed i Admin -> Brugere -> Rum. Phase 9 goer samme toggle synlig ved den almindelige brugerpost, saa den kan bruges som abonnement-/betalingskontrol. At aktivere adgang giver ikke automatisk medlemskab af eller adgang til noget Room.
+
+#### Mobil og desktop
+
+- Mobil: en samtale ad gangen, fast composer nederst, tilbageknap i topbaren og en lille Rooms-bundnavigation for `Samtaler`, `Rum` og `Ulaeste`. Primære handlinger er ikonknapper med labels/aria-labels og maa aldrig overlappe.
+- Desktop: den eksisterende trekolonne-oplevelse bevares. Venstre kolonne viser Room- og direkte samtaler; midten viser valgt samtale; hoejre kolonne viser medlemmer for Room eller faelles Rooms/personinformation for 1:1.
+- Direkte samtaler har ikke automatisk adgang til Room-filer eller Notes. Deling af filer i 1:1 designes som en separat, server-authoriseret funktion, saa et privat chatforloeb aldrig arver eller udvider et Rooms filrettigheder.
+- Voice, kamera og skærmdeling for direkte samtaler planlægges efter den tekstbaserede 1:1-chat er stabil. LiveKit-rum maa ikke genbruges paa tværs af Room- og direkte samtaler.
+
+#### Teknisk plan og test
+
+- Ny datamodel: kanonisk brugerpar, direkte beskeder, reactions og read-state med samme kryptering og retention-regler som Room-chat. Direkte data indgaar eksplicit i backup/restore uden raw secrets.
+- Nye API'er og WebSocket-events faas med samme rate limits, strict Origin-check, auditmetadata og pagination som Room-chat.
+- Migrationer er additive og maa ikke skrive om eller slette eksisterende `rooms`, `room_messages` eller medlemsdata.
+- Tests dækker: ingen direkte chat uden fælles Room, adgangsstop efter sidste fælles Room fjernes, Rooms-access-toggle, unread pr. bruger, gæsteafvisning, authorization-bypass, mobil/desktop-layout og backup/restore.
+- Sonar Quality Gate holdes paa mindst 80 % coverage paa ny kode. Funktionaliteten deles op i smaae, testbare trin for at holde den grænse.
+
+Ingen implementering af Phase 9 startes, foer denne afgrænsning er godkendt.
+
 ## Datamodel - designudgangspunkt
 
 Den endelige model fastlaegges efter Phase 0 og eksisterende PostgreSQL conventions.

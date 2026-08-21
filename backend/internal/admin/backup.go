@@ -60,6 +60,10 @@ var backupExportSteps = []exportStep{
 	{name: "room_guest_read_state", query: `SELECT room_id, guest_session_id, last_read_message_id, updated_at FROM room_guest_read_state`, set: func(d *backupData, v []map[string]any) { d.RoomGuestReadState = v }},
 	{name: "room_resources", query: `SELECT id, room_id, resource_type, resource_id, added_by, message_id, created_at FROM room_resources`, set: func(d *backupData, v []map[string]any) { d.RoomResources = v }},
 	{name: "room_guest_uploads", query: `SELECT id, room_id, guest_session_id, file_id, created_at FROM room_guest_uploads`, set: func(d *backupData, v []map[string]any) { d.RoomGuestUploads = v }},
+	{name: "direct_conversations", query: `SELECT id, source_room_id, user_one_id, user_two_id, created_at, updated_at FROM direct_conversations`, set: func(d *backupData, v []map[string]any) { d.DirectConversations = v }},
+	{name: "direct_messages", query: `SELECT id, conversation_id, sender_user_id, body, reply_to_message_id, created_at, edited_at, deleted_at FROM direct_messages ORDER BY created_at, id`, set: func(d *backupData, v []map[string]any) { d.DirectMessages = v }},
+	{name: "direct_reactions", query: `SELECT message_id, user_id, emoji, created_at FROM direct_reactions`, set: func(d *backupData, v []map[string]any) { d.DirectReactions = v }},
+	{name: "direct_read_state", query: `SELECT conversation_id, user_id, last_read_message_id, updated_at FROM direct_read_state`, set: func(d *backupData, v []map[string]any) { d.DirectReadState = v }},
 }
 
 var backupRestoreStatements = []string{
@@ -80,6 +84,10 @@ var backupRestoreStatements = []string{
 }
 
 var roomBackupRestoreStatements = []string{
+	`DELETE FROM direct_read_state`,
+	`DELETE FROM direct_reactions`,
+	`DELETE FROM direct_messages`,
+	`DELETE FROM direct_conversations`,
 	`DELETE FROM room_guest_uploads`,
 	`DELETE FROM room_guest_read_state`,
 	`DELETE FROM room_reactions`,
@@ -101,27 +109,31 @@ type backupEnvelope struct {
 }
 
 type backupData struct {
-	Users              []map[string]any `json:"users"`
-	Groups             []map[string]any `json:"groups"`
-	GroupMembers       []map[string]any `json:"group_members"`
-	Tags               []map[string]any `json:"tags"`
-	Files              []map[string]any `json:"files"`
-	FileTags           []map[string]any `json:"file_tags"`
-	Shares             []map[string]any `json:"shares"`
-	TOTPCreds          []map[string]any `json:"totp_credentials"`
-	AppPasswords       []map[string]any `json:"app_passwords"`
-	SystemSettings     []map[string]any `json:"system_settings"`
-	Rooms              []map[string]any `json:"rooms,omitempty"`
-	RoomMembers        []map[string]any `json:"room_members,omitempty"`
-	RoomInvites        []map[string]any `json:"room_invites,omitempty"`
-	RoomGuestSessions  []map[string]any `json:"room_guest_sessions,omitempty"`
-	RoomMessages       []map[string]any `json:"room_messages,omitempty"`
-	RoomReactions      []map[string]any `json:"room_reactions,omitempty"`
-	RoomReadState      []map[string]any `json:"room_read_state,omitempty"`
-	RoomGuestReadState []map[string]any `json:"room_guest_read_state,omitempty"`
-	RoomResources      []map[string]any `json:"room_resources,omitempty"`
-	RoomGuestUploads   []map[string]any `json:"room_guest_uploads,omitempty"`
-	RoomsIncluded      bool             `json:"rooms_included"`
+	Users               []map[string]any `json:"users"`
+	Groups              []map[string]any `json:"groups"`
+	GroupMembers        []map[string]any `json:"group_members"`
+	Tags                []map[string]any `json:"tags"`
+	Files               []map[string]any `json:"files"`
+	FileTags            []map[string]any `json:"file_tags"`
+	Shares              []map[string]any `json:"shares"`
+	TOTPCreds           []map[string]any `json:"totp_credentials"`
+	AppPasswords        []map[string]any `json:"app_passwords"`
+	SystemSettings      []map[string]any `json:"system_settings"`
+	Rooms               []map[string]any `json:"rooms,omitempty"`
+	RoomMembers         []map[string]any `json:"room_members,omitempty"`
+	RoomInvites         []map[string]any `json:"room_invites,omitempty"`
+	RoomGuestSessions   []map[string]any `json:"room_guest_sessions,omitempty"`
+	RoomMessages        []map[string]any `json:"room_messages,omitempty"`
+	RoomReactions       []map[string]any `json:"room_reactions,omitempty"`
+	RoomReadState       []map[string]any `json:"room_read_state,omitempty"`
+	RoomGuestReadState  []map[string]any `json:"room_guest_read_state,omitempty"`
+	RoomResources       []map[string]any `json:"room_resources,omitempty"`
+	RoomGuestUploads    []map[string]any `json:"room_guest_uploads,omitempty"`
+	DirectConversations []map[string]any `json:"direct_conversations,omitempty"`
+	DirectMessages      []map[string]any `json:"direct_messages,omitempty"`
+	DirectReactions     []map[string]any `json:"direct_reactions,omitempty"`
+	DirectReadState     []map[string]any `json:"direct_read_state,omitempty"`
+	RoomsIncluded       bool             `json:"rooms_included"`
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
@@ -369,7 +381,7 @@ func (h *Handler) roomsBackupEnabled(ctx context.Context) (bool, error) {
 }
 
 func isRoomsBackupStep(name string) bool {
-	return name == "rooms" || strings.HasPrefix(name, "room_")
+	return name == "rooms" || strings.HasPrefix(name, "room_") || strings.HasPrefix(name, "direct_")
 }
 
 func (h *Handler) readAndValidateImportEnvelope(r *http.Request) (backupEnvelope, int, string) {
@@ -502,6 +514,10 @@ func insertEnvelopeRows(ctx context.Context, tx pgx.Tx, data backupData, include
 		"room_guest_read_state": {"room_id": true, "guest_session_id": true, "last_read_message_id": true, "updated_at": true},
 		"room_resources":        {"id": true, "room_id": true, "resource_type": true, "resource_id": true, "added_by": true, "message_id": true, "created_at": true},
 		"room_guest_uploads":    {"id": true, "room_id": true, "guest_session_id": true, "file_id": true, "created_at": true},
+		"direct_conversations":  {"id": true, "source_room_id": true, "user_one_id": true, "user_two_id": true, "created_at": true, "updated_at": true},
+		"direct_messages":       {"id": true, "conversation_id": true, "sender_user_id": true, "body": true, "reply_to_message_id": true, "created_at": true, "edited_at": true, "deleted_at": true},
+		"direct_reactions":      {"message_id": true, "user_id": true, "emoji": true, "created_at": true},
+		"direct_read_state":     {"conversation_id": true, "user_id": true, "last_read_message_id": true, "updated_at": true},
 	}
 
 	type restoreStep struct {
@@ -532,6 +548,10 @@ func insertEnvelopeRows(ctx context.Context, tx pgx.Tx, data backupData, include
 			restoreStep{"room_guest_read_state", data.RoomGuestReadState},
 			restoreStep{"room_resources", data.RoomResources},
 			restoreStep{"room_guest_uploads", data.RoomGuestUploads},
+			restoreStep{"direct_conversations", data.DirectConversations},
+			restoreStep{"direct_messages", data.DirectMessages},
+			restoreStep{"direct_reactions", data.DirectReactions},
+			restoreStep{"direct_read_state", data.DirectReadState},
 		)
 	}
 

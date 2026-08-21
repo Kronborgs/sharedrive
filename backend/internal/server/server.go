@@ -542,6 +542,11 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		r.Get("/api/v1/rooms", s.roomsHandler.RequireEnabled(s.roomsHandler.List))
 		r.Post("/api/v1/rooms", s.roomsHandler.RequireEnabled(s.roomsHandler.Create))
+		r.Get("/api/v1/rooms/direct-conversations", s.roomsHandler.RequireEnabled(s.roomsHandler.ListDirectConversations))
+		r.Post("/api/v1/rooms/direct-conversations", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateDirectConversation))
+		r.Get("/api/v1/rooms/direct-conversations/{conversationID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.ListDirectMessages))
+		r.Post("/api/v1/rooms/direct-conversations/{conversationID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateDirectMessage))
+		r.Post("/api/v1/rooms/direct-conversations/{conversationID}/read", s.roomsHandler.RequireEnabled(s.roomsHandler.MarkDirectConversationRead))
 		r.Get("/api/v1/rooms/{roomID}", s.roomsHandler.RequireEnabled(s.roomsHandler.Get))
 		r.Patch("/api/v1/rooms/{roomID}", s.roomsHandler.RequireEnabled(s.roomsHandler.Update))
 		r.Post("/api/v1/rooms/{roomID}/archive", s.roomsHandler.RequireEnabled(s.roomsHandler.Archive))

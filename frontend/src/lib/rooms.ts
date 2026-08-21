@@ -124,6 +124,58 @@ export interface RoomMessagePage {
   next_cursor?: string
 }
 
+export interface DirectConversation {
+  id: string
+  source_room_id: string
+  source_room_name: string
+  source_room_slug: string
+  other_user_id: string
+  other_display_name: string
+  other_email: string
+  created_at: string
+  updated_at: string
+  unread_count: number
+}
+
+export interface DirectMessage {
+  id: string
+  conversation_id: string
+  sender_user_id: string
+  sender_name: string
+  body: string
+  reply_to_message_id?: string
+  created_at: string
+  edited_at?: string
+  deleted_at?: string
+}
+
+export interface DirectMessagePage {
+  messages: DirectMessage[]
+  next_cursor?: string
+}
+
+export function listDirectConversations(signal?: AbortSignal): Promise<DirectConversation[]> {
+  return api.get<DirectConversation[]>('/api/v1/rooms/direct-conversations', signal)
+}
+
+export function createDirectConversation(roomID: string, userID: string): Promise<DirectConversation> {
+  return api.post<DirectConversation>('/api/v1/rooms/direct-conversations', { room_id: roomID, user_id: userID })
+}
+
+export function listDirectMessages(conversationID: string, cursor?: string, signal?: AbortSignal): Promise<DirectMessagePage> {
+  const query = new URLSearchParams({ limit: '50' })
+  if (cursor) query.set('cursor', cursor)
+  return api.get<DirectMessagePage>(`/api/v1/rooms/direct-conversations/${conversationID}/messages?${query}`, signal)
+}
+
+export function createDirectMessage(conversationID: string, body: string, replyTo?: string): Promise<DirectMessage> {
+  return api.post<DirectMessage>(`/api/v1/rooms/direct-conversations/${conversationID}/messages`, { body, reply_to_message_id: replyTo })
+}
+
+export function markDirectConversationRead(conversationID: string): Promise<void> {
+  return api.post<void>(`/api/v1/rooms/direct-conversations/${conversationID}/read`, {})
+}
+
 export function listRoomMessages(roomID: string, cursor?: string, signal?: AbortSignal): Promise<RoomMessagePage> {
   const query = new URLSearchParams({ limit: '50' })
   if (cursor) query.set('cursor', cursor)

@@ -2,7 +2,9 @@ package rooms
 
 import (
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,6 +18,10 @@ import (
 type createDirectConversationRequest struct {
 	UserID uuid.UUID `json:"user_id"`
 	RoomID uuid.UUID `json:"room_id"`
+}
+
+type startPrivateChatRequest struct {
+	Email string `json:"email"`
 }
 
 type createGroupConversationRequest struct {
@@ -65,6 +71,26 @@ func (handler *Handler) CreateDirectConversation(w http.ResponseWriter, request 
 		return
 	}
 	httputil.Respond(w, http.StatusCreated, conversation)
+}
+
+func (handler *Handler) StartPrivateChat(w http.ResponseWriter, request *http.Request) {
+	var input startPrivateChatRequest
+	if !decodeRequest(w, request, &input) {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	result, err := handler.service.StartPrivateChatByEmail(request.Context(), user.ID, input.Email)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	if result.Conversation != nil {
+		httputil.Respond(w, http.StatusCreated, map[string]any{"conversation": result.Conversation, "invited": false})
+		return
+	}
+	inviteURL := strings.TrimRight(handler.appURL, "/") + "/accept-invite?token=" + url.QueryEscape(result.Token)
+	mailSent := handler.sendRoomInvitation(request.Context(), strings.TrimSpace(input.Email), user.DisplayName, user.Email, Room{Name: "Privat chat"}, "direct", inviteURL)
+	httputil.Respond(w, http.StatusAccepted, map[string]any{"invited": true, "mail_sent": mailSent})
 }
 
 func (handler *Handler) CreateGroupConversation(w http.ResponseWriter, request *http.Request) {

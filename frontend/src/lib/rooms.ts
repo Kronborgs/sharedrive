@@ -38,6 +38,7 @@ export interface RoomMember {
   email: string
   joined_at: string
   added_by?: string
+  online: boolean
 }
 
 export function listRooms(signal?: AbortSignal): Promise<Room[]> {
@@ -182,6 +183,16 @@ export function listDirectConversations(signal?: AbortSignal): Promise<DirectCon
 
 export function createDirectConversation(roomID: string, userID: string): Promise<DirectConversation> {
   return api.post<DirectConversation>('/api/v1/rooms/direct-conversations', { room_id: roomID, user_id: userID })
+}
+
+export interface StartPrivateChatResult {
+  conversation?: DirectConversation
+  invited: boolean
+  mail_sent?: boolean
+}
+
+export function startPrivateChatByEmail(email: string): Promise<StartPrivateChatResult> {
+  return api.post<StartPrivateChatResult>('/api/v1/rooms/direct-conversations/by-email', { email })
 }
 
 export function createGroupConversation(roomID: string, name: string, memberIDs: string[]): Promise<DirectConversation> {

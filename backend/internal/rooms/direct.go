@@ -23,6 +23,27 @@ func (service *Service) CreateDirectConversation(ctx context.Context, actorID, s
 	if !service.usersShareActiveRoom(ctx, actorID, otherUserID, sourceRoomID) {
 		return DirectConversation{}, ErrNotFound
 	}
+	return service.findOrCreateDirectConversation(ctx, actorID, otherUserID, &sourceRoomID)
+}
+
+// CreateDirectConversationForContact creates a standalone private chat. Both
+// accounts must explicitly have Chat access; no Sharedrive file access is
+// granted by this operation.
+func (service *Service) CreateDirectConversationForContact(ctx context.Context, actorID, otherUserID uuid.UUID) (DirectConversation, error) {
+	if actorID == otherUserID {
+		return DirectConversation{}, ErrInvalidName
+	}
+	var allowed bool
+	err := service.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users actor JOIN users target ON target.id=$2
+		WHERE actor.id=$1 AND actor.is_active=TRUE AND actor.rooms_access_enabled=TRUE
+		AND target.is_active=TRUE AND target.rooms_access_enabled=TRUE)`, actorID, otherUserID).Scan(&allowed)
+	if err != nil || !allowed {
+		return DirectConversation{}, ErrNotFound
+	}
+	return service.findOrCreateDirectConversation(ctx, actorID, otherUserID, nil)
+}
+
+func (service *Service) findOrCreateDirectConversation(ctx context.Context, actorID, otherUserID uuid.UUID, sourceRoomID *uuid.UUID) (DirectConversation, error) {
 	var conversation DirectConversation
 	err := service.db.QueryRow(ctx, `SELECT conversation.id FROM direct_conversations conversation
 		JOIN direct_conversation_members mine ON mine.conversation_id=conversation.id AND mine.user_id=$1
@@ -56,12 +77,12 @@ func (service *Service) usersShareActiveRoom(ctx context.Context, actorID, other
 
 func (service *Service) directConversationForActor(ctx context.Context, actorID, conversationID uuid.UUID) (DirectConversation, error) {
 	var result DirectConversation
-	err := service.db.QueryRow(ctx, `SELECT conversation.id,conversation.kind,conversation.owner_user_id,COALESCE(NULLIF(mine.display_name,''),conversation.name,''),conversation.source_room_id,source.name,source.slug,
+	err := service.db.QueryRow(ctx, `SELECT conversation.id,conversation.kind,conversation.owner_user_id,COALESCE(NULLIF(mine.display_name,''),conversation.name,''),COALESCE(conversation.source_room_id,'00000000-0000-0000-0000-000000000000'),COALESCE(source.name,''),COALESCE(source.slug,''),
 		COALESCE(other_user.id,'00000000-0000-0000-0000-000000000000'),COALESCE(other_user.display_name,''),COALESCE(other_user.email,''),conversation.created_at,conversation.updated_at,
 		(SELECT count(*) FROM direct_conversation_members WHERE conversation_id=conversation.id)::int,
 		EXISTS(SELECT 1 FROM direct_conversation_members other_member WHERE other_member.conversation_id=conversation.id AND other_member.user_id<>$1 AND other_member.hidden_at IS NOT NULL)
 		FROM direct_conversations conversation JOIN direct_conversation_members mine ON mine.conversation_id=conversation.id AND mine.user_id=$1
-		JOIN rooms source ON source.id=conversation.source_room_id
+		LEFT JOIN rooms source ON source.id=conversation.source_room_id
 		LEFT JOIN LATERAL (SELECT account.id,account.display_name,account.email FROM direct_conversation_members member JOIN users account ON account.id=member.user_id WHERE member.conversation_id=conversation.id AND member.user_id<>$1 ORDER BY account.display_name LIMIT 1) other_user ON TRUE
 		WHERE conversation.id=$2`, actorID, conversationID).Scan(
 		&result.ID, &result.Kind, &result.OwnerUserID, &result.Name, &result.SourceRoomID, &result.SourceRoomName, &result.SourceRoomSlug, &result.OtherUserID, &result.OtherDisplayName, &result.OtherEmail, &result.CreatedAt, &result.UpdatedAt, &result.MemberCount, &result.OtherDeleted)

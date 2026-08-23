@@ -333,7 +333,8 @@ func (service *Service) ListMembers(ctx context.Context, actorID, roomID uuid.UU
 	}
 
 	rows, err := service.db.Query(ctx, `SELECT rm.room_id, rm.user_id, rm.role,
-		u.display_name, u.email, rm.joined_at, rm.added_by
+		u.display_name, u.email, rm.joined_at, rm.added_by,
+		EXISTS(SELECT 1 FROM sessions session WHERE session.user_id=u.id AND session.revoked_at IS NULL AND session.expires_at>now() AND session.last_seen_at>now()-interval '5 minutes')
 		FROM room_members rm
 		JOIN users u ON u.id = rm.user_id
 		WHERE rm.room_id = $1
@@ -348,7 +349,7 @@ func (service *Service) ListMembers(ctx context.Context, actorID, roomID uuid.UU
 	for rows.Next() {
 		var member Member
 		if err := rows.Scan(&member.RoomID, &member.UserID, &member.Role, &member.DisplayName,
-			&member.Email, &member.JoinedAt, &member.AddedBy); err != nil {
+			&member.Email, &member.JoinedAt, &member.AddedBy, &member.Online); err != nil {
 			return nil, err
 		}
 		members = append(members, member)

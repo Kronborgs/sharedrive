@@ -148,6 +148,7 @@ function MemberList({ members, room, currentUserID, onDirect, onRemove }: Readon
         <button type="button" disabled={!canStartDirect} onClick={() => onDirect(member.user_id)} className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default" aria-label={canStartDirect ? t('rooms.startDirect', { name: member.display_name || member.email }) : undefined}>
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700"><UserRound size={17} /></span>
           <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{member.display_name || member.email}</span><span className="block truncate text-xs text-muted">{member.email}</span></span>
+          <span className={`flex items-center gap-1 text-xs ${member.online ? 'text-emerald-500' : 'text-muted'}`} title={t(member.online ? 'rooms.online' : 'rooms.offline' as never)}><span className={`h-2 w-2 rounded-full ${member.online ? 'bg-emerald-500' : 'bg-zinc-500'}`} />{t(member.online ? 'rooms.online' : 'rooms.offline' as never)}</span>
           {canStartDirect && <MessageCircle size={16} className="shrink-0 text-muted opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100" />}
         </button>
         <span className="text-xs text-muted">{t(`rooms.role.${member.role}` as never)}</span>

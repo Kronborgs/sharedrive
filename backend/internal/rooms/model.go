@@ -47,6 +47,7 @@ type Member struct {
 	Email       string     `json:"email"`
 	JoinedAt    time.Time  `json:"joined_at"`
 	AddedBy     *uuid.UUID `json:"added_by,omitempty"`
+	Online      bool       `json:"online"`
 }
 
 func NormalizeName(name string) (string, error) {

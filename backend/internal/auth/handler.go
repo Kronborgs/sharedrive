@@ -550,7 +550,8 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	if err := tx.QueryRow(ctx,
 		`INSERT INTO users (email, display_name, password_hash, role, quota_bytes, invited_by, rooms_only_account)
 		 VALUES ($1, $2, $3, 'guest', (SELECT (value::bigint) FROM system_settings WHERE key = 'default_quota_bytes'), $4,
-			EXISTS(SELECT 1 FROM room_member_invitations WHERE invitation_token_id=$5 AND accepted_at IS NULL AND expires_at > now()))
+			(EXISTS(SELECT 1 FROM room_member_invitations WHERE invitation_token_id=$5 AND accepted_at IS NULL AND expires_at > now())
+			 OR EXISTS(SELECT 1 FROM direct_chat_invitations WHERE invitation_token_id=$5 AND accepted_at IS NULL AND expires_at > now())))
 		 ON CONFLICT (email) DO UPDATE
 		   SET display_name       = EXCLUDED.display_name,
 		       password_hash      = EXCLUDED.password_hash,
@@ -573,6 +574,10 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		newUserID, email,
 	)
 	if err := acceptPendingRoomMemberships(ctx, tx, tokenID, newUserID); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
+		return
+	}
+	if err := acceptPendingDirectChatInvitation(ctx, tx, tokenID, newUserID); err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}

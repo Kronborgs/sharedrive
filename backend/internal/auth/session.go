@@ -73,6 +73,9 @@ func ValidateSession(ctx context.Context, db *pgxpool.Pool, rawToken string, idl
 		return nil, fmt.Errorf("auth: session not found or expired")
 	}
 
+	// Mark activity for presence indicators and slide the expiry window.
+	_, _ = db.Exec(ctx, `UPDATE sessions SET last_seen_at = now() WHERE id = $1`, s.ID)
+
 	// Slide expiry window
 	if idleTTL > 0 {
 		newExpiry := time.Now().Add(idleTTL)

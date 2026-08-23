@@ -126,6 +126,9 @@ export interface RoomMessagePage {
 
 export interface DirectConversation {
   id: string
+  kind: 'direct' | 'group'
+  owner_user_id: string
+  name?: string
   source_room_id: string
   source_room_name: string
   source_room_slug: string
@@ -135,6 +138,7 @@ export interface DirectConversation {
   created_at: string
   updated_at: string
   unread_count: number
+  member_count: number
 }
 
 export interface DirectMessage {
@@ -171,6 +175,14 @@ export function listDirectConversations(signal?: AbortSignal): Promise<DirectCon
 
 export function createDirectConversation(roomID: string, userID: string): Promise<DirectConversation> {
   return api.post<DirectConversation>('/api/v1/rooms/direct-conversations', { room_id: roomID, user_id: userID })
+}
+
+export function createGroupConversation(roomID: string, name: string, memberIDs: string[]): Promise<DirectConversation> {
+  return api.post<DirectConversation>('/api/v1/rooms/group-conversations', { room_id: roomID, name, member_ids: memberIDs })
+}
+
+export function renameDirectConversation(conversationID: string, name: string): Promise<DirectConversation> {
+  return api.patch<DirectConversation>(`/api/v1/rooms/direct-conversations/${conversationID}`, { name })
 }
 
 export function listDirectMessages(conversationID: string, cursor?: string, signal?: AbortSignal): Promise<DirectMessagePage> {

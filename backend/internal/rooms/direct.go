@@ -56,14 +56,15 @@ func (service *Service) usersShareActiveRoom(ctx context.Context, actorID, other
 
 func (service *Service) directConversationForActor(ctx context.Context, actorID, conversationID uuid.UUID) (DirectConversation, error) {
 	var result DirectConversation
-	err := service.db.QueryRow(ctx, `SELECT conversation.id,conversation.kind,conversation.owner_user_id,COALESCE(conversation.name,''),conversation.source_room_id,source.name,source.slug,
+	err := service.db.QueryRow(ctx, `SELECT conversation.id,conversation.kind,conversation.owner_user_id,COALESCE(NULLIF(mine.display_name,''),conversation.name,''),conversation.source_room_id,source.name,source.slug,
 		COALESCE(other_user.id,'00000000-0000-0000-0000-000000000000'),COALESCE(other_user.display_name,''),COALESCE(other_user.email,''),conversation.created_at,conversation.updated_at,
-		(SELECT count(*) FROM direct_conversation_members WHERE conversation_id=conversation.id)::int
+		(SELECT count(*) FROM direct_conversation_members WHERE conversation_id=conversation.id)::int,
+		EXISTS(SELECT 1 FROM direct_conversation_members other_member WHERE other_member.conversation_id=conversation.id AND other_member.user_id<>$1 AND other_member.hidden_at IS NOT NULL)
 		FROM direct_conversations conversation JOIN direct_conversation_members mine ON mine.conversation_id=conversation.id AND mine.user_id=$1
 		JOIN rooms source ON source.id=conversation.source_room_id
 		LEFT JOIN LATERAL (SELECT account.id,account.display_name,account.email FROM direct_conversation_members member JOIN users account ON account.id=member.user_id WHERE member.conversation_id=conversation.id AND member.user_id<>$1 ORDER BY account.display_name LIMIT 1) other_user ON TRUE
 		WHERE conversation.id=$2`, actorID, conversationID).Scan(
-		&result.ID, &result.Kind, &result.OwnerUserID, &result.Name, &result.SourceRoomID, &result.SourceRoomName, &result.SourceRoomSlug, &result.OtherUserID, &result.OtherDisplayName, &result.OtherEmail, &result.CreatedAt, &result.UpdatedAt, &result.MemberCount)
+		&result.ID, &result.Kind, &result.OwnerUserID, &result.Name, &result.SourceRoomID, &result.SourceRoomName, &result.SourceRoomSlug, &result.OtherUserID, &result.OtherDisplayName, &result.OtherEmail, &result.CreatedAt, &result.UpdatedAt, &result.MemberCount, &result.OtherDeleted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DirectConversation{}, ErrNotFound
 	}
@@ -77,7 +78,7 @@ func (service *Service) ListDirectConversations(ctx context.Context, actorID uui
 			WHERE message.conversation_id=conversation.id AND message.sender_user_id<>$1 AND message.deleted_at IS NULL
 			AND (read_state.last_read_message_id IS NULL OR (message.created_at,message.id)>(SELECT marker.created_at,marker.id FROM direct_messages marker WHERE marker.id=read_state.last_read_message_id))),0)::int
 		FROM direct_conversations conversation
-		JOIN direct_conversation_members mine ON mine.conversation_id=conversation.id AND mine.user_id=$1
+		JOIN direct_conversation_members mine ON mine.conversation_id=conversation.id AND mine.user_id=$1 AND mine.hidden_at IS NULL
 		ORDER BY conversation.updated_at DESC,conversation.id DESC`, actorID)
 	if err != nil {
 		return nil, err
@@ -151,6 +152,9 @@ func (service *Service) CreateDirectMessage(ctx context.Context, actorID, conver
 		return DirectMessage{}, err
 	}
 	_, err = service.db.Exec(ctx, `UPDATE direct_conversations SET updated_at=now() WHERE id=$1`, conversation.ID)
+	if err == nil {
+		_, err = service.db.Exec(ctx, `UPDATE direct_conversation_members SET hidden_at=NULL WHERE conversation_id=$1`, conversation.ID)
+	}
 	message.Body = plainBody
 	message.SenderName = ""
 	return message, err
@@ -313,4 +317,51 @@ func (service *Service) DeleteGroupConversation(ctx context.Context, actorID, co
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (service *Service) DeleteDirectMessage(ctx context.Context, actorID, conversationID, messageID uuid.UUID) error {
+	if _, err := service.directConversationForActor(ctx, actorID, conversationID); err != nil {
+		return err
+	}
+	command, err := service.db.Exec(ctx, `UPDATE direct_messages SET deleted_at=now(), edited_at=NULL WHERE id=$1 AND conversation_id=$2 AND sender_user_id=$3 AND deleted_at IS NULL`, messageID, conversationID, actorID)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	_, err = service.db.Exec(ctx, `UPDATE direct_conversations SET updated_at=now() WHERE id=$1`, conversationID)
+	return err
+}
+
+func (service *Service) HideDirectConversation(ctx context.Context, actorID, conversationID uuid.UUID) error {
+	conversation, err := service.directConversationForActor(ctx, actorID, conversationID)
+	if err != nil {
+		return err
+	}
+	if conversation.Kind != "direct" {
+		return ErrNotFound
+	}
+	_, err = service.db.Exec(ctx, `UPDATE direct_conversation_members SET hidden_at=now() WHERE conversation_id=$1 AND user_id=$2`, conversationID, actorID)
+	return err
+}
+
+func (service *Service) RenameConversation(ctx context.Context, actorID, conversationID uuid.UUID, name string) (DirectConversation, error) {
+	name, err := NormalizeName(name)
+	if err != nil {
+		return DirectConversation{}, err
+	}
+	conversation, err := service.directConversationForActor(ctx, actorID, conversationID)
+	if err != nil {
+		return DirectConversation{}, err
+	}
+	if conversation.Kind == "group" {
+		command, updateErr := service.db.Exec(ctx, `UPDATE direct_conversations SET name=$1,updated_at=now() WHERE id=$2 AND owner_user_id=$3`, name, conversationID, actorID)
+		if updateErr != nil || command.RowsAffected() == 0 {
+			return DirectConversation{}, ErrNotFound
+		}
+	} else if _, err := service.db.Exec(ctx, `UPDATE direct_conversation_members SET display_name=$1 WHERE conversation_id=$2 AND user_id=$3`, name, conversationID, actorID); err != nil {
+		return DirectConversation{}, err
+	}
+	return service.directConversationForActor(ctx, actorID, conversationID)
 }

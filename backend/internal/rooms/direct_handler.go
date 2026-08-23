@@ -29,6 +29,10 @@ type addDirectResourceRequest struct {
 	MessageID *uuid.UUID `json:"message_id,omitempty"`
 }
 
+type renameConversationRequest struct {
+	Name string `json:"name"`
+}
+
 func directConversationID(w http.ResponseWriter, request *http.Request) (uuid.UUID, bool) {
 	id, err := uuid.Parse(chi.URLParam(request, "conversationID"))
 	if err != nil {
@@ -85,6 +89,55 @@ func (handler *Handler) DeleteGroupConversation(w http.ResponseWriter, request *
 	}
 	user := middleware.UserFromContext(request.Context())
 	if err := handler.service.DeleteGroupConversation(request.Context(), user.ID, conversationID); err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusNoContent, nil)
+}
+
+func (handler *Handler) RenameConversation(w http.ResponseWriter, request *http.Request) {
+	conversationID, ok := directConversationID(w, request)
+	if !ok {
+		return
+	}
+	var input renameConversationRequest
+	if !decodeRequest(w, request, &input) {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	conversation, err := handler.service.RenameConversation(request.Context(), user.ID, conversationID, input.Name)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, conversation)
+}
+
+func (handler *Handler) DeleteDirectMessage(w http.ResponseWriter, request *http.Request) {
+	conversationID, ok := directConversationID(w, request)
+	if !ok {
+		return
+	}
+	messageID, err := uuid.Parse(chi.URLParam(request, "messageID"))
+	if err != nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid direct message id")
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	if err := handler.service.DeleteDirectMessage(request.Context(), user.ID, conversationID, messageID); err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusNoContent, nil)
+}
+
+func (handler *Handler) HideDirectConversation(w http.ResponseWriter, request *http.Request) {
+	conversationID, ok := directConversationID(w, request)
+	if !ok {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	if err := handler.service.HideDirectConversation(request.Context(), user.ID, conversationID); err != nil {
 		handler.respondError(w, err)
 		return
 	}

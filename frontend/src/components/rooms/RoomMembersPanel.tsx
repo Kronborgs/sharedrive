@@ -75,7 +75,7 @@ function showAddError(error: unknown, t: Translator) {
   toast.error(t('rooms.personAddFailed'))
 }
 
-function AddPersonDialog({ room }: Readonly<{ room: Room }>) {
+export function AddPersonDialog({ room }: Readonly<{ room: Room }>) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)

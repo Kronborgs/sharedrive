@@ -7,7 +7,7 @@ import { useI18n } from '@/lib/i18n'
 import { getPublicRoomSettings, getRoom, listRoomMembers, updateRoom, updateRoomIcon } from '@/lib/rooms'
 import { api } from '@/lib/api'
 import type { FileItem } from '@/types/api'
-import { RoomMembersPanel } from '@/components/rooms/RoomMembersPanel'
+import { AddPersonDialog, RoomMembersPanel } from '@/components/rooms/RoomMembersPanel'
 import { RoomChatPanel } from '@/components/rooms/RoomChatPanel'
 import { RoomInvitesPanel } from '@/components/rooms/RoomInvitesPanel'
 import { RoomVoicePanel } from '@/components/rooms/RoomVoicePanel'
@@ -90,6 +90,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
             </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-subtle bg-surface/70 p-2 xl:w-auto xl:max-w-[72%]">
             {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} compact />}
+            {(room.current_role === 'owner' || room.current_role === 'moderator') && <AddPersonDialog room={room} />}
             <button type="button" className="notes-icon-button" onClick={() => setContextVisible(value => !value)} aria-label={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)} title={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)}>{contextVisible ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button>
             <RoomsInstallButton />
             <button type="button" className="notes-secondary-button shrink-0" title={t('rooms.copyLink' as never)} onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>

@@ -141,6 +141,7 @@ type DirectConversation struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 	UnreadCount      int       `json:"unread_count"`
 	MemberCount      int       `json:"member_count"`
+	OtherDeleted     bool      `json:"other_deleted"`
 }
 
 type DirectConversationMember struct {

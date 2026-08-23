@@ -1,35 +1,34 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Paperclip, Plus, Send, X } from 'lucide-react'
+import { ArrowLeft, Paperclip, Pencil, Plus, Send, X } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
-import { addDirectFileResource, addRoomMember, createDirectMessage, createRoom, listDirectConversations, listDirectMessages, listDirectResources, markDirectConversationRead, type DirectConversation } from '@/lib/rooms'
+import { addDirectFileResource, createDirectMessage, createGroupConversation, listDirectConversations, listDirectMessages, listDirectResources, listRoomMembers, markDirectConversationRead, renameDirectConversation, type DirectConversation } from '@/lib/rooms'
 import { RoomVoicePanel } from '@/components/rooms/RoomVoicePanel'
 import { api } from '@/lib/api'
 import type { FileItem } from '@/types/api'
 
-function GroupRoomDialog({ conversation }: Readonly<{ conversation: DirectConversation }>) {
+function AddContactDialog({ conversation }: Readonly<{ conversation: DirectConversation }>) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [emails, setEmails] = useState('')
+  const { user } = useAuth()
+  const [selected, setSelected] = useState<string[]>([])
+  const members = useQuery({ queryKey: ['rooms', conversation.source_room_id, 'members'], queryFn: ({ signal }) => listRoomMembers(conversation.source_room_id, signal), enabled: open })
   const createGroup = useMutation({
     mutationFn: async () => {
-      const room = await createRoom(name.trim())
-      const recipients = [conversation.other_email, ...emails.split(',').map(email => email.trim()).filter(Boolean)]
-      await Promise.all(recipients.map(email => addRoomMember(room.id, email, 'member')))
-      return room
+      const names = members.data?.filter(member => selected.includes(member.user_id)).map(member => member.display_name || member.email) ?? []
+      return createGroupConversation(conversation.source_room_id, [conversation.other_display_name, ...names].filter(Boolean).join(', '), [conversation.other_user_id, ...selected])
     },
-    onSuccess: room => {
+    onSuccess: group => {
       setOpen(false)
-      toast.success(t('rooms.groupRoomCreated'))
-      navigate({ to: '/rooms/$roomID', params: { roomID: room.slug } })
+      toast.success(t('rooms.groupConversationCreated'))
+      navigate({ to: '/rooms/direct/$conversationID', params: { conversationID: group.id } })
     },
-    onError: () => toast.error(t('rooms.groupRoomFailed')),
+    onError: () => toast.error(t('rooms.groupConversationFailed')),
   })
 
   return <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -39,9 +38,8 @@ function GroupRoomDialog({ conversation }: Readonly<{ conversation: DirectConver
       <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-zinc-200 bg-white p-5 shadow-xl dark:border-[#2d3148] dark:bg-[#1a1d27]">
         <div className="flex items-start justify-between gap-3"><div><Dialog.Title className="text-lg font-semibold">{t('rooms.startGroupRoom')}</Dialog.Title><Dialog.Description className="mt-1 text-sm text-muted">{t('rooms.groupRoomDescription')}</Dialog.Description></div><Dialog.Close asChild><button type="button" className="notes-icon-button" aria-label={t('action.close')}><X size={17} /></button></Dialog.Close></div>
         <form className="mt-5 space-y-4" onSubmit={event => { event.preventDefault(); createGroup.mutate() }}>
-          <label className="block text-sm font-medium"><span>{t('rooms.roomName')}</span><input required value={name} onChange={event => setName(event.target.value)} className="mt-1.5 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-[#3a3f58] dark:bg-[#11141e]" /></label>
-          <label className="block text-sm font-medium"><span>{t('rooms.additionalEmails')}</span><input value={emails} onChange={event => setEmails(event.target.value)} className="mt-1.5 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-[#3a3f58] dark:bg-[#11141e]" /><span className="mt-1 block text-xs text-muted">{t('rooms.additionalEmailsHint')}</span></label>
-          <div className="flex justify-end gap-2"><Dialog.Close asChild><button type="button" className="rounded-md px-3 py-2 text-sm">{t('action.cancel')}</button></Dialog.Close><button type="submit" className="notes-primary-button" disabled={createGroup.isPending || !name.trim()}>{t('rooms.create')}</button></div>
+          <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-subtle p-2">{members.data?.filter(member => member.user_id !== user?.id && member.user_id !== conversation.other_user_id).map(member => <label key={member.user_id} className="flex cursor-pointer items-center gap-3 rounded px-2 py-2 hover:bg-surface"><input type="checkbox" checked={selected.includes(member.user_id)} onChange={() => setSelected(items => items.includes(member.user_id) ? items.filter(id => id !== member.user_id) : [...items, member.user_id])} /><span className="min-w-0"><span className="block truncate text-sm font-medium">{member.display_name || member.email}</span><span className="block truncate text-xs text-muted">{member.email}</span></span></label>)}</div>
+          <div className="flex justify-end gap-2"><Dialog.Close asChild><button type="button" className="rounded-md px-3 py-2 text-sm">{t('action.cancel')}</button></Dialog.Close><button type="submit" className="notes-primary-button" disabled={createGroup.isPending || selected.length === 0}>{t('rooms.addPerson')}</button></div>
         </form>
       </Dialog.Content>
     </Dialog.Portal>
@@ -61,6 +59,7 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
   const conversation = conversations.data?.find(item => item.id === conversationID)
   const messages = useQuery({ queryKey: ['rooms', 'direct', conversationID, 'messages'], queryFn: ({ signal }) => listDirectMessages(conversationID, undefined, signal), refetchInterval: 5_000 })
   const resources = useQuery({ queryKey: ['rooms', 'direct', conversationID, 'resources'], queryFn: ({ signal }) => listDirectResources(conversationID, signal) })
+  const rename = useMutation({ mutationFn: (name: string) => renameDirectConversation(conversationID, name), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rooms', 'direct-conversations'] }) })
   const send = useMutation({
     mutationFn: async () => {
       const message = await createDirectMessage(conversationID, body)
@@ -85,9 +84,10 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
   useEffect(() => { if (messages.data) markDirectConversationRead(conversationID).then(() => queryClient.invalidateQueries({ queryKey: ['rooms', 'direct-conversations'] })).catch(() => undefined) }, [conversationID, messages.data, queryClient])
   if (!conversation) return <p className="p-6 text-sm text-muted">{t('rooms.directUnavailable')}</p>
   const returnToRoom = () => navigate({ to: '/rooms/$roomID', params: { roomID: conversation.source_room_slug } })
+  const conversationTitle = conversation.name || conversation.other_display_name || conversation.other_email
 
   return <main className="flex min-h-0 flex-1 flex-col">
-    <header className="flex flex-wrap items-center gap-3 border-b border-subtle px-4 py-3"><button type="button" className="notes-icon-button" title={t('rooms.backToRoom', { room: conversation.source_room_name })} onClick={returnToRoom}><ArrowLeft size={18} /></button><div className="min-w-0 flex-1"><h1 className="truncate font-semibold">{conversation.other_display_name || conversation.other_email}</h1><p className="text-xs text-muted">{t('rooms.directFromRoom', { room: conversation.source_room_name })}</p></div><RoomVoicePanel roomID={conversationID} mediaTokenPath={`/api/v1/rooms/direct-conversations/${conversationID}/media-token`} compact /><GroupRoomDialog conversation={conversation} /></header>
+    <header className="flex flex-wrap items-center gap-3 border-b border-subtle px-4 py-3"><button type="button" className="notes-icon-button" title={t('rooms.backToRoom', { room: conversation.source_room_name })} onClick={returnToRoom}><ArrowLeft size={18} /></button><div className="min-w-0 flex-1"><h1 className="truncate font-semibold">{conversationTitle}</h1><p className="text-xs text-muted">{conversation.kind === 'group' ? t('rooms.permanentWorkspace') : t('rooms.directConversation')}</p></div><button type="button" className="notes-icon-button" title={t('rooms.renameConversation')} aria-label={t('rooms.renameConversation')} onClick={() => { const name = window.prompt(t('rooms.conversationName'), conversationTitle); if (name?.trim() && name.trim() !== conversationTitle) rename.mutate(name.trim()) }}><Pencil size={16} /></button><RoomVoicePanel roomID={conversationID} mediaTokenPath={`/api/v1/rooms/direct-conversations/${conversationID}/media-token`} compact /><AddContactDialog conversation={conversation} /></header>
     <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">{[...(messages.data?.messages ?? [])].reverse().map(message => { const own = message.sender_user_id === user?.id; const messageResources = (resources.data ?? []).filter(resource => resource.message_id === message.id); return <article key={message.id} className={`flex flex-col ${own ? 'items-end' : 'items-start'}`}><div className="mb-1 text-xs text-muted">{message.sender_name}</div><p className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${own ? 'bg-brand-600 text-white' : 'bg-surface'}`}>{message.deleted_at ? t('rooms.messageDeleted') : message.body}</p>{messageResources.map(resource => <a key={resource.id} href={`/api/v1/files/${resource.file_id}/download`} className="mt-1 max-w-[80%] rounded-lg border border-subtle bg-surface px-3 py-2 text-sm text-brand-600 hover:underline">{resource.name}</a>)}</article> })}<div ref={bottomRef} /></section>
     {attachments.length > 0 && <div className="flex shrink-0 flex-wrap gap-2 px-3 pb-2">{attachments.map(file => <span key={file.id} className="flex items-center gap-1 rounded-full border border-subtle px-2 py-1 text-xs">{file.name}<button type="button" onClick={() => setAttachments(items => items.filter(item => item.id !== file.id))} aria-label={t('action.close')}><X size={13} /></button></span>)}</div>}
     <form className="flex shrink-0 items-end gap-2 border-t border-subtle p-3" onSubmit={event => { event.preventDefault(); if (body.trim()) send.mutate() }}><button type="button" className="notes-icon-button" onClick={() => uploadRef.current?.click()} disabled={upload.isPending} aria-label={t('rooms.addAttachment')}><Paperclip size={18} /></button><input ref={uploadRef} type="file" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) { upload.mutate(file) }; event.currentTarget.value = '' }} /><input className="notes-input min-w-0 flex-1" value={body} onChange={event => setBody(event.target.value)} placeholder={t('rooms.messagePlaceholder')} /><button className="notes-primary-button" type="submit" disabled={!body.trim() || send.isPending}><Send size={17} /></button></form>

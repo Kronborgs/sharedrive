@@ -555,6 +555,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Patch("/api/v1/rooms/direct-conversations/{conversationID}", s.roomsHandler.RequireEnabled(s.roomsHandler.RenameConversation))
 		r.Delete("/api/v1/rooms/direct-conversations/{conversationID}/messages/{messageID}", s.roomsHandler.RequireEnabled(s.roomsHandler.DeleteDirectMessage))
 		r.Post("/api/v1/rooms/direct-conversations/{conversationID}/hide", s.roomsHandler.RequireEnabled(s.roomsHandler.HideDirectConversation))
+		r.Get("/api/v1/rooms/direct-conversations/{conversationID}/members", s.roomsHandler.RequireEnabled(s.roomsHandler.ListDirectConversationMembers))
 		r.Get("/api/v1/rooms/{roomID}", s.roomsHandler.RequireEnabled(s.roomsHandler.Get))
 		r.Patch("/api/v1/rooms/{roomID}", s.roomsHandler.RequireEnabled(s.roomsHandler.Update))
 		r.Post("/api/v1/rooms/{roomID}/archive", s.roomsHandler.RequireEnabled(s.roomsHandler.Archive))

@@ -144,6 +144,20 @@ func (handler *Handler) HideDirectConversation(w http.ResponseWriter, request *h
 	httputil.Respond(w, http.StatusNoContent, nil)
 }
 
+func (handler *Handler) ListDirectConversationMembers(w http.ResponseWriter, request *http.Request) {
+	conversationID, ok := directConversationID(w, request)
+	if !ok {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	members, err := handler.service.ListDirectConversationMembers(request.Context(), user.ID, conversationID)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, members)
+}
+
 func (handler *Handler) ListDirectMessages(w http.ResponseWriter, request *http.Request) {
 	conversationID, ok := directConversationID(w, request)
 	if !ok {

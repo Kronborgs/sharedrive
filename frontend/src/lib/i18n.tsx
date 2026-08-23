@@ -267,6 +267,7 @@ const translations = {
   'rooms.groupConversationFailed': { da: 'Gruppechatten kunne ikke oprettes.', en: 'The group chat could not be created.' },
   'rooms.renameConversation': { da: 'Omdøb chat', en: 'Rename chat' },
   'rooms.conversationName': { da: 'Chatnavn', en: 'Chat name' },
+  'rooms.viewMembers': { da: 'Vis medlemmer', en: 'View members' },
   'rooms.roomName':          { da: 'Navn på Rum', en: 'Room name' },
   'rooms.additionalEmails':  { da: 'Flere e-mailadresser', en: 'Additional email addresses' },
   'rooms.additionalEmailsHint': { da: 'Adskil e-mailadresser med komma.', en: 'Separate email addresses with commas.' },

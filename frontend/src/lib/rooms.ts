@@ -158,6 +158,13 @@ export interface DirectMessagePage {
   next_cursor?: string
 }
 
+export interface DirectConversationMember {
+  user_id: string
+  display_name: string
+  email: string
+  added_at: string
+}
+
 export interface DirectResource {
   id: string
   conversation_id: string
@@ -197,6 +204,10 @@ export function createDirectMessage(conversationID: string, body: string, replyT
 
 export function markDirectConversationRead(conversationID: string): Promise<void> {
   return api.post<void>(`/api/v1/rooms/direct-conversations/${conversationID}/read`, {})
+}
+
+export function listDirectConversationMembers(conversationID: string, signal?: AbortSignal): Promise<DirectConversationMember[]> {
+  return api.get<DirectConversationMember[]>(`/api/v1/rooms/direct-conversations/${conversationID}/members`, signal)
 }
 
 export function listDirectResources(conversationID: string, signal?: AbortSignal): Promise<DirectResource[]> {

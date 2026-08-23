@@ -365,3 +365,25 @@ func (service *Service) RenameConversation(ctx context.Context, actorID, convers
 	}
 	return service.directConversationForActor(ctx, actorID, conversationID)
 }
+
+func (service *Service) ListDirectConversationMembers(ctx context.Context, actorID, conversationID uuid.UUID) ([]DirectConversationMember, error) {
+	if _, err := service.directConversationForActor(ctx, actorID, conversationID); err != nil {
+		return nil, err
+	}
+	rows, err := service.db.Query(ctx, `SELECT member.user_id,COALESCE(account.display_name,account.email),account.email,member.added_at
+		FROM direct_conversation_members member JOIN users account ON account.id=member.user_id
+		WHERE member.conversation_id=$1 ORDER BY account.display_name,account.email`, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	members := make([]DirectConversationMember, 0)
+	for rows.Next() {
+		var member DirectConversationMember
+		if err := rows.Scan(&member.UserID, &member.DisplayName, &member.Email, &member.AddedAt); err != nil {
+			return nil, err
+		}
+		members = append(members, member)
+	}
+	return members, rows.Err()
+}

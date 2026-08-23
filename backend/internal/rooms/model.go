@@ -128,6 +128,9 @@ type MessagePage struct {
 
 type DirectConversation struct {
 	ID               uuid.UUID `json:"id"`
+	Kind             string    `json:"kind"`
+	OwnerUserID      uuid.UUID `json:"owner_user_id"`
+	Name             string    `json:"name,omitempty"`
 	SourceRoomID     uuid.UUID `json:"source_room_id"`
 	SourceRoomName   string    `json:"source_room_name"`
 	SourceRoomSlug   string    `json:"source_room_slug"`
@@ -137,6 +140,14 @@ type DirectConversation struct {
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 	UnreadCount      int       `json:"unread_count"`
+	MemberCount      int       `json:"member_count"`
+}
+
+type DirectConversationMember struct {
+	UserID      uuid.UUID `json:"user_id"`
+	DisplayName string    `json:"display_name"`
+	Email       string    `json:"email"`
+	AddedAt     time.Time `json:"added_at"`
 }
 
 type DirectMessage struct {

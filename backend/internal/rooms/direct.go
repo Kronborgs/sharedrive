@@ -23,11 +23,19 @@ func (service *Service) CreateDirectConversation(ctx context.Context, actorID, s
 	if !service.usersShareActiveRoom(ctx, actorID, otherUserID, sourceRoomID) {
 		return DirectConversation{}, ErrNotFound
 	}
-	first, second := canonicalDirectPair(actorID, otherUserID)
 	var conversation DirectConversation
-	err := service.db.QueryRow(ctx, `INSERT INTO direct_conversations(source_room_id,user_one_id,user_two_id)
-		VALUES($1,$2,$3) ON CONFLICT(source_room_id,user_one_id,user_two_id) DO UPDATE SET updated_at=direct_conversations.updated_at
-		RETURNING id,created_at,updated_at`, sourceRoomID, first, second).Scan(&conversation.ID, &conversation.CreatedAt, &conversation.UpdatedAt)
+	err := service.db.QueryRow(ctx, `SELECT conversation.id FROM direct_conversations conversation
+		JOIN direct_conversation_members mine ON mine.conversation_id=conversation.id AND mine.user_id=$1
+		JOIN direct_conversation_members other ON other.conversation_id=conversation.id AND other.user_id=$2
+		WHERE conversation.kind='direct' GROUP BY conversation.id HAVING count(*)=2 LIMIT 1`, actorID, otherUserID).Scan(&conversation.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		first, second := canonicalDirectPair(actorID, otherUserID)
+		err = service.db.QueryRow(ctx, `INSERT INTO direct_conversations(source_room_id,user_one_id,user_two_id,kind,owner_user_id)
+			VALUES($1,$2,$3,'direct',$4) RETURNING id`, sourceRoomID, first, second, actorID).Scan(&conversation.ID)
+		if err == nil {
+			_, err = service.db.Exec(ctx, `INSERT INTO direct_conversation_members(conversation_id,user_id,added_by) VALUES($1,$2,$2),($1,$3,$2)`, conversation.ID, actorID, otherUserID)
+		}
+	}
 	if err != nil {
 		return DirectConversation{}, err
 	}
@@ -48,30 +56,28 @@ func (service *Service) usersShareActiveRoom(ctx context.Context, actorID, other
 
 func (service *Service) directConversationForActor(ctx context.Context, actorID, conversationID uuid.UUID) (DirectConversation, error) {
 	var result DirectConversation
-	err := service.db.QueryRow(ctx, `SELECT conversation.id,conversation.source_room_id,source.name,source.slug,
-		CASE WHEN conversation.user_one_id=$1 THEN conversation.user_two_id ELSE conversation.user_one_id END,
-		other_user.display_name,other_user.email,conversation.created_at,conversation.updated_at
-		FROM direct_conversations conversation
-		JOIN users other_user ON other_user.id=CASE WHEN conversation.user_one_id=$1 THEN conversation.user_two_id ELSE conversation.user_one_id END JOIN rooms source ON source.id=conversation.source_room_id
-		WHERE conversation.id=$2 AND (conversation.user_one_id=$1 OR conversation.user_two_id=$1)`, actorID, conversationID).Scan(
-		&result.ID, &result.SourceRoomID, &result.SourceRoomName, &result.SourceRoomSlug, &result.OtherUserID, &result.OtherDisplayName, &result.OtherEmail, &result.CreatedAt, &result.UpdatedAt)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !service.usersShareActiveRoom(ctx, actorID, result.OtherUserID, result.SourceRoomID)) {
+	err := service.db.QueryRow(ctx, `SELECT conversation.id,conversation.kind,conversation.owner_user_id,COALESCE(conversation.name,''),conversation.source_room_id,source.name,source.slug,
+		COALESCE(other_user.id,'00000000-0000-0000-0000-000000000000'),COALESCE(other_user.display_name,''),COALESCE(other_user.email,''),conversation.created_at,conversation.updated_at,
+		(SELECT count(*) FROM direct_conversation_members WHERE conversation_id=conversation.id)::int
+		FROM direct_conversations conversation JOIN direct_conversation_members mine ON mine.conversation_id=conversation.id AND mine.user_id=$1
+		JOIN rooms source ON source.id=conversation.source_room_id
+		LEFT JOIN LATERAL (SELECT account.id,account.display_name,account.email FROM direct_conversation_members member JOIN users account ON account.id=member.user_id WHERE member.conversation_id=conversation.id AND member.user_id<>$1 ORDER BY account.display_name LIMIT 1) other_user ON TRUE
+		WHERE conversation.id=$2`, actorID, conversationID).Scan(
+		&result.ID, &result.Kind, &result.OwnerUserID, &result.Name, &result.SourceRoomID, &result.SourceRoomName, &result.SourceRoomSlug, &result.OtherUserID, &result.OtherDisplayName, &result.OtherEmail, &result.CreatedAt, &result.UpdatedAt, &result.MemberCount)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return DirectConversation{}, ErrNotFound
 	}
 	return result, err
 }
 
 func (service *Service) ListDirectConversations(ctx context.Context, actorID uuid.UUID) ([]DirectConversation, error) {
-	rows, err := service.db.Query(ctx, `SELECT conversation.id,conversation.source_room_id,source.name,source.slug,
-		CASE WHEN conversation.user_one_id=$1 THEN conversation.user_two_id ELSE conversation.user_one_id END,
-		other_user.display_name,other_user.email,conversation.created_at,conversation.updated_at,
+	rows, err := service.db.Query(ctx, `SELECT conversation.id,
 		COALESCE((SELECT count(*) FROM direct_messages message
 			LEFT JOIN direct_read_state read_state ON read_state.conversation_id=conversation.id AND read_state.user_id=$1
 			WHERE message.conversation_id=conversation.id AND message.sender_user_id<>$1 AND message.deleted_at IS NULL
 			AND (read_state.last_read_message_id IS NULL OR (message.created_at,message.id)>(SELECT marker.created_at,marker.id FROM direct_messages marker WHERE marker.id=read_state.last_read_message_id))),0)::int
 		FROM direct_conversations conversation
-		JOIN users other_user ON other_user.id=CASE WHEN conversation.user_one_id=$1 THEN conversation.user_two_id ELSE conversation.user_one_id END JOIN rooms source ON source.id=conversation.source_room_id
-		WHERE (conversation.user_one_id=$1 OR conversation.user_two_id=$1)
+		JOIN direct_conversation_members mine ON mine.conversation_id=conversation.id AND mine.user_id=$1
 		ORDER BY conversation.updated_at DESC,conversation.id DESC`, actorID)
 	if err != nil {
 		return nil, err
@@ -79,13 +85,17 @@ func (service *Service) ListDirectConversations(ctx context.Context, actorID uui
 	defer rows.Close()
 	result := make([]DirectConversation, 0)
 	for rows.Next() {
-		var item DirectConversation
-		if err := rows.Scan(&item.ID, &item.SourceRoomID, &item.SourceRoomName, &item.SourceRoomSlug, &item.OtherUserID, &item.OtherDisplayName, &item.OtherEmail, &item.CreatedAt, &item.UpdatedAt, &item.UnreadCount); err != nil {
+		var conversationID uuid.UUID
+		var unreadCount int
+		if err := rows.Scan(&conversationID, &unreadCount); err != nil {
 			return nil, err
 		}
-		if service.usersShareActiveRoom(ctx, actorID, item.OtherUserID, item.SourceRoomID) {
-			result = append(result, item)
+		item, lookupErr := service.directConversationForActor(ctx, actorID, conversationID)
+		if lookupErr != nil {
+			continue
 		}
+		item.UnreadCount = unreadCount
+		result = append(result, item)
 	}
 	return result, rows.Err()
 }
@@ -256,4 +266,51 @@ func (service *Service) ListDirectResources(ctx context.Context, actorID, conver
 		resources = append(resources, resource)
 	}
 	return resources, rows.Err()
+}
+
+// CreateGroupConversation starts a new, separate group stream.  It deliberately
+// does not reuse a direct conversation, so former 1:1 history stays private.
+func (service *Service) CreateGroupConversation(ctx context.Context, actorID, sourceRoomID uuid.UUID, name string, memberIDs []uuid.UUID) (DirectConversation, error) {
+	name, err := NormalizeName(name)
+	if err != nil {
+		return DirectConversation{}, err
+	}
+	unique := map[uuid.UUID]bool{actorID: true}
+	for _, memberID := range memberIDs {
+		if memberID != actorID && !service.usersShareActiveRoom(ctx, actorID, memberID, sourceRoomID) {
+			return DirectConversation{}, ErrNotFound
+		}
+		unique[memberID] = true
+	}
+	if len(unique) < 3 {
+		return DirectConversation{}, ErrInvalidName
+	}
+	ids := make([]uuid.UUID, 0, len(unique))
+	for userID := range unique {
+		ids = append(ids, userID)
+	}
+	first, second := canonicalDirectPair(ids[0], ids[1])
+	var conversationID uuid.UUID
+	err = service.db.QueryRow(ctx, `INSERT INTO direct_conversations(source_room_id,user_one_id,user_two_id,kind,owner_user_id,name)
+		VALUES($1,$2,$3,'group',$4,$5) RETURNING id`, sourceRoomID, first, second, actorID, name).Scan(&conversationID)
+	if err != nil {
+		return DirectConversation{}, err
+	}
+	for _, userID := range ids {
+		if _, err := service.db.Exec(ctx, `INSERT INTO direct_conversation_members(conversation_id,user_id,added_by) VALUES($1,$2,$3)`, conversationID, userID, actorID); err != nil {
+			return DirectConversation{}, err
+		}
+	}
+	return service.directConversationForActor(ctx, actorID, conversationID)
+}
+
+func (service *Service) DeleteGroupConversation(ctx context.Context, actorID, conversationID uuid.UUID) error {
+	command, err := service.db.Exec(ctx, `DELETE FROM direct_conversations WHERE id=$1 AND kind='group' AND owner_user_id=$2`, conversationID, actorID)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

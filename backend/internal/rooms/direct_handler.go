@@ -18,6 +18,12 @@ type createDirectConversationRequest struct {
 	RoomID uuid.UUID `json:"room_id"`
 }
 
+type createGroupConversationRequest struct {
+	RoomID    uuid.UUID   `json:"room_id"`
+	Name      string      `json:"name"`
+	MemberIDs []uuid.UUID `json:"member_ids"`
+}
+
 type addDirectResourceRequest struct {
 	FileID    uuid.UUID  `json:"file_id"`
 	MessageID *uuid.UUID `json:"message_id,omitempty"`
@@ -55,6 +61,34 @@ func (handler *Handler) CreateDirectConversation(w http.ResponseWriter, request 
 		return
 	}
 	httputil.Respond(w, http.StatusCreated, conversation)
+}
+
+func (handler *Handler) CreateGroupConversation(w http.ResponseWriter, request *http.Request) {
+	var input createGroupConversationRequest
+	if !decodeRequest(w, request, &input) || input.RoomID == uuid.Nil {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid group conversation request")
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	conversation, err := handler.service.CreateGroupConversation(request.Context(), user.ID, input.RoomID, input.Name, input.MemberIDs)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusCreated, conversation)
+}
+
+func (handler *Handler) DeleteGroupConversation(w http.ResponseWriter, request *http.Request) {
+	conversationID, ok := directConversationID(w, request)
+	if !ok {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	if err := handler.service.DeleteGroupConversation(request.Context(), user.ID, conversationID); err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusNoContent, nil)
 }
 
 func (handler *Handler) ListDirectMessages(w http.ResponseWriter, request *http.Request) {

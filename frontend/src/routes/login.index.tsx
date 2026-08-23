@@ -45,7 +45,12 @@ export default function LoginPage() {
         })
       } else {
         await refetch()
-        await navigate({ to: '/files' })
+        const user = await api.get<{ rooms_only_account?: boolean }>('/api/v1/me')
+        if (user.rooms_only_account) {
+          const chats = await api.get<Array<{ slug: string }>>('/api/v1/rooms')
+          if (chats.length === 1) await navigate({ to: '/rooms/$roomID', params: { roomID: chats[0].slug } })
+          else await navigate({ to: '/rooms' })
+        } else await navigate({ to: '/files' })
       }
     } catch (err) {
       if (err instanceof ApiClientError) {

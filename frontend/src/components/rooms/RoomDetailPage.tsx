@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Copy, DoorOpen, ImagePlus, PanelRightClose, PanelRightOpen, Pencil, Users } from 'lucide-react'
+import { ArrowLeft, Copy, DoorOpen, ImagePlus, Pencil, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { getPublicRoomSettings, getRoom, listRoomMembers, updateRoom, updateRoomIcon } from '@/lib/rooms'
@@ -18,7 +18,6 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [contextVisible, setContextVisible] = useState(true)
   const iconInputRef = useRef<HTMLInputElement>(null)
   const roomQuery = useQuery({
     queryKey: ['rooms', roomID],
@@ -65,9 +64,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   }
 
   const memberCount = membersQuery.data?.length
-  const detailGridClass = contextVisible
-    ? 'lg:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)] xl:grid-cols-[minmax(12rem,16rem)_minmax(26rem,1fr)_minmax(14rem,18rem)]'
-    : 'lg:grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(12rem,16rem)_minmax(26rem,1fr)]'
+  const detailGridClass = 'lg:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)] xl:grid-cols-[minmax(12rem,16rem)_minmax(26rem,1fr)_minmax(14rem,18rem)]'
 
   return (
     <section className="mx-auto flex h-[calc(100dvh-4rem)] w-full max-w-[112rem] flex-col overflow-hidden animate-fade-in lg:h-full" aria-labelledby="room-heading">
@@ -88,13 +85,12 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
                 <p className="mt-1 flex items-center gap-1.5 text-sm text-muted"><Users size={15} /> {memberCount === undefined ? t(`rooms.role.${room.current_role}` as never) : `${t('rooms.permanentWorkspace' as never)} · ${t('rooms.roomMembers' as never, { count: memberCount })}`}</p>
               </div>
             </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-subtle bg-surface/70 p-2 xl:w-auto xl:max-w-[72%]">
+          <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-xl border border-subtle bg-surface/70 p-2 xl:w-auto xl:max-w-[72%]">
             {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} compact />}
             {(room.current_role === 'owner' || room.current_role === 'moderator') && <AddPersonDialog room={room} />}
-            <button type="button" className="notes-icon-button" onClick={() => setContextVisible(value => !value)} aria-label={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)} title={contextVisible ? t('rooms.hideContext' as never) : t('rooms.showContext' as never)}>{contextVisible ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button>
             <RoomsInstallButton />
             <button type="button" className="notes-secondary-button shrink-0" title={t('rooms.copyLink' as never)} onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>
-              <Copy size={16} /> <span className="hidden sm:inline 2xl:inline">{t('rooms.copyLink' as never)}</span>
+              <Copy size={16} /> <span className="hidden min-[1200px]:inline">{t('rooms.copyLink' as never)}</span>
             </button>
             {(room.current_role === 'owner' || room.current_role === 'moderator') && (
               <button type="button" className="notes-secondary-button shrink-0" title={t('action.rename')} onClick={() => {
@@ -108,7 +104,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
                   })
                   .catch(() => toast.error(t('rooms.createFailed' as never)))
               }}>
-                <Pencil size={16} /> <span className="hidden sm:inline 2xl:inline">{t('action.rename')}</span>
+                <Pencil size={16} /> <span className="hidden min-[1200px]:inline">{t('action.rename')}</span>
               </button>
             )}
           </div>
@@ -116,10 +112,10 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
           </header>
           <RoomChatPanel room={room} fillAvailableHeight />
         </main>
-        {contextVisible && <aside className="hidden space-y-6 border-t border-subtle pt-4 lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:pl-4 lg:pt-0" aria-label={t('rooms.members' as never)}>
+        <aside className="hidden space-y-6 border-t border-subtle pt-4 lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:pl-4 lg:pt-0" aria-label={t('rooms.members' as never)}>
           <RoomMembersPanel room={room} />
           <RoomInvitesPanel room={room} />
-        </aside>}
+        </aside>
       </div>
     </section>
   )

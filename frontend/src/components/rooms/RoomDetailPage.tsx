@@ -77,7 +77,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
         <RoomConversationSidebar activeRoomID={room.id} />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="shrink-0 border-b border-subtle pb-4">
-          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 flex-col gap-3">
             <div className="flex min-w-0 items-start gap-3">
               <span className="relative mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400">{room.icon_file_id ? <img src={`/api/v1/files/${room.icon_file_id}/thumbnail`} alt="" className="h-full w-full object-cover" /> : <DoorOpen size={21} />}{(room.current_role === 'owner' || room.current_role === 'moderator') && <label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/55 text-white opacity-0 transition-opacity hover:opacity-100" title={t('rooms.changeIcon' as never)}><ImagePlus size={17} /><input ref={iconInputRef} type="file" accept="image/*" className="sr-only" onChange={handleIconChange} /></label>}</span>
               <div className="min-w-0">
@@ -85,7 +85,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
                 <p className="mt-1 flex items-center gap-1.5 text-sm text-muted"><Users size={15} /> {memberCount === undefined ? t(`rooms.role.${room.current_role}` as never) : `${t('rooms.permanentWorkspace' as never)} · ${t('rooms.roomMembers' as never, { count: memberCount })}`}</p>
               </div>
             </div>
-          <div className="rooms-toolbar-panel flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto xl:w-auto xl:max-w-[72%]">
+          <div className="rooms-toolbar-panel flex w-full min-w-0 flex-wrap items-center gap-2">
             {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} compact />}
             {(room.current_role === 'owner' || room.current_role === 'moderator') && <AddPersonDialog room={room} />}
             <RoomsInstallButton />

@@ -119,7 +119,10 @@ function CameraDevicePicker({ cameraEnabled, devices, selectedDeviceID, t, onSel
   t: Translator
   onSelect: (deviceID: string) => Promise<void>
 }>) {
-  if (!cameraEnabled || devices.length < 2) return null
+  // Keep the active camera visible even when the browser currently exposes only
+  // one device. This makes it clear which camera is in use and lets the user
+  // switch immediately if another camera becomes available.
+  if (!cameraEnabled || devices.length === 0) return null
   return <label className="relative flex min-w-0 items-center">
     <span className="sr-only">{t('rooms.cameraSelect')}</span>
     <select value={selectedDeviceID} onChange={event => onSelect(event.target.value).catch(() => undefined)} className="rooms-toolbar-select" title={t('rooms.cameraSelect')} aria-label={t('rooms.cameraSelect')}>

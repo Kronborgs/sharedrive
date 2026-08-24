@@ -85,15 +85,15 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
                 <p className="mt-1 flex items-center gap-1.5 text-sm text-muted"><Users size={15} /> {memberCount === undefined ? t(`rooms.role.${room.current_role}` as never) : `${t('rooms.permanentWorkspace' as never)} · ${t('rooms.roomMembers' as never, { count: memberCount })}`}</p>
               </div>
             </div>
-          <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-xl border border-subtle bg-surface/70 p-2 xl:w-auto xl:max-w-[72%]">
+          <div className="rooms-toolbar-panel flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto xl:w-auto xl:max-w-[72%]">
             {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} compact />}
             {(room.current_role === 'owner' || room.current_role === 'moderator') && <AddPersonDialog room={room} />}
             <RoomsInstallButton />
-            <button type="button" className="notes-secondary-button shrink-0" title={t('rooms.copyLink' as never)} onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>
+            <button type="button" className="rooms-toolbar-button" title={t('rooms.copyLink' as never)} onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>
               <Copy size={16} /> <span className="hidden min-[1200px]:inline">{t('rooms.copyLink' as never)}</span>
             </button>
             {(room.current_role === 'owner' || room.current_role === 'moderator') && (
-              <button type="button" className="notes-secondary-button shrink-0" title={t('action.rename')} onClick={() => {
+              <button type="button" className="rooms-toolbar-button" title={t('action.rename')} onClick={() => {
                 const name = window.prompt(t('rooms.name' as never), room.name)
                 if (!name?.trim() || name.trim() === room.name) return
                 updateRoom(room.id, name.trim())

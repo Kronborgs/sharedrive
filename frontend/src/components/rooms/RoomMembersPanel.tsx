@@ -116,7 +116,7 @@ export function AddPersonDialog({ room }: Readonly<{ room: Room }>) {
 
   return <Dialog.Root open={open} onOpenChange={setOpen}>
     <Dialog.Trigger asChild>
-      <button type="button" className="flex items-center gap-1.5 rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm hover:bg-zinc-100 dark:border-[#3a3f58] dark:hover:bg-[#2d3148]"><Plus size={15} /> {t('rooms.addPersonButton')}</button>
+      <button type="button" className="rooms-toolbar-button"><Plus size={16} /> {t('rooms.addPersonButton')}</button>
     </Dialog.Trigger>
     <Dialog.Portal>
       <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />

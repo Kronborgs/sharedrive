@@ -26,6 +26,8 @@ interface MeetingControlsProps {
   screenShareSupported: boolean
   sharingScreen: boolean
   cameraEnabled: boolean
+  cameraDevices: MediaDeviceInfo[]
+  selectedCameraID: string
   compact: boolean
   t: Translator
   onJoin: (mode: MediaMode) => Promise<void>
@@ -33,6 +35,7 @@ interface MeetingControlsProps {
   onToggleScreenShare: () => Promise<void>
   onChangeScreenShare: () => Promise<void>
   onToggleCamera: () => Promise<void>
+  onSelectCamera: (deviceID: string) => Promise<void>
   onLeave: () => Promise<void>
 }
 
@@ -109,6 +112,22 @@ function meetingActionLabel(status: MeetingControlsProps['status'], meetingActiv
   return t('rooms.startMeeting')
 }
 
+function CameraDevicePicker({ cameraEnabled, devices, selectedDeviceID, t, onSelect }: Readonly<{
+  cameraEnabled: boolean
+  devices: MediaDeviceInfo[]
+  selectedDeviceID: string
+  t: Translator
+  onSelect: (deviceID: string) => Promise<void>
+}>) {
+  if (!cameraEnabled || devices.length < 2) return null
+  return <label className="relative flex min-w-0 items-center">
+    <span className="sr-only">{t('rooms.cameraSelect')}</span>
+    <select value={selectedDeviceID} onChange={event => onSelect(event.target.value).catch(() => undefined)} className="rooms-toolbar-select" title={t('rooms.cameraSelect')} aria-label={t('rooms.cameraSelect')}>
+      {devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || t('rooms.cameraNumber', { number: index + 1 })}</option>)}
+    </select>
+  </label>
+}
+
 function MeetingControls(props: Readonly<MeetingControlsProps>) {
   const isConnected = props.status === 'connected' || props.status === 'reconnecting'
   const joinMode: MediaMode = props.meetingActive ? 'watch' : 'voice'
@@ -117,7 +136,7 @@ function MeetingControls(props: Readonly<MeetingControlsProps>) {
   if (!isConnected) {
     return <div className="flex min-w-0 flex-wrap gap-2"><button type="button" onClick={() => props.onJoin(joinMode).catch(() => undefined)} disabled={props.status === 'joining'} className="rooms-toolbar-button rooms-toolbar-button-primary" title={actionLabel}><Phone size={16} /><span className={labelClass}> {actionLabel}</span></button>{props.canShareScreen && props.screenShareSupported && <button type="button" onClick={() => props.onToggleScreenShare().catch(() => undefined)} disabled={props.status === 'joining'} className="rooms-toolbar-button" title={props.t('rooms.screenShareStart')}><MonitorUp size={16} /><span className={labelClass}>{props.t('rooms.screenShareStart')}</span></button>}</div>
   }
-  return <div className="flex min-w-0 flex-wrap gap-2"><button type="button" onClick={() => props.onToggleMute().catch(() => undefined)} className="rooms-toolbar-button" title={props.muted ? props.t('rooms.voiceUnmute') : props.t('rooms.voiceMute')}>{props.muted ? <MicOff size={16} /> : <Mic size={16} />}<span className={labelClass}>{props.muted ? props.t('rooms.voiceUnmute') : props.t('rooms.voiceMute')}</span></button><button type="button" onClick={() => props.onToggleCamera().catch(() => undefined)} className="rooms-toolbar-button" title={props.cameraEnabled ? props.t('rooms.cameraStop') : props.t('rooms.cameraStart')}>{props.cameraEnabled ? <CameraOff size={16} /> : <Camera size={16} />}<span className={labelClass}>{props.cameraEnabled ? props.t('rooms.cameraStop') : props.t('rooms.cameraStart')}</span></button>{props.canShareScreen && props.screenShareSupported && <>{props.sharingScreen && <button type="button" onClick={() => props.onChangeScreenShare().catch(() => undefined)} className="rooms-toolbar-button" title={props.t('rooms.screenShareChange')}><RefreshCw size={16} /><span className={labelClass}>{props.t('rooms.screenShareChange')}</span></button>}<button type="button" onClick={() => props.onToggleScreenShare().catch(() => undefined)} className="rooms-toolbar-button" title={props.sharingScreen ? props.t('rooms.screenShareStop') : props.t('rooms.screenShareStart')}><MonitorUp size={16} /><span className={labelClass}>{props.sharingScreen ? props.t('rooms.screenShareStop') : props.t('rooms.screenShareStart')}</span></button></>}<button type="button" onClick={() => props.onLeave().catch(() => undefined)} className="rooms-toolbar-button rooms-toolbar-button-danger" title={props.t('rooms.voiceLeave')}><PhoneOff size={16} /><span className={labelClass}> {props.t('rooms.voiceLeave')}</span></button></div>
+  return <div className="flex min-w-0 flex-wrap gap-2"><button type="button" onClick={() => props.onToggleMute().catch(() => undefined)} className="rooms-toolbar-button" title={props.muted ? props.t('rooms.voiceUnmute') : props.t('rooms.voiceMute')}>{props.muted ? <MicOff size={16} /> : <Mic size={16} />}<span className={labelClass}>{props.muted ? props.t('rooms.voiceUnmute') : props.t('rooms.voiceMute')}</span></button><button type="button" onClick={() => props.onToggleCamera().catch(() => undefined)} className="rooms-toolbar-button" title={props.cameraEnabled ? props.t('rooms.cameraStop') : props.t('rooms.cameraStart')}>{props.cameraEnabled ? <CameraOff size={16} /> : <Camera size={16} />}<span className={labelClass}>{props.cameraEnabled ? props.t('rooms.cameraStop') : props.t('rooms.cameraStart')}</span></button><CameraDevicePicker cameraEnabled={props.cameraEnabled} devices={props.cameraDevices} selectedDeviceID={props.selectedCameraID} t={props.t} onSelect={props.onSelectCamera} />{props.canShareScreen && props.screenShareSupported && <>{props.sharingScreen && <button type="button" onClick={() => props.onChangeScreenShare().catch(() => undefined)} className="rooms-toolbar-button" title={props.t('rooms.screenShareChange')}><RefreshCw size={16} /><span className={labelClass}>{props.t('rooms.screenShareChange')}</span></button>}<button type="button" onClick={() => props.onToggleScreenShare().catch(() => undefined)} className="rooms-toolbar-button" title={props.sharingScreen ? props.t('rooms.screenShareStop') : props.t('rooms.screenShareStart')}><MonitorUp size={16} /><span className={labelClass}>{props.sharingScreen ? props.t('rooms.screenShareStop') : props.t('rooms.screenShareStart')}</span></button></>}<button type="button" onClick={() => props.onLeave().catch(() => undefined)} className="rooms-toolbar-button rooms-toolbar-button-danger" title={props.t('rooms.voiceLeave')}><PhoneOff size={16} /><span className={labelClass}> {props.t('rooms.voiceLeave')}</span></button></div>
 }
 
 export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, meetingActive = false, compact = false, mediaTokenPath }: Readonly<{ roomID: string; guest?: boolean; canShareScreen?: boolean; meetingActive?: boolean; compact?: boolean; mediaTokenPath?: string }>) {
@@ -135,6 +154,8 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
   const [sharingScreen, setSharingScreen] = useState(false)
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false)
   const [cameraEnabled, setCameraEnabled] = useState(false)
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedCameraID, setSelectedCameraID] = useState('')
   const [error, setError] = useState('')
 
   const syncParticipants = () => {
@@ -150,7 +171,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
     audioElements.current.forEach(element => element.remove())
     audioElements.current = []
     changingScreenRef.current = false
-    setParticipants([]); setActiveSpeakers([]); setSharedScreens([]); setRemoteCameras([]); setSharingScreen(false); setMicrophoneEnabled(false); setCameraEnabled(false); setMuted(false); setStatus('idle')
+    setParticipants([]); setActiveSpeakers([]); setSharedScreens([]); setRemoteCameras([]); setSharingScreen(false); setMicrophoneEnabled(false); setCameraEnabled(false); setCameraDevices([]); setSelectedCameraID(''); setMuted(false); setStatus('idle')
   }
 
   const addSharedScreen = (track: RemoteTrack, participantID: string, participantName: string) => {
@@ -236,9 +257,26 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
     if (!room) return
     setError('')
     try {
-      await room.localParticipant.setCameraEnabled(!cameraEnabled)
+      const options = selectedCameraID ? { deviceId: { exact: selectedCameraID } } : undefined
+      await room.localParticipant.setCameraEnabled(!cameraEnabled, options)
       setCameraEnabled(value => !value)
+      if (!cameraEnabled) {
+        const devices = await LiveKitRoom.getLocalDevices('videoinput')
+        setCameraDevices(devices)
+        setSelectedCameraID(current => devices.some(device => device.deviceId === current) ? current : devices[0]?.deviceId || '')
+      }
     } catch { setError(t('rooms.cameraFailed')) }
+  }
+
+  const selectCamera = async (deviceID: string) => {
+    const room = roomRef.current
+    if (!room || !deviceID) return
+    setError('')
+    try {
+      const switched = await room.switchActiveDevice('videoinput', deviceID, true)
+      if (!switched) throw new Error('camera switch failed')
+      setSelectedCameraID(deviceID)
+    } catch { setError(t('rooms.cameraDeviceFailed')) }
   }
 
   const toggleScreenShare = async () => {
@@ -286,7 +324,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
   const sectionClass = compact ? 'shrink-0' : 'mt-6 rounded-xl border border-subtle p-4'
   const titleClass = compact ? 'text-sm' : 'text-lg'
   return <section className={sectionClass} aria-label={t('rooms.meeting')}>
-    <div className={compact ? 'flex flex-wrap items-center gap-2' : 'flex flex-wrap items-center justify-between gap-3'}>{!compact && <div><h2 className={`flex items-center gap-2 font-semibold ${titleClass}`}><Mic size={18} /> {t('rooms.meeting')}</h2><p className="mt-1 text-sm text-muted">{description}</p>{meetingActive && status === 'idle' && <p className="mt-1 text-sm font-medium text-emerald-700 dark:text-emerald-400">{t('rooms.meetingInProgress')}</p>}</div>}{compact && meetingActive && status === 'idle' && <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">{t('rooms.meetingInProgress')}</span>}<MeetingControls status={status} meetingActive={meetingActive} muted={muted} cameraEnabled={cameraEnabled} compact={compact} canShareScreen={canShareScreen} screenShareSupported={screenShareSupported} sharingScreen={sharingScreen} t={t} onJoin={join} onToggleMute={toggleMute} onToggleCamera={toggleCamera} onToggleScreenShare={toggleScreenShare} onChangeScreenShare={changeScreenShare} onLeave={leave} /></div>
+    <div className={compact ? 'flex flex-wrap items-center gap-2' : 'flex flex-wrap items-center justify-between gap-3'}>{!compact && <div><h2 className={`flex items-center gap-2 font-semibold ${titleClass}`}><Mic size={18} /> {t('rooms.meeting')}</h2><p className="mt-1 text-sm text-muted">{description}</p>{meetingActive && status === 'idle' && <p className="mt-1 text-sm font-medium text-emerald-700 dark:text-emerald-400">{t('rooms.meetingInProgress')}</p>}</div>}{compact && meetingActive && status === 'idle' && <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">{t('rooms.meetingInProgress')}</span>}<MeetingControls status={status} meetingActive={meetingActive} muted={muted} cameraEnabled={cameraEnabled} cameraDevices={cameraDevices} selectedCameraID={selectedCameraID} compact={compact} canShareScreen={canShareScreen} screenShareSupported={screenShareSupported} sharingScreen={sharingScreen} t={t} onJoin={join} onToggleMute={toggleMute} onToggleCamera={toggleCamera} onSelectCamera={selectCamera} onToggleScreenShare={toggleScreenShare} onChangeScreenShare={changeScreenShare} onLeave={leave} /></div>
     {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
     {!compact && status === 'connected' && <p className="mt-3 flex items-center gap-2 text-sm text-muted"><Users size={16} /> {t('rooms.voiceParticipants', { names: participants.join(', ') })}</p>}
     {!compact && status === 'connected' && activeSpeakers.length > 0 && <p className="mt-1 text-sm text-muted">{t('rooms.voiceSpeaking', { names: activeSpeakers.join(', ') })}</p>}

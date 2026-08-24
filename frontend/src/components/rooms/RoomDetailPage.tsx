@@ -112,7 +112,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
           </header>
           <RoomChatPanel room={room} fillAvailableHeight />
         </main>
-        <aside className="hidden space-y-6 border-t border-subtle pt-4 lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:pl-4 lg:pt-0" aria-label={t('rooms.members' as never)}>
+        <aside className="hidden space-y-6 border-t border-subtle pt-4 lg:block lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:pl-4 lg:pt-0" aria-label={t('rooms.members' as never)}>
           <RoomMembersPanel room={room} />
           <RoomInvitesPanel room={room} />
         </aside>

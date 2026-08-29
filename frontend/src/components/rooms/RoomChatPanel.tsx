@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { ArrowDown, File, FileText, Pencil, Reply, Send, Trash2 } from 'lucide-react'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { EmojiPicker } from '@/components/rooms/EmojiPicker'
+import { GifPicker } from '@/components/rooms/GifPicker'
 import { RoomResourcesPanel, type PendingRoomResource } from '@/components/rooms/RoomResourcesPanel'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
@@ -106,6 +107,10 @@ function isImageResource(resource: RoomResource) {
   return /\.(avif|gif|jpe?g|png|svg|webp)$/i.test(resource.name ?? '')
 }
 
+function isAnimatedGIF(resource: RoomResource) {
+  return resource.mime_type === 'image/gif' || /\.gif$/i.test(resource.name ?? '')
+}
+
 function ResourceCard({ resource, canModerate, onPreview, onRemove }: Readonly<{ resource: RoomResource; canModerate: boolean; onPreview: (id: string) => void; onRemove: (id: string) => void }>) {
   const { t } = useI18n()
   const [thumbnailFailed, setThumbnailFailed] = useState(false)
@@ -114,7 +119,7 @@ function ResourceCard({ resource, canModerate, onPreview, onRemove }: Readonly<{
   if (showThumbnail) {
     return <article className="group relative w-fit max-w-[min(22rem,85%)]">
       <button type="button" onClick={() => onPreview(resource.resource_id)} className="block overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-950 dark:border-[#34394f]" title={resource.name}>
-        <img src={`/api/v1/files/${resource.resource_id}/thumbnail`} alt={resource.name || t('rooms.sharedImage')} className="max-h-52 min-h-24 max-w-full object-contain" loading="lazy" onError={() => setThumbnailFailed(true)} />
+        <img src={`/api/v1/files/${resource.resource_id}/${isAnimatedGIF(resource) ? 'preview' : 'thumbnail'}`} alt={resource.name || t('rooms.sharedImage')} className="max-h-52 min-h-24 max-w-full object-contain" loading="lazy" onError={() => setThumbnailFailed(true)} />
       </button>
       {canModerate && <button type="button" onClick={() => onRemove(resource.id)} aria-label={t('rooms.removeImage')} className="absolute right-2 top-2 rounded-full bg-black/70 p-1.5 text-white opacity-80 shadow hover:bg-red-600 hover:opacity-100"><Trash2 size={14} /></button>}
       <span className="sr-only">{resource.name}</span>
@@ -288,6 +293,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
     await Promise.all(attachments.map(attachment => addRoomResource(roomID, attachment.resourceType, attachment.resourceID, message.id)))
     return message
   }, onSuccess: () => { scrollAfterSend.current = true; setBody(''); setAttachments([]); setReplyTo(undefined); refresh() } })
+  const sendGIF = useMutation({ mutationFn: (fileID: string) => addRoomResource(roomID, 'file', fileID), onSuccess: () => { scrollAfterSend.current = true; refresh() } })
   const removeResourceMutation = useMutation({ mutationFn: (resourceID: string) => removeRoomResource(roomID, resourceID), onSuccess: refresh })
   const editMessage = (message: RoomMessage) => {
     const next = window.prompt(t('rooms.editMessagePrompt'), message.body)?.trim()
@@ -322,6 +328,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
       <RoomResourcesPanel room={room} onQueued={attachment => setAttachments(items => [...items.filter(item => item.resourceID !== attachment.resourceID || item.resourceType !== attachment.resourceType), attachment])} />
       <textarea value={body} onChange={event => { setBody(event.target.value); notifyTyping() }} maxLength={10000} rows={2} placeholder={t('rooms.messagePlaceholder')} className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none" />
       <EmojiPicker userKey={user?.id ?? 'anonymous'} onSelect={emoji => setBody(value => value + emoji)} />
+      <GifPicker onSelect={fileID => sendGIF.mutate(fileID)} />
       <button type="submit" disabled={(!body.trim() && attachments.length === 0) || send.isPending} className="rounded-full bg-brand-600 p-2.5 text-white disabled:opacity-50" aria-label={t('rooms.sendMessage')}><Send size={18} /></button>
     </form>
     {previewID && preview.data && <PreviewModal item={preview.data} onClose={() => setPreviewID(undefined)} />}

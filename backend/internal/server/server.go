@@ -542,6 +542,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/notes/{id}/shares/{shareId}/resend", s.notesHandler.ResendShare)
 
 		r.Get("/api/v1/rooms", s.roomsHandler.RequireEnabled(s.roomsHandler.List))
+		r.Get("/api/v1/rooms/gifs", s.roomsHandler.RequireEnabled(s.roomsHandler.ListGIFLibrary))
 		r.Post("/api/v1/rooms", s.roomsHandler.RequireEnabled(s.roomsHandler.Create))
 		r.Get("/api/v1/rooms/direct-conversations", s.roomsHandler.RequireEnabled(s.roomsHandler.ListDirectConversations))
 		r.Post("/api/v1/rooms/direct-conversations", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateDirectConversation))
@@ -636,6 +637,9 @@ func (s *Server) buildRouter() *chi.Mux {
 
 			r.Get("/api/v1/admin/users", s.userHandler.List)
 			r.Get("/api/v1/admin/rooms/access", s.roomsHandler.AdminListAccess)
+			r.Get("/api/v1/admin/rooms/gifs", s.roomsHandler.AdminListGIFLibrary)
+			r.Post("/api/v1/admin/rooms/gifs", s.roomsHandler.AdminAddGIFLibraryItem)
+			r.Delete("/api/v1/admin/rooms/gifs/{gifID}", s.roomsHandler.AdminDeleteGIFLibraryItem)
 			r.Patch("/api/v1/admin/rooms/users/{userID}/access", s.roomsHandler.AdminSetUserAccess)
 			r.Post("/api/v1/admin/users", s.userHandler.Create)
 			r.Get(adminUsersByIDRoute, s.userHandler.Get)

@@ -45,6 +45,7 @@ export function RoomResourcesPanel({ room, onQueued }: Readonly<{ room: Room; on
       setOpen(false)
       queryClient.invalidateQueries({ queryKey: ['files'] }).catch(() => undefined)
       onQueued({ resourceType: 'file', resourceID: created.id, name: created.name, mimeType: created.mime_type ?? undefined })
+      toast.success(t('rooms.fileUploaded', { name: created.name }))
     },
     onError: () => toast.error(t('rooms.fileUploadFailed')),
   })

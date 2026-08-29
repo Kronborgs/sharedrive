@@ -2,6 +2,41 @@
 
 Status: Phase 0-7 er implementeret og brugertestet. Phase 8 er startet: den lokale regression er gron, mens afsluttende testserver-regression og GitLab/Sonar Quality Gate afventer naeste commit og push.
 
+
+## Aktuel chatstatus (29. august 2026)
+
+Rooms hedder **Chat** i brugergrænsefladen. Den færdige oplevelse omfatter både fælles gruppechats (Rooms) og private direkte samtaler.
+
+### Samtaler og layout
+
+- Chatten starter og fastholder altid den nyeste besked nederst lige over skrivefeltet. Scroll-logikken tager højde for dynamisk vindues-, fane- og mobilhøjde; når brugeren læser ældre historik, afbrydes automatisk scroll ikke.
+- Desktop bruger en responsiv fler-kolonnevisning med samtaleoversigt og valgt chat. Ved smalle desktopvinduer skifter topbarens handlinger til ikonknapper, så knapper aldrig overlapper.
+- Mobil viser én samtale ad gangen med fast composer nederst, tilbage-navigation og kompakte handlinger. Topområdet er reduceret, så beskedhistorikken får plads.
+- Fælles chats viser Room-navn og medlemmer; direkte chats er adskilt og kræver et aktivt fælles Room mellem deltagerne.
+
+### Beskeder og handlinger
+
+- Begge chattyper understøtter tekst, vedhæftninger, svar, reaktioner, redigering, sletning og read-state/unread.
+- OpenMoji-vælgeren er tilgængelig i skrivefeltet for både gruppe- og direkte chat, med søgning, kategorier og senest brugte emojis. Den bruges også til reaktioner.
+- Gruppechat har et lokalt, selvhostet GIF-bibliotek ved siden af emoji-vælgeren. Det bruger normale Sharedrive-filer (kun `image/gif` og `image/webp`), ingen ekstern API eller CDN. GIF’er vises animeret direkte i chatten og åbnes i den eksisterende preview.
+- Admin -> Brugere -> Chat indeholder GIF-biblioteket: upload, valgfri titel/kategori, oversigt og fjernelse af bibliotekspost. En fjernet bibliotekspost sletter aldrig selve Sharedrive-filen. Brugere ser kun GIF’er, som de allerede har normal Sharedrive-adgang til.
+- Room-headeren har kompakte ikoner for opkald, skærmdeling, info, tilføj medlem og kopiér chat-URL. Omdøb og Room-info ligger ved gruppenavnet frem for som pladsforbrugende topknapper.
+- Mobilbrowser viser kun et kompakt Sharedrive-installationsbanner, når appen ikke allerede kører som installeret PWA.
+
+### Medlemskab, oprydning og administration
+
+- Et almindeligt medlem kan forlade en gruppechat. Ejeren kan ikke forlade den uden at overdrage eller slette chatten.
+- Room-ejeren og en Sharedrive-admin kan slette en gruppechat. Sletning rydder Room-data og den systemstyrede gruppe via backendens transaktion/cascades.
+- En bruger kan skjule sin egen del af en direkte samtale uden at påvirke den anden deltager.
+- Admin -> Brugere -> Chat viser kun konti og deres chatadgang. Afventende kontoinvitationer og aktive gæstelinks vises ikke her; de styres i den relevante chat/Room-info.
+- Når en admin deaktiverer en brugers chatadgang, fjernes medlemskaber og direkte samtaler skjules for brugeren i en database-transaktion. Sharedrive-konto, filer og øvrige Sharedrive-data berøres ikke.
+
+### Validering før næste deploy
+
+- Lokal backend: `go test ./...`.
+- Lokal frontend: `npm run type-check`, `npm run lint` og `npm run build`.
+- Efter commit/push testes især mobil/desktop-scroll, nyeste besked ved åbning, emoji-vælger i begge chattyper, slet/forlad samt admin-deaktivering på testserveren.
+
 ## Aktuel fasestatus
 
 - **Phase 0-4:** Implementeret. Rooms omfatter permanente Rooms, medlemsroller, live chat, reaktioner, filer/Notes, invitationer, link-gaester, Rooms-administration, ulaeste beskeder samt baade integreret hoved-PWA-navigation og en selvstaendig Rooms-PWA.

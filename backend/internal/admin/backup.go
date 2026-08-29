@@ -59,6 +59,7 @@ var backupExportSteps = []exportStep{
 	{name: "room_read_state", query: `SELECT room_id, user_id, last_read_message_id, updated_at FROM room_read_state`, set: func(d *backupData, v []map[string]any) { d.RoomReadState = v }},
 	{name: "room_guest_read_state", query: `SELECT room_id, guest_session_id, last_read_message_id, updated_at FROM room_guest_read_state`, set: func(d *backupData, v []map[string]any) { d.RoomGuestReadState = v }},
 	{name: "room_resources", query: `SELECT id, room_id, resource_type, resource_id, added_by, message_id, created_at FROM room_resources`, set: func(d *backupData, v []map[string]any) { d.RoomResources = v }},
+	{name: "room_gif_library", query: `SELECT id, file_id, title, search_terms, category, created_by, created_at FROM room_gif_library`, set: func(d *backupData, v []map[string]any) { d.RoomGIFLibrary = v }},
 	{name: "room_guest_uploads", query: `SELECT id, room_id, guest_session_id, file_id, created_at FROM room_guest_uploads`, set: func(d *backupData, v []map[string]any) { d.RoomGuestUploads = v }},
 	{name: "direct_conversations", query: `SELECT id, source_room_id, user_one_id, user_two_id, created_at, updated_at FROM direct_conversations`, set: func(d *backupData, v []map[string]any) { d.DirectConversations = v }},
 	{name: "direct_messages", query: `SELECT id, conversation_id, sender_user_id, body, reply_to_message_id, created_at, edited_at, deleted_at FROM direct_messages ORDER BY created_at, id`, set: func(d *backupData, v []map[string]any) { d.DirectMessages = v }},
@@ -84,6 +85,7 @@ var backupRestoreStatements = []string{
 }
 
 var roomBackupRestoreStatements = []string{
+	`DELETE FROM room_gif_library`,
 	`DELETE FROM direct_read_state`,
 	`DELETE FROM direct_reactions`,
 	`DELETE FROM direct_messages`,
@@ -128,6 +130,7 @@ type backupData struct {
 	RoomReadState       []map[string]any `json:"room_read_state,omitempty"`
 	RoomGuestReadState  []map[string]any `json:"room_guest_read_state,omitempty"`
 	RoomResources       []map[string]any `json:"room_resources,omitempty"`
+	RoomGIFLibrary      []map[string]any `json:"room_gif_library,omitempty"`
 	RoomGuestUploads    []map[string]any `json:"room_guest_uploads,omitempty"`
 	DirectConversations []map[string]any `json:"direct_conversations,omitempty"`
 	DirectMessages      []map[string]any `json:"direct_messages,omitempty"`
@@ -513,6 +516,7 @@ func insertEnvelopeRows(ctx context.Context, tx pgx.Tx, data backupData, include
 		"room_read_state":       {"room_id": true, "user_id": true, "last_read_message_id": true, "updated_at": true},
 		"room_guest_read_state": {"room_id": true, "guest_session_id": true, "last_read_message_id": true, "updated_at": true},
 		"room_resources":        {"id": true, "room_id": true, "resource_type": true, "resource_id": true, "added_by": true, "message_id": true, "created_at": true},
+		"room_gif_library":      {"id": true, "file_id": true, "title": true, "search_terms": true, "category": true, "created_by": true, "created_at": true},
 		"room_guest_uploads":    {"id": true, "room_id": true, "guest_session_id": true, "file_id": true, "created_at": true},
 		"direct_conversations":  {"id": true, "source_room_id": true, "user_one_id": true, "user_two_id": true, "created_at": true, "updated_at": true},
 		"direct_messages":       {"id": true, "conversation_id": true, "sender_user_id": true, "body": true, "reply_to_message_id": true, "created_at": true, "edited_at": true, "deleted_at": true},
@@ -547,6 +551,7 @@ func insertEnvelopeRows(ctx context.Context, tx pgx.Tx, data backupData, include
 			restoreStep{"room_read_state", data.RoomReadState},
 			restoreStep{"room_guest_read_state", data.RoomGuestReadState},
 			restoreStep{"room_resources", data.RoomResources},
+			restoreStep{"room_gif_library", data.RoomGIFLibrary},
 			restoreStep{"room_guest_uploads", data.RoomGuestUploads},
 			restoreStep{"direct_conversations", data.DirectConversations},
 			restoreStep{"direct_messages", data.DirectMessages},

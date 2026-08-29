@@ -22,6 +22,7 @@ const (
 	KeyUserRoomSocket     = "user_room_socket:"
 	KeyUserRoomTyping     = "user_room_typing:"
 	KeyUserRoomInvite     = "user_room_invite:"
+	KeyUserRoomGIFSearch  = "user_room_gif_search:"
 	KeyIPRoomInviteAccept = "ip_room_invite_accept:"
 	KeyGuestRoomMutation  = "guest_room_mutation:"
 )

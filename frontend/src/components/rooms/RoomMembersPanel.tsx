@@ -1,7 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { MessageCircle, Plus, Trash2, UserRound, X } from 'lucide-react'
+import { MessageCircle, Trash2, UserPlus, UserRound, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ApiClientError } from '@/lib/api'
@@ -116,7 +116,7 @@ export function AddPersonDialog({ room, compact = false }: Readonly<{ room: Room
 
   return <Dialog.Root open={open} onOpenChange={setOpen}>
     <Dialog.Trigger asChild>
-      <button type="button" className="rooms-toolbar-button" title={t('rooms.addPersonButton')} aria-label={t('rooms.addPersonButton')}><Plus size={16} /> <span className={compact ? 'hidden min-[1360px]:inline' : undefined}>{t('rooms.addPersonButton')}</span></button>
+      <button type="button" className="rooms-toolbar-button" title={t('rooms.addPersonButton')} aria-label={t('rooms.addPersonButton')}><UserPlus size={17} /> <span className={compact ? 'sr-only' : undefined}>{t('rooms.addPersonButton')}</span></button>
     </Dialog.Trigger>
     <Dialog.Portal>
       <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />

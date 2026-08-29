@@ -129,7 +129,7 @@ const translations = {
   'rooms.empty':             { da: 'Ingen rum endnu.', en: 'No Rooms yet.' },
   'rooms.createFailed':      { da: 'Rummet kunne ikke oprettes', en: 'Could not create the Room' },
   'rooms.back':              { da: 'Tilbage til Chat', en: 'Back to Chat' },
-  'rooms.copyLink':          { da: 'Kopiér link til rum', en: 'Copy Room link' },
+  'rooms.copyLink':          { da: 'Kopiér chatlink', en: 'Copy chat link' },
   'rooms.linkCopied':        { da: 'Link til rum kopieret', en: 'Room link copied' },
   'rooms.copyFailed':        { da: 'Linket kunne ikke kopieres', en: 'Could not copy the link' },
   'rooms.archive':           { da: 'Arkivér rum', en: 'Archive Room' },

@@ -13,6 +13,7 @@ import { RoomChatPanel } from '@/components/rooms/RoomChatPanel'
 import { RoomInvitesPanel } from '@/components/rooms/RoomInvitesPanel'
 import { RoomVoicePanel } from '@/components/rooms/RoomVoicePanel'
 import { RoomsInstallButton } from '@/components/rooms/RoomsInstallButton'
+import { MobileRoomsInstallBanner } from '@/components/rooms/MobileRoomsInstallBanner'
 import { RoomConversationSidebar } from '@/components/rooms/RoomConversationSidebar'
 
 export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
@@ -73,6 +74,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
         <ArrowLeft size={16} /> {t('rooms.back' as never)}
       </button>
 
+      <div className="lg:hidden"><MobileRoomsInstallBanner /></div>
       <div className={`flex min-h-0 flex-1 flex-col gap-2 lg:grid lg:gap-4 lg:overflow-hidden ${detailGridClass}`}>
         <RoomConversationSidebar activeRoomID={room.id} />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col lg:order-1 lg:pr-4">

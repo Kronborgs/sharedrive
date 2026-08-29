@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Archive, DoorOpen } from 'lucide-react'
 import { toast } from 'sonner'
 import { RoomConversationSidebar } from '@/components/rooms/RoomConversationSidebar'
+import { MobileRoomsInstallBanner } from '@/components/rooms/MobileRoomsInstallBanner'
 import { useI18n } from '@/lib/i18n'
 import { archiveRoom, listRooms, type Room } from '@/lib/rooms'
 
@@ -20,5 +21,5 @@ function RoomOverviewCard({ room }: Readonly<{ room: Room }>) {
 export function RoomListPage() {
   const { t } = useI18n()
   const rooms = useQuery({ queryKey: ['rooms'], queryFn: ({ signal }) => listRooms(signal) })
-  return <section className="mx-auto grid w-full max-w-[112rem] animate-fade-in lg:h-full lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)] lg:gap-4 lg:overflow-hidden" aria-labelledby="rooms-heading"><RoomConversationSidebar mobile /><RoomConversationSidebar /><main className="min-h-[20rem] lg:min-h-0 lg:overflow-y-auto"><h1 id="rooms-heading" className="text-xl font-semibold">{t('rooms.title' as never)}</h1><p className="mt-2 text-sm text-muted">{t('rooms.selectConversation' as never)}</p><div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{(rooms.data ?? []).map(room => <RoomOverviewCard key={room.id} room={room} />)}</div></main></section>
+  return <section className="mx-auto w-full max-w-[112rem] animate-fade-in lg:h-full" aria-labelledby="rooms-heading"><div className="lg:hidden"><MobileRoomsInstallBanner /></div><div className="grid lg:h-full lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)] lg:gap-4 lg:overflow-hidden"><RoomConversationSidebar mobile /><RoomConversationSidebar /><main className="min-h-[20rem] lg:min-h-0 lg:overflow-y-auto"><h1 id="rooms-heading" className="text-xl font-semibold">{t('rooms.title' as never)}</h1><p className="mt-2 text-sm text-muted">{t('rooms.selectConversation' as never)}</p><div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{(rooms.data ?? []).map(room => <RoomOverviewCard key={room.id} room={room} />)}</div></main></div></section>
 }

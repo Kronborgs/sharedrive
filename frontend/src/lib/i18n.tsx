@@ -78,6 +78,7 @@ const translations = {
   'rooms.hideContext':       { da: 'Skjul rumoplysninger', en: 'Hide Room context' },
   'rooms.showContext':       { da: 'Vis rumoplysninger', en: 'Show Room context' },
   'rooms.installApp':        { da: 'Installér Rooms', en: 'Install Rooms' },
+  'rooms.installBanner':     { da: 'Installér chat som app', en: 'Install chat as an app' },
   'rooms.installAppHelp':    { da: 'Vælg “Installér app” eller “Føj til startskærm” i browserens menu for at installere Rooms.', en: 'Choose “Install app” or “Add to Home Screen” in your browser menu to install Rooms.' },
   'rooms.changeIcon':        { da: 'Skift rumbillede', en: 'Change room picture' },
   'rooms.archiveConfirm':     { da: 'Vil du arkivere rummet “{{name}}”?', en: 'Archive the room “{{name}}”?' },

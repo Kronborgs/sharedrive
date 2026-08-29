@@ -466,6 +466,24 @@ func (service *Service) AddMemberByEmail(ctx context.Context, actorID, roomID uu
 	return service.AddMember(ctx, actorID, roomID, userID, role)
 }
 
+func (service *Service) leaveRoom(ctx context.Context, tx pgx.Tx, actorID, roomID, userID uuid.UUID, access roomAccess) error {
+	if access.actorRole == RoleOwner {
+		return ErrOwnerRemoval
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM room_members WHERE room_id=$1 AND user_id=$2`, roomID, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM group_members WHERE group_id=$1 AND user_id=$2`, access.managedGroupID, userID); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	room := Room{ID: roomID, ManagedGroupID: access.managedGroupID, OwnerID: access.ownerID}
+	service.log(ctx, audit.EventRoomMemberRemoved, actorID, room, &userID, map[string]any{"left": true})
+	return nil
+}
+
 func (service *Service) RemoveMember(ctx context.Context, actorID, roomID, userID uuid.UUID) error {
 	tx, err := service.db.Begin(ctx)
 	if err != nil {
@@ -481,21 +499,7 @@ func (service *Service) RemoveMember(ctx context.Context, actorID, roomID, userI
 		return ErrArchived
 	}
 	if actorID == userID {
-		if access.actorRole == RoleOwner {
-			return ErrOwnerRemoval
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM room_members WHERE room_id=$1 AND user_id=$2`, roomID, userID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM group_members WHERE group_id=$1 AND user_id=$2`, access.managedGroupID, userID); err != nil {
-			return err
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return err
-		}
-		room := Room{ID: roomID, ManagedGroupID: access.managedGroupID, OwnerID: access.ownerID}
-		service.log(ctx, audit.EventRoomMemberRemoved, actorID, room, &userID, map[string]any{"left": true})
-		return nil
+		return service.leaveRoom(ctx, tx, actorID, roomID, userID, access)
 	}
 	if access.actorRole != RoleOwner && access.actorRole != RoleModerator {
 		return ErrForbidden

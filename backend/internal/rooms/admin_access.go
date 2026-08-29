@@ -160,7 +160,10 @@ func (handler *Handler) AdminSetUserAccess(w http.ResponseWriter, request *http.
 		return
 	}
 	if !*input.Enabled {
-		handler.disconnectUserFromRooms(request, userID)
+		if err := handler.disconnectUserFromRooms(request, userID); err != nil {
+			handler.respondError(w, err)
+			return
+		}
 	}
 	if handler.service.audit != nil {
 		actor := middleware.UserFromContext(request.Context())
@@ -171,19 +174,43 @@ func (handler *Handler) AdminSetUserAccess(w http.ResponseWriter, request *http.
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-func (handler *Handler) disconnectUserFromRooms(request *http.Request, userID uuid.UUID) {
-	rows, err := handler.service.db.Query(request.Context(), `SELECT room_id FROM room_members WHERE user_id=$1`, userID)
+func (handler *Handler) disconnectUserFromRooms(request *http.Request, userID uuid.UUID) error {
+	ctx := request.Context()
+	rows, err := handler.service.db.Query(ctx, `SELECT room_id FROM room_members WHERE user_id=$1`, userID)
 	if err != nil {
-		return
+		return err
 	}
 	defer rows.Close()
+
+	roomIDs := make([]uuid.UUID, 0)
 	for rows.Next() {
 		var roomID uuid.UUID
-		if rows.Scan(&roomID) == nil {
-			handler.publishRoomEvent(request.Context(), roomID, roomEvent{Type: "user_rooms_access_revoked", UserID: userID})
+		if err := rows.Scan(&roomID); err != nil {
+			return err
 		}
+		roomIDs = append(roomIDs, roomID)
 	}
-	// Admin access revocation removes only chat participation; Sharedrive users and files remain intact.
-	_, _ = handler.service.db.Exec(request.Context(), `DELETE FROM room_members WHERE user_id=$1`, userID)
-	_, _ = handler.service.db.Exec(request.Context(), `UPDATE direct_conversation_members SET hidden_at=now() WHERE user_id=$1`, userID)
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	tx, err := handler.service.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM room_members WHERE user_id=$1`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE direct_conversation_members SET hidden_at=now() WHERE user_id=$1`, userID); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	for _, roomID := range roomIDs {
+		handler.publishRoomEvent(ctx, roomID, roomEvent{Type: "user_rooms_access_revoked", UserID: userID})
+	}
+	return nil
 }

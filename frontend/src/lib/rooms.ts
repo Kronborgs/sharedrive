@@ -61,6 +61,10 @@ export function archiveRoom(roomID: string): Promise<Room> {
   return api.post<Room>(`/api/v1/rooms/${roomID}/archive`, {})
 }
 
+export function deleteRoom(roomID: string): Promise<void> {
+  return api.delete(`/api/v1/rooms/${roomID}`)
+}
+
 export function updateRoomIcon(roomID: string, iconFileID: string): Promise<Room> {
   return api.patch<Room>(`/api/v1/rooms/${roomID}`, { icon_file_id: iconFileID })
 }
@@ -197,6 +201,14 @@ export function startPrivateChatByEmail(email: string): Promise<StartPrivateChat
 
 export function createGroupConversation(roomID: string, name: string, memberIDs: string[]): Promise<DirectConversation> {
   return api.post<DirectConversation>('/api/v1/rooms/group-conversations', { room_id: roomID, name, member_ids: memberIDs })
+}
+
+export function deleteGroupConversation(conversationID: string): Promise<void> {
+  return api.delete(`/api/v1/rooms/direct-conversations/${conversationID}`)
+}
+
+export function hideDirectConversation(conversationID: string): Promise<void> {
+  return api.post(`/api/v1/rooms/direct-conversations/${conversationID}/hide`, {})
 }
 
 export function renameDirectConversation(conversationID: string, name: string): Promise<DirectConversation> {

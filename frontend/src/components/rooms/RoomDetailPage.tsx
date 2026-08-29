@@ -2,10 +2,11 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Copy, DoorOpen, ImagePlus, Info, Pencil, Users, X } from 'lucide-react'
+import { ArrowLeft, Copy, DoorOpen, ImagePlus, Info, Pencil, Trash2, Users, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
-import { getPublicRoomSettings, getRoom, listRoomMembers, updateRoom, updateRoomIcon } from '@/lib/rooms'
+import { useAuth } from '@/lib/auth-context'
+import { deleteRoom, getPublicRoomSettings, getRoom, listRoomMembers, removeRoomMember, updateRoom, updateRoomIcon } from '@/lib/rooms'
 import { api } from '@/lib/api'
 import type { FileItem } from '@/types/api'
 import { AddPersonDialog, RoomMembersPanel } from '@/components/rooms/RoomMembersPanel'
@@ -19,6 +20,7 @@ import { RoomConversationSidebar } from '@/components/rooms/RoomConversationSide
 export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const { t } = useI18n()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const iconInputRef = useRef<HTMLInputElement>(null)
   const roomQuery = useQuery({
@@ -93,7 +95,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
                       toast.success(t('action.save'))
                     })
                     .catch(() => toast.error(t('rooms.createFailed' as never)))
-                }}><Pencil size={15} /></button>}<Dialog.Root><Dialog.Trigger asChild><button type="button" className="notes-icon-button shrink-0" title={t('rooms.showContext' as never)} aria-label={t('rooms.showContext' as never)}><Info size={18} /></button></Dialog.Trigger><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" /><Dialog.Content className="fixed inset-x-4 top-1/2 z-50 max-h-[80dvh] -translate-y-1/2 overflow-y-auto rounded-lg border border-subtle bg-surface p-5 shadow-xl sm:left-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2"><div className="flex items-start justify-between gap-3"><Dialog.Title className="text-lg font-semibold">{room.name}</Dialog.Title><Dialog.Close asChild><button type="button" className="notes-icon-button" aria-label={t('action.close')}><X size={17} /></button></Dialog.Close></div><div className="mt-5 space-y-6"><RoomMembersPanel room={room} /><RoomInvitesPanel room={room} /></div></Dialog.Content></Dialog.Portal></Dialog.Root></div>
+                }}><Pencil size={15} /></button>}<Dialog.Root><Dialog.Trigger asChild><button type="button" className="notes-icon-button shrink-0" title={t('rooms.showContext' as never)} aria-label={t('rooms.showContext' as never)}><Info size={18} /></button></Dialog.Trigger><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" /><Dialog.Content className="fixed inset-x-4 top-1/2 z-50 max-h-[80dvh] -translate-y-1/2 overflow-y-auto rounded-lg border border-subtle bg-surface p-5 shadow-xl sm:left-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2"><div className="flex items-start justify-between gap-3"><Dialog.Title className="text-lg font-semibold">{room.name}</Dialog.Title><Dialog.Close asChild><button type="button" className="notes-icon-button" aria-label={t('action.close')}><X size={17} /></button></Dialog.Close></div><div className="mt-5 space-y-6"><RoomMembersPanel room={room} /><RoomInvitesPanel room={room} />{(user?.is_admin || room.current_role === 'owner') && <button type="button" className="notes-secondary-button w-full text-red-600" onClick={() => { if (window.confirm(t('rooms.archiveConfirm' as never, { name: room.name }))) deleteRoom(room.id).then(() => navigate({ to: '/rooms' })).catch(() => toast.error(t('rooms.archiveFailed' as never))) }}><Trash2 size={16} /> {t('rooms.delete')}</button>}{room.current_role !== 'owner' && <button type="button" className="notes-secondary-button w-full text-red-600" onClick={() => { if (user && window.confirm(t('rooms.archiveConfirm' as never, { name: room.name }))) removeRoomMember(room.id, user.id).then(() => navigate({ to: '/rooms' })).catch(() => toast.error(t('rooms.memberRemoveFailed' as never))) }}><Users size={16} /> {t('rooms.back')}</button>}</div></Dialog.Content></Dialog.Portal></Dialog.Root></div>
                 <p className="flex items-center gap-1.5 text-xs text-muted lg:mt-1 lg:text-sm"><Users size={15} /> {memberCount === undefined ? t(`rooms.role.${room.current_role}` as never) : `${t('rooms.permanentWorkspace' as never)} · ${t('rooms.roomMembers' as never, { count: memberCount })}`}</p>
               </div>
             </div>

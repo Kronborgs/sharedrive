@@ -322,6 +322,38 @@ func (service *Service) Archive(ctx context.Context, actorID, roomID uuid.UUID) 
 	return room, nil
 }
 
+func (service *Service) Delete(ctx context.Context, actorID, roomID uuid.UUID, isAdmin bool) error {
+	tx, err := service.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var room Room
+	err = tx.QueryRow(ctx, `SELECT id, name, slug, owner_id, managed_group_id, icon_file_id, created_by, created_at, updated_at, archived_at FROM rooms WHERE id=$1 FOR UPDATE`, roomID).Scan(&room.ID, &room.Name, &room.Slug, &room.OwnerID, &room.ManagedGroupID, &room.IconFileID, &room.CreatedBy, &room.CreatedAt, &room.UpdatedAt, &room.ArchivedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if !isAdmin && room.OwnerID != actorID {
+		return ErrForbidden
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM rooms WHERE id=$1`, roomID); err != nil {
+		return err
+	}
+	// The managed group is created solely for the chat; removing it also clears its memberships.
+	if _, err = tx.Exec(ctx, `DELETE FROM groups WHERE id=$1 AND is_system_managed=TRUE`, room.ManagedGroupID); err != nil {
+		return err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return err
+	}
+	service.log(ctx, "room.deleted", actorID, room, nil, map[string]any{"admin": isAdmin})
+	return nil
+}
+
 func (service *Service) ListMembers(ctx context.Context, actorID, roomID uuid.UUID) ([]Member, error) {
 	var member bool
 	if err := service.db.QueryRow(ctx, `SELECT EXISTS(
@@ -447,6 +479,23 @@ func (service *Service) RemoveMember(ctx context.Context, actorID, roomID, userI
 	}
 	if access.archived {
 		return ErrArchived
+	}
+	if actorID == userID {
+		if access.actorRole == RoleOwner {
+			return ErrOwnerRemoval
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM room_members WHERE room_id=$1 AND user_id=$2`, roomID, userID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM group_members WHERE group_id=$1 AND user_id=$2`, access.managedGroupID, userID); err != nil {
+			return err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+		room := Room{ID: roomID, ManagedGroupID: access.managedGroupID, OwnerID: access.ownerID}
+		service.log(ctx, audit.EventRoomMemberRemoved, actorID, room, &userID, map[string]any{"left": true})
+		return nil
 	}
 	if access.actorRole != RoleOwner && access.actorRole != RoleModerator {
 		return ErrForbidden

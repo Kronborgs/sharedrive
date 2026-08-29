@@ -183,4 +183,7 @@ func (handler *Handler) disconnectUserFromRooms(request *http.Request, userID uu
 			handler.publishRoomEvent(request.Context(), roomID, roomEvent{Type: "user_rooms_access_revoked", UserID: userID})
 		}
 	}
+	// Admin access revocation removes only chat participation; Sharedrive users and files remain intact.
+	_, _ = handler.service.db.Exec(request.Context(), `DELETE FROM room_members WHERE user_id=$1`, userID)
+	_, _ = handler.service.db.Exec(request.Context(), `UPDATE direct_conversation_members SET hidden_at=now() WHERE user_id=$1`, userID)
 }

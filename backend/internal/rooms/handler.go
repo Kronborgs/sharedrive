@@ -596,6 +596,19 @@ func (handler *Handler) Update(w http.ResponseWriter, request *http.Request) {
 	httputil.Respond(w, http.StatusOK, room)
 }
 
+func (handler *Handler) Delete(w http.ResponseWriter, request *http.Request) {
+	roomID, ok := roomIDParam(w, request)
+	if !ok {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	if err := handler.service.Delete(request.Context(), user.ID, roomID, user.IsAdmin()); err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusNoContent, nil)
+}
+
 func (handler *Handler) Archive(w http.ResponseWriter, request *http.Request) {
 	roomID, ok := roomIDParam(w, request)
 	if !ok {

@@ -89,10 +89,10 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
             </div>
           <div className="rooms-toolbar-panel flex shrink-0 items-center gap-1">
             {settingsQuery.data?.rooms_voice_enabled && <RoomVoicePanel roomID={room.id} meetingActive={room.voice_active} compact />}<Dialog.Root><Dialog.Trigger asChild><button type="button" className="notes-icon-button" title={t('rooms.showContext' as never)} aria-label={t('rooms.showContext' as never)}><Info size={18} /></button></Dialog.Trigger><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" /><Dialog.Content className="fixed inset-x-4 top-1/2 z-50 max-h-[80dvh] -translate-y-1/2 overflow-y-auto rounded-lg border border-subtle bg-surface p-5 shadow-xl sm:left-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2"><div className="flex items-start justify-between gap-3"><Dialog.Title className="text-lg font-semibold">{room.name}</Dialog.Title><Dialog.Close asChild><button type="button" className="notes-icon-button" aria-label={t('action.close')}><X size={17} /></button></Dialog.Close></div><div className="mt-5 space-y-6"><RoomMembersPanel room={room} /><RoomInvitesPanel room={room} /></div></Dialog.Content></Dialog.Portal></Dialog.Root>
-            {(room.current_role === 'owner' || room.current_role === 'moderator') && <span className="hidden lg:block"><AddPersonDialog room={room} /></span>}
-            <span className="hidden lg:block"><RoomsInstallButton /></span>
+            {(room.current_role === 'owner' || room.current_role === 'moderator') && <span className="hidden lg:block"><AddPersonDialog room={room} compact /></span>}
+            <span className="hidden lg:block"><RoomsInstallButton compact /></span>
             <button type="button" className="hidden rooms-toolbar-button lg:flex" title={t('rooms.copyLink' as never)} onClick={() => { copyLink().catch(() => toast.error(t('rooms.copyFailed' as never))) }}>
-              <Copy size={16} /> <span className="hidden min-[1200px]:inline">{t('rooms.copyLink' as never)}</span>
+              <Copy size={16} /> <span className="hidden min-[1360px]:inline">{t('rooms.copyLink' as never)}</span>
             </button>
             {(room.current_role === 'owner' || room.current_role === 'moderator') && (
               <button type="button" className="hidden rooms-toolbar-button lg:flex" title={t('action.rename')} onClick={() => {

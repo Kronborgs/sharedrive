@@ -75,7 +75,7 @@ function showAddError(error: unknown, t: Translator) {
   toast.error(t('rooms.personAddFailed'))
 }
 
-export function AddPersonDialog({ room }: Readonly<{ room: Room }>) {
+export function AddPersonDialog({ room, compact = false }: Readonly<{ room: Room; compact?: boolean }>) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -116,7 +116,7 @@ export function AddPersonDialog({ room }: Readonly<{ room: Room }>) {
 
   return <Dialog.Root open={open} onOpenChange={setOpen}>
     <Dialog.Trigger asChild>
-      <button type="button" className="rooms-toolbar-button"><Plus size={16} /> {t('rooms.addPersonButton')}</button>
+      <button type="button" className="rooms-toolbar-button" title={t('rooms.addPersonButton')} aria-label={t('rooms.addPersonButton')}><Plus size={16} /> <span className={compact ? 'hidden min-[1360px]:inline' : undefined}>{t('rooms.addPersonButton')}</span></button>
     </Dialog.Trigger>
     <Dialog.Portal>
       <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />

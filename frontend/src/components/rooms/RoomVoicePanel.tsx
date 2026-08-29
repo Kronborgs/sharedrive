@@ -135,7 +135,7 @@ function MeetingControls(props: Readonly<MeetingControlsProps>) {
   const isConnected = props.status === 'connected' || props.status === 'reconnecting'
   const joinMode: MediaMode = props.meetingActive ? 'watch' : 'voice'
   const actionLabel = meetingActionLabel(props.status, props.meetingActive, props.t)
-  const labelClass = props.compact ? 'hidden sm:inline' : undefined
+  const labelClass = props.compact ? 'hidden min-[1360px]:inline' : undefined
   if (!isConnected) {
     return <div className="flex min-w-0 flex-wrap gap-2"><button type="button" onClick={() => props.onJoin(joinMode).catch(() => undefined)} disabled={props.status === 'joining'} className="rooms-toolbar-button rooms-toolbar-button-primary" title={actionLabel}><Phone size={16} /><span className={labelClass}> {actionLabel}</span></button>{props.canShareScreen && props.screenShareSupported && <button type="button" onClick={() => props.onToggleScreenShare().catch(() => undefined)} disabled={props.status === 'joining'} className="rooms-toolbar-button" title={props.t('rooms.screenShareStart')}><MonitorUp size={16} /><span className={labelClass}>{props.t('rooms.screenShareStart')}</span></button>}</div>
   }

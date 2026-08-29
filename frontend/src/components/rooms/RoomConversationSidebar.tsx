@@ -17,7 +17,7 @@ function ConversationFilters({ value, onChange }: Readonly<{ value: Conversation
     { id: 'direct', label: t('rooms.direct') },
     { id: 'unread', label: t('rooms.filterUnread') },
   ]
-  return <div className="mb-3 flex gap-1 overflow-x-auto lg:hidden">{filters.map(filter => <button key={filter.id} type="button" onClick={() => onChange(filter.id)} className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${value === filter.id ? 'bg-brand-600 text-white' : 'bg-surface text-muted'}`}>{filter.label}</button>)}</div>
+  return <div className="mb-3 flex gap-1 overflow-x-auto">{filters.map(filter => <button key={filter.id} type="button" onClick={() => onChange(filter.id)} className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${value === filter.id ? 'bg-brand-600 text-white' : 'bg-surface text-muted'}`}>{filter.label}</button>)}</div>
 }
 
 function roomTimestamp(updatedAt: string, locale: string) {
@@ -99,7 +99,7 @@ export function RoomConversationSidebar({ activeRoomID, mobile = false }: Readon
 
   const sidebarClass = mobile
     ? 'mb-4 lg:hidden'
-    : 'hidden min-h-0 border-r border-subtle pr-4 lg:flex lg:w-full lg:shrink-0 lg:flex-col'
+    : 'hidden min-h-0 border-l border-subtle pl-4 lg:flex lg:w-full lg:shrink-0 lg:flex-col lg:order-2'
   const privateChatDialog = <StartPrivateChatDialog open={privateChatOpen} onOpenChange={setPrivateChatOpen} email={contactEmail} onEmailChange={setContactEmail} pending={privateChatMutation.isPending} onSubmit={() => privateChatMutation.mutate()} />
   const content = <><div className="sticky top-0 z-10 bg-surface pb-3"><label className="relative mb-3 block"><span className="sr-only">{t('rooms.searchConversations' as never)}</span><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('rooms.searchConversations' as never)} className="notes-input w-full pl-9" /></label>
       <ConversationFilters value={filter} onChange={setFilter} /></div>

@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Paperclip, Pencil, Plus, Send, Users, X } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
@@ -60,7 +60,8 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
   const [body, setBody] = useState('')
   const [attachments, setAttachments] = useState<FileItem[]>([])
   const uploadRef = useRef<HTMLInputElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const messageScrollRef = useRef<HTMLElement>(null)
+  const wasAtBottom = useRef(true)
   const conversations = useQuery({ queryKey: ['rooms', 'direct-conversations'], queryFn: ({ signal }) => listDirectConversations(signal) })
   const conversation = conversations.data?.find(item => item.id === conversationID)
   const groupMembers = useQuery({ queryKey: ['rooms', 'direct', conversationID, 'members'], queryFn: ({ signal }) => listDirectConversationMembers(conversationID, signal), enabled: conversation?.kind === 'group' })
@@ -87,24 +88,35 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
     onSuccess: file => setAttachments(items => [...items.filter(item => item.id !== file.id), file]),
   })
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages.data?.messages.length])
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const container = messageScrollRef.current
+    if (container) container.scrollTo({ top: container.scrollHeight, behavior })
+  }, [])
+  const handleMessageScroll = useCallback(() => {
+    const container = messageScrollRef.current
+    if (!container) return
+    wasAtBottom.current = container.scrollHeight - container.scrollTop - container.clientHeight <= 48
+  }, [])
+  useEffect(() => { requestAnimationFrame(() => scrollToLatest(messages.data ? 'smooth' : 'auto')) }, [messages.data?.messages.length, scrollToLatest])
+  useEffect(() => {
+    const container = messageScrollRef.current
+    if (!container || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => { if (wasAtBottom.current) requestAnimationFrame(() => scrollToLatest('auto')) })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [scrollToLatest])
   useEffect(() => { if (messages.data) markDirectConversationRead(conversationID).then(() => queryClient.invalidateQueries({ queryKey: ['rooms', 'direct-conversations'] })).catch(() => undefined) }, [conversationID, messages.data, queryClient])
   if (!conversation) return <p className="p-6 text-sm text-muted">{t('rooms.directUnavailable')}</p>
-  const returnToRoom = () => {
-    if (conversation.source_room_slug) {
-      return navigate({ to: '/rooms/$roomID', params: { roomID: conversation.source_room_slug } })
-    }
-    return navigate({ to: '/rooms' })
-  }
+  const returnToRoom = () => navigate({ to: '/rooms' })
   const conversationTitle = conversation.name || conversation.other_display_name || conversation.other_email
 
-  return <main className="flex min-h-0 flex-1 flex-col">
-    <header className="flex flex-wrap items-center gap-3 border-b border-subtle px-4 py-3"><button type="button" className="notes-icon-button" title={conversation.source_room_name ? t('rooms.backToRoom', { room: conversation.source_room_name }) : t('rooms.backToChat' as never)} onClick={returnToRoom}><ArrowLeft size={18} /></button><div className="min-w-0 flex-1"><div className="flex items-center gap-1"><h1 className="truncate font-semibold">{conversationTitle}</h1><button type="button" className="notes-icon-button shrink-0" title={t('rooms.renameConversation')} aria-label={t('rooms.renameConversation')} onClick={() => { const name = window.prompt(t('rooms.conversationName'), conversationTitle); if (name?.trim() && name.trim() !== conversationTitle) rename.mutate(name.trim()) }}><Pencil size={15} /></button></div><p className="text-xs text-muted">{conversation.kind === 'group' ? t('rooms.permanentWorkspace') : t('rooms.directConversation')}</p></div><RoomVoicePanel roomID={conversationID} mediaTokenPath={`/api/v1/rooms/direct-conversations/${conversationID}/media-token`} compact /><AddContactDialog conversation={conversation} /></header>
-    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+  return <main className="flex min-h-0 flex-1 flex-col lg:order-1 lg:pr-4">
+    <header className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-subtle bg-surface px-4 py-3"><button type="button" className="notes-icon-button" title={conversation.source_room_name ? t('rooms.backToRoom', { room: conversation.source_room_name }) : t('rooms.backToChat' as never)} onClick={returnToRoom}><ArrowLeft size={18} /></button><div className="min-w-0 flex-1"><div className="flex items-center gap-1"><h1 className="truncate font-semibold">{conversationTitle}</h1><button type="button" className="notes-icon-button shrink-0" title={t('rooms.renameConversation')} aria-label={t('rooms.renameConversation')} onClick={() => { const name = window.prompt(t('rooms.conversationName'), conversationTitle); if (name?.trim() && name.trim() !== conversationTitle) rename.mutate(name.trim()) }}><Pencil size={15} /></button></div><p className="text-xs text-muted">{conversation.kind === 'group' ? t('rooms.permanentWorkspace') : t('rooms.directConversation')}</p></div><RoomVoicePanel roomID={conversationID} mediaTokenPath={`/api/v1/rooms/direct-conversations/${conversationID}/media-token`} compact /><AddContactDialog conversation={conversation} /></header>
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">{[...(messages.data?.messages ?? [])].reverse().map(message => { const own = message.sender_user_id === user?.id; const messageResources = (resources.data ?? []).filter(resource => resource.message_id === message.id); return <article key={message.id} className={`flex flex-col ${own ? 'items-end' : 'items-start'}`}><div className="mb-1 text-xs text-muted">{message.sender_name}</div><p className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${own ? 'bg-brand-600 text-white' : 'bg-surface'}`}>{message.deleted_at ? t('rooms.messageDeleted') : message.body}</p>{messageResources.map(resource => <a key={resource.id} href={`/api/v1/files/${resource.file_id}/download`} className="mt-1 max-w-[80%] rounded-lg border border-subtle bg-surface px-3 py-2 text-sm text-brand-600 hover:underline">{resource.name}</a>)}</article> })}<div ref={bottomRef} /></section>
+        <section ref={messageScrollRef} onScroll={handleMessageScroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">{[...(messages.data?.messages ?? [])].reverse().map(message => { const own = message.sender_user_id === user?.id; const messageResources = (resources.data ?? []).filter(resource => resource.message_id === message.id); return <article key={message.id} className={`flex flex-col ${own ? 'items-end' : 'items-start'}`}><div className="mb-1 text-xs text-muted">{message.sender_name}</div><p className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${own ? 'bg-brand-600 text-white' : 'bg-surface'}`}>{message.deleted_at ? t('rooms.messageDeleted') : message.body}</p>{messageResources.map(resource => <a key={resource.id} href={`/api/v1/files/${resource.file_id}/download`} className="mt-1 max-w-[80%] rounded-lg border border-subtle bg-surface px-3 py-2 text-sm text-brand-600 hover:underline">{resource.name}</a>)}</article> })}<div /></section>
         {attachments.length > 0 && <div className="flex shrink-0 flex-wrap gap-2 px-3 pb-2">{attachments.map(file => <span key={file.id} className="flex items-center gap-1 rounded-full border border-subtle px-2 py-1 text-xs">{file.name}<button type="button" onClick={() => setAttachments(items => items.filter(item => item.id !== file.id))} aria-label={t('action.close')}><X size={13} /></button></span>)}</div>}
-        <form className="flex shrink-0 items-end gap-2 border-t border-subtle p-3" onSubmit={event => { event.preventDefault(); if (body.trim()) send.mutate() }}><button type="button" className="notes-icon-button" onClick={() => uploadRef.current?.click()} disabled={upload.isPending} aria-label={t('rooms.addAttachment')}><Paperclip size={18} /></button><input ref={uploadRef} type="file" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) { upload.mutate(file) }; event.currentTarget.value = '' }} /><input className="notes-input min-w-0 flex-1" value={body} onChange={event => setBody(event.target.value)} placeholder={t('rooms.messagePlaceholder')} /><button className="notes-primary-button" type="submit" disabled={!body.trim() || send.isPending}><Send size={17} /></button></form>
+        <form className="sticky bottom-0 flex shrink-0 items-end gap-2 border-t border-subtle bg-surface p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" onSubmit={event => { event.preventDefault(); if (body.trim()) send.mutate() }}><button type="button" className="notes-icon-button" onClick={() => uploadRef.current?.click()} disabled={upload.isPending} aria-label={t('rooms.addAttachment')}><Paperclip size={18} /></button><input ref={uploadRef} type="file" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) { upload.mutate(file) }; event.currentTarget.value = '' }} /><input className="notes-input min-w-0 flex-1" value={body} onChange={event => setBody(event.target.value)} placeholder={t('rooms.messagePlaceholder')} /><button className="notes-primary-button" type="submit" disabled={!body.trim() || send.isPending}><Send size={17} /></button></form>
       </div>
       {conversation.kind === 'group' && <GroupMembers members={groupMembers.data ?? []} />}
     </div>

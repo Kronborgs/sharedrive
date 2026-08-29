@@ -97,7 +97,12 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
     if (!container) return
     wasAtBottom.current = container.scrollHeight - container.scrollTop - container.clientHeight <= 48
   }, [])
-  useEffect(() => { requestAnimationFrame(() => scrollToLatest(messages.data ? 'smooth' : 'auto')) }, [messages.data?.messages.length, scrollToLatest])
+  useEffect(() => {
+    const settleAtLatest = () => scrollToLatest('auto')
+    const frame = requestAnimationFrame(() => requestAnimationFrame(settleAtLatest))
+    const timer = window.setTimeout(settleAtLatest, 150)
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(timer) }
+  }, [conversationID, messages.data?.messages.length, scrollToLatest])
   useEffect(() => {
     const container = messageScrollRef.current
     if (!container || typeof ResizeObserver === 'undefined') return

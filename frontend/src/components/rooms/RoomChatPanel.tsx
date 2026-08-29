@@ -219,7 +219,10 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   ].sort((a, b) => a.date.localeCompare(b.date)), [messageItems, resources.data])
 
   const scrollToLatest = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior })
+    const container = chatScrollRef.current
+    if (!container) return
+    container.scrollTo({ top: container.scrollHeight, behavior })
+    wasAtBottom.current = true
     setHasNewMessagesBelow(false)
   }, [])
 
@@ -260,6 +263,14 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   }, [scrollToLatest, timeline])
 
   useEffect(() => {
+    if (timeline.length === 0) return
+    const settleAtLatest = () => { if (wasAtBottom.current) scrollToLatest('auto') }
+    const frame = requestAnimationFrame(() => requestAnimationFrame(settleAtLatest))
+    const timer = window.setTimeout(settleAtLatest, 150)
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(timer) }
+  }, [roomID, scrollToLatest, timeline.length])
+
+  useEffect(() => {
     const newest = messages.data?.pages[0]?.messages[0]
     if (newest) {
       markRoomRead(roomID, newest.id)
@@ -294,7 +305,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
 
   return <section className={panelClass} aria-label={t('rooms.chatAria')}>
     <div className={fillAvailableHeight ? 'relative flex min-h-0 flex-1 flex-col py-3' : 'relative mb-3'}>
-    <div ref={chatScrollRef} onScroll={handleChatScroll} className={timelineClass}>
+    <div ref={chatScrollRef} onScroll={handleChatScroll} onLoadCapture={() => { if (wasAtBottom.current) requestAnimationFrame(() => scrollToLatest('auto')) }} className={timelineClass}>
       {messages.isLoading && <p className="text-sm text-muted">{t('rooms.chatLoading')}</p>}
       {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}
       {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}

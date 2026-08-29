@@ -293,7 +293,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   const timelineClass = fillAvailableHeight ? 'flex min-h-0 flex-1 flex-col overflow-y-auto rounded-xl border border-subtle p-3' : 'flex max-h-[60vh] flex-col overflow-y-auto rounded-xl border border-subtle p-3'
 
   return <section className={panelClass} aria-label={t('rooms.chatAria')}>
-    <div className={fillAvailableHeight ? 'relative min-h-0 flex-1 py-3' : 'relative mb-3'}>
+    <div className={fillAvailableHeight ? 'relative flex min-h-0 flex-1 flex-col py-3' : 'relative mb-3'}>
     <div ref={chatScrollRef} onScroll={handleChatScroll} className={timelineClass}>
       {messages.isLoading && <p className="text-sm text-muted">{t('rooms.chatLoading')}</p>}
       {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}

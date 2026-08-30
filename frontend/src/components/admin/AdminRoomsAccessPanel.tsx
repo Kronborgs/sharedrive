@@ -38,7 +38,7 @@ function AccountRow({ account, onToggle, pending }: Readonly<{ account: RoomAcco
     <div className="min-w-48 flex-1"><p className="text-sm font-medium text-zinc-900 dark:text-slate-100">{account.display_name || account.email}</p><p className="text-xs text-zinc-500 dark:text-slate-400">{account.email}</p></div>
     <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-700 dark:bg-[#272b3a] dark:text-slate-300">{t(account.account_type === 'rooms_only' ? 'rooms.onlyRooms' : 'rooms.sharedriveRooms')}</span>
     <span className="w-20 text-right text-xs text-zinc-500 dark:text-slate-400">{t(account.room_count === 1 ? 'rooms.roomCount' : 'rooms.roomsCount', { count: account.room_count })}</span>
-    <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-slate-300"><input type="checkbox" checked={account.access_enabled} disabled={pending} onChange={() => onToggle(account)} className="accent-brand-600" /> {t('rooms.access')}</label>    <AdminGIFLibrary />
+    <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-slate-300"><input type="checkbox" checked={account.access_enabled} disabled={pending} onChange={() => onToggle(account)} className="accent-brand-600" /> {t('rooms.access')}</label>
   </div>
 }
 

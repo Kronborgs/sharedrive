@@ -44,9 +44,7 @@ func (service *Service) ListGIFLibrary(ctx context.Context, actorID uuid.UUID, q
 		if !isSupportedGIF(item.MimeType) {
 			continue
 		}
-		if _, err := service.fileSvc.GetAccessible(ctx, item.FileID.String(), actorID.String()); err == nil {
-			items = append(items, item)
-		}
+		items = append(items, item)
 	}
 	return items, rows.Err()
 }

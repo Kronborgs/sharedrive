@@ -179,6 +179,11 @@ func startServerBackgroundTasks(s *Server, db *pgxpool.Pool, rdb *goredis.Client
 	startTusCleanup(cfg)
 	startAutoBackupScheduler(s)
 	startStartupOrphanCascade(db)
+	go func() {
+		if err := s.roomsHandler.SeedStarterGIFs(context.Background()); err != nil {
+			log.Warn().Err(err).Msg("rooms: starter GIF seed skipped")
+		}
+	}()
 	startStartupQuotaRecalc(db)
 	startBuddyPushReset(db)
 	startStartupStorageScrub(db, cfg)
@@ -543,6 +548,7 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		r.Get("/api/v1/rooms", s.roomsHandler.RequireEnabled(s.roomsHandler.List))
 		r.Get("/api/v1/rooms/gifs", s.roomsHandler.RequireEnabled(s.roomsHandler.ListGIFLibrary))
+		r.Get("/api/v1/rooms/gifs/{fileID}/preview", s.roomsHandler.RequireEnabled(s.roomsHandler.PreviewGIF))
 		r.Post("/api/v1/rooms", s.roomsHandler.RequireEnabled(s.roomsHandler.Create))
 		r.Get("/api/v1/rooms/direct-conversations", s.roomsHandler.RequireEnabled(s.roomsHandler.ListDirectConversations))
 		r.Post("/api/v1/rooms/direct-conversations", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateDirectConversation))

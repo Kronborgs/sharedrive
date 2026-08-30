@@ -1,6 +1,7 @@
 package rooms
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
@@ -72,4 +73,26 @@ func (handler *Handler) AdminDeleteGIFLibraryItem(w http.ResponseWriter, request
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (handler *Handler) PreviewGIF(w http.ResponseWriter, request *http.Request) {
+	fileID := chi.URLParam(request, "fileID")
+	if _, err := uuid.Parse(fileID); err != nil {
+		httputil.RespondError(w, http.StatusNotFound, "gif not found")
+		return
+	}
+	file, reader, err := handler.service.fileSvc.OpenLibraryGIF(request.Context(), fileID)
+	if err != nil {
+		httputil.RespondError(w, http.StatusNotFound, "gif not found")
+		return
+	}
+	defer reader.Close()
+	w.Header().Set("Content-Type", "image/gif")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	http.ServeContent(w, request, file.Name, file.UpdatedAt, reader)
+}
+
+// SeedStarterGIFs imports the embedded global starter library once when empty.
+func (handler *Handler) SeedStarterGIFs(ctx context.Context) error {
+	return handler.service.SeedStarterGIFs(ctx)
 }

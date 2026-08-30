@@ -1042,3 +1042,16 @@ func (s *Service) EnsurePlaylistFolder(ctx context.Context, ownerID string) (str
 	}
 	return f.ID.String(), nil
 }
+
+// OpenLibraryGIF opens a verified global Rooms GIF without granting the caller general file access.
+func (s *Service) OpenLibraryGIF(ctx context.Context, id string) (*File, io.ReadSeekCloser, error) {
+	file, err := scanFile(s.db.QueryRow(ctx, `SELECT `+fileCols+` FROM files f JOIN room_gif_library l ON l.file_id=f.id WHERE f.id=$1::uuid AND f.deleted_at IS NULL AND f.is_folder=false AND f.mime_type='image/gif'`, id))
+	if err != nil {
+		return nil, nil, err
+	}
+	reader, err := s.storage.Open(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	return file, reader, nil
+}

@@ -105,7 +105,7 @@ func (service *Service) starterGIFOwner(ctx context.Context) (string, error) {
 }
 
 func (service *Service) seedStarterGIFItem(ctx context.Context, client *http.Client, owner string, item starterGIF, result *starterGIFSeedResult) {
-	exists, err := service.starterGIFExists(ctx, item.CommonsFilename)
+	exists, err := service.starterGIFExists(ctx, starterGIFMarker(item))
 	if err != nil {
 		result.failed++
 		log.Warn().Err(err).Str("filename", item.CommonsFilename).Msg("rooms: could not check starter GIF")
@@ -124,9 +124,14 @@ func (service *Service) seedStarterGIFItem(ctx context.Context, client *http.Cli
 	time.Sleep(2 * time.Second)
 }
 
+func starterGIFMarker(item starterGIF) string {
+	sum := sha256.Sum256([]byte(item.CommonsFilename))
+	return "starter-gif:" + hex.EncodeToString(sum[:])
+}
+
 func (service *Service) starterGIFExists(ctx context.Context, filename string) (bool, error) {
 	var exists bool
-	err := service.db.QueryRow(ctx, `SELECT true FROM room_gif_library WHERE commons_filename=$1`, filename).Scan(&exists)
+	err := service.db.QueryRow(ctx, `SELECT true FROM room_gif_library WHERE search_terms LIKE '%' || $1 || '%'`, filename).Scan(&exists)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -204,7 +209,7 @@ func (service *Service) storeStarterGIF(ctx context.Context, client *http.Client
 	} else if err != nil {
 		return err
 	}
-	_, err = service.db.Exec(ctx, `INSERT INTO room_gif_library(file_id,title,search_terms,category,created_by,commons_filename,commons_page) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`, fileID, item.TitleEN, item.TitleDA+" "+item.TitleEN, item.Category, owner, item.CommonsFilename, item.CommonsPage)
+	_, err = service.db.Exec(ctx, `INSERT INTO room_gif_library(file_id,title,search_terms,category,created_by,commons_filename,commons_page) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`, fileID, item.TitleEN, starterGIFMarker(item)+" "+item.TitleDA+" "+item.TitleEN, item.Category, owner)
 	return err
 }
 

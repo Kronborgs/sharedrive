@@ -33,6 +33,16 @@ func TestStarterGIFManifestIsValid(t *testing.T) {
 	}
 }
 
+func TestStarterCommonsMetadataAcceptsNonStringValues(t *testing.T) {
+	var metadata map[string]starterCommonsMetadata
+	payload := []byte(`{"string":{"value":"CC BY-SA 4.0"},"number":{"value":42},"boolean":{"value":true},"empty":{"value":null}}`)
+	if err := json.Unmarshal(payload, &metadata); err != nil {
+		t.Fatalf("decode mixed Commons metadata: %v", err)
+	}
+	if metadata["string"].Value != "CC BY-SA 4.0" || metadata["number"].Value != "42" || metadata["boolean"].Value != "true" || metadata["empty"].Value != "" {
+		t.Fatalf("unexpected decoded Commons metadata: %#v", metadata)
+	}
+}
 func TestStarterGIFSearchTermsIncludeBothLanguages(t *testing.T) {
 	item := starterGIF{CommonsFilename: "reaction.gif", TitleDA: "Godt gået", TitleEN: "Well done", TagsDA: []string{"flot"}, TagsEN: []string{"bravo"}}
 	terms := starterGIFSearchTerms(item)

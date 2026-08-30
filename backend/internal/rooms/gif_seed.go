@@ -39,7 +39,22 @@ type starterGIF struct {
 }
 
 type starterCommonsMetadata struct {
-	Value string `json:"value"`
+	Value string `json:"-"`
+}
+
+func (metadata *starterCommonsMetadata) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Value any `json:"value"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw.Value == nil {
+		metadata.Value = ""
+		return nil
+	}
+	metadata.Value = fmt.Sprint(raw.Value)
+	return nil
 }
 
 type starterCommonsImageInfo struct {

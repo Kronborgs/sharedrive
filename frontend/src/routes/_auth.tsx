@@ -57,9 +57,9 @@ function AuthLayoutContent() {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main content */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <Header user={user} onMenuToggle={() => setSidebarOpen(v => !v)} />
-        <main className={cn('flex-1 overflow-y-auto p-6', activePlaylistId ? 'pb-24 md:pb-6' : '')}>
+        <main className={cn('min-h-0 flex-1 overflow-y-auto p-6', activePlaylistId ? 'pb-24 md:pb-6' : '')}>
           <Outlet />
         </main>
         <Footer />

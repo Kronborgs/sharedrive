@@ -128,71 +128,99 @@ func addLibraryItem(ctx context.Context, pool *pgxpool.Pool, fileID, ownerID str
 	return err
 }
 
-func runApply(ctx context.Context, items []manifestItem) error {
+type seedEnvironment struct {
+	pool        *pgxpool.Pool
+	ownerID     string
+	fileService *files.Service
+	client      *http.Client
+}
+
+func newSeedEnvironment(ctx context.Context) (*seedEnvironment, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	pool, err := db.New(ctx, cfg)
 	if err != nil {
+		return nil, err
+	}
+	ownerID, err := firstActiveAdmin(ctx, pool)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	return &seedEnvironment{pool: pool, ownerID: ownerID, fileService: files.NewService(pool, files.NewStorage(cfg.FilesRoot, cfg.FileEncryptKey)), client: &http.Client{Timeout: 45 * time.Second}}, nil
+}
+
+func validateSeedItem(item manifestItem, index int) error {
+	if item.CommonsFilename == "" || item.CommonsPage == "" || item.Category == "" || !acceptedLicense(item.ExpectedLicense) {
+		return fmt.Errorf("invalid manifest entry %d", index+1)
+	}
+	return nil
+}
+
+func (env *seedEnvironment) processItem(ctx context.Context, item manifestItem, index int) error {
+	if err := validateSeedItem(item, index); err != nil {
 		return err
 	}
-	defer pool.Close()
-	ownerID, err := firstActiveAdmin(ctx, pool)
+	exists, err := libraryContains(ctx, env.pool, item.CommonsFilename)
+	if err != nil || exists {
+		return err
+	}
+	request, err := newCommonsRequest(item.CommonsFilename)
 	if err != nil {
 		return err
 	}
-	_ = ownerID
-	fileService := files.NewService(pool, files.NewStorage(cfg.FilesRoot, cfg.FileEncryptKey))
-	client := &http.Client{Timeout: 45 * time.Second}
+	response, err := env.client.Do(request)
+	if err != nil {
+		return err
+	}
+	mimeType, size, sourceURL, license, err := parseCommonsResponse(response)
+	if err != nil {
+		return err
+	}
+	if mimeType != "image/gif" || size < 1 || size > maxGIFBytes || !acceptedLicense(license) {
+		return fmt.Errorf("Commons metadata rejected %s", item.CommonsFilename)
+	}
+	return env.storeItem(ctx, item, sourceURL)
+}
+
+func (env *seedEnvironment) storeItem(ctx context.Context, item manifestItem, sourceURL string) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("User-Agent", "SharedriveRoomsGIFSeed/1.0")
+	response, err := env.client.Do(request)
+	if err != nil {
+		return err
+	}
+	blob, checksum, err := readGIF(response)
+	if err != nil {
+		return err
+	}
+	fileID, found, err := existingFileByChecksum(ctx, env.pool, checksum)
+	if err != nil {
+		return err
+	}
+	if !found {
+		created, uploadErr := env.fileService.Upload(ctx, files.UploadParams{OwnerID: env.ownerID, Name: item.CommonsFilename, MimeType: "image/gif", ContentLength: int64(len(blob))}, bytes.NewReader(blob))
+		if uploadErr != nil {
+			return uploadErr
+		}
+		fileID = created.ID.String()
+	}
+	return addLibraryItem(ctx, env.pool, fileID, env.ownerID, item)
+}
+
+func runApply(ctx context.Context, items []manifestItem) error {
+	env, err := newSeedEnvironment(ctx)
+	if err != nil {
+		return err
+	}
+	defer env.pool.Close()
 	for index, item := range items {
-		if item.CommonsFilename == "" || item.CommonsPage == "" || item.Category == "" || !acceptedLicense(item.ExpectedLicense) {
-			return fmt.Errorf("invalid manifest entry %d", index+1)
-		}
-		exists, err := libraryContains(ctx, pool, item.CommonsFilename)
-		if err != nil || exists {
-			continue
-		}
-		request, err := newCommonsRequest(item.CommonsFilename)
-		if err != nil {
-			return err
-		}
-		response, err := client.Do(request)
-		if err != nil {
-			return err
-		}
-		mimeType, size, sourceURL, license, err := parseCommonsResponse(response)
-		if err != nil {
-			return err
-		}
-		if mimeType != "image/gif" || size < 1 || size > maxGIFBytes || !acceptedLicense(license) {
-			return fmt.Errorf("Commons metadata rejected %s", item.CommonsFilename)
-		}
-		downloadRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
-		if err != nil {
-			return err
-		}
-		downloadRequest.Header.Set("User-Agent", "SharedriveRoomsGIFSeed/1.0")
-		downloadResponse, err := client.Do(downloadRequest)
-		if err != nil {
-			return err
-		}
-		blob, checksum, err := readGIF(downloadResponse)
-		if err != nil {
-			return err
-		}
-		fileID, found, err := existingFileByChecksum(ctx, pool, checksum)
-		if err != nil {
-			return err
-		}
-		if !found {
-			created, err := fileService.Upload(ctx, files.UploadParams{OwnerID: ownerID, Name: item.CommonsFilename, MimeType: "image/gif", ContentLength: int64(len(blob))}, bytes.NewReader(blob))
-			if err != nil {
-				return err
-			}
-			fileID = created.ID.String()
-		}
-		if err := addLibraryItem(ctx, pool, fileID, ownerID, item); err != nil {
+		if err := env.processItem(ctx, item, index); err != nil {
 			return err
 		}
 	}

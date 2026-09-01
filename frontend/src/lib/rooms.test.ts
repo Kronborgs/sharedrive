@@ -18,6 +18,7 @@ import {
   listRooms,
   removeRoomMember,
   totalRoomUnread,
+  totalDirectUnread,
   updateRoom,
 } from './rooms'
 
@@ -61,5 +62,15 @@ describe('Rooms API client', () => {
     ] as Parameters<typeof totalRoomUnread>[0]
 
     expect(totalRoomUnread(rooms)).toBe(10)
+  })
+
+  it('adds unread direct messages without returning negative counts', () => {
+    const conversations = [
+      { unread_count: 1 },
+      { unread_count: 4 },
+      { unread_count: -3 },
+    ] as Parameters<typeof totalDirectUnread>[0]
+
+    expect(totalDirectUnread(conversations)).toBe(5)
   })
 })

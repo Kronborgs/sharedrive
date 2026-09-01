@@ -36,7 +36,7 @@ import { usePlaylist } from '@/lib/playlist-context'
 import { APP_VERSION } from '@/version'
 import { CHANGELOG_ENTRIES } from '@/changelog.generated'
 import { ignorePromise } from '@/lib/ignore-promise'
-import { listRooms, totalRoomUnread } from '@/lib/rooms'
+import { listDirectConversations, listRooms, totalDirectUnread, totalRoomUnread } from '@/lib/rooms'
 
 interface NavItem {
   to: string
@@ -705,7 +705,14 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
     refetchInterval: 5_000,
     refetchIntervalInBackground: true,
   })
-  const unreadRoomsMessages = totalRoomUnread(rooms)
+  const { data: directConversations = [] } = useQuery({
+    queryKey: ['rooms', 'direct-conversations'],
+    queryFn: ({ signal }) => listDirectConversations(signal),
+    enabled: Boolean(user && roomsAvailable),
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
+  })
+  const unreadChatMessages = totalRoomUnread(rooms) + totalDirectUnread(directConversations)
   const accountNav = user?.rooms_only_account
     ? roomsOnlyNav.filter(() => roomsAvailable)
     : guestNav.filter(item => item.to !== '/rooms' || roomsAvailable)
@@ -718,9 +725,9 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
     let baseTitle = 'Sharedrive'
     if (notesApp) baseTitle = 'Sharedrive Noter'
     if (roomsApp) baseTitle = 'Sharedrive Rooms'
-    const badge = unreadRoomsMessages > 99 ? '99+' : unreadRoomsMessages
-    document.title = unreadRoomsMessages > 0 ? `(${badge}) ${baseTitle}` : baseTitle
-  }, [state.location.pathname, unreadRoomsMessages])
+    const badge = unreadChatMessages > 99 ? '99+' : unreadChatMessages
+    document.title = unreadChatMessages > 0 ? `(${badge}) ${baseTitle}` : baseTitle
+  }, [state.location.pathname, unreadChatMessages])
 
   const handleAddMusic = async (fileIds: string[]) => {
     setShowAddMusic(false)
@@ -781,7 +788,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
         <div className="flex-1 overflow-y-auto min-h-0">
           <nav className="px-2 py-3 space-y-0.5">
             {(isGuest ? accountNav : mainNav.filter(item => item.to !== '/rooms' || roomsAvailable)).map(item => (
-              <NavLink key={item.to} item={item} badge={item.to === '/rooms' ? unreadRoomsMessages : 0} />
+              <NavLink key={item.to} item={item} badge={item.to === '/rooms' ? unreadChatMessages : 0} />
             ))}
           </nav>
 

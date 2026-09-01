@@ -30,6 +30,10 @@ export function totalRoomUnread(rooms: Room[]): number {
   return rooms.reduce((total, room) => total + Math.max(0, room.unread_count ?? 0), 0)
 }
 
+export function totalDirectUnread(conversations: DirectConversation[]): number {
+  return conversations.reduce((total, conversation) => total + Math.max(0, conversation.unread_count ?? 0), 0)
+}
+
 export interface RoomMember {
   room_id: string
   user_id: string

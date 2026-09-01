@@ -2,6 +2,7 @@ package rooms
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -14,6 +15,9 @@ import (
 	"github.com/yourname/privatedrive/internal/ratelimit"
 )
 
+type importRemoteGIFRequest struct {
+	URL string `json:"url"`
+}
 type gifLibraryRequest struct {
 	FileID      uuid.UUID `json:"file_id"`
 	Title       string    `json:"title"`
@@ -37,6 +41,28 @@ func (handler *Handler) ListGIFLibrary(w http.ResponseWriter, request *http.Requ
 	httputil.Respond(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func (handler *Handler) ImportRemoteGIF(w http.ResponseWriter, request *http.Request) {
+	var input importRemoteGIFRequest
+	if !decodeRequest(w, request, &input) {
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	allowed, _, _, limitErr := handler.limiter.Allow(request.Context(), ratelimit.KeyUserRoomGIFSearch, user.ID.String(), 20, time.Minute)
+	if limitErr != nil || !allowed {
+		httputil.RespondError(w, http.StatusTooManyRequests, "GIF import rate limit exceeded")
+		return
+	}
+	item, err := handler.service.ImportRemoteGIF(request.Context(), user.ID, input.URL)
+	if errors.Is(err, ErrInvalidRemoteGIFURL) || errors.Is(err, ErrInvalidRemoteGIF) {
+		httputil.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusCreated, item)
+}
 func (handler *Handler) AdminListGIFLibrary(w http.ResponseWriter, request *http.Request) {
 	limit, _ := strconv.Atoi(request.URL.Query().Get("limit"))
 	items, err := handler.service.ListAllGIFLibrary(request.Context(), request.URL.Query().Get("q"), limit)
@@ -87,7 +113,7 @@ func (handler *Handler) PreviewGIF(w http.ResponseWriter, request *http.Request)
 		return
 	}
 	defer reader.Close()
-	w.Header().Set("Content-Type", "image/gif")
+	w.Header().Set("Content-Type", file.MimeType)
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	http.ServeContent(w, request, file.Name, file.UpdatedAt, reader)
 }

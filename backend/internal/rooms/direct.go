@@ -242,7 +242,7 @@ func (service *Service) AddDirectFileResource(ctx context.Context, actorID, conv
 	defer tx.Rollback(ctx)
 	var resource DirectResource
 	err = tx.QueryRow(ctx, `INSERT INTO direct_resources(conversation_id,file_id,added_by,message_id)
-		VALUES($1,$2,$3,$4) ON CONFLICT(conversation_id,file_id) DO NOTHING
+		VALUES($1,$2,$3,$4)
 		RETURNING id,conversation_id,file_id,added_by,message_id,created_at`, conversationID, fileID, actorID, messageID).Scan(&resource.ID, &resource.ConversationID, &resource.FileID, &resource.AddedBy, &resource.MessageID, &resource.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DirectResource{}, ErrResourceExists

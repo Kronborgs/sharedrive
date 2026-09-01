@@ -237,7 +237,7 @@ export function listDirectResources(conversationID: string, signal?: AbortSignal
   return api.get<DirectResource[]>(`/api/v1/rooms/direct-conversations/${conversationID}/resources`, signal)
 }
 
-export function addDirectFileResource(conversationID: string, fileID: string, messageID: string): Promise<DirectResource> {
+export function addDirectFileResource(conversationID: string, fileID: string, messageID?: string): Promise<DirectResource> {
   return api.post<DirectResource>(`/api/v1/rooms/direct-conversations/${conversationID}/resources`, { file_id: fileID, message_id: messageID })
 }
 

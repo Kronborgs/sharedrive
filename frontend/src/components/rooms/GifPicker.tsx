@@ -3,15 +3,8 @@ import { Image, Search, X } from 'lucide-react'
 import { FloatingPanel } from '@/components/rooms/FloatingPanel'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
+import type { GIFLibraryItem } from '@/lib/rooms-gifs'
 
-interface GIFItem {
-  id: string
-  file_id: string
-  title: string
-  category?: string
-  name: string
-  mime_type: string
-}
 
 export function GifPicker({ onSelect }: Readonly<{ onSelect: (fileID: string, name: string, mimeType: string) => void }>) {
   const { t } = useI18n()
@@ -19,7 +12,7 @@ export function GifPicker({ onSelect }: Readonly<{ onSelect: (fileID: string, na
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [items, setItems] = useState<GIFItem[]>([])
+  const [items, setItems] = useState<GIFLibraryItem[]>([])
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
 
@@ -28,14 +21,14 @@ export function GifPicker({ onSelect }: Readonly<{ onSelect: (fileID: string, na
     if (!open) return
     const controller = new AbortController()
     setLoading(true); setFailed(false)
-    api.get<{ items: GIFItem[] }>(`/api/v1/rooms/gifs?q=${encodeURIComponent(debouncedQuery)}&limit=24`, controller.signal)
+    api.get<{ items: GIFLibraryItem[] }>(`/api/v1/rooms/gifs?q=${encodeURIComponent(debouncedQuery)}&limit=24`, controller.signal)
       .then(result => setItems(result.items))
       .catch(() => { if (!controller.signal.aborted) setFailed(true) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [debouncedQuery, open])
 
-  const choose = (item: GIFItem) => { onSelect(item.file_id, item.name, item.mime_type); setOpen(false); setQuery('') }
+  const choose = (item: GIFLibraryItem) => { onSelect(item.file_id, item.name, item.mime_type); setOpen(false); setQuery('') }
   return <span className="inline-flex">
     <button ref={buttonRef} type="button" onClick={() => setOpen(value => !value)} className="rounded-full px-2.5 py-2 text-xs font-bold text-muted hover:bg-zinc-100 dark:hover:bg-[#2d3148]" aria-label={t('rooms.chooseGif' as never)} title={t('rooms.chooseGif' as never)} aria-expanded={open}>GIF</button>
     <FloatingPanel anchorRef={buttonRef} open={open} onOpenChange={setOpen} ariaLabel={t('rooms.chooseGif' as never)} className="w-[min(24rem,calc(100vw-1rem))] p-3">

@@ -79,7 +79,6 @@ func insertRoomResource(ctx context.Context, tx pgx.Tx, actorID, roomID uuid.UUI
 	var resource Resource
 	err := tx.QueryRow(ctx, `INSERT INTO room_resources (room_id, resource_type, resource_id, added_by, message_id)
 		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (room_id, resource_type, resource_id) DO NOTHING
 		RETURNING id, room_id, resource_type, resource_id, added_by, message_id, created_at`, roomID, resourceType, resourceID, actorID, messageID).Scan(
 		&resource.ID, &resource.RoomID, &resource.ResourceType, &resource.ResourceID, &resource.AddedBy, &resource.MessageID, &resource.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -217,8 +216,10 @@ func (service *Service) RemoveResource(ctx context.Context, actorID, roomID, res
 	}
 	if resourceType == ResourceFile {
 		_, err = tx.Exec(ctx, `UPDATE shares SET revoked_at = now()
-			WHERE resource_id = $1 AND grantee_type = 'group' AND grantee_id = $2 AND revoked_at IS NULL`,
-			resourceID, room.ManagedGroupID)
+			WHERE resource_id = $1 AND grantee_type = 'group' AND grantee_id = $2 AND revoked_at IS NULL
+			AND NOT EXISTS (SELECT 1 FROM room_resources remaining
+				WHERE remaining.room_id = $3 AND remaining.resource_type = 'file' AND remaining.resource_id = $1)`,
+			resourceID, room.ManagedGroupID, roomID)
 		if err != nil {
 			return err
 		}
@@ -228,6 +229,14 @@ func (service *Service) RemoveResource(ctx context.Context, actorID, roomID, res
 func (service *Service) authorizeResourceAttach(ctx context.Context, actorID uuid.UUID, resourceType ResourceType, resourceID uuid.UUID) error {
 	switch resourceType {
 	case ResourceFile:
+		var libraryFile bool
+		err := service.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM room_gif_library WHERE file_id = $1)`, resourceID).Scan(&libraryFile)
+		if err != nil {
+			return err
+		}
+		if libraryFile {
+			return nil
+		}
 		allowed, err := service.fileSvc.CanReshare(ctx, resourceID.String(), actorID.String())
 		if err != nil || !allowed {
 			return ErrForbidden

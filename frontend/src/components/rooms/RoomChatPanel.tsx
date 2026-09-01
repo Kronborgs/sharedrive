@@ -8,6 +8,7 @@ import { RoomResourcesPanel, type PendingRoomResource } from '@/components/rooms
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
+import { importRemoteGIF, isRemoteGIFURL } from '@/lib/rooms-gifs'
 import {
   addRoomReaction,
   addRoomResource,
@@ -66,6 +67,7 @@ function MessageCard(props: Readonly<MessageCardProps>) {
     ? 'bg-brand-50 dark:bg-brand-900/30'
     : 'bg-surface'
 
+  const hideBody = !deleted && resources.some(resource => resource.mime_type === 'image/gif') && isRemoteGIFURL(message.body)
   return <article className={`group flex max-w-[70%] flex-col ${alignmentClass} ${groupedWithPrevious ? 'mt-1' : 'mt-3'}`}>
     {!groupedWithPrevious && <div className={`mb-1 flex items-center gap-2 px-1 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
       <p className="text-sm font-medium">{message.sender_name}</p>
@@ -74,7 +76,7 @@ function MessageCard(props: Readonly<MessageCardProps>) {
     <div className={`w-fit max-w-full rounded-2xl px-3 py-2 ${bubbleClass}`}>
     {groupedWithPrevious && <div className="flex justify-end"><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>}
     {message.reply_to_message_id && <p className="text-xs text-muted">{t('rooms.replyContext')}</p>}
-    <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{deleted ? t('rooms.messageDeleted') : message.body}</p>
+    {!hideBody && <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{deleted ? t('rooms.messageDeleted') : message.body}</p>}
     {!deleted && resources.length > 0 && <div className="mt-2 space-y-2">{resources.map(resource => <ResourceCard key={resource.id} resource={resource} canModerate={canModerate} onPreview={onPreviewResource} onRemove={onRemoveResource} />)}</div>}
     {!deleted && <div className="mt-2 flex flex-wrap items-center gap-1">
       {summarizeRoomReactions(message.reactions).map(summary => <button key={summary.emoji} type="button" onClick={() => onReaction(message, summary.emoji)} title={t('rooms.reactedBy', { names: summary.names.join(', ') })} aria-label={t('rooms.reactionAria', { emoji: summary.emoji, names: summary.names.join(', ') })} className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs dark:border-[#3a3f58]">{summary.emoji} {summary.count}</button>)}
@@ -285,6 +287,12 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   }, [messages.data, queryClient, roomID])
 
   const send = useMutation({ mutationFn: async () => {
+    if (attachments.length === 0 && isRemoteGIFURL(body)) {
+      const gif = await importRemoteGIF(body)
+      const message = await createRoomMessage(roomID, body.trim(), replyTo?.id)
+      await addRoomResource(roomID, 'file', gif.file_id, message.id)
+      return message
+    }
     if (!body.trim()) {
       await Promise.all(attachments.map(attachment => addRoomResource(roomID, attachment.resourceType, attachment.resourceID)))
       return undefined

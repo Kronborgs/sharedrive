@@ -104,7 +104,17 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
   const resources = useQuery({ queryKey: ['rooms', 'direct', conversationID, 'resources'], queryFn: ({ signal }) => listDirectResources(conversationID, signal) })
   const rename = useMutation({ mutationFn: (name: string) => renameDirectConversation(conversationID, name), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rooms', 'direct-conversations'] }) })
   const removeConversation = useMutation({ mutationFn: () => conversation?.kind === 'group' ? deleteGroupConversation(conversationID) : hideDirectConversation(conversationID), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['rooms', 'direct-conversations'] }).catch(() => undefined); navigate({ to: '/rooms' }).catch(() => undefined) }, onError: () => toast.error(t('rooms.deleteChatFailed' as never)) })
-  const startDirect = useMutation({ mutationFn: (email: string) => startPrivateChatByEmail(email), onSuccess: result => { if (!result.conversation) return; queryClient.invalidateQueries({ queryKey: ['rooms', 'direct-conversations'] }).catch(() => undefined); navigate({ to: '/rooms/direct/$conversationID', params: { conversationID: result.conversation.id } }).catch(() => undefined) }, onError: () => toast.error(t('rooms.startDirectFailed')) })
+  const startDirect = useMutation({
+    mutationFn: (email: string) => startPrivateChatByEmail(email),
+    onSuccess: result => {
+      if (!result.conversation) {
+        return
+      }
+      queryClient.invalidateQueries({ queryKey: ['rooms', 'direct-conversations'] }).catch(() => undefined)
+      navigate({ to: '/rooms/direct/$conversationID', params: { conversationID: result.conversation.id } }).catch(() => undefined)
+    },
+    onError: () => toast.error(t('rooms.startDirectFailed')),
+  })
   const send = useMutation({
     mutationFn: async () => {
       if (attachments.length === 0 && isRemoteGIFURL(body)) {

@@ -201,6 +201,7 @@ type Resource struct {
 	ResourceType ResourceType `json:"resource_type"`
 	ResourceID   uuid.UUID    `json:"resource_id"`
 	AddedBy      *uuid.UUID   `json:"added_by,omitempty"`
+	AddedByName  string       `json:"added_by_name,omitempty"`
 	MessageID    *uuid.UUID   `json:"message_id,omitempty"`
 	CreatedAt    time.Time    `json:"created_at"`
 }

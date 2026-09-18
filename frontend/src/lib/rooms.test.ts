@@ -12,6 +12,7 @@ vi.mock('@/lib/api', () => ({ api: mocks }))
 import {
   addRoomMember,
   archiveRoom,
+  createGroupConversation,
   createRoom,
   getRoom,
   listRoomMembers,
@@ -33,6 +34,16 @@ describe('Rooms API client', () => {
 
     expect(mocks.get).toHaveBeenCalledWith('/api/v1/rooms', undefined)
     expect(mocks.post).toHaveBeenCalledWith('/api/v1/rooms', { name: 'Project Alpha' })
+  })
+
+  it('creates a group from the source private conversation', () => {
+    createGroupConversation('conversation-1', 'Projektgruppen', ['user-3'])
+
+    expect(mocks.post).toHaveBeenCalledWith('/api/v1/rooms/group-conversations', {
+      source_conversation_id: 'conversation-1',
+      name: 'Projektgruppen',
+      member_ids: ['user-3'],
+    })
   })
 
   it('uses a Room id for detail mutations and member operations', () => {

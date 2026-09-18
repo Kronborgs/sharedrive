@@ -25,9 +25,9 @@ type startPrivateChatRequest struct {
 }
 
 type createGroupConversationRequest struct {
-	RoomID    uuid.UUID   `json:"room_id"`
-	Name      string      `json:"name"`
-	MemberIDs []uuid.UUID `json:"member_ids"`
+	SourceConversationID uuid.UUID   `json:"source_conversation_id"`
+	Name                 string      `json:"name"`
+	MemberIDs            []uuid.UUID `json:"member_ids"`
 }
 
 type addDirectResourceRequest struct {
@@ -95,12 +95,12 @@ func (handler *Handler) StartPrivateChat(w http.ResponseWriter, request *http.Re
 
 func (handler *Handler) CreateGroupConversation(w http.ResponseWriter, request *http.Request) {
 	var input createGroupConversationRequest
-	if !decodeRequest(w, request, &input) || input.RoomID == uuid.Nil {
+	if !decodeRequest(w, request, &input) || input.SourceConversationID == uuid.Nil {
 		httputil.RespondError(w, http.StatusBadRequest, "invalid group conversation request")
 		return
 	}
 	user := middleware.UserFromContext(request.Context())
-	conversation, err := handler.service.CreateGroupConversation(request.Context(), user.ID, input.RoomID, input.Name, input.MemberIDs)
+	conversation, err := handler.service.CreateGroupConversation(request.Context(), user.ID, input.SourceConversationID, input.Name, input.MemberIDs)
 	if err != nil {
 		handler.respondError(w, err)
 		return

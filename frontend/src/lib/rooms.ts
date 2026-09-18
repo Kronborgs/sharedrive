@@ -203,8 +203,8 @@ export function startPrivateChatByEmail(email: string): Promise<StartPrivateChat
   return api.post<StartPrivateChatResult>('/api/v1/rooms/direct-conversations/by-email', { email })
 }
 
-export function createGroupConversation(roomID: string, name: string, memberIDs: string[]): Promise<DirectConversation> {
-  return api.post<DirectConversation>('/api/v1/rooms/group-conversations', { room_id: roomID, name, member_ids: memberIDs })
+export function createGroupConversation(sourceConversationID: string, name: string, memberIDs: string[]): Promise<DirectConversation> {
+  return api.post<DirectConversation>('/api/v1/rooms/group-conversations', { source_conversation_id: sourceConversationID, name, member_ids: memberIDs })
 }
 
 export function deleteGroupConversation(conversationID: string): Promise<void> {
@@ -261,6 +261,7 @@ export interface RoomResource {
   resource_type: RoomResourceType
   resource_id: string
   added_by?: string
+  added_by_name?: string
   message_id?: string
   created_at: string
   accessible: boolean

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
+import { toast } from 'sonner'
 import { ArrowDown, File, FileText, Pencil, Reply, Send, Trash2 } from 'lucide-react'
 import { PreviewModal } from '@/components/files/PreviewModal'
 import { EmojiPicker } from '@/components/rooms/EmojiPicker'
@@ -12,6 +14,7 @@ import { importRemoteGIF, isRemoteGIFURL } from '@/lib/rooms-gifs'
 import {
   addRoomReaction,
   addRoomResource,
+  createDirectConversation,
   createRoomMessage,
   deleteRoomMessage,
   listRoomMessages,
@@ -43,9 +46,10 @@ interface MessageCardProps {
   onReaction: (message: RoomMessage, emoji: string) => void
   onRemoveResource: (resourceID: string) => void
   onPreviewResource: (resourceID: string) => void
+  onStartDirect: (userID: string) => void
 }
 
-function MessageActions({ message, currentUserID, canModerate, onReply, onEdit, onDelete }: Readonly<Omit<MessageCardProps, 'onReaction' | 'groupedWithPrevious' | 'resources' | 'onRemoveResource' | 'onPreviewResource'>>) {
+function MessageActions({ message, currentUserID, canModerate, onReply, onEdit, onDelete }: Readonly<Omit<MessageCardProps, 'onReaction' | 'groupedWithPrevious' | 'resources' | 'onRemoveResource' | 'onPreviewResource' | 'onStartDirect'>>) {
   const { t } = useI18n()
   const isAuthor = message.sender_user_id === currentUserID
   const canChange = !message.deleted_at
@@ -59,7 +63,7 @@ function MessageActions({ message, currentUserID, canModerate, onReply, onEdit, 
 
 function MessageCard(props: Readonly<MessageCardProps>) {
   const { t, locale } = useI18n()
-  const { message, currentUserID, canModerate, groupedWithPrevious, resources, onReply, onEdit, onDelete, onReaction, onRemoveResource, onPreviewResource } = props
+  const { message, currentUserID, canModerate, groupedWithPrevious, resources, onReply, onEdit, onDelete, onReaction, onRemoveResource, onPreviewResource, onStartDirect } = props
   const deleted = Boolean(message.deleted_at)
   const isOwnMessage = message.sender_user_id === currentUserID
   const alignmentClass = isOwnMessage ? 'items-end self-end text-right' : 'items-start self-start text-left'
@@ -68,13 +72,14 @@ function MessageCard(props: Readonly<MessageCardProps>) {
     : 'bg-surface'
 
   const hideBody = !deleted && resources.some(resource => resource.mime_type === 'image/gif') && isRemoteGIFURL(message.body)
+  const showSender = !groupedWithPrevious || resources.some(isAnimatedGIF)
   return <article className={`group flex max-w-[70%] flex-col ${alignmentClass} ${groupedWithPrevious ? 'mt-1' : 'mt-3'}`}>
-    {!groupedWithPrevious && <div className={`mb-1 flex items-center gap-2 px-1 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
-      <p className="text-sm font-medium">{message.sender_name}</p>
+    {showSender && <div className={`mb-1 flex items-center gap-2 px-1 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
+      {message.sender_user_id && !isOwnMessage ? <button type="button" onClick={() => onStartDirect(message.sender_user_id!)} className="text-sm font-medium hover:text-brand-600 hover:underline" title={t('rooms.startDirect', { name: message.sender_name })}>{message.sender_name}</button> : <p className="text-sm font-medium">{message.sender_name}</p>}
       <div className="flex items-center gap-2"><time dateTime={message.created_at} className="text-[11px] text-muted">{new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>
     </div>}
     <div className={`w-fit max-w-full rounded-2xl px-3 py-2 ${bubbleClass}`}>
-    {groupedWithPrevious && <div className="flex justify-end"><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>}
+    {!showSender && <div className="flex justify-end"><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>}
     {message.reply_to_message_id && <p className="text-xs text-muted">{t('rooms.replyContext')}</p>}
     {!hideBody && <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{deleted ? t('rooms.messageDeleted') : message.body}</p>}
     {!deleted && resources.length > 0 && <div className="mt-2 space-y-2">{resources.map(resource => <ResourceCard key={resource.id} resource={resource} canModerate={canModerate} onPreview={onPreviewResource} onRemove={onRemoveResource} />)}</div>}
@@ -135,6 +140,21 @@ function ResourceCard({ resource, canModerate, onPreview, onRemove }: Readonly<{
     {canModerate && <button type="button" onClick={() => onRemove(resource.id)} aria-label={t('rooms.removeFromChat')} className="rounded-full p-1.5 text-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"><Trash2 size={15} /></button>}
   </article>
 }
+function StandaloneResourceCard({ resource, currentUserID, canModerate, onPreview, onRemove, onStartDirect }: Readonly<{ resource: RoomResource; currentUserID?: string; canModerate: boolean; onPreview: (id: string) => void; onRemove: (id: string) => void; onStartDirect: (userID: string) => void }>) {
+  const { t, locale } = useI18n()
+  const isOwnResource = resource.added_by === currentUserID
+  const canStartDirect = Boolean(resource.added_by && !isOwnResource)
+  const alignmentClass = isOwnResource ? 'items-end self-end text-right' : 'items-start self-start text-left'
+  const senderName = resource.added_by_name || t('rooms.unknownSender' as never)
+
+  return <article className={`mt-3 flex max-w-[70%] flex-col ${alignmentClass}`}>
+    <div className={`mb-1 flex items-center gap-2 px-1 ${isOwnResource ? 'justify-end' : 'justify-start'}`}>
+      {canStartDirect ? <button type="button" onClick={() => onStartDirect(resource.added_by!)} className="text-sm font-medium hover:text-brand-600 hover:underline" title={t('rooms.startDirect', { name: senderName })}>{senderName}</button> : <p className="text-sm font-medium">{senderName}</p>}
+      <time dateTime={resource.created_at} className="text-[11px] text-muted">{new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(resource.created_at))}</time>
+    </div>
+    <ResourceCard resource={resource} canModerate={canModerate} onPreview={onPreview} onRemove={onRemove} />
+  </article>
+}
 function useRoomLiveSync(roomID: string, currentUserID: string | undefined, refresh: () => void) {
   const [typingName, setTypingName] = useState('')
   const socketRef = useRef<WebSocket | undefined>(undefined)
@@ -187,6 +207,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   const { t } = useI18n()
   const roomID = room.id
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [body, setBody] = useState('')
   const [replyTo, setReplyTo] = useState<RoomMessage>()
@@ -301,8 +322,9 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
     await Promise.all(attachments.map(attachment => addRoomResource(roomID, attachment.resourceType, attachment.resourceID, message.id)))
     return message
   }, onSuccess: () => { scrollAfterSend.current = true; setBody(''); setAttachments([]); setReplyTo(undefined); refresh() } })
-  const sendGIF = useMutation({ mutationFn: (fileID: string) => addRoomResource(roomID, 'file', fileID), onSuccess: () => { scrollAfterSend.current = true; refresh() } })
+  const sendGIF = useMutation({ mutationFn: async ({ fileID, name }: { fileID: string; name: string }) => { const message = await createRoomMessage(roomID, name); await addRoomResource(roomID, 'file', fileID, message.id) }, onSuccess: () => { scrollAfterSend.current = true; refresh() } })
   const removeResourceMutation = useMutation({ mutationFn: (resourceID: string) => removeRoomResource(roomID, resourceID), onSuccess: refresh })
+  const directMutation = useMutation({ mutationFn: (userID: string) => createDirectConversation(roomID, userID), onSuccess: conversation => { queryClient.invalidateQueries({ queryKey: ['rooms', 'direct-conversations'] }).catch(() => undefined); navigate({ to: '/rooms/direct/$conversationID', params: { conversationID: conversation.id } }).catch(() => undefined) }, onError: () => toast.error(t('rooms.startDirectFailed')) })
   const editMessage = (message: RoomMessage) => {
     const next = window.prompt(t('rooms.editMessagePrompt'), message.body)?.trim()
     if (next && next !== message.body) updateRoomMessage(roomID, message.id, next).then(refresh).catch(() => undefined)
@@ -324,8 +346,8 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
       {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}
       {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}
       {timeline.map((item, index) => item.kind === 'message'
-        ? <MessageCard key={`message-${item.value.id}`} message={item.value} currentUserID={user?.id} canModerate={canModerate} groupedWithPrevious={isGroupedMessage(timeline, index)} resources={resourcesByMessage.get(item.value.id) ?? []} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} onRemoveResource={removeResourceMutation.mutate} onPreviewResource={setPreviewID} />
-        : <ResourceCard key={`resource-${item.value.id}`} resource={item.value} canModerate={canModerate} onPreview={setPreviewID} onRemove={removeResourceMutation.mutate} />)}
+        ? <MessageCard key={`message-${item.value.id}`} message={item.value} currentUserID={user?.id} canModerate={canModerate} groupedWithPrevious={isGroupedMessage(timeline, index)} resources={resourcesByMessage.get(item.value.id) ?? []} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} onRemoveResource={removeResourceMutation.mutate} onPreviewResource={setPreviewID} onStartDirect={directMutation.mutate} />
+        : <StandaloneResourceCard key={`resource-${item.value.id}`} resource={item.value} currentUserID={user?.id} canModerate={canModerate} onPreview={setPreviewID} onRemove={removeResourceMutation.mutate} onStartDirect={directMutation.mutate} />)}
     </div>
     {hasNewMessagesBelow && <button type="button" onClick={() => scrollToLatest()} className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-brand-600 px-3 py-1.5 text-xs font-medium text-white shadow-lg"><ArrowDown size={14} /> {t('rooms.newMessagesBelow')}</button>}
     </div>
@@ -336,7 +358,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
       <RoomResourcesPanel room={room} onQueued={attachment => setAttachments(items => [...items.filter(item => item.resourceID !== attachment.resourceID || item.resourceType !== attachment.resourceType), attachment])} />
       <textarea value={body} onChange={event => { setBody(event.target.value); notifyTyping() }} maxLength={10000} rows={2} placeholder={t('rooms.messagePlaceholder')} className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none" />
       <EmojiPicker userKey={user?.id ?? 'anonymous'} onSelect={emoji => setBody(value => value + emoji)} />
-      <GifPicker onSelect={fileID => sendGIF.mutate(fileID)} />
+      <GifPicker onSelect={(fileID, name) => sendGIF.mutate({ fileID, name })} />
       <button type="submit" disabled={(!body.trim() && attachments.length === 0) || send.isPending} className="rounded-full bg-brand-600 p-2.5 text-white disabled:opacity-50" aria-label={t('rooms.sendMessage')}><Send size={18} /></button>
     </form>
     {previewID && preview.data && <PreviewModal item={preview.data} onClose={() => setPreviewID(undefined)} />}

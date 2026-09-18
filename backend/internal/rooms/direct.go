@@ -3,6 +3,7 @@ package rooms
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -293,40 +294,112 @@ func (service *Service) ListDirectResources(ctx context.Context, actorID, conver
 	return resources, rows.Err()
 }
 
-// CreateGroupConversation starts a new, separate group stream.  It deliberately
-// does not reuse a direct conversation, so former 1:1 history stays private.
-func (service *Service) CreateGroupConversation(ctx context.Context, actorID, sourceRoomID uuid.UUID, name string, memberIDs []uuid.UUID) (DirectConversation, error) {
+// CreateGroupConversation starts a separate group stream from a private chat.
+// The source messages are deliberately not copied, so the 1:1 history remains private.
+func (service *Service) CreateGroupConversation(ctx context.Context, actorID, sourceConversationID uuid.UUID, name string, memberIDs []uuid.UUID) (DirectConversation, error) {
 	name, err := NormalizeName(name)
 	if err != nil {
 		return DirectConversation{}, err
 	}
-	unique := map[uuid.UUID]bool{actorID: true}
-	for _, memberID := range memberIDs {
-		if memberID != actorID && !service.usersShareActiveRoom(ctx, actorID, memberID, sourceRoomID) {
-			return DirectConversation{}, ErrNotFound
-		}
-		unique[memberID] = true
-	}
-	if len(unique) < 3 {
-		return DirectConversation{}, ErrInvalidName
-	}
-	ids := make([]uuid.UUID, 0, len(unique))
-	for userID := range unique {
-		ids = append(ids, userID)
-	}
-	first, second := canonicalDirectPair(ids[0], ids[1])
-	var conversationID uuid.UUID
-	err = service.db.QueryRow(ctx, `INSERT INTO direct_conversations(source_room_id,user_one_id,user_two_id,kind,owner_user_id,name)
-		VALUES($1,$2,$3,'group',$4,$5) RETURNING id`, sourceRoomID, first, second, actorID, name).Scan(&conversationID)
+	tx, err := service.db.Begin(ctx)
 	if err != nil {
 		return DirectConversation{}, err
 	}
-	for _, userID := range ids {
-		if _, err := service.db.Exec(ctx, `INSERT INTO direct_conversation_members(conversation_id,user_id,added_by) VALUES($1,$2,$3)`, conversationID, userID, actorID); err != nil {
-			return DirectConversation{}, err
-		}
+	defer tx.Rollback(ctx)
+	sourceRoomID, members, err := sourceDirectMembers(ctx, tx, actorID, sourceConversationID)
+	if err != nil {
+		return DirectConversation{}, err
+	}
+	members = uniqueConversationMembers(actorID, members, memberIDs)
+	if len(members) < 3 {
+		return DirectConversation{}, ErrInvalidName
+	}
+	if err := validateChatUsers(ctx, tx, members); err != nil {
+		return DirectConversation{}, err
+	}
+	conversationID, err := insertGroupConversation(ctx, tx, actorID, sourceRoomID, name, members)
+	if err != nil {
+		return DirectConversation{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return DirectConversation{}, err
 	}
 	return service.directConversationForActor(ctx, actorID, conversationID)
+}
+
+func sourceDirectMembers(ctx context.Context, tx pgx.Tx, actorID, conversationID uuid.UUID) (*uuid.UUID, []uuid.UUID, error) {
+	var sourceRoomID *uuid.UUID
+	var kind string
+	err := tx.QueryRow(ctx, `SELECT conversation.source_room_id,conversation.kind
+		FROM direct_conversations conversation
+		JOIN direct_conversation_members member ON member.conversation_id=conversation.id AND member.user_id=$1
+		WHERE conversation.id=$2`, actorID, conversationID).Scan(&sourceRoomID, &kind)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if kind != "direct" {
+		return nil, nil, ErrNotFound
+	}
+	rows, err := tx.Query(ctx, `SELECT user_id FROM direct_conversation_members WHERE conversation_id=$1`, conversationID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	members := make([]uuid.UUID, 0, 2)
+	for rows.Next() {
+		var userID uuid.UUID
+		if err := rows.Scan(&userID); err != nil {
+			return nil, nil, err
+		}
+		members = append(members, userID)
+	}
+	return sourceRoomID, members, rows.Err()
+}
+
+func uniqueConversationMembers(actorID uuid.UUID, current, additional []uuid.UUID) []uuid.UUID {
+	unique := map[uuid.UUID]struct{}{actorID: {}}
+	for _, userID := range append(current, additional...) {
+		if userID != uuid.Nil {
+			unique[userID] = struct{}{}
+		}
+	}
+	members := make([]uuid.UUID, 0, len(unique))
+	for userID := range unique {
+		members = append(members, userID)
+	}
+	sort.Slice(members, func(i, j int) bool { return members[i].String() < members[j].String() })
+	return members
+}
+
+func validateChatUsers(ctx context.Context, tx pgx.Tx, memberIDs []uuid.UUID) error {
+	var allowed int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM users
+		WHERE id=ANY($1) AND is_active=TRUE AND rooms_access_enabled=TRUE`, memberIDs).Scan(&allowed); err != nil {
+		return err
+	}
+	if allowed != len(memberIDs) {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func insertGroupConversation(ctx context.Context, tx pgx.Tx, actorID uuid.UUID, sourceRoomID *uuid.UUID, name string, memberIDs []uuid.UUID) (uuid.UUID, error) {
+	first, second := canonicalDirectPair(memberIDs[0], memberIDs[1])
+	var conversationID uuid.UUID
+	err := tx.QueryRow(ctx, `INSERT INTO direct_conversations(source_room_id,user_one_id,user_two_id,kind,owner_user_id,name)
+		VALUES($1,$2,$3,'group',$4,$5) RETURNING id`, sourceRoomID, first, second, actorID, name).Scan(&conversationID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	for _, userID := range memberIDs {
+		if _, err := tx.Exec(ctx, `INSERT INTO direct_conversation_members(conversation_id,user_id,added_by) VALUES($1,$2,$3)`, conversationID, userID, actorID); err != nil {
+			return uuid.Nil, err
+		}
+	}
+	return conversationID, nil
 }
 
 func (service *Service) DeleteGroupConversation(ctx context.Context, actorID, conversationID uuid.UUID) error {

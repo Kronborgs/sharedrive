@@ -138,8 +138,10 @@ func (service *Service) ListResources(ctx context.Context, actorID, roomID uuid.
 }
 
 func (service *Service) loadRoomResources(ctx context.Context, roomID uuid.UUID) ([]Resource, []uuid.UUID, []uuid.UUID, error) {
-	rows, err := service.db.Query(ctx, `SELECT id, room_id, resource_type, resource_id, added_by, message_id, created_at
-		FROM room_resources WHERE room_id = $1 ORDER BY created_at DESC, id DESC`, roomID)
+	rows, err := service.db.Query(ctx, `SELECT resource.id, resource.room_id, resource.resource_type, resource.resource_id, resource.added_by,
+		COALESCE(account.display_name, account.email, ''), resource.message_id, resource.created_at
+		FROM room_resources resource LEFT JOIN users account ON account.id = resource.added_by
+		WHERE resource.room_id = $1 ORDER BY resource.created_at DESC, resource.id DESC`, roomID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -149,7 +151,7 @@ func (service *Service) loadRoomResources(ctx context.Context, roomID uuid.UUID)
 	noteIDs := make([]uuid.UUID, 0)
 	for rows.Next() {
 		var resource Resource
-		if err := rows.Scan(&resource.ID, &resource.RoomID, &resource.ResourceType, &resource.ResourceID, &resource.AddedBy, &resource.MessageID, &resource.CreatedAt); err != nil {
+		if err := rows.Scan(&resource.ID, &resource.RoomID, &resource.ResourceType, &resource.ResourceID, &resource.AddedBy, &resource.AddedByName, &resource.MessageID, &resource.CreatedAt); err != nil {
 			return nil, nil, nil, err
 		}
 		resources = append(resources, resource)

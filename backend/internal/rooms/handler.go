@@ -44,7 +44,8 @@ type Handler struct {
 	appURL        string
 	secureCookie  bool
 	uploadTokens  guestUploadTokenIssuer
-	mailer        RoomMailer
+	mailer             RoomMailer
+	notificationMailer UnreadMessageMailer
 	liveKitURL    string
 	liveKitKey    string
 	liveKitSecret string
@@ -57,12 +58,17 @@ type HandlerConfig struct {
 	AppURL                                string
 	SecureCookie                          bool
 	UploadTokens                          guestUploadTokenIssuer
-	Mailer                                RoomMailer
+	NotificationMailer UnreadMessageMailer
+	Mailer             RoomMailer
 	LiveKitURL, LiveKitKey, LiveKitSecret string
 }
 
 func NewHandler(config HandlerConfig) *Handler {
-	return &Handler{service: config.Service, hub: newRoomHub(), limiter: config.Limiter, redis: config.Redis, appURL: config.AppURL, secureCookie: config.SecureCookie, uploadTokens: config.UploadTokens, mailer: config.Mailer, liveKitURL: strings.TrimSpace(config.LiveKitURL), liveKitKey: strings.TrimSpace(config.LiveKitKey), liveKitSecret: strings.TrimSpace(config.LiveKitSecret)}
+	return &Handler{service: config.Service, hub: newRoomHub(), limiter: config.Limiter, redis: config.Redis, appURL: config.AppURL, secureCookie: config.SecureCookie, uploadTokens: config.UploadTokens, mailer: config.Mailer, notificationMailer: config.NotificationMailer, liveKitURL: strings.TrimSpace(config.LiveKitURL), liveKitKey: strings.TrimSpace(config.LiveKitKey), liveKitSecret: strings.TrimSpace(config.LiveKitSecret)}
+}
+
+func (handler *Handler) RunUnreadMessageEmails(ctx context.Context) error {
+	return handler.service.SendUnreadMessageEmails(ctx, handler.notificationMailer, handler.appURL)
 }
 
 type createRoomRequest struct {

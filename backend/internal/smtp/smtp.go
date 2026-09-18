@@ -204,6 +204,18 @@ func (m *Mailer) SendNoteInvitation(_ context.Context, invitation notes.NoteInvi
 	return m.send(invitation.ToEmail, subject, body)
 }
 
+// SendUnreadMessageReminder notifies a user about one unread Rooms message.
+func (m *Mailer) SendUnreadMessageReminder(_ context.Context, toEmail, recipientName, chatName, senderName, snippet, messageURL string) error {
+	body := fmt.Sprintf(
+		"Hej %s,\n\n"+
+			"Du har en ulæst besked i \"%s\" fra %s:\n\n"+
+			"\"%s\"\n\n"+
+			"Åbn chatten her:\n%s\n\n"+
+			"Du får højst denne påmindelse én gang hver 12. time, så længe beskeden er ulæst.\n",
+		recipientName, chatName, senderName, snippet, messageURL,
+	)
+	return m.send(toEmail, fmt.Sprintf("Ulæst besked i %s", chatName), body, "Sharedrive")
+}
 // SendBackupFailure notifies a user that one of their automatic backups has been
 // failing for more than 24 hours.
 // backupType is a short human-readable label ("Server backup" or "Buddy backup").

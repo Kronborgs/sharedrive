@@ -177,6 +177,7 @@ func (s *Service) List(ctx context.Context, ownerID string, parentID *uuid.UUID)
 		rows, err = s.db.Query(ctx,
 			`SELECT `+fileCols+` FROM files
 			 WHERE owner_id = $1 AND parent_id IS NULL AND deleted_at IS NULL
+		       AND NOT EXISTS (SELECT 1 FROM room_gif_library gif_library WHERE gif_library.file_id = files.id)
 			 ORDER BY is_folder DESC, name ASC`,
 			ownerID,
 		)
@@ -186,6 +187,7 @@ func (s *Service) List(ctx context.Context, ownerID string, parentID *uuid.UUID)
 		rows, err = s.db.Query(ctx,
 			`SELECT `+fileCols+` FROM files
 			 WHERE parent_id = $2 AND deleted_at IS NULL
+		   AND NOT EXISTS (SELECT 1 FROM room_gif_library gif_library WHERE gif_library.file_id = files.id)
 			   AND (
 			     owner_id = $1
 			     OR EXISTS (
@@ -625,6 +627,7 @@ func (s *Service) Search(ctx context.Context, userID, query string, limit int) (
 		`SELECT DISTINCT `+fileCols+`
 		 FROM files
 		 WHERE deleted_at IS NULL
+		   AND NOT EXISTS (SELECT 1 FROM room_gif_library gif_library WHERE gif_library.file_id = files.id)
 		   AND name ILIKE $1 ESCAPE '\'
 		   AND (
 		     owner_id = $2::uuid

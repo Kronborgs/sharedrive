@@ -161,7 +161,7 @@ func newServerDependencies(deps serverDependencies) *Server {
 			notes.NewSharingService(deps.db, smtp.New(deps.cfg, deps.db), deps.auditSvc,
 				ratelimit.New(deps.rdb), deps.cfg.AppBaseURL, deps.cfg.GoEnv == "production"),
 		),
-		roomsHandler:   rooms.NewHandler(rooms.HandlerConfig{Service: rooms.NewService(deps.db, deps.auditSvc, deps.cfg.RoomsEncryptKey, deps.fileSvc, noteService), Limiter: ratelimit.New(deps.rdb), Redis: deps.rdb, AppURL: deps.cfg.AppBaseURL, SecureCookie: deps.cfg.GoEnv == "production", UploadTokens: deps.authHandler, Mailer: smtp.New(deps.cfg, deps.db), LiveKitURL: deps.cfg.LiveKitURL, LiveKitKey: deps.cfg.LiveKitAPIKey, LiveKitSecret: deps.cfg.LiveKitAPISecret}),
+		roomsHandler:   rooms.NewHandler(rooms.HandlerConfig{Service: rooms.NewService(deps.db, deps.auditSvc, deps.cfg.RoomsEncryptKey, deps.fileSvc, noteService), Limiter: ratelimit.New(deps.rdb), Redis: deps.rdb, AppURL: deps.cfg.AppBaseURL, SecureCookie: deps.cfg.GoEnv == "production", UploadTokens: deps.authHandler, Mailer: smtp.New(deps.cfg, deps.db), NotificationMailer: smtp.New(deps.cfg, deps.db), LiveKitURL: deps.cfg.LiveKitURL, LiveKitKey: deps.cfg.LiveKitAPIKey, LiveKitSecret: deps.cfg.LiveKitAPISecret}),
 		adminHandler:   admin.NewHandler(deps.db, deps.cfg, deps.ioTracker, deps.rdb),
 		sseHandler:     admin.NewSSEHandler(deps.db),
 		supportHandler: admin.NewSupportAccessHandler(deps.db),
@@ -178,6 +178,7 @@ func startServerBackgroundTasks(s *Server, db *pgxpool.Pool, rdb *goredis.Client
 	startPreviewCleanup(cfg)
 	startTusCleanup(cfg)
 	startAutoBackupScheduler(s)
+	startUnreadMessageEmailScheduler(s)
 	startStartupOrphanCascade(db)
 	go func() {
 		if err := s.roomsHandler.SeedStarterGIFs(context.Background()); err != nil {
@@ -212,6 +213,22 @@ func startTusCleanup(cfg *config.Config) {
 			if err := cleanTusUploadDir(cfg.TusUploadDir); err != nil {
 				log.Warn().Err(err).Msg("tus upload dir cleanup")
 			}
+		}
+	}()
+}
+
+func startUnreadMessageEmailScheduler(s *Server) {
+	go func() {
+		run := func() {
+			if err := s.roomsHandler.RunUnreadMessageEmails(context.Background()); err != nil {
+				log.Warn().Err(err).Msg("rooms: unread message email job failed")
+			}
+		}
+		run()
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			run()
 		}
 	}()
 }

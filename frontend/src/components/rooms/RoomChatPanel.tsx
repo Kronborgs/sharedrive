@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
@@ -10,6 +10,7 @@ import { RoomResourcesPanel, type PendingRoomResource } from '@/components/rooms
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
+import { chatDayKey, formatChatDay, formatChatMessageTime } from '@/lib/room-dates'
 import { importRemoteGIF, isRemoteGIFURL } from '@/lib/rooms-gifs'
 import {
   addRoomReaction,
@@ -76,7 +77,7 @@ function MessageCard(props: Readonly<MessageCardProps>) {
   return <article className={`group flex max-w-[70%] flex-col ${alignmentClass} ${groupedWithPrevious ? 'mt-1' : 'mt-3'}`}>
     {showSender && <div className={`mb-1 flex items-center gap-2 px-1 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
       {message.sender_user_id && !isOwnMessage ? <button type="button" onClick={() => onStartDirect(message.sender_user_id!)} className="text-sm font-medium hover:text-brand-600 hover:underline" title={t('rooms.startDirect', { name: message.sender_name })}>{message.sender_name}</button> : <p className="text-sm font-medium">{message.sender_name}</p>}
-      <div className="flex items-center gap-2"><time dateTime={message.created_at} className="text-[11px] text-muted">{new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>
+      <div className="flex items-center gap-2"><time dateTime={message.created_at} className="text-[11px] text-muted">{formatChatMessageTime(message.created_at, locale)}</time><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>
     </div>}
     <div className={`w-fit max-w-full rounded-2xl px-3 py-2 ${bubbleClass}`}>
     {!showSender && <div className="flex justify-end"><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>}
@@ -150,7 +151,7 @@ function StandaloneResourceCard({ resource, currentUserID, canModerate, onPrevie
   return <article className={`mt-3 flex max-w-[70%] flex-col ${alignmentClass}`}>
     <div className={`mb-1 flex items-center gap-2 px-1 ${isOwnResource ? 'justify-end' : 'justify-start'}`}>
       {canStartDirect ? <button type="button" onClick={() => onStartDirect(resource.added_by!)} className="text-sm font-medium hover:text-brand-600 hover:underline" title={t('rooms.startDirect', { name: senderName })}>{senderName}</button> : <p className="text-sm font-medium">{senderName}</p>}
-      <time dateTime={resource.created_at} className="text-[11px] text-muted">{new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(resource.created_at))}</time>
+      <time dateTime={resource.created_at} className="text-[11px] text-muted">{formatChatMessageTime(resource.created_at, locale)}</time>
     </div>
     <ResourceCard resource={resource} canModerate={canModerate} onPreview={onPreview} onRemove={onRemove} />
   </article>
@@ -345,9 +346,16 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
       {messages.isLoading && <p className="text-sm text-muted">{t('rooms.chatLoading')}</p>}
       {timeline.length === 0 && <p className="text-sm text-muted">{t('rooms.chatEmpty')}</p>}
       {messages.hasNextPage && <button type="button" onClick={() => messages.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm">{t('rooms.loadOlder')}</button>}
-      {timeline.map((item, index) => item.kind === 'message'
-        ? <MessageCard key={`message-${item.value.id}`} message={item.value} currentUserID={user?.id} canModerate={canModerate} groupedWithPrevious={isGroupedMessage(timeline, index)} resources={resourcesByMessage.get(item.value.id) ?? []} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} onRemoveResource={removeResourceMutation.mutate} onPreviewResource={setPreviewID} onStartDirect={directMutation.mutate} />
-        : <StandaloneResourceCard key={`resource-${item.value.id}`} resource={item.value} currentUserID={user?.id} canModerate={canModerate} onPreview={setPreviewID} onRemove={removeResourceMutation.mutate} onStartDirect={directMutation.mutate} />)}
+      {timeline.map((item, index) => {
+        const previous = timeline[index - 1]
+        const showDate = !previous || chatDayKey(item.date) !== chatDayKey(previous.date)
+        return <Fragment key={`${item.kind}-${item.value.id}`}>
+          {showDate && <div className="my-4 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-muted"><span className="h-px flex-1 bg-subtle" /><span>{formatChatDay(item.date, locale)}</span><span className="h-px flex-1 bg-subtle" /></div>}
+          {item.kind === 'message'
+            ? <MessageCard message={item.value} currentUserID={user?.id} canModerate={canModerate} groupedWithPrevious={isGroupedMessage(timeline, index)} resources={resourcesByMessage.get(item.value.id) ?? []} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} onRemoveResource={removeResourceMutation.mutate} onPreviewResource={setPreviewID} onStartDirect={directMutation.mutate} />
+            : <StandaloneResourceCard resource={item.value} currentUserID={user?.id} canModerate={canModerate} onPreview={setPreviewID} onRemove={removeResourceMutation.mutate} onStartDirect={directMutation.mutate} />}
+        </Fragment>
+      })}
     </div>
     {hasNewMessagesBelow && <button type="button" onClick={() => scrollToLatest()} className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-brand-600 px-3 py-1.5 text-xs font-medium text-white shadow-lg"><ArrowDown size={14} /> {t('rooms.newMessagesBelow')}</button>}
     </div>

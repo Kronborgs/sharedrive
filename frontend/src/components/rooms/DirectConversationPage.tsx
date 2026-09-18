@@ -1,11 +1,12 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Paperclip, Pencil, Plus, Send, Trash2, Users, X } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
+import { chatDayKey, formatChatDay, formatChatMessageTime } from '@/lib/room-dates'
 import { addDirectFileResource, createDirectMessage, createGroupConversation, listDirectConversationMembers, listDirectConversations, listDirectMessages, listDirectResources, listRoomMembers, markDirectConversationRead, startPrivateChatByEmail, renameDirectConversation, deleteGroupConversation, hideDirectConversation, type DirectConversation, type DirectConversationMember } from '@/lib/rooms'
 import { RoomVoicePanel } from '@/components/rooms/RoomVoicePanel'
 import { EmojiPicker } from '@/components/rooms/EmojiPicker'
@@ -87,7 +88,7 @@ function GroupMembers({ members }: Readonly<{ members: DirectConversationMember[
 }
 
 export function DirectConversationPage({ conversationID }: Readonly<{ conversationID: string }>) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { user } = useAuth()
@@ -187,7 +188,34 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
     <header className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-subtle bg-surface px-4 py-3"><button type="button" className="notes-icon-button" title={conversation.source_room_name ? t('rooms.backToRoom', { room: conversation.source_room_name }) : t('rooms.backToChat' as never)} onClick={returnToRoom}><ArrowLeft size={18} /></button><div className="min-w-0 flex-1"><div className="flex items-center gap-1"><h1 className="truncate font-semibold">{conversationTitle}</h1><button type="button" className="notes-icon-button shrink-0" title={t('rooms.renameConversation')} aria-label={t('rooms.renameConversation')} onClick={() => { const name = window.prompt(t('rooms.conversationName'), conversationTitle); if (name?.trim() && name.trim() !== conversationTitle) rename.mutate(name.trim()) }}><Pencil size={15} /></button></div><p className="text-xs text-muted">{conversation.kind === 'group' ? t('rooms.permanentWorkspace') : t('rooms.directConversation')}</p></div><RoomVoicePanel roomID={conversationID} mediaTokenPath={`/api/v1/rooms/direct-conversations/${conversationID}/media-token`} compact />{conversation.kind === 'direct' && <AddContactDialog conversation={conversation} />}{(conversation.kind !== 'group' || conversation.owner_user_id === user?.id) && <button type="button" className="notes-icon-button text-red-600" title={conversation.kind === 'group' ? t('rooms.deleteGroupChat' as never) : t('rooms.removeDirectChat' as never)} aria-label={conversation.kind === 'group' ? t('rooms.deleteGroupChat' as never) : t('rooms.removeDirectChat' as never)} disabled={removeConversation.isPending} onClick={() => { const confirmation = conversation.kind === 'group' ? t('rooms.deleteGroupChatConfirm' as never, { name: conversationTitle }) : t('rooms.removeDirectChatConfirm' as never, { name: conversationTitle }); if (window.confirm(confirmation)) removeConversation.mutate() }}><Trash2 size={17} /></button>}</header>
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <section ref={messageScrollRef} onScroll={handleMessageScroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">{[...(messages.data?.messages ?? [])].reverse().map(message => { const own = message.sender_user_id === user?.id; const senderEmail = groupMembers.data?.find(member => member.user_id === message.sender_user_id)?.email; const messageResources = (resources.data ?? []).filter(resource => resource.message_id === message.id); const gifResource = messageResources.find(resource => resource.mime_type === 'image/gif'); const hideBody = Boolean(gifResource) && (isRemoteGIFURL(message.body) || gifResource?.name === message.body); return <article key={message.id} className={`flex flex-col ${own ? 'items-end' : 'items-start'}`}>{conversation.kind === 'group' && !own && senderEmail ? <button type="button" onClick={() => startDirect.mutate(senderEmail)} className="mb-1 text-xs text-muted hover:text-brand-600 hover:underline" title={t('rooms.startDirect', { name: message.sender_name })}>{message.sender_name}</button> : <div className="mb-1 text-xs text-muted">{message.sender_name}</div>}{!hideBody && <p className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${own ? 'bg-brand-600 text-white' : 'bg-surface'}`}>{message.deleted_at ? t('rooms.messageDeleted') : message.body}</p>}{messageResources.map(resource => { const previewItem: FileItem = { id: resource.file_id, parent_id: null, owner_id: '', is_folder: false, name: resource.name, mime_type: resource.mime_type ?? null, size_bytes: 0, checksum_sha256: null, deleted_at: null, created_at: resource.created_at, updated_at: resource.created_at }; const isImage = resource.mime_type?.startsWith('image/') || /\.(avif|gif|jpe?g|png|svg|webp)$/i.test(resource.name); return isImage ? <button key={resource.id} type="button" onClick={() => setPreviewFile(previewItem)} className="mt-1 block max-w-[80%] overflow-hidden rounded-xl border border-subtle bg-zinc-950"><img src={'/api/v1/files/' + resource.file_id + '/' + (resource.mime_type === 'image/gif' ? 'preview' : 'thumbnail')} alt={resource.name} className="max-h-64 max-w-full object-contain" loading="lazy" /></button> : <button key={resource.id} type="button" onClick={() => setPreviewFile(previewItem)} className="mt-1 max-w-[80%] rounded-lg border border-subtle bg-surface px-3 py-2 text-left text-sm text-brand-600 hover:underline">{resource.name}</button> })}</article> })}<div /></section>{previewFile && <PreviewModal item={previewFile} onClose={() => setPreviewFile(undefined)} />}
+        <section ref={messageScrollRef} onScroll={handleMessageScroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+          {[...(messages.data?.messages ?? [])].reverse().map((message, index, items) => {
+            const previous = items[index - 1]
+            const showDate = !previous || chatDayKey(message.created_at) !== chatDayKey(previous.created_at)
+            const own = message.sender_user_id === user?.id
+            const senderEmail = groupMembers.data?.find(member => member.user_id === message.sender_user_id)?.email
+            const messageResources = (resources.data ?? []).filter(resource => resource.message_id === message.id)
+            const gifResource = messageResources.find(resource => resource.mime_type === 'image/gif')
+            const hideBody = Boolean(gifResource) && (isRemoteGIFURL(message.body) || gifResource?.name === message.body)
+            const previewResources = messageResources.map(resource => {
+              const previewItem: FileItem = { id: resource.file_id, parent_id: null, owner_id: '', is_folder: false, name: resource.name, mime_type: resource.mime_type ?? null, size_bytes: 0, checksum_sha256: null, deleted_at: null, created_at: resource.created_at, updated_at: resource.created_at }
+              const isImage = resource.mime_type?.startsWith('image/') || /\.(avif|gif|jpe?g|png|svg|webp)$/i.test(resource.name)
+              return isImage
+                ? <button key={resource.id} type="button" onClick={() => setPreviewFile(previewItem)} className="mt-1 block max-w-[80%] overflow-hidden rounded-xl border border-subtle bg-zinc-950"><img src={'/api/v1/files/' + resource.file_id + '/' + (resource.mime_type === 'image/gif' ? 'preview' : 'thumbnail')} alt={resource.name} className="max-h-64 max-w-full object-contain" loading="lazy" /></button>
+                : <button key={resource.id} type="button" onClick={() => setPreviewFile(previewItem)} className="mt-1 max-w-[80%] rounded-lg border border-subtle bg-surface px-3 py-2 text-left text-sm text-brand-600 hover:underline">{resource.name}</button>
+            })
+            return <Fragment key={message.id}>
+              {showDate && <div className="my-4 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-muted"><span className="h-px flex-1 bg-subtle" /><span>{formatChatDay(message.created_at, locale)}</span><span className="h-px flex-1 bg-subtle" /></div>}
+              <article className={`flex flex-col ${own ? 'items-end' : 'items-start'}`}>
+                {conversation.kind === 'group' && !own && senderEmail ? <button type="button" onClick={() => startDirect.mutate(senderEmail)} className="mb-1 text-xs text-muted hover:text-brand-600 hover:underline" title={t('rooms.startDirect', { name: message.sender_name })}>{message.sender_name}</button> : <div className="mb-1 text-xs text-muted">{message.sender_name}</div>}
+                <time dateTime={message.created_at} className="mb-1 text-[11px] text-muted">{formatChatMessageTime(message.created_at, locale)}</time>
+                {!hideBody && <p className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${own ? 'bg-brand-600 text-white' : 'bg-surface'}`}>{message.deleted_at ? t('rooms.messageDeleted') : message.body}</p>}
+                {previewResources}
+              </article>
+            </Fragment>
+          })}
+        </section>
+        {previewFile && <PreviewModal item={previewFile} onClose={() => setPreviewFile(undefined)} />}
         {attachments.length > 0 && <div className="flex shrink-0 flex-wrap gap-2 px-3 pb-2">{attachments.map(file => <span key={file.id} className="flex items-center gap-1 rounded-full border border-subtle px-2 py-1 text-xs">{file.name}<button type="button" onClick={() => setAttachments(items => items.filter(item => item.id !== file.id))} aria-label={t('action.close')}><X size={13} /></button></span>)}</div>}
         <form className="sticky bottom-0 flex shrink-0 items-end gap-2 border-t border-subtle bg-surface p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" onSubmit={event => { event.preventDefault(); if (body.trim() || attachments.length > 0) send.mutate() }}><button type="button" className="notes-icon-button" onClick={() => uploadRef.current?.click()} disabled={upload.isPending} aria-label={t('rooms.addAttachment')}><Paperclip size={18} /></button><input ref={uploadRef} type="file" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) { upload.mutate(file) }; event.currentTarget.value = '' }} /><input className="notes-input min-w-0 flex-1" value={body} onChange={event => setBody(event.target.value)} placeholder={t('rooms.messagePlaceholder')} /><EmojiPicker userKey={user?.id ?? 'anonymous'} onSelect={emoji => setBody(value => value + emoji)} /><GifPicker onSelect={(fileID, name) => sendGIF.mutate({ fileID, name })} /><button className="notes-primary-button" type="submit" disabled={(!body.trim() && attachments.length === 0) || send.isPending}><Send size={17} /></button></form>
       </div>

@@ -6,6 +6,7 @@ import { GuestRoomLiveSync } from '@/components/rooms/GuestRoomLiveSync'
 import { GuestRoomUpload } from '@/components/rooms/GuestRoomUpload'
 import { RoomVoicePanel } from '@/components/rooms/RoomVoicePanel'
 import { useI18n } from '@/lib/i18n'
+import { chatDayKey, formatChatDay, formatChatMessageTime } from '@/lib/room-dates'
 import {
   addGuestRoomReaction,
   createGuestRoomMessage,
@@ -29,7 +30,7 @@ function GuestMessageCard({ message, canReact, onReaction, userKey }: Readonly<G
   const { t, locale } = useI18n()
   const deleted = Boolean(message.deleted_at)
   return <article className="rounded-lg bg-white px-3 py-2 dark:bg-[#1a1d27]">
-    <div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">{message.sender_name}</p><time dateTime={message.created_at} className="text-[11px] text-muted">{new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(message.created_at))}</time></div>
+    <div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">{message.sender_name}</p><time dateTime={message.created_at} className="text-[11px] text-muted">{formatChatMessageTime(message.created_at, locale)}</time></div>
     <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{deleted ? t('rooms.messageDeleted') : message.body}</p>
     {!deleted && <div className="mt-2 flex flex-wrap items-center gap-1">
       {summarizeRoomReactions(message.reactions).map(summary => <button key={summary.emoji} type="button" disabled={!canReact} onClick={() => onReaction(message, summary.emoji)} title={t('rooms.reactedBy', { names: summary.names.join(', ') })} aria-label={t('rooms.reactionAria', { emoji: summary.emoji, names: summary.names.join(', ') })} className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs disabled:cursor-default dark:border-[#3a3f58]">{summary.emoji} {summary.count}</button>)}
@@ -71,7 +72,14 @@ export function GuestRoomPage({ roomID }: Readonly<{ roomID: string }>) {
         {settings.data?.rooms_voice_enabled && room.data.can_voice && <RoomVoicePanel roomID={roomID} guest canShareScreen={room.data.can_share_screen} />}
         <h2 className="mb-3 text-lg font-semibold">{t('rooms.chat')}</h2>
         <div className="mb-3 max-h-[55vh] space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-3 dark:border-[#2d3148]">
-          {[...(messages.data?.messages ?? [])].reverse().map(message => <GuestMessageCard key={message.id} message={message} canReact={room.data.can_chat} userKey={guestUserKey} onReaction={(selected, emoji) => reaction.mutate({ message: selected, emoji })} />)}
+          {[...(messages.data?.messages ?? [])].reverse().map((message, index, items) => {
+            const previous = items[index - 1]
+            const showDate = !previous || chatDayKey(message.created_at) !== chatDayKey(previous.created_at)
+            return <div key={message.id}>
+              {showDate && <div className="my-4 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-muted"><span className="h-px flex-1 bg-subtle" /><span>{formatChatDay(message.created_at, locale)}</span><span className="h-px flex-1 bg-subtle" /></div>}
+              <GuestMessageCard message={message} canReact={room.data.can_chat} userKey={guestUserKey} onReaction={(selected, emoji) => reaction.mutate({ message: selected, emoji })} />
+            </div>
+          })}
           {messages.data?.messages.length === 0 && <p className="text-sm text-muted">{t('rooms.messagesEmpty')}</p>}
         </div>
         {room.data.can_chat

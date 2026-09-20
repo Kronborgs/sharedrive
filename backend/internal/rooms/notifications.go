@@ -8,7 +8,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 const unreadDigestInterval = 12 * time.Hour

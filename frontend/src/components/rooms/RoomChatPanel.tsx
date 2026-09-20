@@ -205,7 +205,7 @@ function useRoomLiveSync(roomID: string, currentUserID: string | undefined, refr
 }
 
 export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ room: Room; fillAvailableHeight?: boolean }>) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const roomID = room.id
   const queryClient = useQueryClient()
   const navigate = useNavigate()

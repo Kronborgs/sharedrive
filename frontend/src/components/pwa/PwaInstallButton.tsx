@@ -37,7 +37,9 @@ export function PwaInstallButton({ label, title, className, iconSize = 17, unava
       installPrompt.prompt().then(() => {
         clearInstallPrompt()
         setInstallPrompt(null)
-      }).catch(() => undefined)
+      }).catch(() => {
+        window.alert(unavailableMessage ?? title)
+      })
     }}>
       <Download size={iconSize} />
       {label}

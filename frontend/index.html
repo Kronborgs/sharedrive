@@ -13,10 +13,13 @@
     <!-- PWA / Web App Manifest -->
     <script>
       const isNotesApp = location.pathname === '/notes' || location.pathname.startsWith('/notes/')
+      const isRoomsApp = location.pathname === '/rooms' || location.pathname.startsWith('/rooms/')
       const manifest = document.createElement('link')
       manifest.id = 'app-manifest'
       manifest.rel = 'manifest'
-      manifest.href = isNotesApp ? '/notes.webmanifest' : '/site.webmanifest'
+      manifest.href = '/site.webmanifest'
+      if (isNotesApp) manifest.href = '/notes.webmanifest'
+      if (isRoomsApp) manifest.href = '/rooms.webmanifest'
       document.head.appendChild(manifest)
     </script>
     <meta name="theme-color" content="#1a8cd8" />

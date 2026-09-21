@@ -71,7 +71,7 @@ export function RoomDetailPage({ roomID }: Readonly<{ roomID: string }>) {
   const detailGridClass = 'lg:grid-cols-[minmax(0,1fr)_minmax(17rem,21rem)]'
 
   return (
-    <section className="mx-auto flex h-[calc(100dvh-4rem)] w-full max-w-[112rem] flex-col overflow-hidden animate-fade-in lg:h-full" aria-labelledby="room-heading">
+    <section className="mx-auto flex h-full min-h-0 w-full max-w-[112rem] flex-col overflow-hidden animate-fade-in" aria-labelledby="room-heading">
       <button type="button" className="mb-3 hidden items-center gap-1.5 text-sm text-muted hover:text-zinc-950 dark:hover:text-white lg:flex" onClick={() => navigate({ to: '/rooms' }).catch(() => undefined)}>
         <ArrowLeft size={16} /> {t('rooms.back' as never)}
       </button>

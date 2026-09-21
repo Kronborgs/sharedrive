@@ -12,6 +12,25 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 
 ## Changelog
 
+### Unreleased — September 2026
+
+#### New features
+- **Rooms and chat improvements** — rooms support custom icons, and the Rooms area brings room chats and direct conversations into one searchable list with unread filtering.
+- **Direct and group conversations** — start a private chat with an existing Sharedrive user or invite someone by email. Create named groups from room contacts, add members, and manage groups as their owner.
+- **Files in direct chats** — share file attachments in private and group conversations, with the existing Sharedrive access checks applied to linked resources.
+- **Self-hosted GIF library** — search the Rooms GIF collection and share animated previews. GIFs imported from supported external sources are stored in Sharedrive before being used in chat.
+- **Unread chat email digests** — when SMTP is configured, users receive one digest for unread room and direct messages, at most once every 12 hours. The email links back to each message.
+- **Generic chat push notifications** — opt-in Web Push alerts for new room and direct messages show only “Ny besked” or “New message”, with no sender, chat name, or message content. Tap a notification to open the conversation.
+
+#### Bug fixes and refinements
+- **Unread indicators** — total unread chat counts are visible in the Rooms conversation list, Sharedrive sidebar, and browser title.
+- **Mobile chat navigation** — conversation selection and chat layout have been refined for narrow screens.
+- **Chat and GIF reliability** — corrected group-member and chat-only account routing, handled mixed GIF catalogue metadata, and fixed animated GIF previews and import behavior.
+- **Meeting setup** — camera devices can be selected, and Rooms reports when LiveKit is unavailable before a user tries to join.
+- **Mobile app layout** — the app uses the dynamic viewport height, and the compact music player stays below the top bar so it does not cover page content.
+
+---
+
 ### v2.1.1 — 8 August 2026
 
 #### Notes and checklists
@@ -194,13 +213,21 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 - **Pending shares** — invites a non-registered email and converts the share on registration
 - Share notification emails and invitation emails via SMTP
 
+### Rooms and chat
+- **Room collaboration** — join rooms, chat with members, reply and react to messages, and share file or note resources.
+- **Private and group conversations** — start direct chats with room contacts or invited users, create named groups, and share attachments.
+- **GIFs and unread status** — search the self-hosted GIF library and see unread chat counts in the conversation list, sidebar, and browser title.
+- **Voice, video, and screen sharing** — optional LiveKit meetings; installation and security details are in [Rooms architecture and operations](docs/ROOMS.md).
+- **Unread email digests** — optional SMTP email reminders for unread room and direct messages.
+- **Generic chat push notifications** — opt-in alerts show only that a new message arrived; the lock screen never shows the sender, conversation name, or message text.
+
 ### M3U Playlists
 - Create M3U playlists directly from selected audio files in the file manager
 - **Persistent sidebar player** — plays in the background while navigating; collapses to a mini-bar; expands to show track list with per-track remove button and Bass / Volume / Treble neumorphic dials
 - **Android media controls** — supported browsers expose track details, play/pause, previous/next, and seeking through the Android lock screen, notification shade, Bluetooth headsets, and compatible car controls
 - **Retro transport controls** — Play, Pause, Previous, and Next are neumorphic press-down buttons styled after a vintage tape deck; physically depress on click and glow when active
 - **LED display** — VFD-style panel shows a cyan track-number counter and an amber scrolling track-name ticker; click to expand/collapse the track list
-- **Mobile bottom bar** — floating mini-player on small screens; tap to expand full sheet with track list and controls
+- **Mobile top player** — compact player stays below the top bar on small screens; tap to expand the track list and controls
 - **Audio equaliser** — neumorphic dial controls for Bass (low-shelf 200 Hz), Volume, and Treble (high-shelf 4 kHz) via the Web Audio API; available in both the sidebar player and the audio preview modal; each dial sweeps ±12 dB
 - **Shuffle mode** — randomises track order; toggles with a single click; highlighted when active
 - **Cross-device state sync** — active playlist, current track index, volume and shuffle mode are saved server-side (per user) and restored on any device or browser after login; instant hydration from localStorage on same device
@@ -499,16 +526,17 @@ docker buildx build \
 
 ---
 
-## Installable Web Apps — Sharedrive & Notes
+## Installable Web Apps — Sharedrive, Notes & Rooms
 
-Sharedrive provides two focused Progressive Web Apps that can be installed side-by-side from the same deployment:
+Sharedrive provides three focused Progressive Web Apps that can be installed side-by-side from the same deployment:
 
 | App | Start URL | Purpose |
 |---|---|---|
 | **Sharedrive** | `/files` | File manager, uploads, previews, file sharing, and the Android Share Target |
 | **Sharedrive Notes** | `/notes/` | Notes, checklists, and focused accountless guest access |
+| **Sharedrive Rooms** | `/rooms/` | Room chat, direct conversations, and meetings |
 
-Both apps use separate manifest identities and non-overlapping scopes. Installing Notes does not replace the Sharedrive file app or its icon.
+Each app uses its own manifest identity and scope. Installing Notes or Rooms does not replace another Sharedrive app or its icon.
 
 ### Install Sharedrive
 
@@ -520,6 +548,12 @@ Both apps use separate manifest identities and non-overlapping scopes. Installin
 
 1. Open the Notes workspace at `/notes/`, or open a valid guest invitation.
 2. Select **Install Notes** in the Notes header or guest editor.
+3. Confirm the browser installation prompt.
+
+### Install Sharedrive Rooms
+
+1. Open the Rooms workspace at `/rooms/` in a supported browser.
+2. Select **Install Rooms** or use the browser menu to install the app / add it to the Home Screen.
 3. Confirm the browser installation prompt.
 
 If an in-app install action is not shown, the app may already be installed or the browser may not currently consider installation available. Use the browser's **Install app** or **Add to Home Screen** action as a fallback.
@@ -551,6 +585,39 @@ Android may restrict an installed web app in the background unless battery use a
 After changing these settings, close and reopen Sharedrive, start a track, confirm that the media notification appears, and then lock the screen. If controls still do not appear, verify that the browser itself is allowed to show notifications and is up to date.
 
 > **Platform limitation:** Media Session requests lock-screen controls but cannot override Android, Nothing OS, browser autoplay rules, battery management, or lost audio focus. A phone may still pause playback when another app takes audio focus or the operating system force-stops the browser.
+
+### Chat notifications on Android and iPhone/iPad
+
+Rooms can show a lock-screen notification for a new room or direct message while the app is in the background. The visible notification contains only **“Ny besked”** or **“New message”**; it never contains the sender, room/conversation name, or message text. Notifications require HTTPS, server VAPID keys, browser permission, and permission in the phone lock-screen settings.
+
+#### Configure Web Push on the Sharedrive server
+
+1. Generate one VAPID key pair from the repository:
+
+   ```bash
+   cd backend
+   go run ./cmd/generate-vapid-keys
+   ```
+
+2. Add the printed `WEB_PUSH_PUBLIC_KEY` and `WEB_PUSH_PRIVATE_KEY` values to the server `.env`. Set `WEB_PUSH_SUBJECT` to a contact URI such as `mailto:admin@yourdomain.com`.
+3. Restart Sharedrive and keep the same key pair. Changing it requires devices to enable notifications again. Never publish or commit the private key.
+
+#### Android
+
+1. Install **Sharedrive Rooms** from Chrome: open `/rooms/`, choose **Install Rooms** or **Install app** in the browser menu, and confirm.
+2. Open the installed Rooms app, sign in, open the conversation list, and tap **Enable chat notifications**. Allow the notification permission prompt.
+3. In Android **Settings → Apps → Sharedrive** (or **Chrome**, if Android lists the browser instead), allow notifications. Enable lock-screen notifications and choose to show notifications on the lock screen.
+4. If the notification permission was denied earlier, re-enable it from the same Android app/browser settings, then return to Rooms.
+
+#### iPhone and iPad
+
+1. On iOS/iPadOS 16.4 or later, open `/rooms/` in Safari, choose **Share → Add to Home Screen**, and launch the installed Rooms app from the Home Screen.
+2. Sign in, open the conversation list, tap **Enable chat notifications**, and allow notifications.
+3. In iPhone/iPad **Settings → Notifications → Sharedrive Rooms**, allow notifications and enable **Lock Screen**. The exact labels can vary by OS version.
+
+The phone controls whether notifications appear on its lock screen. Focus modes, notification summaries, battery restrictions, or disabled lock-screen previews can delay or hide them.
+
+---
 
 ### Share files from Android directly to Sharedrive
 
@@ -797,6 +864,9 @@ Redis is **intentionally ephemeral** — it holds rate-limit counters, pending 2
 | `BACKUP_HMAC_SECRET` | **required** | 32+ byte random secret |
 | `TOTP_ENCRYPT_KEY` | **required** | Exactly 64 hex chars (32 bytes) |
 | `DEVICE_TRUST_SECRET` | **required** | 32+ byte random secret |
+| `WEB_PUSH_PUBLIC_KEY` | — | Optional VAPID public key for Rooms chat push notifications. |
+| `WEB_PUSH_PRIVATE_KEY` | — | Optional VAPID private key. Keep it secret and stable; never commit it. |
+| `WEB_PUSH_SUBJECT` | — | VAPID contact URI, e.g. `mailto:admin@yourdomain.com`. |
 | `POSTGRES_HOST` | — | PostgreSQL host |
 | `POSTGRES_PORT` | `5432` | PostgreSQL port |
 | `POSTGRES_DB` | `privatedrive` | Database name |

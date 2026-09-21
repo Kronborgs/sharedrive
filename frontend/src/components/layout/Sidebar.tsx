@@ -37,6 +37,7 @@ import { APP_VERSION } from '@/version'
 import { CHANGELOG_ENTRIES } from '@/changelog.generated'
 import { ignorePromise } from '@/lib/ignore-promise'
 import { listDirectConversations, listRooms, totalDirectUnread, totalRoomUnread } from '@/lib/rooms'
+import { unregisterRoomPushSubscription } from '@/components/rooms/ChatPushNotifications'
 
 interface NavItem {
   to: string
@@ -523,8 +524,8 @@ function SidebarMobilePlayer({
 
       {mobilePlayerOpen && (
         <div
-          className="md:hidden fixed bottom-0 left-0 right-0 z-[60] bg-white dark:bg-[#1a1d27] rounded-t-2xl border-t border-zinc-200 dark:border-[#2d3148] shadow-2xl flex flex-col"
-          style={{ maxHeight: '85dvh' }}
+          className="md:hidden fixed left-0 right-0 z-[60] bg-white dark:bg-[#1a1d27] rounded-b-2xl border-b border-zinc-200 dark:border-[#2d3148] shadow-2xl flex flex-col"
+          style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))', maxHeight: 'calc(100dvh - 4rem - env(safe-area-inset-top, 0px))' }}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148] shrink-0">
             <div className="flex items-center gap-2 min-w-0">
@@ -620,8 +621,8 @@ function SidebarMobilePlayer({
       )}
 
       <div
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-[#1a1d27]/95 backdrop-blur-sm border-t border-zinc-200 dark:border-[#2d3148] shadow-lg"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        className="md:hidden fixed top-14 left-0 right-0 z-50 bg-white/95 dark:bg-[#1a1d27]/95 backdrop-blur-sm border-b border-zinc-200 dark:border-[#2d3148] shadow-lg"
+        style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}
       >
         <SidebarProgressBar
           progress={playlist.progress}
@@ -748,6 +749,11 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
   }
 
   const handleLogout = async () => {
+    try {
+      await unregisterRoomPushSubscription()
+    } catch {
+      // Continue logout even if the push service cannot be reached.
+    }
     try {
       await api.post('/api/v1/auth/logout', {})
     } finally {

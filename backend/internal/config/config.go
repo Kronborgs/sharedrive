@@ -57,7 +57,10 @@ type Config struct {
 	RoomsEncryptKey  string `mapstructure:"ROOMS_ENCRYPT_KEY"`
 	LiveKitURL       string `mapstructure:"LIVEKIT_URL"`
 	LiveKitAPIKey    string `mapstructure:"LIVEKIT_API_KEY"`
-	LiveKitAPISecret string `mapstructure:"LIVEKIT_API_SECRET"`
+    LiveKitAPISecret string `mapstructure:"LIVEKIT_API_SECRET"`
+    WebPushPublicKey string `mapstructure:"WEB_PUSH_PUBLIC_KEY"`
+    WebPushPrivateKey string `mapstructure:"WEB_PUSH_PRIVATE_KEY"`
+    WebPushSubject string `mapstructure:"WEB_PUSH_SUBJECT"`
 
 	// SMTP
 	SMTPHost     string `mapstructure:"SMTP_HOST"`
@@ -162,7 +165,10 @@ func bindExplicitEnvKeys(v *viper.Viper) {
 		"SMTP_HOST",
 		"SMTP_USER",
 		"SMTP_PASSWORD",
-		"SMTP_FROM",
+        "SMTP_FROM",
+        "WEB_PUSH_PUBLIC_KEY",
+        "WEB_PUSH_PRIVATE_KEY",
+        "WEB_PUSH_SUBJECT",
 	} {
 		_ = v.BindEnv(key)
 	}
@@ -228,7 +234,10 @@ func applyDirectEnvOverrides(cfg *Config) {
 		{target: &cfg.RoomsEncryptKey, key: "ROOMS_ENCRYPT_KEY"},
 		{target: &cfg.LiveKitURL, key: "LIVEKIT_URL"},
 		{target: &cfg.LiveKitAPIKey, key: "LIVEKIT_API_KEY"},
-		{target: &cfg.LiveKitAPISecret, key: "LIVEKIT_API_SECRET"},
+        {target: &cfg.LiveKitAPISecret, key: "LIVEKIT_API_SECRET"},
+        {target: &cfg.WebPushPublicKey, key: "WEB_PUSH_PUBLIC_KEY"},
+        {target: &cfg.WebPushPrivateKey, key: "WEB_PUSH_PRIVATE_KEY"},
+        {target: &cfg.WebPushSubject, key: "WEB_PUSH_SUBJECT"},
 	}
 	for _, override := range overrides {
 		if val := os.Getenv(override.key); val != "" {

@@ -70,6 +70,7 @@ export const api = {
   put:    <T>(path: string, body?: unknown)        => request<T>('PUT',    path, body),
   patch:  <T>(path: string, body?: unknown)        => request<T>('PATCH',  path, body),
   delete: <T>(path: string)                        => request<T>('DELETE', path),
+  deleteWithBody: <T>(path: string, body: unknown) => request<T>('DELETE', path, body),
 }
 
 export function prepareDownload(req: PrepareDownloadRequest): Promise<PrepareDownloadResponse> {

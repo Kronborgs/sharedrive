@@ -563,6 +563,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/v1/notes/{id}/shares/{shareId}", s.notesHandler.RevokeShare)
 		r.Post("/api/v1/notes/{id}/shares/{shareId}/resend", s.notesHandler.ResendShare)
 
+        r.Get("/api/v1/rooms/push-config", s.roomsHandler.RequireEnabled(s.roomsHandler.GetPushConfig))
+        r.Post("/api/v1/rooms/push-subscriptions", s.roomsHandler.RequireEnabled(s.roomsHandler.SavePushSubscription))
+        r.Delete("/api/v1/rooms/push-subscriptions", s.roomsHandler.RequireEnabled(s.roomsHandler.DeletePushSubscription))
 		r.Get("/api/v1/rooms", s.roomsHandler.RequireEnabled(s.roomsHandler.List))
 		r.Get("/api/v1/rooms/gifs", s.roomsHandler.RequireEnabled(s.roomsHandler.ListGIFLibrary))
 		r.Post("/api/v1/rooms/gifs/import", s.roomsHandler.RequireEnabled(s.roomsHandler.ImportRemoteGIF))

@@ -103,6 +103,40 @@ self.addEventListener('fetch', (event) => {
   }
 })
 
+// ── Web Push chat notifications ─────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  event.waitUntil((async () => {
+    let data = {}
+    try { data = event.data ? event.data.json() : {} } catch { data = {} }
+    const path = typeof data.path === 'string' && data.path.startsWith('/rooms') ? data.path : '/rooms'
+    const locale = data.locale === 'da' ? 'da' : 'en'
+    await self.registration.showNotification(locale === 'da' ? 'Ny besked' : 'New message', {
+      icon: '/rooms-icon-192.png',
+      badge: '/rooms-icon-192.png',
+      tag: 'sharedrive-chat-message',
+      renotify: true,
+      data: { path },
+    })
+  })())
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const requestedPath = event.notification.data && typeof event.notification.data.path === 'string'
+    ? event.notification.data.path
+    : '/rooms'
+  const target = new URL(requestedPath.startsWith('/rooms') ? requestedPath : '/rooms', self.location.origin)
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    for (const client of windows) {
+      if ('focus' in client && 'navigate' in client) {
+        await client.navigate(target.href)
+        return client.focus()
+      }
+    }
+    return self.clients.openWindow(target.href)
+  })())
+})
 // ── Share Target ────────────────────────────────────────────────────────────
 // When the user shares files to Sharedrive from Android, the OS POSTs to
 // /share-target. The SW intercepts this, stashes the files in a temporary

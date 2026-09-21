@@ -232,6 +232,7 @@ func (handler *Handler) CreateDirectMessage(w http.ResponseWriter, request *http
 		handler.respondError(w, err)
 		return
 	}
+    handler.pushAfterDirectMessage(conversationID, user.ID, message.ID)
 	httputil.Respond(w, http.StatusCreated, message)
 }
 

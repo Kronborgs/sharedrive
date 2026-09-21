@@ -12,6 +12,7 @@ require (
 	github.com/pressly/goose/v3 v3.24.1
 	github.com/redis/go-redis/v9 v9.20.0
 	github.com/rs/zerolog v1.34.0
+    github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/spf13/viper v1.20.1
 	github.com/tus/tusd/v2 v2.9.2
 	github.com/wneessen/go-mail v0.7.3

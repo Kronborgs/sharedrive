@@ -46,6 +46,7 @@ type Handler struct {
 	uploadTokens  guestUploadTokenIssuer
 	mailer             RoomMailer
 	notificationMailer UnreadMessageMailer
+    push *pushService
 	liveKitURL    string
 	liveKitKey    string
 	liveKitSecret string
@@ -59,12 +60,13 @@ type HandlerConfig struct {
 	SecureCookie                          bool
 	UploadTokens                          guestUploadTokenIssuer
 	NotificationMailer UnreadMessageMailer
+    PushPublicKey, PushPrivateKey, PushSubject, SubscriptionSecret string
 	Mailer             RoomMailer
 	LiveKitURL, LiveKitKey, LiveKitSecret string
 }
 
 func NewHandler(config HandlerConfig) *Handler {
-	return &Handler{service: config.Service, hub: newRoomHub(), limiter: config.Limiter, redis: config.Redis, appURL: config.AppURL, secureCookie: config.SecureCookie, uploadTokens: config.UploadTokens, mailer: config.Mailer, notificationMailer: config.NotificationMailer, liveKitURL: strings.TrimSpace(config.LiveKitURL), liveKitKey: strings.TrimSpace(config.LiveKitKey), liveKitSecret: strings.TrimSpace(config.LiveKitSecret)}
+	return &Handler{service: config.Service, hub: newRoomHub(), limiter: config.Limiter, redis: config.Redis, appURL: config.AppURL, secureCookie: config.SecureCookie, uploadTokens: config.UploadTokens, mailer: config.Mailer, notificationMailer: config.NotificationMailer, push: newPushService(config.Service.db, config.PushPublicKey, config.PushPrivateKey, config.PushSubject, config.SubscriptionSecret), liveKitURL: strings.TrimSpace(config.LiveKitURL), liveKitKey: strings.TrimSpace(config.LiveKitKey), liveKitSecret: strings.TrimSpace(config.LiveKitSecret)}
 }
 
 func (handler *Handler) RunUnreadMessageEmails(ctx context.Context) error {
@@ -466,6 +468,7 @@ func (handler *Handler) CreateMessage(w http.ResponseWriter, request *http.Reque
 		return
 	}
 	handler.publish(request.Context(), roomID)
+    handler.pushAfterRoomMessage(roomID, user.ID, message.ID)
 	httputil.Respond(w, http.StatusCreated, message)
 }
 func (handler *Handler) List(w http.ResponseWriter, request *http.Request) {

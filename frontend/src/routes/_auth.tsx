@@ -47,7 +47,7 @@ function AuthLayoutContent() {
   const needsTOTPSetup = !!user.force_totp_setup && !user.totp_enabled
 
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-[#0f1117]">
+    <div className="flex h-dvh overflow-hidden bg-zinc-50 dark:bg-[#0f1117]">
       {/* Admin assistance banner — fixed at top */}
       <AdminBanner />
       {/* Offline indicator */}
@@ -59,7 +59,7 @@ function AuthLayoutContent() {
       {/* Main content */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <Header user={user} onMenuToggle={() => setSidebarOpen(v => !v)} />
-        <main className={cn('min-h-0 flex-1 overflow-y-auto p-6', activePlaylistId ? 'pb-24 md:pb-6' : '')}>
+        <main className={cn('min-h-0 flex-1 overflow-y-auto p-6', activePlaylistId ? 'pt-20 md:pt-6' : '')}>
           <Outlet />
         </main>
         <Footer />

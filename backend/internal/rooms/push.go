@@ -149,34 +149,68 @@ func (service *pushService) notifyDirect(ctx context.Context, conversationID, se
 
 func (service *pushService) sendForQuery(ctx context.Context, query string, conversationID, senderID uuid.UUID, path string) error {
 	rows, err := service.db.Query(ctx, query, conversationID, senderID)
-	if err != nil { return err }
-	type target struct { hash, ciphertext []byte }
+	if err != nil {
+		return err
+	}
+	type target struct {
+		hash, ciphertext []byte
+	}
 	targets := make([]target, 0)
 	for rows.Next() {
 		var userID uuid.UUID
 		var item target
-		if err := rows.Scan(&userID, &item.hash, &item.ciphertext); err != nil { rows.Close(); return err }
+		if err := rows.Scan(&userID, &item.hash, &item.ciphertext); err != nil {
+			rows.Close()
+			return err
+		}
 		targets = append(targets, item)
 	}
-	if err := rows.Err(); err != nil { rows.Close(); return err }
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
 	rows.Close()
+
 	var lastErr error
 	for _, item := range targets {
-		stored, err := service.decryptSubscription(item.hash, item.ciphertext)
-		if err != nil { lastErr = err; continue }
-		payload, _ := json.Marshal(chatPushMessage{Path: path, Locale: stored.Locale})
-		subscription := &webpush.Subscription{Endpoint: stored.Subscription.Endpoint, Keys: webpush.Keys{P256dh: stored.Subscription.Keys.P256dh, Auth: stored.Subscription.Keys.Auth}}
-		response, sendErr := webpush.SendNotificationWithContext(ctx, payload, subscription, &webpush.Options{Subscriber: service.subject, VAPIDPublicKey: service.publicKey, VAPIDPrivateKey: service.privateKey, TTL: 60})
-		if sendErr != nil { lastErr = sendErr; continue }
-		_ = response.Body.Close()
-		if response.StatusCode == 404 || response.StatusCode == 410 {
-			_, deleteErr := service.db.Exec(ctx, `DELETE FROM room_push_subscriptions WHERE endpoint_hash=$1`, item.hash)
-			if deleteErr != nil { lastErr = deleteErr }
-		} else if response.StatusCode < 200 || response.StatusCode >= 300 {
-			lastErr = fmt.Errorf("push service returned HTTP %d", response.StatusCode)
+		if err := service.sendToTarget(ctx, item.hash, item.ciphertext, path); err != nil {
+			lastErr = err
 		}
 	}
 	return lastErr
+}
+
+func (service *pushService) sendToTarget(ctx context.Context, hash, ciphertext []byte, path string) error {
+	stored, err := service.decryptSubscription(hash, ciphertext)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.Marshal(chatPushMessage{Path: path, Locale: stored.Locale})
+	subscription := &webpush.Subscription{
+		Endpoint: stored.Subscription.Endpoint,
+		Keys: webpush.Keys{
+			P256dh: stored.Subscription.Keys.P256dh,
+			Auth:   stored.Subscription.Keys.Auth,
+		},
+	}
+	response, err := webpush.SendNotificationWithContext(ctx, payload, subscription, &webpush.Options{
+		Subscriber:      service.subject,
+		VAPIDPublicKey:  service.publicKey,
+		VAPIDPrivateKey: service.privateKey,
+		TTL:             60,
+	})
+	if err != nil {
+		return err
+	}
+	_ = response.Body.Close()
+	if response.StatusCode == 404 || response.StatusCode == 410 {
+		_, err := service.db.Exec(ctx, `DELETE FROM room_push_subscriptions WHERE endpoint_hash=$1`, hash)
+		return err
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("push service returned HTTP %d", response.StatusCode)
+	}
+	return nil
 }
 
 func (handler *Handler) pushAfterRoomMessage(roomID, senderID, messageID uuid.UUID) {

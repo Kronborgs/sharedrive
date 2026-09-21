@@ -14,7 +14,7 @@ function applicationServerKey(value: string): ArrayBuffer {
   const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
   const decoded = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))
   const bytes = new Uint8Array(decoded.length)
-  for (let index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index)
+  for (let index = 0; index < decoded.length; index += 1) bytes[index] = (decoded.codePointAt(index) ?? 0)
   return bytes.buffer
 }
 
@@ -108,8 +108,12 @@ export function ChatPushNotifications() {
   if (!supported) return null
   if (config && !config.enabled) return <p className="px-2 py-2 text-xs text-muted">{t('rooms.pushUnavailable')}</p>
 
+  let notificationIcon = <Bell size={15} />
+  if (busy) notificationIcon = <Loader2 size={15} className="animate-spin" />
+  else if (subscribed) notificationIcon = <BellOff size={15} />
+
   return <button type="button" onClick={() => { void toggle() }} disabled={busy || !config?.enabled} aria-pressed={subscribed} className="mt-2 flex min-h-10 w-full items-center gap-2 rounded-lg border border-subtle px-3 py-2 text-left text-xs font-medium text-muted hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-60 dark:hover:bg-[#2d3148] dark:hover:text-slate-100">
-    {busy ? <Loader2 size={15} className="animate-spin" /> : subscribed ? <BellOff size={15} /> : <Bell size={15} />}
+    {notificationIcon}
     <span>{subscribed ? t('rooms.pushDisable') : t('rooms.pushEnable')}</span>
   </button>
 }

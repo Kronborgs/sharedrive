@@ -166,9 +166,7 @@ func (service *pushService) sendForQuery(ctx context.Context, query string, conv
 		if err != nil { lastErr = err; continue }
 		payload, _ := json.Marshal(chatPushMessage{Path: path, Locale: stored.Locale})
 		subscription := &webpush.Subscription{Endpoint: stored.Subscription.Endpoint, Keys: webpush.Keys{P256dh: stored.Subscription.Keys.P256dh, Auth: stored.Subscription.Keys.Auth}}
-		authScheme := webpush.VAPID
-		if host := strings.ToLower(mustEndpointHost(subscription.Endpoint)); strings.HasSuffix(host, ".googleapis.com") { authScheme = webpush.WebPush }
-		response, sendErr := webpush.SendNotificationWithContext(ctx, payload, subscription, &webpush.Options{Subscriber: service.subject, VAPIDPublicKey: service.publicKey, VAPIDPrivateKey: service.privateKey, TTL: 60, AuthScheme: authScheme})
+		response, sendErr := webpush.SendNotificationWithContext(ctx, payload, subscription, &webpush.Options{Subscriber: service.subject, VAPIDPublicKey: service.publicKey, VAPIDPrivateKey: service.privateKey, TTL: 60})
 		if sendErr != nil { lastErr = sendErr; continue }
 		_ = response.Body.Close()
 		if response.StatusCode == 404 || response.StatusCode == 410 {
@@ -179,12 +177,6 @@ func (service *pushService) sendForQuery(ctx context.Context, query string, conv
 		}
 	}
 	return lastErr
-}
-
-func mustEndpointHost(endpoint string) string {
-	parsed, err := url.Parse(endpoint)
-	if err != nil { return "" }
-	return parsed.Hostname()
 }
 
 func (handler *Handler) pushAfterRoomMessage(roomID, senderID, messageID uuid.UUID) {

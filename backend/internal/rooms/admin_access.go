@@ -159,7 +159,8 @@ func (handler *Handler) AdminSetUserAccess(w http.ResponseWriter, request *http.
 		handler.respondError(w, ErrNotFound)
 		return
 	}
-		_, _ = handler.service.db.Exec(request.Context(), `UPDATE user_product_access SET access_level=$1, updated_at=NOW() WHERE user_id=$2 AND product='rooms'`, map[bool]string{true: "full", false: "none"}[*input.Enabled], userID)if !*input.Enabled {
+		_, _ = handler.service.db.Exec(request.Context(), `UPDATE user_product_access SET access_level=$1, updated_at=NOW() WHERE user_id=$2 AND product='rooms'`, map[bool]string{true: "full", false: "none"}[*input.Enabled], userID)
+	if !*input.Enabled {
 		if err := handler.disconnectUserFromRooms(request, userID); err != nil {
 			handler.respondError(w, err)
 			return

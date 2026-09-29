@@ -21,13 +21,16 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 - **Self-hosted GIF library** — search the Rooms GIF collection and share animated previews. GIFs imported from supported external sources are stored in Sharedrive before being used in chat.
 - **Unread chat email digests** — when SMTP is configured, users receive one digest for unread room and direct messages, at most once every 12 hours. The email links back to each message.
 - **Generic chat push notifications** — opt-in Web Push alerts for new room and direct messages show only “Ny besked” or “New message”, with no sender, chat name, or message content. Tap a notification to open the conversation.
+- **Central admin access controls** — administrators can view and cycle per-user access for Files, Rooms, Notes, and Music between none, limited, and full. Backend middleware enforces disabled product access; the existing resource-level permission checks remain authoritative.
+- **Per-user chat notification control** — chat notifications are enabled by default and can be turned off for an individual user from the admin Users view. The preference is respected by chat email digests and generic Rooms Web Push notifications.
+- **Rooms access administration** — the admin Rooms view now includes Sharedrive/Rooms accounts, pending Room invitations, active guest sessions, and group membership management. Pending invitations and guest sessions can be revoked from the overview.
 
 #### Bug fixes and refinements
 - **Unread indicators** — total unread chat counts are visible in the Rooms conversation list, Sharedrive sidebar, and browser title.
 - **Mobile chat navigation** — conversation selection and chat layout have been refined for narrow screens.
 - **Chat and GIF reliability** — corrected group-member and chat-only account routing, handled mixed GIF catalogue metadata, and fixed animated GIF previews and import behavior.
 - **Meeting setup** — camera devices can be selected, and Rooms reports when LiveKit is unavailable before a user tries to join.
-- **Mobile app layout** — the app uses the dynamic viewport height, and the compact music player stays below the top bar so it does not cover page content.
+- **Mobile app layout** — the app uses the dynamic viewport height. The compact music player stays at the top of the mobile page, below the header and behind the mobile sidebar overlay, so Notes, My Files, and other navigation items remain tappable.
 
 ---
 
@@ -305,6 +308,9 @@ See [Notes architecture and security](docs/NOTES.md) for the data model, API, li
 - **Live Bandwidth panel** — real-time per-user upload/download rate (updated every 3 s); tracks both browser (TUS resumable) and WebDAV (Windows Explorer / macOS Finder) transfers as they stream
 - **Guest accounts** — limited role; redirect to Shares view; promotable to full user
 - **Group management** — create groups, add/remove members, use groups as share targets
+- **Central product access** — view and change a user’s Files, Rooms, Notes, and Music access from the Users tab. `none` blocks the product; `limited` and `full` are stored for the next resource-level permission layer.
+- **Chat notification preference** — toggle a user’s chat notifications on or off. New users default to enabled, and disabled users are excluded from chat email and Web Push delivery.
+- **Rooms access overview** — review Room-enabled accounts, pending invitations, active guests, and group members from the admin area; invitations and guest sessions can be revoked.
 - **Tag management** — admin-defined tags with custom colours; applicable to any file
 - **Admin support access** — limited-scope impersonation of a user account, fully audited; the user sees a real-time banner via SSE
 - **Backup & restore** — export HMAC-signed gzip JSON (metadata only, no file blobs); restore at any time or during first-run setup; backup history shown automatically whether or not `BACKUPS_ROOT` is explicitly configured (falls back to `/mnt/backup`)

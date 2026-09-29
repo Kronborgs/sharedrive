@@ -101,3 +101,20 @@ and [self-hosted deployment guide](https://docs.livekit.io/transport/self-hostin
 - **One participant cannot hear or see a shared screen:** check the UDP range,
   TCP 7881, NAT/external-IP configuration and optional TURN configuration.
 - **Restored chat cannot be read:** use the original `ROOMS_ENCRYPT_KEY`.
+
+## Admin access and notifications
+
+The admin Rooms access view is the operational overview for Rooms-related access. It shows:
+
+- Sharedrive and Rooms-enabled accounts, account type, access state, and Room count.
+- Pending Room member invitations with Room, role, expiry, and revoke action.
+- Active guest sessions with Room, invitation label, expiry, last activity, and revoke action.
+- Group membership management for adding and removing Sharedrive users.
+
+The central admin Users view also exposes product access for Files, Rooms, Notes, and Music. The stored levels are `none`, `limited`, and `full`; the backend blocks disabled products while resource-level sharing and Room membership checks remain separate.
+
+Chat notification delivery is controlled per user. It is enabled by default, can be disabled by an administrator, and is checked by both unread chat email digests and generic Rooms Web Push delivery. Push content remains privacy-preserving: it does not reveal message text, sender, or conversation name on the lock screen.
+
+## Mobile PWA player and navigation
+
+The compact mobile music player remains fixed below the application header so playback controls are available while navigating. Its stacking order is below the mobile sidebar overlay and sidebar, which keeps Notes, My Files, and the other navigation links usable when the menu is opened. Media Session and lock-screen playback behavior are unchanged.

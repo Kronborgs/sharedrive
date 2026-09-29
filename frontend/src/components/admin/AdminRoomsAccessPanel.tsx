@@ -14,8 +14,27 @@ interface RoomAccount {
   room_count: number
 }
 
+interface PendingRoomInvitation {
+  id: string
+  email: string
+  room_name: string
+  role: string
+  expires_at: string
+}
+
+interface ActiveRoomGuest {
+  session_id: string
+  display_name: string
+  room_name: string
+  invitation: string
+  expires_at: string
+  last_accessed_at?: string
+}
+
 interface AdminRoomsOverview {
   accounts: RoomAccount[]
+  pending_invitations: PendingRoomInvitation[]
+  guests: ActiveRoomGuest[]
 }
 
 interface GIFLibraryItem {

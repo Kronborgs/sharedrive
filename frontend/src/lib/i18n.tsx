@@ -915,6 +915,7 @@ const translations = {
   'users.promoteToUser':      { da: 'Forfrem til regulær bruger',     en: 'Promote to regular user' },
   'users.promote':            { da: 'Forfrem',                         en: 'Promote' },
   'users.removeGuest':        { da: 'Fjern gæst',                     en: 'Remove guest' },
+  'users.remove':             { da: 'Fjern',                         en: 'Remove' },
   'users.editQuota':          { da: 'Rediger kvote og indstillinger',  en: 'Edit quota & settings' },
   'users.demoteToUser':       { da: 'Degradér til bruger',            en: 'Demote to user' },
   'users.promoteToAdmin':     { da: 'Forfrem til admin',              en: 'Promote to admin' },

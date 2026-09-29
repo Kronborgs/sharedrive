@@ -799,7 +799,31 @@ function GroupMembersPanel({ groupID, users, qc }: Readonly<{ groupID: string; u
       {members.length === 0 ? <span className="text-xs text-muted">Ingen medlemmer</span> : members.map(member => <span key={member.user_id} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-xs dark:bg-[#1a1d27]">{member.display_name || member.email}<button type="button" onClick={() => remove.mutate(member.user_id)} className="text-red-500" aria-label={`${t('users.remove')} ${member.display_name || member.email}`}>×</button></span>)}
     </div>
   </div>
-}function UserRow({
+}
+
+function productAccessClass(level: ProductAccessLevel): string {
+  if (level === 'none') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+  if (level === 'limited') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+}
+
+function ProductAccessCell({ user, onToggleProductAccess }: Readonly<{ user: User; onToggleProductAccess: (product: ProductName, level: ProductAccessLevel) => void }>) {
+  return <td className="px-4 py-3">
+    <div className="grid grid-cols-2 gap-1 min-w-[150px]">
+      {(Object.keys(PRODUCT_LABELS) as ProductName[]).map(product => {
+        const current = user.product_access?.[product] ?? 'none'
+        const next = PRODUCT_LEVELS[(PRODUCT_LEVELS.indexOf(current) + 1) % PRODUCT_LEVELS.length]
+        return <button key={product} type="button" title={`${PRODUCT_LABELS[product]}: ${current} → ${next}`} onClick={() => {
+          if (product === 'rooms' && next === 'none' && !confirm('Fjern Rooms-adgang og behold medlemskaber?')) return
+          onToggleProductAccess(product, next)
+        }} className={`rounded px-1.5 py-0.5 text-[10px] text-left ${productAccessClass(current)}`}>
+          {PRODUCT_LABELS[product]}: {current}
+        </button>
+      })}
+    </div>
+  </td>
+}
+function UserRow({
   user,
   onEdit,
   onLock,
@@ -811,6 +835,7 @@ function GroupMembersPanel({ groupID, users, qc }: Readonly<{ groupID: string; u
   onUnrequireTOTP,
   onChangeRole,
   onToggleChatNotifications,
+  onToggleProductAccess,
   isSelf,
   isLastAdmin,
 }: Readonly<{
@@ -877,20 +902,8 @@ function GroupMembersPanel({ groupID, users, qc }: Readonly<{ groupID: string; u
           </div>
         </div>
       </td>
-            <td className="px-4 py-3">
-        <div className="grid grid-cols-2 gap-1 min-w-[150px]">
-          {(Object.keys(PRODUCT_LABELS) as ProductName[]).map(product => {
-            const current = user.product_access?.[product] ?? 'none'
-            const next = PRODUCT_LEVELS[(PRODUCT_LEVELS.indexOf(current) + 1) % PRODUCT_LEVELS.length]
-            return <button key={product} type="button" title={`${PRODUCT_LABELS[product]}: ${current} → ${next}`} onClick={() => {
-              if (product === 'rooms' && next === 'none' && !confirm('Fjern Rooms-adgang og behold medlemskaber?')) return
-              onToggleProductAccess(product, next)
-            }} className={`rounded px-1.5 py-0.5 text-[10px] text-left ${current === 'none' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : current === 'limited' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>
-              {PRODUCT_LABELS[product]}: {current}
-            </button>
-          })}
-        </div>
-      </td><td className="px-4 py-3 text-xs text-muted">
+      <ProductAccessCell user={user} onToggleProductAccess={onToggleProductAccess} />
+      <td className="px-4 py-3 text-xs text-muted">
         {user.last_login_at ? formatDate(user.last_login_at) : 'ÔÇö'}
       </td>
       <td className="px-4 py-3">

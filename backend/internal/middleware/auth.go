@@ -74,31 +74,36 @@ func RequireAdmin(next http.Handler) http.Handler {
 // Limited and full access are both allowed here; individual handlers retain their
 // existing resource-level permission checks.
 func RequireProductAccess(db *pgxpool.Pool) func(http.Handler) http.Handler {
-  return func(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-      account := UserFromContext(r.Context())
-      if account == nil || account.IsAdmin() { next.ServeHTTP(w, r); return }
-      product := ""
-      path := r.URL.Path
-      switch {
-      case strings.HasPrefix(path, "/api/v1/rooms"):
-        product = "rooms"
-      case strings.HasPrefix(path, "/api/v1/notes"):
-        product = "notes"
-      case strings.HasPrefix(path, "/api/v1/files"):
-        product = "files"
-        if strings.Contains(path, "/playlist") { product = "music" }
-      }
-      if product == "" { next.ServeHTTP(w, r); return }
-      var level string
-      if err := db.QueryRow(r.Context(), `SELECT access_level FROM user_product_access WHERE user_id=$1 AND product=$2`, account.ID, product).Scan(&level); err != nil {
-        // During a rolling deployment, keep the legacy Rooms flag as a safe fallback.
-        if product == "rooms" && !account.RoomsAccessEnabled { http.Error(w, `{"error":{"code":"FORBIDDEN","message":"Product access is disabled."}}`, http.StatusForbidden); return }
-        next.ServeHTTP(w, r)
-        return
-      }
-      if level == "none" { http.Error(w, `{"error":{"code":"FORBIDDEN","message":"Product access is disabled."}}`, http.StatusForbidden); return }
-      next.ServeHTTP(w, r)
-    })
-  }
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			account := UserFromContext(r.Context())
+			if account == nil || account.IsAdmin() { next.ServeHTTP(w, r); return }
+			product := productForPath(r.URL.Path)
+			if product == "" || productAccessAllowed(r, db, account, product) { next.ServeHTTP(w, r); return }
+			http.Error(w, `{"error":{"code":"FORBIDDEN","message":"Product access is disabled."}}`, http.StatusForbidden)
+		})
+	}
+}
+
+func productForPath(path string) string {
+	switch {
+	case strings.HasPrefix(path, "/api/v1/rooms"):
+		return "rooms"
+	case strings.HasPrefix(path, "/api/v1/notes"):
+		return "notes"
+	case strings.HasPrefix(path, "/api/v1/files") && strings.Contains(path, "/playlist"):
+		return "music"
+	case strings.HasPrefix(path, "/api/v1/files"):
+		return "files"
+	default:
+		return ""
+	}
+}
+
+func productAccessAllowed(r *http.Request, db *pgxpool.Pool, account *user.User, product string) bool {
+	var level string
+	if err := db.QueryRow(r.Context(), `SELECT access_level FROM user_product_access WHERE user_id=$1 AND product=$2`, account.ID, product).Scan(&level); err != nil {
+		return product != "rooms" || account.RoomsAccessEnabled
+	}
+	return level != "none"
 }

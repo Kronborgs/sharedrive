@@ -517,14 +517,14 @@ function SidebarMobilePlayer({
         <button
           type="button"
           aria-label={t('action.close')}
-          className="md:hidden fixed inset-0 z-[55] bg-black/60"
+          className="md:hidden fixed inset-0 z-10 bg-black/60"
           onClick={() => onSetOpen(false)}
         />
       )}
 
       {mobilePlayerOpen && (
         <div
-          className="md:hidden fixed left-0 right-0 z-[60] bg-white dark:bg-[#1a1d27] rounded-b-2xl border-b border-zinc-200 dark:border-[#2d3148] shadow-2xl flex flex-col"
+          className="md:hidden fixed left-0 right-0 z-20 bg-white dark:bg-[#1a1d27] rounded-b-2xl border-b border-zinc-200 dark:border-[#2d3148] shadow-2xl flex flex-col"
           style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))', maxHeight: 'calc(100dvh - 4rem - env(safe-area-inset-top, 0px))' }}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148] shrink-0">
@@ -621,7 +621,7 @@ function SidebarMobilePlayer({
       )}
 
       <div
-        className="md:hidden fixed top-14 left-0 right-0 z-50 bg-white/95 dark:bg-[#1a1d27]/95 backdrop-blur-sm border-b border-zinc-200 dark:border-[#2d3148] shadow-lg"
+        className="md:hidden fixed top-14 left-0 right-0 z-20 bg-white/95 dark:bg-[#1a1d27]/95 backdrop-blur-sm border-b border-zinc-200 dark:border-[#2d3148] shadow-lg"
         style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}
       >
         <SidebarProgressBar

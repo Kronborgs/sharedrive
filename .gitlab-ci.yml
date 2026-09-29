@@ -253,6 +253,9 @@ docker:publish:
 publish_to_github:
   stage: publish
 
+  variables:
+    GIT_DEPTH: 0
+
   image:
     name: alpine/git:latest
     entrypoint: [""]

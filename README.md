@@ -12,7 +12,7 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 
 ## Changelog
 
-### Unreleased — September 2026
+### September 2026
 
 #### New features
 - **Rooms and chat improvements** — rooms support custom icons, and the Rooms area brings room chats and direct conversations into one searchable list with unread filtering.

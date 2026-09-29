@@ -859,6 +859,12 @@ function TotpCell({ user, onRevokeTOTP, onRequireTOTP, onUnrequireTOTP }: Readon
   </div>
 }
 
+
+function quotaPercent(user: User): number {
+  if (user.quota_bytes <= 0) return 0
+  return Math.min(100, (user.quota_used_bytes / user.quota_bytes) * 100)
+}
+
 function UserRow({
   user,
   onEdit,
@@ -890,9 +896,7 @@ function UserRow({
   isSelf: boolean
   isLastAdmin: boolean
 }>) {
-  const percent = user.quota_bytes > 0
-    ? Math.min(100, (user.quota_used_bytes / user.quota_bytes) * 100)
-    : 0
+  const percent = quotaPercent(user)
   const { t } = useI18n()
   let quotaBarColorClass = 'bg-brand-500'
   if (percent > 90) {

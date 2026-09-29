@@ -40,7 +40,7 @@ const unreadMessageDigestQuery = `
 	FROM room_messages message
 	JOIN rooms room ON room.id = message.room_id AND room.archived_at IS NULL
 	JOIN room_members membership ON membership.room_id = message.room_id
-	JOIN users account ON account.id = membership.user_id AND account.is_active = TRUE
+	JOIN users account ON account.id = membership.user_id AND account.is_active = TRUE AND account.chat_notifications_enabled = TRUE
 	JOIN users sender ON sender.id = message.sender_user_id
 	LEFT JOIN room_read_state read_state ON read_state.room_id = message.room_id AND read_state.user_id = membership.user_id
 	LEFT JOIN room_messages last_read ON last_read.id = read_state.last_read_message_id
@@ -68,7 +68,7 @@ const unreadMessageDigestQuery = `
 	JOIN direct_conversations conversation ON conversation.id = message.conversation_id
 	LEFT JOIN rooms source ON source.id = conversation.source_room_id
 	JOIN direct_conversation_members membership ON membership.conversation_id = message.conversation_id AND membership.hidden_at IS NULL
-	JOIN users account ON account.id = membership.user_id AND account.is_active = TRUE
+	JOIN users account ON account.id = membership.user_id AND account.is_active = TRUE AND account.chat_notifications_enabled = TRUE
 	JOIN users sender ON sender.id = message.sender_user_id
 	LEFT JOIN direct_read_state read_state ON read_state.conversation_id = message.conversation_id AND read_state.user_id = membership.user_id
 	LEFT JOIN direct_messages last_read ON last_read.id = read_state.last_read_message_id

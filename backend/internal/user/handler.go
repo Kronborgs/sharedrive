@@ -135,6 +135,11 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.attachProductAccess(r.Context(), users); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
+		return
+	}
+
 	type userWithTOTP struct {
 		*User
 		TOTPEnabled bool `json:"totp_enabled"`
@@ -163,7 +168,8 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusNotFound, userErrNotFound)
 		return
 	}
-	httputil.Respond(w, http.StatusOK, u)
+	if access, accessErr := LoadProductAccess(r.Context(), h.db, u.ID); accessErr == nil { u.ProductAccess = access }
+	 httputil.Respond(w, http.StatusOK, u)
 }
 
 // createUserRequest is the body for direct admin user creation.
@@ -229,6 +235,13 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, err := tx.Exec(ctx, `INSERT INTO user_product_access (user_id, product, access_level)
+		SELECT $1, products.product, CASE WHEN users.rooms_only_account AND products.product <> 'rooms' THEN 'none' ELSE 'full' END
+		FROM users CROSS JOIN (VALUES ('files'::TEXT), ('rooms'::TEXT), ('notes'::TEXT), ('music'::TEXT)) AS products(product)
+		WHERE users.id = $1 ON CONFLICT (user_id, product) DO NOTHING`, newID); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
+		return
+	}
 	for _, gid := range req.GroupIDs {
 		_, _ = tx.Exec(ctx,
 			`INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
@@ -261,6 +274,7 @@ type updateUserRequest struct {
 	MaxUploadBytes     *int64  `json:"max_upload_bytes"`
 	WebDAVEnabled      *bool   `json:"webdav_enabled"`
 	TrashRetentionDays *int    `json:"trash_retention_days"`
+    ChatNotificationsEnabled *bool `json:"chat_notifications_enabled"`
 }
 
 // Update handles PATCH /api/v1/admin/users/{id}
@@ -298,6 +312,9 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.WebDAVEnabled != nil {
 		builder.add("webdav_enabled", *req.WebDAVEnabled)
+	}
+	if req.ChatNotificationsEnabled != nil {
+        builder.add("chat_notifications_enabled", *req.ChatNotificationsEnabled)
 	}
 	if req.TrashRetentionDays != nil {
 		builder.add("trash_retention_days", *req.TrashRetentionDays)

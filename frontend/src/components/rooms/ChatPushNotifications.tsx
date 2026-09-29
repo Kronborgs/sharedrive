@@ -33,6 +33,7 @@ export function ChatPushNotifications() {
   const [supported, setSupported] = useState(false)
   const [subscribed, setSubscribed] = useState(false)
   const [busy, setBusy] = useState(true)
+  const [chatNotificationsEnabled, setChatNotificationsEnabled] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -41,10 +42,14 @@ export function ChatPushNotifications() {
     if (!supportedHere) { setBusy(false); return }
     void (async () => {
       try {
+        const currentUser = await api.get<{ chat_notifications_enabled?: boolean }>('/api/v1/me')
+        if (cancelled) return
+        setChatNotificationsEnabled(currentUser.chat_notifications_enabled !== false)
+
         const serverConfig = await api.get<PushConfig>('/api/v1/rooms/push-config')
         if (cancelled) return
         setConfig(serverConfig)
-        if (!serverConfig.enabled) return
+        if (!serverConfig.enabled || currentUser.chat_notifications_enabled === false) return
         const registration = await navigator.serviceWorker.ready
         const existing = await registration.pushManager.getSubscription()
         if (cancelled) return
@@ -64,8 +69,25 @@ export function ChatPushNotifications() {
     return () => { cancelled = true }
   }, [locale])
 
+  const toggleChatNotifications = async () => {
+    const enabled = !chatNotificationsEnabled
+    setBusy(true)
+    try {
+      await api.patch('/api/v1/me', { chat_notifications_enabled: enabled })
+      if (!enabled) {
+        await unregisterRoomPushSubscription()
+        setSubscribed(false)
+      }
+      setChatNotificationsEnabled(enabled)
+    } catch {
+      toast.error('Chat-notifikationer kunne ikke opdateres')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const toggle = async () => {
-    if (!config?.enabled || !config.public_key || busy) return
+    if (!config?.enabled || !config.public_key || busy || !chatNotificationsEnabled) return
     setBusy(true)
     try {
       const registration = await navigator.serviceWorker.ready
@@ -106,14 +128,17 @@ export function ChatPushNotifications() {
   }
 
   if (!supported) return null
-  if (config && !config.enabled) return <p className="px-2 py-2 text-xs text-muted">{t('rooms.pushUnavailable')}</p>
+
+  const globalToggle = <button type="button" onClick={() => { void toggleChatNotifications() }} disabled={busy} className="mt-2 flex min-h-10 w-full items-center justify-center rounded-lg border border-subtle px-3 py-2 text-xs font-medium text-muted hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-60 dark:hover:bg-[#2d3148] dark:hover:text-slate-100">
+    {chatNotificationsEnabled ? 'Slå chat-notifikationer fra' : 'Slå chat-notifikationer til'}
+  </button>
 
   let notificationIcon = <Bell size={15} />
   if (busy) notificationIcon = <Loader2 size={15} className="animate-spin" />
   else if (subscribed) notificationIcon = <BellOff size={15} />
 
-  return <button type="button" onClick={() => { void toggle() }} disabled={busy || !config?.enabled} aria-pressed={subscribed} className="mt-2 flex min-h-10 w-full items-center gap-2 rounded-lg border border-subtle px-3 py-2 text-left text-xs font-medium text-muted hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-60 dark:hover:bg-[#2d3148] dark:hover:text-slate-100">
+  return <>{globalToggle}{config && !config.enabled ? <p className="px-2 py-2 text-xs text-muted">{t('rooms.pushUnavailable')}</p> : <button type="button" onClick={() => { void toggle() }} disabled={busy || !chatNotificationsEnabled || !config?.enabled} aria-pressed={subscribed} className="mt-2 flex min-h-10 w-full items-center gap-2 rounded-lg border border-subtle px-3 py-2 text-left text-xs font-medium text-muted hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-60 dark:hover:bg-[#2d3148] dark:hover:text-slate-100">
     {notificationIcon}
     <span>{subscribed ? t('rooms.pushDisable') : t('rooms.pushEnable')}</span>
-  </button>
+  </button>}</>
 }

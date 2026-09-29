@@ -483,6 +483,7 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Group(func(r chi.Router) {
 		r.Use(s.authHandler.SessionMiddleware)
 		r.Use(mw.RequireAuth)
+		r.Use(mw.RequireProductAccess(s.db))
 
 		// Current user
 		r.Get("/api/v1/me", s.authHandler.Me)
@@ -664,12 +665,16 @@ func (s *Server) buildRouter() *chi.Mux {
 
 			r.Get("/api/v1/admin/users", s.userHandler.List)
 			r.Get("/api/v1/admin/rooms/access", s.roomsHandler.AdminListAccess)
+			r.Delete("/api/v1/admin/rooms/guests/{sessionID}", s.roomsHandler.AdminRevokeGuestSession)
+			r.Delete("/api/v1/admin/rooms/invitations/{invitationID}", s.roomsHandler.AdminRevokePendingInvitation)
 			r.Get("/api/v1/admin/rooms/gifs", s.roomsHandler.AdminListGIFLibrary)
 			r.Post("/api/v1/admin/rooms/gifs", s.roomsHandler.AdminAddGIFLibraryItem)
 			r.Delete("/api/v1/admin/rooms/gifs/{gifID}", s.roomsHandler.AdminDeleteGIFLibraryItem)
 			r.Patch("/api/v1/admin/rooms/users/{userID}/access", s.roomsHandler.AdminSetUserAccess)
 			r.Post("/api/v1/admin/users", s.userHandler.Create)
 			r.Get(adminUsersByIDRoute, s.userHandler.Get)
+			r.Get("/api/v1/admin/users/{id}/product-access", s.userHandler.GetProductAccess)
+r.Patch("/api/v1/admin/users/{id}/product-access", s.userHandler.UpdateProductAccess)
 			r.Patch(adminUsersByIDRoute, s.userHandler.Update)
 			r.Delete(adminUsersByIDRoute, s.userHandler.Delete)
 			r.Post("/api/v1/admin/users/{id}/lock", s.userHandler.Lock)
@@ -1098,6 +1103,7 @@ func (s *Server) tusHandler() http.Handler {
 		r.Use(s.authHandler.SessionMiddleware)
 		r.Use(s.authHandler.UploadTokenMiddleware)
 		r.Use(mw.RequireAuth)
+		r.Use(mw.RequireProductAccess(s.db))
 		r.Use(h.Middleware)
 		r.Use(s.tusTrackPatchUploadMiddleware)
 		r.Post("/", h.PostFile)

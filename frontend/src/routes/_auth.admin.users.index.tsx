@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { X, Plus, Pencil, Trash2, UserCheck, Folder, File, ChevronDown, ChevronRight, Lock, LockOpen, KeyRound, ShieldCheck, ShieldOff } from 'lucide-react'
 import { api, adminRevokeTOTP, adminRequireTOTP, adminUnrequireTOTP } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
-import type { User, Group, PaginatedResponse, GuestUser } from '@/types/api'
+import type { User, Group, PaginatedResponse, GuestUser, ProductName, ProductAccessLevel } from '@/types/api'
 import { formatBytes, formatDate } from '@/lib/utils'
 import { useI18n } from '@/lib/i18n'
 import { AdminRoomsAccessPanel } from '@/components/admin/AdminRoomsAccessPanel'
@@ -25,6 +25,8 @@ const QUOTA_OPTIONS = [
 
 // New User Dialog
 const CUSTOM_SENTINEL = -1
+const PRODUCT_LABELS: Record<ProductName, string> = { files: 'Files', rooms: 'Rooms', notes: 'Notes', music: 'Musik' }
+const PRODUCT_LEVELS: ProductAccessLevel[] = ['none', 'limited', 'full']
 
 interface NewUserDialogProps {
   groups: Group[]
@@ -394,6 +396,7 @@ function AdminUsersPage() {
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.colUser')}</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.role')}</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.quota')}</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Adgang</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.lastLogin')}</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.status')}</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.twofa')}</th>
@@ -411,6 +414,8 @@ function AdminUsersPage() {
                     onLock={id => lockMutation.mutate(id)}
                     onUnlock={id => unlockMutation.mutate(id)}
                     onChangeRole={role => changeRoleMutation.mutate({ id: user.id, role })}
+                    onToggleChatNotifications={enabled => { void api.patch("/api/v1/admin/users/" + user.id, { chat_notifications_enabled: enabled }).then(invalidateUsers).catch(() => toast.error("Chat-notifikationer kunne ikke opdateres")) }}
+                    onToggleProductAccess={(product, access_level) => { void api.patch(`/api/v1/admin/users/${user.id}/product-access`, { product, access_level }).then(invalidateUsers).catch(() => toast.error('Produktadgang kunne ikke opdateres')) }}
                     onRevokeTOTP={async id => {
                       if (confirm(t('users.confirmRevokeTOTP'))) {
                         try {
@@ -454,7 +459,7 @@ function AdminUsersPage() {
                 ))}
                 {(data?.items?.length ?? 0) === 0 && (
                   <tr>
-                    <td colSpan={7} className="text-center py-8 text-muted">{t('users.noUsersFound')}</td>
+                    <td colSpan={8} className="text-center py-8 text-muted">{t('users.noUsersFound')}</td>
                   </tr>
                 )}
               </tbody>
@@ -472,7 +477,7 @@ function AdminUsersPage() {
       )}
 
       {/* Groups tab */}
-      {tab === 'groups' && <GroupsPanel groups={groups} qc={qc} />}
+      {tab === 'groups' && <GroupsPanel groups={groups} users={data?.items ?? []} qc={qc} />}
 
       {showDialog && (
         <NewUserDialog
@@ -671,12 +676,13 @@ function GuestsPanel({
   )
 }
 
-function GroupsPanel({ groups, qc }: Readonly<{ groups: Group[]; qc: ReturnType<typeof useQueryClient> }>) {
+function GroupsPanel({ groups, qc, users }: Readonly<{ groups: Group[]; qc: ReturnType<typeof useQueryClient>; users: User[] }>) {
   const [name, setName]         = useState('')
   const [color, setColor]       = useState(COLORS[0])
   const [editId, setEditId]     = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editColor, setEditColor] = useState('')
+  const [openMembersId, setOpenMembersId] = useState<string | null>(null)
   const { t } = useI18n()
   const invalidateGroups = () => qc.invalidateQueries({ queryKey: ['admin', 'groups'] })
 
@@ -750,7 +756,10 @@ function GroupsPanel({ groups, qc }: Readonly<{ groups: Group[]; qc: ReturnType<
                     {g.description && <p className="text-xs text-muted">{g.description}</p>}
                   </div>
                   <div className="flex items-center gap-1">
-                    <button type="button" onClick={() => { setEditId(g.id); setEditName(g.name); setEditColor(g.color) }}
+                    <button type="button" onClick={() => setOpenMembersId(openMembersId === g.id ? null : g.id)}
+                      className="rounded-lg px-2 py-1 text-xs text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-900/20">
+                      Medlemmer
+                    </button>                    <button type="button" onClick={() => { setEditId(g.id); setEditName(g.name); setEditColor(g.color) }}
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors" title="Edit">
                       <Pencil size={14} />
                     </button>
@@ -761,7 +770,7 @@ function GroupsPanel({ groups, qc }: Readonly<{ groups: Group[]; qc: ReturnType<
                   </div>
                 </>
               )}
-            </li>
+              {openMembersId === g.id && <GroupMembersPanel groupID={g.id} users={users} qc={qc} />}            </li>
           ))}
         </ul>
       )}
@@ -769,7 +778,28 @@ function GroupsPanel({ groups, qc }: Readonly<{ groups: Group[]; qc: ReturnType<
   )
 }
 
-function UserRow({
+
+function GroupMembersPanel({ groupID, users, qc }: Readonly<{ groupID: string; users: User[]; qc: ReturnType<typeof useQueryClient> }>) {
+  const { t } = useI18n()
+  const [selectedUserID, setSelectedUserID] = useState('')
+  const membersQuery = useQuery({ queryKey: ['admin', 'group-members', groupID], queryFn: ({ signal }) => api.get<Array<{ user_id: string; email: string; display_name: string }>>(`/api/v1/admin/groups/${groupID}/members`, signal) })
+  const members = membersQuery.data ?? []
+  const memberIDs = new Set(members.map(member => member.user_id))
+  const add = useMutation({ mutationFn: () => api.post(`/api/v1/admin/groups/${groupID}/members`, { user_id: selectedUserID }), onSuccess: () => { setSelectedUserID(''); void qc.invalidateQueries({ queryKey: ['admin', 'group-members', groupID] }) } })
+  const remove = useMutation({ mutationFn: (userID: string) => api.delete(`/api/v1/admin/groups/${groupID}/members/${userID}`), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['admin', 'group-members', groupID] }) } })
+  return <div className="col-span-full ml-10 mt-1 rounded-lg border border-brand-100 bg-brand-50/50 p-3 dark:border-brand-900/40 dark:bg-brand-900/10">
+    <div className="flex flex-wrap items-center gap-2">
+      <select value={selectedUserID} onChange={event => setSelectedUserID(event.target.value)} className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs dark:border-[#2d3148] dark:bg-[#11141e]">
+        <option value="">Tilføj bruger…</option>
+        {users.filter(user => !memberIDs.has(user.id)).map(user => <option key={user.id} value={user.id}>{user.display_name || user.email}</option>)}
+      </select>
+      <button type="button" disabled={!selectedUserID || add.isPending} onClick={() => add.mutate()} className="rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50">Tilføj</button>
+    </div>
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {members.length === 0 ? <span className="text-xs text-muted">Ingen medlemmer</span> : members.map(member => <span key={member.user_id} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-xs dark:bg-[#1a1d27]">{member.display_name || member.email}<button type="button" onClick={() => remove.mutate(member.user_id)} className="text-red-500" aria-label={`${t('users.remove')} ${member.display_name || member.email}`}>×</button></span>)}
+    </div>
+  </div>
+}function UserRow({
   user,
   onEdit,
   onLock,
@@ -780,6 +810,7 @@ function UserRow({
   onRequireTOTP,
   onUnrequireTOTP,
   onChangeRole,
+  onToggleChatNotifications,
   isSelf,
   isLastAdmin,
 }: Readonly<{
@@ -793,6 +824,8 @@ function UserRow({
   onRequireTOTP: (id: string) => void
   onUnrequireTOTP: (id: string) => void
   onChangeRole: (role: 'user' | 'admin') => void
+  onToggleChatNotifications: (enabled: boolean) => void
+  onToggleProductAccess: (product: ProductName, level: ProductAccessLevel) => void
   isSelf: boolean
   isLastAdmin: boolean
 }>) {
@@ -844,7 +877,20 @@ function UserRow({
           </div>
         </div>
       </td>
-      <td className="px-4 py-3 text-xs text-muted">
+            <td className="px-4 py-3">
+        <div className="grid grid-cols-2 gap-1 min-w-[150px]">
+          {(Object.keys(PRODUCT_LABELS) as ProductName[]).map(product => {
+            const current = user.product_access?.[product] ?? 'none'
+            const next = PRODUCT_LEVELS[(PRODUCT_LEVELS.indexOf(current) + 1) % PRODUCT_LEVELS.length]
+            return <button key={product} type="button" title={`${PRODUCT_LABELS[product]}: ${current} → ${next}`} onClick={() => {
+              if (product === 'rooms' && next === 'none' && !confirm('Fjern Rooms-adgang og behold medlemskaber?')) return
+              onToggleProductAccess(product, next)
+            }} className={`rounded px-1.5 py-0.5 text-[10px] text-left ${current === 'none' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : current === 'limited' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>
+              {PRODUCT_LABELS[product]}: {current}
+            </button>
+          })}
+        </div>
+      </td><td className="px-4 py-3 text-xs text-muted">
         {user.last_login_at ? formatDate(user.last_login_at) : 'ÔÇö'}
       </td>
       <td className="px-4 py-3">
@@ -911,6 +957,9 @@ function UserRow({
             title={t('users.editQuota')}
           >
             <Pencil size={14} />
+          </button>
+          <button type="button" onClick={() => onToggleChatNotifications(!user.chat_notifications_enabled)} className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors" title="Chat-notifikationer">
+            <span className="text-[10px] font-medium">{user.chat_notifications_enabled ? 'Chat til' : 'Chat fra'}</span>
           </button>
           {user.role === 'admin' ? (
             <button type="button"

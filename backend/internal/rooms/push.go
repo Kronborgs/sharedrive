@@ -134,7 +134,7 @@ func (service *pushService) notifyRoom(ctx context.Context, roomID, senderID uui
 	}
 	query := `SELECT subscription.user_id,subscription.endpoint_hash,subscription.subscription_ciphertext
 		FROM room_push_subscriptions subscription
-		JOIN room_members member ON member.user_id=subscription.user_id
+		JOIN room_members member ON member.user_id=subscription.user_id JOIN users recipient ON recipient.id=subscription.user_id AND recipient.chat_notifications_enabled=TRUE
 		WHERE member.room_id=$1 AND member.user_id<>$2`
 	return service.sendForQuery(ctx, query, roomID, senderID, "/rooms/"+url.PathEscape(slug)+"?message_id="+messageID.String()+"#message-"+messageID.String())
 }
@@ -142,7 +142,7 @@ func (service *pushService) notifyRoom(ctx context.Context, roomID, senderID uui
 func (service *pushService) notifyDirect(ctx context.Context, conversationID, senderID uuid.UUID, messageID uuid.UUID) error {
 	query := `SELECT subscription.user_id,subscription.endpoint_hash,subscription.subscription_ciphertext
 		FROM room_push_subscriptions subscription
-		JOIN direct_conversation_members member ON member.user_id=subscription.user_id
+		JOIN direct_conversation_members member ON member.user_id=subscription.user_id JOIN users recipient ON recipient.id=subscription.user_id AND recipient.chat_notifications_enabled=TRUE
 		WHERE member.conversation_id=$1 AND member.user_id<>$2 AND member.hidden_at IS NULL`
 	return service.sendForQuery(ctx, query, conversationID, senderID, "/rooms/direct/"+conversationID.String()+"?message_id="+messageID.String()+"#message-"+messageID.String())
 }

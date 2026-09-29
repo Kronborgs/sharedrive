@@ -159,7 +159,7 @@ func (handler *Handler) AdminSetUserAccess(w http.ResponseWriter, request *http.
 		handler.respondError(w, ErrNotFound)
 		return
 	}
-	if !*input.Enabled {
+		_, _ = handler.service.db.Exec(request.Context(), `UPDATE user_product_access SET access_level=$1, updated_at=NOW() WHERE user_id=$2 AND product='rooms'`, map[bool]string{true: "full", false: "none"}[*input.Enabled], userID)if !*input.Enabled {
 		if err := handler.disconnectUserFromRooms(request, userID); err != nil {
 			handler.respondError(w, err)
 			return
@@ -213,4 +213,32 @@ func (handler *Handler) disconnectUserFromRooms(request *http.Request, userID uu
 		handler.publishRoomEvent(ctx, roomID, roomEvent{Type: "user_rooms_access_revoked", UserID: userID})
 	}
 	return nil
+}
+
+// AdminRevokeGuestSession immediately disables one guest session from the admin view.
+func (handler *Handler) AdminRevokeGuestSession(w http.ResponseWriter, request *http.Request) {
+  sessionID, err := uuid.Parse(chi.URLParam(request, "sessionID"))
+  if err != nil { httputil.RespondError(w, http.StatusBadRequest, "invalid guest session id"); return }
+  tag, err := handler.service.db.Exec(request.Context(), `UPDATE room_guest_sessions SET revoked_at=NOW() WHERE id=$1 AND revoked_at IS NULL`, sessionID)
+  if err != nil { handler.respondError(w, err); return }
+  if tag.RowsAffected() == 0 { handler.respondError(w, ErrNotFound); return }
+  actor := middleware.UserFromContext(request.Context())
+  if handler.service.audit != nil && actor != nil {
+    handler.service.audit.Log(request.Context(), audit.Event{Type: audit.EventRoomGuestSessionRevoked, ActorID: &actor.ID, IsAdminAction: true, Metadata: map[string]any{"guest_session_id": sessionID}})
+  }
+  httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// AdminRevokePendingInvitation removes an unaccepted Room membership invitation.
+func (handler *Handler) AdminRevokePendingInvitation(w http.ResponseWriter, request *http.Request) {
+  invitationID, err := uuid.Parse(chi.URLParam(request, "invitationID"))
+  if err != nil { httputil.RespondError(w, http.StatusBadRequest, "invalid invitation id"); return }
+  tag, err := handler.service.db.Exec(request.Context(), `DELETE FROM invitation_tokens WHERE id=(SELECT invitation_token_id FROM room_member_invitations WHERE id=$1 AND accepted_at IS NULL)`, invitationID)
+  if err != nil { handler.respondError(w, err); return }
+  if tag.RowsAffected() == 0 { handler.respondError(w, ErrNotFound); return }
+  actor := middleware.UserFromContext(request.Context())
+  if handler.service.audit != nil && actor != nil {
+    handler.service.audit.Log(request.Context(), audit.Event{Type: audit.EventRoomInviteRevoked, ActorID: &actor.ID, IsAdminAction: true, Metadata: map[string]any{"member_invitation_id": invitationID}})
+  }
+  httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }

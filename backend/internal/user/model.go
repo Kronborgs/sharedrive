@@ -22,6 +22,8 @@ type User struct {
 	WebDAVEnabled             bool       `json:"webdav_enabled"`
 	RoomsAccessEnabled        bool       `json:"rooms_access_enabled"`
 	RoomsOnlyAccount          bool       `json:"rooms_only_account"`
+	ChatNotificationsEnabled  bool       `json:"chat_notifications_enabled"`
+ProductAccess             map[string]string `json:"product_access,omitempty"`
 	TrashRetentionDays        *int       `json:"trash_retention_days,omitempty"`
 	InvitedBy                 *uuid.UUID `json:"invited_by,omitempty"`
 	LastLoginAt               *time.Time `json:"last_login_at,omitempty"`

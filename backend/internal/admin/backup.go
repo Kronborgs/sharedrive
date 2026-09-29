@@ -38,7 +38,8 @@ type exportStep struct {
 }
 
 var backupExportSteps = []exportStep{
-	{name: "users", query: `SELECT id, email, display_name, password_hash, role, is_active, quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day, webdav_enabled, rooms_access_enabled, rooms_only_account, invited_by, last_login_at, created_at, updated_at FROM users`, set: func(d *backupData, v []map[string]any) { d.Users = v }},
+	{name: "users", query: `SELECT id, email, display_name, password_hash, role, is_active, quota_bytes, quota_used_bytes, bandwidth_limit_bytes_per_day, webdav_enabled, rooms_access_enabled, rooms_only_account, chat_notifications_enabled, invited_by, last_login_at, created_at, updated_at FROM users`, set: func(d *backupData, v []map[string]any) { d.Users = v }},
+	{name: "user_product_access", query: `SELECT user_id, product, access_level, created_at, updated_at FROM user_product_access`, set: func(d *backupData, v []map[string]any) { d.UserProductAccess = v }},
 	{name: "groups", query: `SELECT id, name, description, created_by, created_at, is_system_managed FROM groups`, set: func(d *backupData, v []map[string]any) { d.Groups = v }},
 	{name: "group_members", query: `SELECT group_id, user_id, added_at FROM group_members`, set: func(d *backupData, v []map[string]any) { d.GroupMembers = v }},
 	{name: "tags", query: `SELECT id, name, color, created_by, created_at FROM tags`, set: func(d *backupData, v []map[string]any) { d.Tags = v }},
@@ -73,6 +74,7 @@ var backupRestoreStatements = []string{
 	`DELETE FROM app_passwords`,
 	`DELETE FROM totp_credentials`,
 	`DELETE FROM group_members`,
+	`DELETE FROM user_product_access`,
 	`DELETE FROM tags`,
 	`DELETE FROM files`,
 	`DELETE FROM groups`,
@@ -112,6 +114,7 @@ type backupEnvelope struct {
 
 type backupData struct {
 	Users               []map[string]any `json:"users"`
+	UserProductAccess   []map[string]any `json:"user_product_access,omitempty"`
 	Groups              []map[string]any `json:"groups"`
 	GroupMembers        []map[string]any `json:"group_members"`
 	Tags                []map[string]any `json:"tags"`
@@ -488,9 +491,10 @@ func insertEnvelopeRows(ctx context.Context, tx pgx.Tx, data backupData, include
 			"id": true, "email": true, "display_name": true, "password_hash": true,
 			"role": true, "is_active": true, "quota_bytes": true, "quota_used_bytes": true,
 			"bandwidth_limit_bytes_per_day": true, "webdav_enabled": true, "rooms_access_enabled": true,
-			"rooms_only_account": true, "invited_by": true,
+			"rooms_only_account": true, "chat_notifications_enabled": true, "invited_by": true,
 			"last_login_at": true, "created_at": true, "updated_at": true,
 		},
+		"user_product_access": {"user_id": true, "product": true, "access_level": true, "created_at": true, "updated_at": true},
 		"groups":        {"id": true, "name": true, "description": true, "created_by": true, "created_at": true, "is_system_managed": true},
 		"group_members": {"group_id": true, "user_id": true, "added_at": true},
 		"tags":          {"id": true, "name": true, "color": true, "created_by": true, "created_at": true},
@@ -531,6 +535,7 @@ func insertEnvelopeRows(ctx context.Context, tx pgx.Tx, data backupData, include
 	restoreSteps := []restoreStep{
 		{"system_settings", data.SystemSettings},
 		{"users", data.Users},
+		restoreStep{"user_product_access", data.UserProductAccess},
 		{"groups", data.Groups},
 		{"group_members", data.GroupMembers},
 		{"tags", data.Tags},

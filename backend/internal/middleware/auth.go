@@ -3,6 +3,9 @@ package middleware
 import (
 	"context"
 	"net/http"
+"strings"
+
+"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yourname/privatedrive/internal/user"
 )
@@ -65,4 +68,37 @@ func RequireAdmin(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// RequireProductAccess blocks authenticated users who have no access to a product.
+// Limited and full access are both allowed here; individual handlers retain their
+// existing resource-level permission checks.
+func RequireProductAccess(db *pgxpool.Pool) func(http.Handler) http.Handler {
+  return func(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+      account := UserFromContext(r.Context())
+      if account == nil || account.IsAdmin() { next.ServeHTTP(w, r); return }
+      product := ""
+      path := r.URL.Path
+      switch {
+      case strings.HasPrefix(path, "/api/v1/rooms"):
+        product = "rooms"
+      case strings.HasPrefix(path, "/api/v1/notes"):
+        product = "notes"
+      case strings.HasPrefix(path, "/api/v1/files"):
+        product = "files"
+        if strings.Contains(path, "/playlist") { product = "music" }
+      }
+      if product == "" { next.ServeHTTP(w, r); return }
+      var level string
+      if err := db.QueryRow(r.Context(), `SELECT access_level FROM user_product_access WHERE user_id=$1 AND product=$2`, account.ID, product).Scan(&level); err != nil {
+        // During a rolling deployment, keep the legacy Rooms flag as a safe fallback.
+        if product == "rooms" && !account.RoomsAccessEnabled { http.Error(w, `{"error":{"code":"FORBIDDEN","message":"Product access is disabled."}}`, http.StatusForbidden); return }
+        next.ServeHTTP(w, r)
+        return
+      }
+      if level == "none" { http.Error(w, `{"error":{"code":"FORBIDDEN","message":"Product access is disabled."}}`, http.StatusForbidden); return }
+      next.ServeHTTP(w, r)
+    })
+  }
 }

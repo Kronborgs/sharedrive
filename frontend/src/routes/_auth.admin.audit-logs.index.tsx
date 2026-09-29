@@ -75,6 +75,8 @@ const EVENT_TYPES: { value: string; label: string }[] = [
   { value: 'ADMIN_SUPPORT_ACCESS_ENDED',   label: 'Support access ended' },
   { value: 'GROUP_CREATED',          label: 'Group created' },
   { value: 'GROUP_DELETED',          label: 'Group deleted' },
+  { value: 'USER_PRODUCT_ACCESS_CHANGED', label: 'User product access changed' },
+  { value: 'ROOMS_USER_ACCESS_CHANGED', label: 'Rooms user access changed' },
   // WebDAV
   { value: 'WEBDAV_APP_PASSWORD_CREATED', label: 'WebDAV app password created' },
   { value: 'WEBDAV_APP_PASSWORD_REVOKED', label: 'WebDAV app password revoked' },

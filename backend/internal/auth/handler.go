@@ -385,6 +385,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		TOTPEnabled    bool `json:"totp_enabled"`
 		ForceTOTPSetup bool `json:"force_totp_setup"`
 	}
+	if access, accessErr := user.LoadProductAccess(ctx, h.db, u.ID); accessErr == nil { u.ProductAccess = access }
 	totpEnabled, _ := h.totpSvc.HasTOTP(ctx, u.ID.String())
 	httputil.Respond(w, http.StatusOK, meResponse{User: u, IsAdmin: u.IsAdmin(), TOTPEnabled: totpEnabled, ForceTOTPSetup: u.ForceTOTPSetup})
 }
@@ -565,7 +566,14 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx.Exec(ctx, `UPDATE invitation_tokens SET used_at = now(), used_by = $1 WHERE id = $2`, newUserID, tokenID)
+		if _, err := tx.Exec(ctx, `INSERT INTO user_product_access (user_id, product, access_level)
+		SELECT $1, products.product, CASE WHEN users.rooms_only_account AND products.product <> 'rooms' THEN 'none' ELSE 'full' END
+		FROM users CROSS JOIN (VALUES ('files'::TEXT), ('rooms'::TEXT), ('notes'::TEXT), ('music'::TEXT)) AS products(product)
+		WHERE users.id = $1 ON CONFLICT (user_id, product) DO NOTHING`, newUserID); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
+		return
+	}
+tx.Exec(ctx, `UPDATE invitation_tokens SET used_at = now(), used_by = $1 WHERE id = $2`, newUserID, tokenID)
 
 	// Link any pending shares that were created for this email before the user had an account.
 	tx.Exec(ctx,
@@ -805,6 +813,7 @@ type updateMeRequest struct {
 	Email       *string `json:"email"`
 	Password    *string `json:"password"`
 	OldPassword *string `json:"old_password"`
+    ChatNotificationsEnabled *bool `json:"chat_notifications_enabled"`
 }
 
 func (h *Handler) revokeOtherSessions(ctx context.Context, r *http.Request, userID uuid.UUID) {
@@ -876,6 +885,13 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		_, err := h.db.Exec(ctx, `UPDATE users SET display_name = $1, updated_at = now() WHERE id = $2`, *req.DisplayName, u.ID)
 		if err != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, errInternal)
+			return
+		}
+	}
+	if req.ChatNotificationsEnabled != nil {
+		_, err := h.db.Exec(ctx, `UPDATE users SET chat_notifications_enabled = $1, updated_at = now() WHERE id = $2`, *req.ChatNotificationsEnabled, u.ID)
+		if err != nil {
+            httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 			return
 		}
 	}

@@ -284,7 +284,14 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.SiteName != "" {
+		if _, err = tx.Exec(ctx, `INSERT INTO user_product_access (user_id, product, access_level)
+		SELECT users.id, products.product, 'full'
+		FROM users CROSS JOIN (VALUES ('files'::TEXT), ('rooms'::TEXT), ('notes'::TEXT), ('music'::TEXT)) AS products(product)
+		WHERE users.email = $1 ON CONFLICT (user_id, product) DO NOTHING`, req.AdminEmail); err != nil {
+		httputil.RespondError(w, http.StatusInternalServerError, onboardingErrInternal)
+		return
+	}
+if req.SiteName != "" {
 		_, _ = tx.Exec(ctx,
 			`INSERT INTO system_settings (key, value) VALUES ('app_name', $1)
              ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,

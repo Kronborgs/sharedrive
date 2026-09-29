@@ -697,7 +697,11 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
   const currentTrack = playlist.tracks[playlist.currentIndex]
   const isGuest = user?.role === 'guest'
   const roomsApp = state.location.pathname === '/rooms' || state.location.pathname.startsWith('/rooms/')
-  const canUseMediaPlayer = !isGuest && !user?.rooms_only_account && !roomsApp
+  const productAllowed = (product: "files" | "rooms" | "notes" | "music") => user?.product_access?.[product] !== "none"
+  const canUseFiles = productAllowed("files")
+  const canUseNotes = productAllowed("notes")
+  const canUseMusic = productAllowed("music")
+  const canUseMediaPlayer = !isGuest && !user?.rooms_only_account && !roomsApp && canUseMusic
   const roomsAvailable = systemSettings?.rooms_enabled && user?.rooms_access_enabled !== false
   const { data: rooms = [] } = useQuery({
     queryKey: ['rooms'],
@@ -714,6 +718,12 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
     refetchIntervalInBackground: true,
   })
   const unreadChatMessages = totalRoomUnread(rooms) + totalDirectUnread(directConversations)
+  const visibleMainNav = mainNav.filter(item => {
+    if (item.to === '/notes') return canUseNotes
+    if (item.to === '/rooms') return roomsAvailable && productAllowed('rooms')
+    if (['/files', '/shares', '/recent', '/activity', '/trash', '/backup'].includes(item.to)) return canUseFiles
+    return true
+  })
   const accountNav = user?.rooms_only_account
     ? roomsOnlyNav.filter(() => roomsAvailable)
     : guestNav.filter(item => item.to !== '/rooms' || roomsAvailable)
@@ -793,7 +803,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
 
         <div className="flex-1 overflow-y-auto min-h-0">
           <nav className="px-2 py-3 space-y-0.5">
-            {(isGuest ? accountNav : mainNav.filter(item => item.to !== '/rooms' || roomsAvailable)).map(item => (
+            {(isGuest ? accountNav : visibleMainNav).map(item => (
               <NavLink key={item.to} item={item} badge={item.to === '/rooms' ? unreadChatMessages : 0} />
             ))}
           </nav>

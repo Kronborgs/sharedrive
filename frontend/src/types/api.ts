@@ -12,6 +12,9 @@ export interface ApiError {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
+export type ProductAccessLevel = 'none' | 'limited' | 'full'
+export type ProductName = 'files' | 'rooms' | 'notes' | 'music'
+
 export interface User {
   id: string
   email: string
@@ -28,6 +31,8 @@ export interface User {
   webdav_enabled: boolean
   rooms_access_enabled: boolean
   rooms_only_account: boolean
+  chat_notifications_enabled: boolean
+  product_access?: Partial<Record<ProductName, ProductAccessLevel>>
   trash_retention_days: number | null
   invited_by: string | null
   last_login_at: string | null

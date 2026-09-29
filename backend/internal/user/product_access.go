@@ -11,7 +11,7 @@ import (
 
   "github.com/yourname/privatedrive/internal/audit"
   "github.com/yourname/privatedrive/internal/httputil"
-  "github.com/yourname/privatedrive/internal/middleware"
+
 )
 
 var productNames = []string{"files", "rooms", "notes", "music"}
@@ -66,7 +66,7 @@ func (h *Handler) UpdateProductAccess(w http.ResponseWriter, r *http.Request) {
     _, err = h.db.Exec(r.Context(), `UPDATE users SET rooms_access_enabled=$1, updated_at=NOW() WHERE id=$2`, input.AccessLevel != "none", id)
     if err != nil { httputil.RespondError(w, http.StatusInternalServerError, userErrInternal); return }
   }
-  actor := middleware.UserFromContext(r.Context())
+  actor := UserFromContext(r.Context())
   if h.auditSvc != nil && actor != nil && oldLevel != input.AccessLevel {
     h.auditSvc.Log(r.Context(), audit.Event{Type: audit.EventUserProductAccessChanged, ActorID: &actor.ID, TargetUserID: &id, IsAdminAction: true, Metadata: map[string]any{"product": input.Product, "old_access_level": oldLevel, "new_access_level": input.AccessLevel}})
   }

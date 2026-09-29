@@ -823,6 +823,42 @@ function ProductAccessCell({ user, onToggleProductAccess }: Readonly<{ user: Use
     </div>
   </td>
 }
+
+function TotpCell({ user, onRevokeTOTP, onRequireTOTP, onUnrequireTOTP }: Readonly<{
+  user: User
+  onRevokeTOTP: (id: string) => void
+  onRequireTOTP: (id: string) => void
+  onUnrequireTOTP: (id: string) => void
+}>) {
+  const { t } = useI18n()
+  if (user.totp_enabled) {
+    return <button type="button" onClick={() => onRevokeTOTP(user.id)} title={t('users.totpActiveRevoke')} className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:text-red-600 dark:hover:text-red-400 transition-colors">
+      <ShieldCheck size={13} />
+      {t('users.enabled')}
+    </button>
+  }
+  if (user.force_totp_setup) {
+    return <div className="inline-flex items-center gap-1.5">
+      <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+        <ShieldCheck size={13} />
+        {t('users.required')}
+      </span>
+      <button type="button" onClick={() => onUnrequireTOTP(user.id)} title={t('users.cancelTotpReq')} className="text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors leading-none">
+        ✕
+      </button>
+    </div>
+  }
+  return <div className="inline-flex items-center gap-1.5">
+    <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
+      <ShieldOff size={13} />
+      {t('users.off')}
+    </span>
+    <button type="button" onClick={() => onRequireTOTP(user.id)} title={t('users.forceTotpSetup')} className="text-xs text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors underline underline-offset-2">
+      {t('users.force')}
+    </button>
+  </div>
+}
+
 function UserRow({
   user,
   onEdit,
@@ -914,54 +950,7 @@ function UserRow({
           {user.is_active ? t('users.active') : t('users.lockedStatus')}
         </span>
       </td>
-      <td className="px-4 py-3">
-        {(() => {
-          if (user.totp_enabled) {
-            return (
-              <button type="button"
-                onClick={() => onRevokeTOTP(user.id)}
-                title={t('users.totpActiveRevoke')}
-                className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-              >
-                <ShieldCheck size={13} />
-                {t('users.enabled')}
-              </button>
-            )
-          }
-          if (user.force_totp_setup) {
-            return (
-              <div className="inline-flex items-center gap-1.5">
-                <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                  <ShieldCheck size={13} />
-                  {t('users.required')}
-                </span>
-                <button type="button"
-                  onClick={() => onUnrequireTOTP(user.id)}
-                  title={t('users.cancelTotpReq')}
-                  className="text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors leading-none"
-                >
-                  ✕
-                </button>
-              </div>
-            )
-          }
-          return (
-            <div className="inline-flex items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
-                <ShieldOff size={13} />
-                {t('users.off')}
-              </span>
-              <button type="button"
-                onClick={() => onRequireTOTP(user.id)}
-                title={t('users.forceTotpSetup')}
-                className="text-xs text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors underline underline-offset-2"
-              >
-                {t('users.force')}
-              </button>
-            </div>
-          )
-        })()}
-      </td>
+      <TotpCell user={user} onRevokeTOTP={onRevokeTOTP} onRequireTOTP={onRequireTOTP} onUnrequireTOTP={onUnrequireTOTP} />
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-1">
           <button type="button"

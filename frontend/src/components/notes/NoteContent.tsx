@@ -2,6 +2,20 @@ import { Fragment } from 'react'
 
 const URL_PATTERN = /(https?:\/\/[^\s]+|\/api\/v1\/files\/[a-f0-9-]+\/(?:preview|thumbnail))/gi
 const IMAGE_PATTERN = /\.(?:png|jpe?g|gif|webp)(?:[?#].*)?$/i
+const INTERNAL_IMAGE_PATTERN = /\/api\/v1\/files\/[a-f0-9-]+\/(?:preview|thumbnail)/gi
+
+export function formatNoteContent(content: string, locale: 'da' | 'en'): string {
+  let imageNumber = 0
+  return content.replace(INTERNAL_IMAGE_PATTERN, () => {
+    imageNumber++
+    return (locale === 'da' ? 'Billede ' : 'Image ') + imageNumber
+  })
+}
+
+export function restoreNoteContent(displayContent: string, sourceContent: string, locale: 'da' | 'en'): string {
+  const references = sourceContent.match(INTERNAL_IMAGE_PATTERN) ?? []
+  return references.reduce((content, reference, index) => content.replace((locale === 'da' ? 'Billede ' : 'Image ') + (index + 1), reference), displayContent)
+}
 
 function cleanUrl(value: string): string {
   let end = value.length

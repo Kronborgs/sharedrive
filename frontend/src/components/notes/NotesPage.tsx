@@ -7,11 +7,12 @@ import { useI18n } from '@/lib/i18n'
 import { api } from '@/lib/api'
 import { createNote, listNotes, type Note } from '@/lib/notes'
 import { NotesInstallButton } from '@/components/notes/NotesInstallButton'
+import { formatNoteContent } from '@/components/notes/NoteContent'
 
 type NotesView = 'active' | 'archive' | 'trash'
 
 export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -89,10 +90,10 @@ export function NotesPage({ view = 'active' }: Readonly<{ view?: NotesView }>) {
                 {note.is_pinned && <Pin size={15} className="shrink-0 fill-brand-400 text-brand-600" aria-label={t('notes.pinned' as never)} />}
               </div>
               {note.type === 'text' ? (
-                <p className="line-clamp-5 whitespace-pre-wrap text-sm leading-6 text-zinc-600 dark:text-slate-300">{note.content}</p>
+                <p className="line-clamp-5 whitespace-pre-wrap text-sm leading-6 text-zinc-600 dark:text-slate-300">{formatNoteContent(note.content, locale)}</p>
               ) : (
                 <ul className="space-y-1.5 text-sm text-zinc-600 dark:text-slate-300">
-                  {note.items.slice(0, 5).map(item => <li key={item.id} className={item.is_checked ? 'line-through opacity-60' : ''}>□ {item.content}</li>)}
+                  {note.items.slice(0, 5).map(item => <li key={item.id} className={item.is_checked ? 'line-through opacity-60' : ''}>□ {formatNoteContent(item.content, locale)}</li>)}
                 </ul>
               )}
             </button>

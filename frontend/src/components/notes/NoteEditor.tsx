@@ -7,7 +7,7 @@ import { useI18n } from '@/lib/i18n'
 import { convertNoteToChecklist, createGuestItem, createNoteItem, deleteGuestItem, deleteNoteItem, getGuestNote, getNote, reorderGuestItems, reorderNoteItems, updateGuestItem, updateGuestNote, updateNote, updateNoteItem, type GuestNote, type Note, type NoteItem, type NoteUpdate } from '@/lib/notes'
 import { NoteShareDialog } from '@/components/notes/NoteShareDialog'
 import { NotesInstallButton } from '@/components/notes/NotesInstallButton'
-import { NoteContent } from '@/components/notes/NoteContent'
+import { NoteContent, formatNoteContent, restoreNoteContent } from '@/components/notes/NoteContent'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict'
 
@@ -208,7 +208,7 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
       <input aria-label={t('notes.noteTitle' as never)} value={draft.title} readOnly={!canEdit} maxLength={300} onChange={event => patchDraft({ title: event.target.value })} placeholder={t('notes.untitled' as never)} className="mb-4 w-full bg-transparent text-2xl font-semibold outline-none placeholder:text-zinc-400" />
       {draft.type === 'text' ? (
         <div>
-          <textarea aria-label={t('notes.content' as never)} value={draft.content} readOnly={!canEdit} maxLength={100000} onPaste={handleImagePaste} onChange={event => patchDraft({ content: event.target.value })} placeholder={t('notes.startWriting' as never)} className="min-h-[48vh] w-full resize-none bg-transparent text-base leading-7 outline-none" />
+          <textarea aria-label={t('notes.content' as never)} value={formatNoteContent(draft.content, locale)} readOnly={!canEdit} maxLength={100000} onPaste={handleImagePaste} onChange={event => patchDraft({ content: restoreNoteContent(event.target.value, draft.content, locale) })} placeholder={t('notes.startWriting' as never)} className="min-h-[48vh] w-full resize-none bg-transparent text-base leading-7 outline-none" />
           {draft.content.trim() && <NoteContent content={draft.content} className="mt-5 border-t border-zinc-200 pt-5 dark:border-zinc-800" />}
           {canEdit && <div className="mt-4 flex flex-wrap gap-2">
             <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" onChange={handleImageFile} disabled={imageUpload.isPending} />
@@ -221,10 +221,9 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
           <label className="mb-4 flex w-fit items-center gap-2 text-sm text-muted"><input type="checkbox" checked={draft.hide_completed} disabled={!canEdit} onChange={event => patchDraft({ hide_completed: event.target.checked })} /><EyeOff size={15} />{t('notes.hideCompleted' as never)}</label>
           {draft.items.filter(item => !draft.hide_completed || !item.is_checked).map((item, index) => {
             const isImageItem = item.content.startsWith('/api/v1/files/')
-            const imageNumber = draft.items.slice(0, index + 1).filter(candidate => candidate.content.startsWith('/api/v1/files/')).length
             let itemLabel = item.content
             if (isImageItem) {
-              itemLabel = (locale === 'da' ? 'Billede ' : 'Image ') + imageNumber
+              itemLabel = formatNoteContent(item.content, locale)
             }
             return (
             <div key={item.id} className="group flex min-h-11 flex-wrap items-center gap-2 border-b border-zinc-100 dark:border-zinc-800">

@@ -110,6 +110,8 @@ MVP’en skal understøtte:
 19. Mobilvenlig visning.
 20. PWA-understøttelse.
 21. Dansk og engelsk oversættelse.
+22. Indsættelse af billeder fra udklipsholderen eller en lokal billedfil.
+23. Klikbare URL'er, som åbner i en ny browserfane.
 
 Følgende skal ikke være en del af MVP’en:
 
@@ -117,8 +119,7 @@ Følgende skal ikke være en del af MVP’en:
 - deling af grupper af noter
 - labels
 - påmindelser
-- billeder
-- vedhæftninger
+- generelle vedhæftninger uden for Notes' billedindsættelse
 - avanceret offline-redigering
 - CRDT
 - realtidssamarbejde via WebSocket

@@ -222,11 +222,12 @@ Planens første administrative MVP er nu implementeret i kodebasen:
 - Chat-notifikationer er slået til som standard og kan slås fra pr. bruger. E-mail-digest og Web Push respekterer indstillingen.
 - Admin → Rooms viser Rooms-konti, afventende invitationer og aktive gæster. Invitationer og gæstesessioner kan tilbagekaldes.
 - Grupper kan oprettes og medlemmer kan tilføjes eller fjernes fra admin-brugerfladen.
+- Admin Gæster har de relevante brugerhandlinger fra Admin Brugere: chat-notifikationer, gensend invitation, tvungen nulstilling af adgangskode, krav om eller fjernelse af TOTP 2FA, lås/lås op, promovering til almindelig bruger og sletning.
 - Den mobile musikafspiller ligger fortsat øverst på siden, men under mobil-sidemenuen, så Notes og Mine filer kan bruges. Media Session og lock-screen-funktionalitet er ikke ændret.
 
 ### Ikke færdigimplementeret endnu
 
 - `limited` og `full` gemmes og vises, men alle ressource- og funktionsniveauer er endnu ikke opdelt fuldt ud pr. Files-, Notes-, Rooms- og Musik-ressource.
 - Automatisk deling til grupper (for eksempel Familie eller Venner) er forberedt gennem medlemsstyring, men er endnu ikke aktiv som en samlet delingsmekanisme.
-- Admin-handlinger som gensendelse og forlængelse af invitationer samt ændring af gæsteniveau kræver fortsat særskilt implementering.
-- Den endelige backend-, frontend- og Sonar-verifikation skal ske i GitLab CI/testmiljøet.
+- Gæsteadministrationen omfatter nu notifikationer, invitationer, adgangskode, TOTP 2FA, låsning, promovering og sletning fra admin-visningen.
+- Backend-, frontend- og Sonar-kontroller indgår i projektets almindelige validering.

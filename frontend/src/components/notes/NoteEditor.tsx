@@ -1,12 +1,13 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Archive, ArrowDown, ArrowLeft, ArrowUp, CheckSquare, EyeOff, Pin, Plus, Share2, Trash2, X } from 'lucide-react'
+import { Archive, ArrowDown, ArrowLeft, ArrowUp, CheckSquare, EyeOff, ImagePlus, Pin, Plus, Share2, Trash2, X } from 'lucide-react'
 import { ApiClientError, api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { convertNoteToChecklist, createGuestItem, createNoteItem, deleteGuestItem, deleteNoteItem, getGuestNote, getNote, reorderGuestItems, reorderNoteItems, updateGuestItem, updateGuestNote, updateNote, updateNoteItem, type GuestNote, type Note, type NoteItem, type NoteUpdate } from '@/lib/notes'
 import { NoteShareDialog } from '@/components/notes/NoteShareDialog'
 import { NotesInstallButton } from '@/components/notes/NotesInstallButton'
+import { NoteContent } from '@/components/notes/NoteContent'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict'
 
@@ -21,6 +22,7 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
   const baseline = useRef<Note | null>(null)
   const dirtyItemIDs = useRef(new Set<string>())
   const pendingItemIDs = useRef(new Set<string>())
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const query = useQuery<Note | GuestNote>({
     queryKey: [guest ? 'guest-note' : 'note', id],
     queryFn: ({ signal }) => guest ? getGuestNote(id, signal) : getNote(id, includeDeleted, signal),
@@ -69,6 +71,19 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
     return () => window.clearTimeout(timeout)
   }, [draft, canEdit])
 
+  const imageUpload = useMutation({
+    mutationFn: async (file: File) => {
+      if (!file.type.startsWith('image/')) throw new Error('not an image')
+      const formData = new FormData()
+      formData.append('file', file, file.name || 'pasted-image.png')
+      return api.post<{ id: string }>('/api/v1/files/upload', formData)
+    },
+    onSuccess: uploaded => {
+      const imageURL = '/api/v1/files/' + uploaded.id + '/preview'
+      setDraft(current => current ? { ...current, content: current.content ? current.content + '\n' + imageURL : imageURL } : current)
+    },
+    onError: () => setSaveState('error'),
+  })
   const itemMutation = useMutation({
     mutationFn: async ({ action, itemId, content, checked, position }: { action: 'create' | 'update' | 'delete'; itemId?: string; content?: string; checked?: boolean; position?: number }) => {
       if (!draft) throw new Error('note unavailable')
@@ -105,6 +120,19 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
 
   const patchDraft = (patch: Partial<Note>) => setDraft(current => current ? { ...current, ...patch } : current)
   const addDraftItem = (position?: number) => setDraft(current => current ? insertDraftItem(current, position) : current)
+  const handleImagePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!canEdit) return
+    const clipboardImage = Array.from(event.clipboardData.items).find(item => item.type.startsWith('image/'))?.getAsFile()
+    const image = clipboardImage ?? Array.from(event.clipboardData.files).find(file => file.type.startsWith('image/'))
+    if (!image) return
+    event.preventDefault()
+    imageUpload.mutate(image)
+  }
+  const handleImageFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const image = event.target.files?.[0]
+    event.target.value = ''
+    if (image) imageUpload.mutate(image)
+  }
   const commitItem = (item: NoteItem, position: number) => {
     const content = item.content.trim()
     if (isDraftItem(item)) {
@@ -177,8 +205,13 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
       <input aria-label={t('notes.noteTitle' as never)} value={draft.title} readOnly={!canEdit} maxLength={300} onChange={event => patchDraft({ title: event.target.value })} placeholder={t('notes.untitled' as never)} className="mb-4 w-full bg-transparent text-2xl font-semibold outline-none placeholder:text-zinc-400" />
       {draft.type === 'text' ? (
         <div>
-          <textarea aria-label={t('notes.content' as never)} value={draft.content} readOnly={!canEdit} maxLength={100000} onChange={event => patchDraft({ content: event.target.value })} placeholder={t('notes.startWriting' as never)} className="min-h-[48vh] w-full resize-none bg-transparent text-base leading-7 outline-none" />
-          {!guest && canEdit && <button type="button" className="notes-secondary-button mt-4" onClick={() => { convertToChecklist().catch(() => setSaveState('error')) }}><CheckSquare size={17} />{t('notes.addChecklist' as never)}</button>}
+          <textarea aria-label={t('notes.content' as never)} value={draft.content} readOnly={!canEdit} maxLength={100000} onPaste={handleImagePaste} onChange={event => patchDraft({ content: event.target.value })} placeholder={t('notes.startWriting' as never)} className="min-h-[48vh] w-full resize-none bg-transparent text-base leading-7 outline-none" />
+          {(!canEdit || guest) && <NoteContent content={draft.content} className="mt-5 border-t border-zinc-200 pt-5 dark:border-zinc-800" />}
+          {canEdit && <div className="mt-4 flex flex-wrap gap-2">
+            <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" onChange={handleImageFile} disabled={imageUpload.isPending} />
+            <button type="button" className="notes-secondary-button" onClick={() => imageInputRef.current?.click()}><ImagePlus size={17} />{imageUpload.isPending ? 'Uploader billede…' : 'Indsæt billede'}</button>
+            {!guest && <button type="button" className="notes-secondary-button" onClick={() => { convertToChecklist().catch(() => setSaveState('error')) }}><CheckSquare size={17} />{t('notes.addChecklist' as never)}</button>}
+          </div>}
         </div>
       ) : (
         <div className="space-y-2">

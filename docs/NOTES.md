@@ -12,8 +12,22 @@ Sharedrive Notes is an integrated database-backed notes and checklist module. It
 - Danish and English UI
 - Responsive owner and guest views
 - Accountless email sharing with `view`, `check`, or `edit` permission
+- Image insertion by pasting from the clipboard or selecting an image file
+- Clickable URLs that open in a new browser tab; supported image URLs render inline
 
 `view` is read-only. `check` can only toggle existing checklist items and cannot be assigned to a text note. `edit` can edit title/content and checklist structure, but cannot share, pin, archive, trash, or permanently delete a note.
+
+## Images and links
+
+Notes support images without introducing a separate attachment model:
+
+- Paste an image directly into the note editor or choose **Indsæt billede** and select an image file.
+- The image is uploaded through the existing `POST /api/v1/files/upload` endpoint and follows the normal Sharedrive file ownership and access model.
+- The editor inserts an internal preview reference in the note content using `/api/v1/files/{id}/preview`.
+- `http` and `https` URLs are rendered as links with `target="_blank"` and `rel="noopener noreferrer"`, so they open in a new browser tab.
+- Supported image URLs and internal Sharedrive preview references are rendered inline and can be opened in a new tab.
+
+The feature is available to owners and guests with `edit` permission. Existing Notes sharing, access checks, backups, and audit behavior continue to apply.
 
 ## Data Model
 
@@ -108,7 +122,7 @@ Sharedrive Files and Sharedrive Notes are separately installable PWAs on the sam
 
 ## Known MVP Limits
 
-- No labels, reminders, attachments, rich text, collections, or checklist-to-text conversion
+- No labels, reminders, general-purpose attachments, rich text, or collections. Notes image insertion uses normal Sharedrive file uploads and references rather than a separate attachment model.
 - No offline editing, WebSocket push, CRDT, or version history; lightweight collaboration uses polling and local/server merging
 - No guest reshare or manage permission
 - Concurrent edits are merged at note-field and checklist-item level where possible; unresolved stale writes still surface as conflicts

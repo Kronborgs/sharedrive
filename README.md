@@ -24,6 +24,8 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 - **Central admin access controls** — administrators can view and cycle per-user access for Files, Rooms, Notes, and Music between none, limited, and full. Backend middleware enforces disabled product access; the existing resource-level permission checks remain authoritative.
 - **Per-user chat notification control** — chat notifications are enabled by default and can be turned off for an individual user from the admin Users view. The preference is respected by chat email digests and generic Rooms Web Push notifications.
 - **Rooms access administration** — the admin Rooms view now includes Sharedrive/Rooms accounts, pending Room invitations, active guest sessions, and group membership management. Pending invitations and guest sessions can be revoked from the overview.
+- **Complete guest administration** — the admin Guests view now offers the same account controls as regular users where applicable: enable or disable chat notifications, resend invitations, force password reset, require or remove TOTP 2FA, lock or unlock access, promote a guest to a regular user, and delete the guest.
+- **Notes images and links** — paste an image from the clipboard or choose an image file in Notes. The image is uploaded through Sharedrive Files and inserted into the note; URLs are rendered as clickable links that open in a new browser tab, and supported image URLs are shown inline.
 
 #### Bug fixes and refinements
 - **Unread indicators** — total unread chat counts are visible in the Rooms conversation list, Sharedrive sidebar, and browser title.
@@ -252,6 +254,7 @@ Sharedrive includes a database-backed Notes workspace designed as a simple, self
 - **Invitation controls** — no-expiry default or a selected expiry date, resend, permission changes, and immediate revocation
 - **Secure guest sessions** — invitation tokens are removed from the address bar and exchanged for short-lived HttpOnly cookies; guest APIs are origin-checked, rate-limited, audited, and marked `no-store`
 - **Responsive guest editor** — invited users can read, check, or edit from desktop or mobile without creating an account
+- **Images and clickable URLs** — paste an image from the clipboard or insert one from a local image file. Notes store the uploaded Sharedrive file reference, render supported image previews inline, and turn URLs into links that open in a new browser tab.
 - **Backup support** — full per-user archives include notes, checklist items, and note shares; ephemeral guest sessions are intentionally excluded
 - **Separate Notes PWA** — install Sharedrive Notes from the Notes workspace or directly from an invited guest note, with its own icon and app identity
 - **Danish and English UI** — follows the existing Sharedrive language setting

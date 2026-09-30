@@ -75,7 +75,10 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
     mutationFn: async (file: File) => {
       if (!file.type.startsWith('image/')) throw new Error('not an image')
       const formData = new FormData()
-      formData.append('file', file, file.name || 'pasted-image.png')
+      const dot = file.name.lastIndexOf('.')
+      const extension = dot > -1 ? file.name.slice(dot) : '.png'
+      const uploadName = 'note-image-' + Date.now() + '-' + crypto.randomUUID() + extension
+      formData.append('file', file, uploadName)
       return api.post<{ id: string }>('/api/v1/files/upload', formData)
     },
     onSuccess: uploaded => {

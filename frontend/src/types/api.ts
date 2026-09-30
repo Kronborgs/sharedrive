@@ -51,6 +51,11 @@ export interface GuestUser {
   id: string
   email: string
   display_name: string
+  is_active: boolean
+  must_change_password: boolean
+  chat_notifications_enabled: boolean
+  force_totp_setup: boolean
+  totp_enabled: boolean
   last_login_at: string | null
   created_at: string
   invited_by_name: string | null

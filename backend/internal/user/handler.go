@@ -704,22 +704,28 @@ type GuestSharedItem struct {
 
 // GuestUser is returned by ListGuests.
 type GuestUser struct {
-	ID            string            `json:"id"`
-	Email         string            `json:"email"`
-	DisplayName   string            `json:"display_name"`
-	LastLoginAt   *time.Time        `json:"last_login_at"`
-	CreatedAt     time.Time         `json:"created_at"`
-	InvitedByName *string           `json:"invited_by_name"`
-	SharedItems   []GuestSharedItem `json:"shared_items"`
+	ID                       string            `json:"id"`
+	Email                    string            `json:"email"`
+	DisplayName              string            `json:"display_name"`
+	IsActive                 bool              `json:"is_active"`
+	MustChangePassword       bool              `json:"must_change_password"`
+	ChatNotificationsEnabled bool              `json:"chat_notifications_enabled"`
+	ForceTOTPSetup           bool              `json:"force_totp_setup"`
+	TOTPEnabled              bool              `json:"totp_enabled"`
+	LastLoginAt              *time.Time        `json:"last_login_at"`
+	CreatedAt                time.Time         `json:"created_at"`
+	InvitedByName            *string           `json:"invited_by_name"`
+	SharedItems              []GuestSharedItem `json:"shared_items"`
 }
 
 func (h *Handler) loadGuests(ctx context.Context) ([]GuestUser, error) {
 	rows, err := h.db.Query(ctx,
-		`SELECT u.id, u.email, u.display_name, u.last_login_at, u.created_at,
+		`SELECT u.id, u.email, u.display_name, u.is_active, u.must_change_password,
+		        u.chat_notifications_enabled, u.force_totp_setup, u.last_login_at, u.created_at,
 		        inviter.display_name
 		 FROM users u
 		 LEFT JOIN users inviter ON inviter.id = u.invited_by
-		 WHERE u.role = 'guest' AND u.is_active = true
+		 WHERE u.role = 'guest'
 		 ORDER BY u.created_at DESC`,
 	)
 	if err != nil {
@@ -730,7 +736,8 @@ func (h *Handler) loadGuests(ctx context.Context) ([]GuestUser, error) {
 	guests := []GuestUser{}
 	for rows.Next() {
 		var g GuestUser
-		if err := rows.Scan(&g.ID, &g.Email, &g.DisplayName, &g.LastLoginAt, &g.CreatedAt, &g.InvitedByName); err != nil {
+		if err := rows.Scan(&g.ID, &g.Email, &g.DisplayName, &g.IsActive, &g.MustChangePassword,
+			&g.ChatNotificationsEnabled, &g.ForceTOTPSetup, &g.LastLoginAt, &g.CreatedAt, &g.InvitedByName); err != nil {
 			return nil, err
 		}
 		g.SharedItems = []GuestSharedItem{}
@@ -804,6 +811,12 @@ func (h *Handler) ListGuests(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusInternalServerError, userErrInternal)
 		return
 	}
+	for i := range guests {
+		if h.totpMgr != nil {
+			guests[i].TOTPEnabled, _ = h.totpMgr.HasTOTP(ctx, guests[i].ID)
+		}
+	}
+
 	applyGuestSharedItems(guests, h.loadGuestSharedItems(ctx, guestIDs(guests)))
 
 	httputil.Respond(w, http.StatusOK, guests)

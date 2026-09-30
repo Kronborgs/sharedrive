@@ -206,7 +206,7 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
       {draft.type === 'text' ? (
         <div>
           <textarea aria-label={t('notes.content' as never)} value={draft.content} readOnly={!canEdit} maxLength={100000} onPaste={handleImagePaste} onChange={event => patchDraft({ content: event.target.value })} placeholder={t('notes.startWriting' as never)} className="min-h-[48vh] w-full resize-none bg-transparent text-base leading-7 outline-none" />
-          {(!canEdit || guest) && <NoteContent content={draft.content} className="mt-5 border-t border-zinc-200 pt-5 dark:border-zinc-800" />}
+          {draft.content.trim() && <NoteContent content={draft.content} className="mt-5 border-t border-zinc-200 pt-5 dark:border-zinc-800" />}
           {canEdit && <div className="mt-4 flex flex-wrap gap-2">
             <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" onChange={handleImageFile} disabled={imageUpload.isPending} />
             <button type="button" className="notes-secondary-button" onClick={() => imageInputRef.current?.click()}><ImagePlus size={17} />{imageUpload.isPending ? 'Uploader billede…' : 'Indsæt billede'}</button>

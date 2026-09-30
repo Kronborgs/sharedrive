@@ -4,7 +4,9 @@ const URL_PATTERN = /(https?:\/\/[^\s]+|\/api\/v1\/files\/[a-f0-9-]+\/(?:preview
 const IMAGE_PATTERN = /\.(?:png|jpe?g|gif|webp)(?:[?#].*)?$/i
 
 function cleanUrl(value: string): string {
-  return value.replace(/[.,!?;:]+$/, '')
+  let end = value.length
+  while (end > 0 && '.,!?;:'.includes(value[end - 1])) end--
+  return value.slice(0, end)
 }
 
 function isImageUrl(url: string): boolean {

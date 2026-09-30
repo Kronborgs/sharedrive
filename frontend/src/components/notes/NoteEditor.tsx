@@ -219,10 +219,17 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
       ) : (
         <div className="space-y-2">
           <label className="mb-4 flex w-fit items-center gap-2 text-sm text-muted"><input type="checkbox" checked={draft.hide_completed} disabled={!canEdit} onChange={event => patchDraft({ hide_completed: event.target.checked })} /><EyeOff size={15} />{t('notes.hideCompleted' as never)}</label>
-          {draft.items.filter(item => !draft.hide_completed || !item.is_checked).map((item, index) => (
+          {draft.items.filter(item => !draft.hide_completed || !item.is_checked).map((item, index) => {
+            const isImageItem = item.content.startsWith('/api/v1/files/')
+            const imageNumber = draft.items.slice(0, index + 1).filter(candidate => candidate.content.startsWith('/api/v1/files/')).length
+            let itemLabel = item.content
+            if (isImageItem) {
+              itemLabel = (locale === 'da' ? 'Billede ' : 'Image ') + imageNumber
+            }
+            return (
             <div key={item.id} className="group flex min-h-11 flex-wrap items-center gap-2 border-b border-zinc-100 dark:border-zinc-800">
               <label className="flex shrink-0 items-center"><span className="sr-only">{item.content}</span><input type="checkbox" checked={item.is_checked} disabled={!canCheck || isDraftItem(item) || pendingItemIDs.current.has(item.id)} onChange={event => { pendingItemIDs.current.add(item.id); dirtyItemIDs.current.add(item.id); itemMutation.mutate({ action: 'update', itemId: item.id, checked: event.target.checked }) }} className="size-5 accent-brand-600" /></label>
-              <input value={item.content.startsWith('/api/v1/files/') ? (locale === 'da' ? 'Billede ' : 'Image ') + draft.items.slice(0, index + 1).filter(candidate => candidate.content.startsWith('/api/v1/files/')).length : item.content} readOnly={!canEdit || item.content.startsWith('/api/v1/files/')} maxLength={2000} onChange={event => {
+              <input value={itemLabel} readOnly={!canEdit || isImageItem} maxLength={2000} onChange={event => {
                 if (!isDraftItem(item)) {
                   dirtyItemIDs.current.add(item.id)
                 }
@@ -234,10 +241,10 @@ export function NoteEditor({ id, guest = false, includeDeleted = false }: Readon
                   else itemMutation.mutate({ action: 'delete', itemId: item.id })
                 }
               }} className={`min-w-0 flex-1 bg-transparent py-2 outline-none ${item.is_checked ? 'line-through opacity-55' : ''}`} />
-              {item.content.includes('/api/v1/files/') && <NoteContent content={item.content} className="basis-full ml-8 pb-2" />}
+              {isImageItem && <NoteContent content={item.content} className="basis-full ml-8 pb-2" />}
               {canEdit && <div className="flex opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">{!isDraftItem(item) && <><button type="button" className="notes-icon-button" title={t('notes.moveUp' as never)} onClick={() => { moveItem(item.id, -1).catch(() => setSaveState('error')) }}><ArrowUp size={15} /></button><button type="button" className="notes-icon-button" title={t('notes.moveDown' as never)} onClick={() => { moveItem(item.id, 1).catch(() => setSaveState('error')) }}><ArrowDown size={15} /></button></>}<button type="button" className="notes-icon-button text-red-600" title={t('action.delete')} onClick={() => isDraftItem(item) ? setDraft(current => current ? removeItem(current, item.id) : current) : itemMutation.mutate({ action: 'delete', itemId: item.id })}><X size={16} /></button></div>}
             </div>
-          ))}
+          )})}
       {canEdit && <button type="button" className="mt-4 flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400" onClick={() => addDraftItem()}><Plus size={17} />{t('notes.addItem' as never)}</button>}
         </div>
       )}

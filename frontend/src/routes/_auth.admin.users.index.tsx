@@ -574,6 +574,14 @@ function GuestsPanel({
         return <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
           {guests.map(guest => {
             const isExpanded = expanded.has(guest.id)
+            let totpAction: React.ReactNode
+            if (guest.totp_enabled) {
+              totpAction = <button type="button" onClick={() => { if (confirm(t('users.confirmRevokeTOTP'))) totp.mutate({ id: guest.id, operation: 'revoke' }) }} className="p-1.5 text-green-600 dark:text-green-400" title="Fjern 2FA"><ShieldCheck size={14} /></button>
+            } else if (guest.force_totp_setup) {
+              totpAction = <button type="button" onClick={() => totp.mutate({ id: guest.id, operation: 'unrequire' })} className="p-1.5 text-amber-600 dark:text-amber-400" title="Fjern 2FA-krav"><ShieldCheck size={14} /></button>
+            } else {
+              totpAction = <button type="button" onClick={() => totp.mutate({ id: guest.id, operation: 'require' })} className="p-1.5 text-zinc-400 hover:text-brand-600" title="Kræv 2FA"><ShieldOff size={14} /></button>
+            }
             return <div key={guest.id}>
               <div className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-[#0f1117] transition-colors">
                 <button type="button" onClick={() => toggle(guest.id)} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 shrink-0" title="Vis delte elementer">{isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>
@@ -586,7 +594,7 @@ function GuestsPanel({
                 <div className="hidden items-center gap-2 text-xs text-muted xl:flex"><span className={guest.is_active ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{guest.is_active ? 'Aktiv' : 'Låst'}</span><span>{guest.shared_items.length} {t('users.sharedItemLabel')}</span></div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button type="button" onClick={() => action.mutate({ id: guest.id, method: 'patch', body: { chat_notifications_enabled: !guest.chat_notifications_enabled } })} className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors" title="Chat-notifikationer"><span className="text-[10px] font-medium">{guest.chat_notifications_enabled ? 'Chat til' : 'Chat fra'}</span></button>
-                  {guest.totp_enabled ? <button type="button" onClick={() => { if (confirm(t('users.confirmRevokeTOTP'))) totp.mutate({ id: guest.id, operation: 'revoke' }) }} className="p-1.5 text-green-600 dark:text-green-400" title="Fjern 2FA"><ShieldCheck size={14} /></button> : guest.force_totp_setup ? <button type="button" onClick={() => totp.mutate({ id: guest.id, operation: 'unrequire' })} className="p-1.5 text-amber-600 dark:text-amber-400" title="Fjern 2FA-krav"><ShieldCheck size={14} /></button> : <button type="button" onClick={() => totp.mutate({ id: guest.id, operation: 'require' })} className="p-1.5 text-zinc-400 hover:text-brand-600" title="Kræv 2FA"><ShieldOff size={14} /></button>}
+                  {totpAction}
                   <button type="button" onClick={() => invite.mutate(guest.id)} disabled={invite.isPending} className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors" title="Send ny invitationskode"><Mail size={14} /></button>
                   {guest.is_active ? <button type="button" onClick={() => lock.mutate(guest.id)} className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors" title={t('users.lockAccount')}><LockOpen size={14} /></button> : <button type="button" onClick={() => unlock.mutate(guest.id)} className="p-1.5 rounded-lg text-zinc-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors" title={t('users.unlockAccount')}><Lock size={14} /></button>}
                   <button type="button" onClick={() => { if (confirm(t('users.confirmForceReset'))) action.mutate({ id: guest.id, method: 'post' }) }} className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors" title={t('users.forcePasswordReset')}><KeyRound size={14} /></button>

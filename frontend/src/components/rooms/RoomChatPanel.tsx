@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { ArrowDown, File, FileText, Pencil, Reply, Send, Trash2 } from 'lucide-react'
 import { PreviewModal } from '@/components/files/PreviewModal'
+import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { EmojiPicker } from '@/components/rooms/EmojiPicker'
 import { GifPicker } from '@/components/rooms/GifPicker'
 import { RoomResourcesPanel, type PendingRoomResource } from '@/components/rooms/RoomResourcesPanel'
@@ -12,6 +13,7 @@ import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
 import { chatDayKey, formatChatDay, formatChatMessageTime } from '@/lib/room-dates'
 import { importRemoteGIF, isRemoteGIFURL } from '@/lib/rooms-gifs'
+import { shouldOpenInOnlyOffice } from '@/lib/file-types'
 import {
   addRoomReaction,
   addRoomResource,
@@ -213,6 +215,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   const [body, setBody] = useState('')
   const [replyTo, setReplyTo] = useState<RoomMessage>()
   const [previewID, setPreviewID] = useState<string>()
+  const [ooItem, setOoItem] = useState<FileItem>()
   const [attachments, setAttachments] = useState<PendingRoomResource[]>([])
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const newestTimelineID = useRef<string | undefined>(undefined)
@@ -231,7 +234,21 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   const { notifyTyping, typingName } = useRoomLiveSync(roomID, user?.id, refresh)
   const messages = useInfiniteQuery({ queryKey: messageQueryKey, queryFn: ({ pageParam, signal }) => listRoomMessages(roomID, pageParam, signal), initialPageParam: undefined as string | undefined, getNextPageParam: page => page.next_cursor })
   const resources = useQuery({ queryKey: resourceQueryKey, queryFn: ({ signal }) => listRoomResources(roomID, signal) })
-  const preview = useQuery({ queryKey: ['rooms', roomID, 'preview-file', previewID], queryFn: ({ signal }) => api.get<FileItem>(`/api/v1/files/${previewID}`, signal), enabled: Boolean(previewID) })
+  const preview = useQuery({ queryKey: ['rooms', roomID, 'preview-file', previewID], queryFn: ({ signal }) => api.get<FileItem>('/api/v1/files/' + previewID, signal), enabled: Boolean(previewID) })
+  const systemSettings = useQuery({ queryKey: ['system', 'settings'], queryFn: ({ signal }) => api.get<{ onlyoffice_url?: string }>('/api/v1/system/settings', signal) })
+  const openResource = useCallback((file: FileItem) => {
+    if (systemSettings.data?.onlyoffice_url && shouldOpenInOnlyOffice(file.name)) {
+      setOoItem(file)
+      setPreviewID(undefined)
+      return
+    }
+    setPreviewID(file.id)
+  }, [systemSettings.data?.onlyoffice_url])
+  const openResourceByID = useCallback((resourceID: string) => {
+    const resource = (resources.data ?? []).find(item => item.resource_id === resourceID && item.resource_type === 'file')
+    if (!resource) { setPreviewID(resourceID); return }
+    openResource({ id: resource.file_id, parent_id: null, owner_id: '', is_folder: false, name: resource.name, mime_type: resource.mime_type ?? null, size_bytes: 0, checksum_sha256: null, deleted_at: null, created_at: resource.created_at, updated_at: resource.created_at })
+  }, [openResource, resources.data])
   const messageItems = messages.data?.pages.flatMap(page => page.messages) ?? []
   const canModerate = user?.role === 'admin' || room.current_role === 'owner' || room.current_role === 'moderator'
   const resourcesByMessage = useMemo(() => {
@@ -352,8 +369,8 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
         return <Fragment key={`${item.kind}-${item.value.id}`}>
           {showDate && <div className="my-4 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-muted"><span className="h-px flex-1 bg-subtle" /><span>{formatChatDay(item.date, locale)}</span><span className="h-px flex-1 bg-subtle" /></div>}
           {item.kind === 'message'
-            ? <MessageCard message={item.value} currentUserID={user?.id} canModerate={canModerate} groupedWithPrevious={isGroupedMessage(timeline, index)} resources={resourcesByMessage.get(item.value.id) ?? []} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} onRemoveResource={removeResourceMutation.mutate} onPreviewResource={setPreviewID} onStartDirect={directMutation.mutate} />
-            : <StandaloneResourceCard resource={item.value} currentUserID={user?.id} canModerate={canModerate} onPreview={setPreviewID} onRemove={removeResourceMutation.mutate} onStartDirect={directMutation.mutate} />}
+            ? <MessageCard message={item.value} currentUserID={user?.id} canModerate={canModerate} groupedWithPrevious={isGroupedMessage(timeline, index)} resources={resourcesByMessage.get(item.value.id) ?? []} onReply={setReplyTo} onEdit={editMessage} onDelete={removeMessage} onReaction={toggleReaction} onRemoveResource={removeResourceMutation.mutate} onPreviewResource={openResourceByID} onStartDirect={directMutation.mutate} />
+            : <StandaloneResourceCard resource={item.value} currentUserID={user?.id} canModerate={canModerate} onPreview={openResourceByID} onRemove={removeResourceMutation.mutate} onStartDirect={directMutation.mutate} />}
         </Fragment>
       })}
     </div>
@@ -370,5 +387,6 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
       <button type="submit" disabled={(!body.trim() && attachments.length === 0) || send.isPending} className="rounded-full bg-brand-600 p-2.5 text-white disabled:opacity-50" aria-label={t('rooms.sendMessage')}><Send size={18} /></button>
     </form>
     {previewID && preview.data && <PreviewModal item={preview.data} onClose={() => setPreviewID(undefined)} />}
+    {ooItem && systemSettings.data?.onlyoffice_url && <OnlyOfficeEditor item={ooItem} onlyofficeUrl={systemSettings.data.onlyoffice_url} onClose={() => setOoItem(undefined)} backLabel={t('rooms.backToChat' as never)} />}
   </section>
 }

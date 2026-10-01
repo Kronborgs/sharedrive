@@ -12,8 +12,10 @@ import { RoomVoicePanel } from '@/components/rooms/RoomVoicePanel'
 import { EmojiPicker } from '@/components/rooms/EmojiPicker'
 import { GifPicker } from '@/components/rooms/GifPicker'
 import { PreviewModal } from '@/components/files/PreviewModal'
+import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { api } from '@/lib/api'
 import { importRemoteGIF, isRemoteGIFURL } from '@/lib/rooms-gifs'
+import { shouldOpenInOnlyOffice } from '@/lib/file-types'
 import type { FileItem } from '@/types/api'
 
 function AddContactDialog({ conversation }: Readonly<{ conversation: DirectConversation }>) {
@@ -95,6 +97,7 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
   const [body, setBody] = useState('')
   const [attachments, setAttachments] = useState<FileItem[]>([])
   const [previewFile, setPreviewFile] = useState<FileItem | undefined>()
+  const [ooFile, setOoFile] = useState<FileItem>()
   const uploadRef = useRef<HTMLInputElement>(null)
   const messageScrollRef = useRef<HTMLElement>(null)
   const wasAtBottom = useRef(true)
@@ -103,6 +106,15 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
   const groupMembers = useQuery({ queryKey: ['rooms', 'direct', conversationID, 'members'], queryFn: ({ signal }) => listDirectConversationMembers(conversationID, signal), enabled: conversation?.kind === 'group' })
   const messages = useQuery({ queryKey: ['rooms', 'direct', conversationID, 'messages'], queryFn: ({ signal }) => listDirectMessages(conversationID, undefined, signal), refetchInterval: 5_000 })
   const resources = useQuery({ queryKey: ['rooms', 'direct', conversationID, 'resources'], queryFn: ({ signal }) => listDirectResources(conversationID, signal) })
+  const systemSettings = useQuery({ queryKey: ['system', 'settings'], queryFn: ({ signal }) => api.get<{ onlyoffice_url?: string }>('/api/v1/system/settings', signal) })
+  const openResource = useCallback((file: FileItem) => {
+    if (systemSettings.data?.onlyoffice_url && shouldOpenInOnlyOffice(file.name)) {
+      setOoFile(file)
+      setPreviewFile(undefined)
+      return
+    }
+    setPreviewFile(file)
+  }, [systemSettings.data?.onlyoffice_url])
   const rename = useMutation({ mutationFn: (name: string) => renameDirectConversation(conversationID, name), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rooms', 'direct-conversations'] }) })
   const removeConversation = useMutation({ mutationFn: () => conversation?.kind === 'group' ? deleteGroupConversation(conversationID) : hideDirectConversation(conversationID), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['rooms', 'direct-conversations'] }).catch(() => undefined); navigate({ to: '/rooms' }).catch(() => undefined) }, onError: () => toast.error(t('rooms.deleteChatFailed' as never)) })
   const startDirect = useMutation({
@@ -201,8 +213,8 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
               const previewItem: FileItem = { id: resource.file_id, parent_id: null, owner_id: '', is_folder: false, name: resource.name, mime_type: resource.mime_type ?? null, size_bytes: 0, checksum_sha256: null, deleted_at: null, created_at: resource.created_at, updated_at: resource.created_at }
               const isImage = resource.mime_type?.startsWith('image/') || /\.(avif|gif|jpe?g|png|svg|webp)$/i.test(resource.name)
               return isImage
-                ? <button key={resource.id} type="button" onClick={() => setPreviewFile(previewItem)} className="mt-1 block max-w-[80%] overflow-hidden rounded-xl border border-subtle bg-zinc-950"><img src={'/api/v1/files/' + resource.file_id + '/' + (resource.mime_type === 'image/gif' ? 'preview' : 'thumbnail')} alt={resource.name} className="max-h-64 max-w-full object-contain" loading="lazy" /></button>
-                : <button key={resource.id} type="button" onClick={() => setPreviewFile(previewItem)} className="mt-1 max-w-[80%] rounded-lg border border-subtle bg-surface px-3 py-2 text-left text-sm text-brand-600 hover:underline">{resource.name}</button>
+                ? <button key={resource.id} type="button" onClick={() => openResource(previewItem)} className="mt-1 block max-w-[80%] overflow-hidden rounded-xl border border-subtle bg-zinc-950"><img src={'/api/v1/files/' + resource.file_id + '/' + (resource.mime_type === 'image/gif' ? 'preview' : 'thumbnail')} alt={resource.name} className="max-h-64 max-w-full object-contain" loading="lazy" /></button>
+                : <button key={resource.id} type="button" onClick={() => openResource(previewItem)} className="mt-1 max-w-[80%] rounded-lg border border-subtle bg-surface px-3 py-2 text-left text-sm text-brand-600 hover:underline">{resource.name}</button>
             })
             return <Fragment key={message.id}>
               {showDate && <div className="my-4 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-muted"><span className="h-px flex-1 bg-subtle" /><span>{formatChatDay(message.created_at, locale)}</span><span className="h-px flex-1 bg-subtle" /></div>}
@@ -216,6 +228,7 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
           })}
         </section>
         {previewFile && <PreviewModal item={previewFile} onClose={() => setPreviewFile(undefined)} />}
+        {ooFile && systemSettings.data?.onlyoffice_url && <OnlyOfficeEditor item={ooFile} onlyofficeUrl={systemSettings.data.onlyoffice_url} onClose={() => setOoFile(undefined)} backLabel={t('rooms.backToChat' as never)} />}
         {attachments.length > 0 && <div className="flex shrink-0 flex-wrap gap-2 px-3 pb-2">{attachments.map(file => <span key={file.id} className="flex items-center gap-1 rounded-full border border-subtle px-2 py-1 text-xs">{file.name}<button type="button" onClick={() => setAttachments(items => items.filter(item => item.id !== file.id))} aria-label={t('action.close')}><X size={13} /></button></span>)}</div>}
         <form className="sticky bottom-0 flex shrink-0 items-end gap-2 border-t border-subtle bg-surface p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" onSubmit={event => { event.preventDefault(); if (body.trim() || attachments.length > 0) send.mutate() }}><button type="button" className="notes-icon-button" onClick={() => uploadRef.current?.click()} disabled={upload.isPending} aria-label={t('rooms.addAttachment')}><Paperclip size={18} /></button><input ref={uploadRef} type="file" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) { upload.mutate(file) }; event.currentTarget.value = '' }} /><input className="notes-input min-w-0 flex-1" value={body} onChange={event => setBody(event.target.value)} placeholder={t('rooms.messagePlaceholder')} /><EmojiPicker userKey={user?.id ?? 'anonymous'} onSelect={emoji => setBody(value => value + emoji)} /><GifPicker onSelect={(fileID, name) => sendGIF.mutate({ fileID, name })} /><button className="notes-primary-button" type="submit" disabled={(!body.trim() && attachments.length === 0) || send.isPending}><Send size={17} /></button></form>
       </div>

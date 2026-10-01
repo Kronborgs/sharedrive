@@ -247,7 +247,7 @@ export function RoomChatPanel({ room, fillAvailableHeight = false }: Readonly<{ 
   const openResourceByID = useCallback((resourceID: string) => {
     const resource = (resources.data ?? []).find(item => item.resource_id === resourceID && item.resource_type === 'file')
     if (!resource) { setPreviewID(resourceID); return }
-    openResource({ id: resource.file_id, parent_id: null, owner_id: '', is_folder: false, name: resource.name, mime_type: resource.mime_type ?? null, size_bytes: 0, checksum_sha256: null, deleted_at: null, created_at: resource.created_at, updated_at: resource.created_at })
+    openResource({ id: resource.resource_id, parent_id: null, owner_id: '', is_folder: false, name: resource.name ?? 'shared-file', mime_type: resource.mime_type ?? null, size_bytes: 0, checksum_sha256: null, deleted_at: null, created_at: resource.created_at, updated_at: resource.created_at })
   }, [openResource, resources.data])
   const messageItems = messages.data?.pages.flatMap(page => page.messages) ?? []
   const canModerate = user?.role === 'admin' || room.current_role === 'owner' || room.current_role === 'moderator'

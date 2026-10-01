@@ -14,7 +14,6 @@ interface Props {
 type Step = 'qr' | 'verify' | 'backup'
 
 export function TOTPSetupDialog({ onClose, onChanged }: Readonly<Props>) {
-  const { t } = useI18n()
   const [methods, setMethods] = useState<MFAMethod[]>([])
   const [showSetup, setShowSetup] = useState(false)
   const [emailSent, setEmailSent] = useState(false)

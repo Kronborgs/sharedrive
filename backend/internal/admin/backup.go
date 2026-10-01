@@ -73,7 +73,7 @@ var backupRestoreStatements = []string{
 	`DELETE FROM file_tags`,
 	`DELETE FROM shares`,
 	`DELETE FROM app_passwords`,
-	`DELETE FROM mfa_methods`
+	`DELETE FROM mfa_methods`,
 	`DELETE FROM totp_credentials`,
 	`DELETE FROM group_members`,
 	`DELETE FROM user_product_access`,
@@ -640,3 +640,4 @@ func joinStrings(ss []string, sep string) string {
 	}
 	return result
 }
+

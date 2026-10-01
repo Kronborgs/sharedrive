@@ -145,7 +145,7 @@ func clearRestoreTables(ctx context.Context, tx pgx.Tx) error {
 		`DELETE FROM file_tags`,
 		`DELETE FROM shares`,
 		`DELETE FROM app_passwords`,
-		`DELETE FROM mfa_methods`
+		`DELETE FROM mfa_methods`,
 		`DELETE FROM totp_credentials`,
 		`DELETE FROM group_members`,
 		`DELETE FROM tags`,
@@ -453,3 +453,4 @@ func (h *Handler) RestoreSetup(w http.ResponseWriter, r *http.Request) {
 
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
+

@@ -112,17 +112,10 @@ func (m *Mailer) SendPasswordReset(_ context.Context, toEmail, toName, resetLink
 
 // SendMFACode sends a short-lived MFA verification code.
 func (m *Mailer) SendMFACode(_ context.Context, toEmail, toName, code string) error {
-	body := fmt.Sprintf(
-		"Hej %s,
-
-Din Sharedrive-verifikationskode er: %s
-
-Koden udløber om 10 minutter og kan kun bruges én gang. En ny kode gør denne kode ugyldig.
-
-Hvis du ikke forsøgte at logge ind eller aktivere e-mail-MFA, skal du kontakte administratoren.
-",
-		toName, code,
-	)
+	body := "Hej " + toName + ",\n\n" +
+		"Din Sharedrive-verifikationskode er: " + code + "\n\n" +
+		"Koden udløber om 10 minutter og kan kun bruges én gang. En ny kode gør denne kode ugyldig.\n\n" +
+		"Hvis du ikke forsøgte at logge ind eller aktivere e-mail-MFA, skal du kontakte administratoren.\n"
 	return m.send(toEmail, "Din Sharedrive MFA-kode", body)
 }
 // SendInvitation sends an invitation link to a new user.
@@ -313,3 +306,5 @@ func (m *Mailer) sendMessage(to, subject, plainBody, htmlBody string, fromName .
 	}
 	return nil
 }
+
+

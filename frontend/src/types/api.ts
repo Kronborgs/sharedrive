@@ -84,6 +84,8 @@ export interface LoginResponse {
   require_totp?: boolean
   require_password_change?: boolean
   reset_token?: string
+  mfa_notice?: string
+  mfa_methods?: Array<{ id: string; method_type: "totp" | "email"; label: string }>
 }
 
 export interface TOTPVerifyRequest {

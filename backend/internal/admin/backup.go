@@ -47,6 +47,7 @@ var backupExportSteps = []exportStep{
 	{name: "file_tags", query: `SELECT file_id, tag_id FROM file_tags`, set: func(d *backupData, v []map[string]any) { d.FileTags = v }},
 	{name: "shares", query: `SELECT id, resource_id, owner_id, grantee_type, grantee_id, can_view, can_upload, can_edit, can_delete, can_reshare, created_by, expires_at, revoked_at, created_at FROM shares`, set: func(d *backupData, v []map[string]any) { d.Shares = v }},
 	{name: "totp_credentials", query: `SELECT id, user_id, encrypted_secret, backup_codes, confirmed_at, created_at FROM totp_credentials`, set: func(d *backupData, v []map[string]any) { d.TOTPCreds = v }},
+	{name: "mfa_methods", query: `SELECT id, user_id, method_type, label, encrypted_secret, email_address, backup_codes, is_active, last_used_at, disabled_at, created_at FROM mfa_methods`, set: func(d *backupData, v []map[string]any) { d.MFAMethods = v }},
 	{name: "app_passwords", query: `SELECT id, user_id, name, password_hash, scope, last_used_at, revoked_at, created_at FROM app_passwords`, set: func(d *backupData, v []map[string]any) { d.AppPasswords = v }},
 	{name: "system_settings", query: `SELECT key, value, updated_at FROM system_settings`, set: func(d *backupData, v []map[string]any) { d.SystemSettings = v }},
 	{name: "rooms", query: `SELECT id, name, slug, owner_id, managed_group_id, icon_file_id, created_by, created_at, updated_at, archived_at FROM rooms`, set: func(d *backupData, v []map[string]any) { d.Rooms = v }},
@@ -72,6 +73,7 @@ var backupRestoreStatements = []string{
 	`DELETE FROM file_tags`,
 	`DELETE FROM shares`,
 	`DELETE FROM app_passwords`,
+	`DELETE FROM mfa_methods`
 	`DELETE FROM totp_credentials`,
 	`DELETE FROM group_members`,
 	`DELETE FROM user_product_access`,
@@ -122,6 +124,7 @@ type backupData struct {
 	FileTags            []map[string]any `json:"file_tags"`
 	Shares              []map[string]any `json:"shares"`
 	TOTPCreds           []map[string]any `json:"totp_credentials"`
+	MFAMethods          []map[string]any `json:"mfa_methods,omitempty"`
 	AppPasswords        []map[string]any `json:"app_passwords"`
 	SystemSettings      []map[string]any `json:"system_settings"`
 	Rooms               []map[string]any `json:"rooms,omitempty"`
@@ -510,6 +513,7 @@ func insertEnvelopeRows(ctx context.Context, tx pgx.Tx, data backupData, include
 			"created_by": true, "expires_at": true, "revoked_at": true, "created_at": true,
 		},
 		"totp_credentials":      {"id": true, "user_id": true, "encrypted_secret": true, "backup_codes": true, "confirmed_at": true, "created_at": true},
+		"mfa_methods":          {"id": true, "user_id": true, "method_type": true, "label": true, "encrypted_secret": true, "email_address": true, "backup_codes": true, "is_active": true, "last_used_at": true, "disabled_at": true, "created_at": true},
 		"app_passwords":         {"id": true, "user_id": true, "name": true, "password_hash": true, "scope": true, "last_used_at": true, "revoked_at": true, "created_at": true},
 		"rooms":                 {"id": true, "name": true, "slug": true, "owner_id": true, "managed_group_id": true, "icon_file_id": true, "created_by": true, "created_at": true, "updated_at": true, "archived_at": true},
 		"room_members":          {"room_id": true, "user_id": true, "role": true, "joined_at": true, "added_by": true},
@@ -543,6 +547,7 @@ func insertEnvelopeRows(ctx context.Context, tx pgx.Tx, data backupData, include
 		{"file_tags", data.FileTags},
 		{"shares", data.Shares},
 		{"totp_credentials", data.TOTPCreds},
+		{"mfa_methods", data.MFAMethods},
 		{"app_passwords", data.AppPasswords},
 	}
 	if includeRooms {

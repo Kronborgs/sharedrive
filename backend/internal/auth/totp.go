@@ -9,8 +9,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
@@ -27,7 +29,18 @@ const (
 // timeNow is a thin wrapper so tests can override the clock.
 var timeNow = time.Now
 
-// TOTPService manages TOTP enroll/verify/revoke for users.
+// MFAMethod describes an enrolled MFA method without exposing secrets.
+type MFAMethod struct {
+	ID           uuid.UUID  `json:"id"`
+	MethodType   string     `json:"method_type"`
+	Label        string     `json:"label"`
+	EmailAddress *string    `json:"email_address,omitempty"`
+	IsActive     bool       `json:"is_active"`
+	LastUsedAt   *time.Time `json:"last_used_at,omitempty"`
+	DisabledAt   *time.Time `json:"disabled_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+// TOTPService manages TOTP enrollment, verification, and revocation.
 type TOTPService struct {
 	db         *pgxpool.Pool
 	encryptKey []byte // 32-byte AES-256 key
@@ -56,7 +69,7 @@ func (s *TOTPService) BeginEnroll(userEmail string) (secret, provisioningURI str
 
 // ConfirmEnroll validates the code, then encrypts and stores the secret.
 // Returns the plaintext backup codes (shown once to the user).
-func (s *TOTPService) ConfirmEnroll(ctx context.Context, userID, userEmail, secret, code string) (backupCodes []string, err error) {
+func (s *TOTPService) ConfirmEnroll(ctx context.Context, userID, userEmail, secret, code, label string) (backupCodes []string, err error) {
 	now := timeNow()
 	valid, valErr := totp.ValidateCustom(code, secret, now, totp.ValidateOpts{
 		Skew:      1, // ±30 seconds — one step before/after current
@@ -87,14 +100,13 @@ func (s *TOTPService) ConfirmEnroll(ctx context.Context, userID, userEmail, secr
 		return nil, err
 	}
 
+	if strings.TrimSpace(label) == "" {
+		label = "Authenticator"
+	}
 	_, err = s.db.Exec(ctx,
-		`INSERT INTO totp_credentials (user_id, encrypted_secret, backup_codes)
-		 VALUES ($1, $2, $3)
-		 ON CONFLICT (user_id) DO UPDATE
-		   SET encrypted_secret = EXCLUDED.encrypted_secret,
-		       backup_codes     = EXCLUDED.backup_codes,
-		       confirmed_at     = now()`,
-		userID, encrypted, hashed,
+		`INSERT INTO mfa_methods (user_id, method_type, label, encrypted_secret, backup_codes)
+		 VALUES ($1, 'totp', $2, $3, $4)`,
+		userID, label, encrypted, hashed,
 	)
 	if err != nil {
 		log.Error().Err(err).Str("user_id", userID).Msg("totp: failed to store secret in DB")
@@ -103,47 +115,101 @@ func (s *TOTPService) ConfirmEnroll(ctx context.Context, userID, userEmail, secr
 	return backupCodes, nil
 }
 
-// Validate checks a TOTP code (or backup code) for a user.
+// Validate checks a TOTP code (or backup code) for any active TOTP method.
 func (s *TOTPService) Validate(ctx context.Context, userID, code string) error {
-	row := s.db.QueryRow(ctx,
-		`SELECT encrypted_secret, backup_codes FROM totp_credentials WHERE user_id = $1`,
+	rows, err := s.db.Query(ctx,
+		`SELECT id, encrypted_secret, backup_codes
+		   FROM mfa_methods
+		  WHERE user_id = $1 AND method_type = 'totp' AND is_active = true
+		  ORDER BY last_used_at DESC NULLS LAST, created_at`,
 		userID,
 	)
-	var encSecret string
-	var backupHash []string
-	if err := row.Scan(&encSecret, &backupHash); err != nil {
-		return fmt.Errorf("totp: user has no TOTP configured")
-	}
-
-	secret, err := s.decrypt(encSecret)
 	if err != nil {
-		return err
+		return fmt.Errorf("totp: list methods: %w", err)
 	}
+	defer rows.Close()
 
-	valid, _ := totp.ValidateCustom(code, secret, timeNow(), totp.ValidateOpts{Skew: 1, Digits: otp.DigitsSix, Period: 30, Algorithm: otp.AlgorithmSHA1})
-	if valid {
-		return nil
+	for rows.Next() {
+		var methodID uuid.UUID
+		var encSecret string
+		var backupHash []string
+		if err := rows.Scan(&methodID, &encSecret, &backupHash); err != nil {
+			return fmt.Errorf("totp: read method: %w", err)
+		}
+		secret, err := s.decrypt(encSecret)
+		if err != nil {
+			continue
+		}
+		valid, _ := totp.ValidateCustom(code, secret, timeNow(), totp.ValidateOpts{Skew: 1, Digits: otp.DigitsSix, Period: 30, Algorithm: otp.AlgorithmSHA1})
+		if valid {
+			_, _ = s.db.Exec(ctx, `UPDATE mfa_methods SET last_used_at = now() WHERE id = $1`, methodID)
+			return nil
+		}
+		if s.validateBackupCode(ctx, methodID, code, backupHash) == nil {
+			_, _ = s.db.Exec(ctx, `UPDATE mfa_methods SET last_used_at = now() WHERE id = $1`, methodID)
+			return nil
+		}
 	}
-
-	// Try backup codes
-	return s.validateBackupCode(ctx, userID, code, backupHash)
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("totp: iterate methods: %w", err)
+	}
+	return fmt.Errorf("totp: invalid code")
 }
 
-// Disable removes TOTP for a user.
+// Disable removes all MFA methods for a user. This is reserved for administrator actions.
 func (s *TOTPService) Disable(ctx context.Context, userID string) error {
-	_, err := s.db.Exec(ctx, `DELETE FROM totp_credentials WHERE user_id = $1`, userID)
+	_, err := s.db.Exec(ctx, `DELETE FROM mfa_methods WHERE user_id = $1`, userID)
 	return err
 }
 
-// HasTOTP returns whether a user has TOTP enabled.
+// HasTOTP returns whether a user has at least one active TOTP method.
 func (s *TOTPService) HasTOTP(ctx context.Context, userID string) (bool, error) {
 	var exists bool
 	err := s.db.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM totp_credentials WHERE user_id = $1)`, userID,
+		`SELECT EXISTS(SELECT 1 FROM mfa_methods WHERE user_id = $1 AND method_type = 'totp' AND is_active = true)`,
+		userID,
 	).Scan(&exists)
 	return exists, err
 }
 
+// ListMethods returns all MFA methods for a user without exposing secrets.
+func (s *TOTPService) ListMethods(ctx context.Context, userID string) ([]MFAMethod, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT id, method_type, label, email_address, is_active, last_used_at, disabled_at, created_at
+		   FROM mfa_methods WHERE user_id = $1 ORDER BY created_at, id`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var methods []MFAMethod
+	for rows.Next() {
+		var method MFAMethod
+		if err := rows.Scan(&method.ID, &method.MethodType, &method.Label, &method.EmailAddress, &method.IsActive, &method.LastUsedAt, &method.DisabledAt, &method.CreatedAt); err != nil {
+			return nil, err
+		}
+		methods = append(methods, method)
+	}
+	return methods, rows.Err()
+}
+
+// DeleteMethod removes a user's MFA method but never their last active method.
+func (s *TOTPService) DeleteMethod(ctx context.Context, userID, methodID string) error {
+	tag, err := s.db.Exec(ctx,
+		`DELETE FROM mfa_methods
+		  WHERE id = $1 AND user_id = $2
+		    AND (NOT is_active OR (SELECT count(*) FROM mfa_methods WHERE user_id = $2 AND is_active = true) > 1)`,
+		methodID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("mfa: cannot remove the last active method or method was not found")
+	}
+	return nil
+}
 // ─── AES-256-GCM encryption ──────────────────────────────────────────────────
 
 func (s *TOTPService) encrypt(plaintext string) (string, error) {
@@ -210,7 +276,7 @@ func hashBackupCode(code string) string {
 	return hex.EncodeToString(hash)
 }
 
-func (s *TOTPService) validateBackupCode(ctx context.Context, userID, code string, storedHashes []string) error {
+func (s *TOTPService) validateBackupCode(ctx context.Context, methodID uuid.UUID, code string, storedHashes []string) error {
 	h := hashBackupCode(code)
 	for i, stored := range storedHashes {
 		if stored == h {
@@ -219,8 +285,8 @@ func (s *TOTPService) validateBackupCode(ctx context.Context, userID, code strin
 			copy(newHashes, storedHashes)
 			newHashes[i] = "USED-" + stored
 			_, _ = s.db.Exec(ctx,
-				`UPDATE totp_credentials SET backup_codes = $1 WHERE user_id = $2`,
-				newHashes, userID,
+				`UPDATE mfa_methods SET backup_codes = $1 WHERE id = $2`,
+				newHashes, methodID,
 			)
 			return nil
 		}

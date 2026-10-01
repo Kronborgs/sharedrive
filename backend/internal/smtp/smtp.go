@@ -110,6 +110,21 @@ func (m *Mailer) SendPasswordReset(_ context.Context, toEmail, toName, resetLink
 	return m.send(toEmail, "Reset your PrivateDrive password", body)
 }
 
+// SendMFACode sends a short-lived MFA verification code.
+func (m *Mailer) SendMFACode(_ context.Context, toEmail, toName, code string) error {
+	body := fmt.Sprintf(
+		"Hej %s,
+
+Din Sharedrive-verifikationskode er: %s
+
+Koden udløber om 10 minutter og kan kun bruges én gang. En ny kode gør denne kode ugyldig.
+
+Hvis du ikke forsøgte at logge ind eller aktivere e-mail-MFA, skal du kontakte administratoren.
+",
+		toName, code,
+	)
+	return m.send(toEmail, "Din Sharedrive MFA-kode", body)
+}
 // SendInvitation sends an invitation link to a new user.
 func (m *Mailer) SendInvitation(_ context.Context, toEmail, inviterName, inviteLink string) error {
 	body := fmt.Sprintf(

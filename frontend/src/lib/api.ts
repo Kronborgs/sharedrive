@@ -88,6 +88,17 @@ export interface TOTPSetupData {
   provisioning_uri: string
 }
 
+export interface MFAMethod {
+  id: string
+  method_type: "totp" | "email"
+  label: string
+  email_address?: string
+  is_active: boolean
+  last_used_at?: string
+  disabled_at?: string
+  created_at: string
+}
+
 export interface TOTPConfirmData {
   backup_codes: string[]
 }
@@ -96,8 +107,24 @@ export function fetchTOTPSetup(): Promise<TOTPSetupData> {
   return api.get<TOTPSetupData>('/api/v1/me/totp/setup')
 }
 
-export function confirmTOTPSetup(code: string): Promise<TOTPConfirmData> {
-  return api.post<TOTPConfirmData>('/api/v1/me/totp/confirm', { code })
+export function confirmTOTPSetup(code: string, label?: string): Promise<TOTPConfirmData> {
+  return api.post<TOTPConfirmData>('/api/v1/me/totp/confirm', { code, label })
+}
+
+export function fetchMFAMethods(): Promise<MFAMethod[]> {
+  return api.get<MFAMethod[]>('/api/v1/me/mfa')
+}
+
+export function requestEmailMFA(): Promise<{ sent: boolean }> {
+  return api.post<{ sent: boolean }>('/api/v1/me/mfa/email/request', {})
+}
+
+export function confirmEmailMFA(code: string, label?: string): Promise<void> {
+  return api.post('/api/v1/me/mfa/email/confirm', { code, label })
+}
+
+export function deleteMFAMethod(id: string): Promise<void> {
+  return api.delete('/api/v1/me/mfa/' + id)
 }
 
 export function disableTOTP(): Promise<void> {

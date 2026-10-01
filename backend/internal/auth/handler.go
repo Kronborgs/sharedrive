@@ -54,6 +54,7 @@ type Handler struct {
 	totpSvc       *TOTPService
 	deviceTrust   *DeviceTrustService
 	passwordReset *PasswordResetService
+	mailer       Mailer
 	auditSvc      audit.Logger
 }
 
@@ -81,6 +82,7 @@ func NewHandler(
 		totpSvc:       totpSvc,
 		deviceTrust:   deviceTrust,
 		passwordReset: NewPasswordResetService(db, mailer),
+		mailer:       mailer,
 		auditSvc:      auditSvc,
 	}, nil
 }
@@ -113,6 +115,7 @@ type loginResponse struct {
 	PendingToken          string `json:"pending_token,omitempty"`
 	RequirePasswordChange bool   `json:"require_password_change,omitempty"`
 	ResetToken            string `json:"reset_token,omitempty"`
+	MFANotice              string `json:"mfa_notice,omitempty"`
 }
 
 func (h *Handler) allowLoginAttempt(ctx context.Context, w http.ResponseWriter, ip string) bool {
@@ -186,7 +189,9 @@ func (h *Handler) respondForcedPasswordChange(ctx context.Context, w http.Respon
 
 func (h *Handler) maybeRespondLoginTOTP(ctx context.Context, w http.ResponseWriter, r *http.Request, u *user.User, ip string, trustDevice bool) bool {
 	hasTOTP, _ := h.totpSvc.HasTOTP(ctx, u.ID.String())
-	if !hasTOTP {
+	var hasEmail bool
+	_ = h.db.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM mfa_methods WHERE user_id = $1 AND method_type = 'email' AND is_active = true)", u.ID.String()).Scan(&hasEmail)
+	if !hasTOTP && !hasEmail {
 		return false
 	}
 	if deviceCookie, err := r.Cookie(deviceCookieName); err == nil {
@@ -201,6 +206,7 @@ func (h *Handler) maybeRespondLoginTOTP(ctx context.Context, w http.ResponseWrit
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return true
 	}
+	_ = h.sendLoginEmailCode(ctx, u.ID.String(), u.Email, pendingToken)
 	if h.auditSvc != nil {
 		h.auditSvc.Log(ctx, audit.Event{
 			Type:       audit.EventUserLoginTOTPRequired,
@@ -283,7 +289,8 @@ func (h *Handler) TOTPVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.totpSvc.Validate(ctx, userID, req.Code); err != nil {
+	totpErr := h.totpSvc.Validate(ctx, userID, req.Code)
+	if totpErr != nil && !h.validateLoginEmailCode(ctx, userID, req.PendingToken, req.Code) {
 		log.Debug().Str("user_id", userID).Str("ip", ip).Msg("totp: verify failed — invalid code")
 		// Increment per-token failure counter. After 5 wrong codes the pending
 		// token is invalidated so an offline brute force on a captured token is
@@ -299,6 +306,7 @@ func (h *Handler) TOTPVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	staleLabels, _ := deactivateStaleMFAMethods(ctx, h.db, userID)
 	// Code valid — consume the pending token and its failure counter.
 	h.rdb.Del(ctx, pendingTOTPKey+req.PendingToken)
 	h.rdb.Del(ctx, "pending_totp_fails:"+req.PendingToken)
@@ -335,7 +343,9 @@ func (h *Handler) TOTPVerify(w http.ResponseWriter, r *http.Request) {
 			UserAgent:  r.UserAgent(),
 		})
 	}
-	httputil.Respond(w, http.StatusOK, loginResponse{})
+	notice := ""
+	if len(staleLabels) > 0 { notice = "En ubrugt MFA-metode blev deaktiveret efter 30 dage uden brug." }
+	httputil.Respond(w, http.StatusOK, loginResponse{MFANotice: notice})
 }
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
@@ -957,7 +967,8 @@ func (h *Handler) TOTPSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 type totpConfirmRequest struct {
-	Code string `json:"code"`
+	Code  string `json:"code"`
+	Label string `json:"label"`
 }
 
 type totpConfirmResponse struct {
@@ -984,7 +995,7 @@ func (h *Handler) TOTPConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Debug().Str("user_id", u.ID.String()).Int("secret_len", len(secret)).Str("code", req.Code).Msg("totp: confirm attempt")
-	codes, err := h.totpSvc.ConfirmEnroll(ctx, u.ID.String(), u.Email, secret, req.Code)
+	codes, err := h.totpSvc.ConfirmEnroll(ctx, u.ID.String(), u.Email, secret, req.Code, req.Label)
 	if err != nil {
 		log.Error().Err(err).Str("user_id", u.ID.String()).Msg("totp: ConfirmEnroll failed")
 		// Re-store the secret so the user can retry without rescanning.
@@ -1047,24 +1058,38 @@ func (h *Handler) SavePlaylistState(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-func (h *Handler) TOTPDisable(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	u := middleware.UserFromContext(ctx)
+func (h *Handler) ListMFAMethods(w http.ResponseWriter, r *http.Request) {
+	u := middleware.UserFromContext(r.Context())
 	if u == nil {
 		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if err := h.totpSvc.Disable(ctx, u.ID.String()); err != nil {
+	methods, err := h.totpSvc.ListMethods(r.Context(), u.ID.String())
+	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, errInternal)
 		return
 	}
-	h.auditSvc.Log(ctx, audit.Event{
-		Type:    "TOTP_DISABLED",
-		ActorID: &u.ID,
-	})
+	httputil.Respond(w, http.StatusOK, methods)
+}
+
+func (h *Handler) DeleteMFAMethod(w http.ResponseWriter, r *http.Request) {
+	u := middleware.UserFromContext(r.Context())
+	if u == nil {
+		httputil.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err := h.totpSvc.DeleteMethod(r.Context(), u.ID.String(), chi.URLParam(r, "id")); err != nil {
+		httputil.RespondError(w, http.StatusConflict, err.Error())
+		return
+	}
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// TOTPDisable is retained for compatibility; full MFA deactivation is an
+// administrator-only operation.
+func (h *Handler) TOTPDisable(w http.ResponseWriter, r *http.Request) {
+	httputil.RespondError(w, http.StatusForbidden, "MFA can only be disabled by an administrator")
+}
 // ─── Session management ────────────────────────────────────────────────────────
 
 type sessionDTO struct {

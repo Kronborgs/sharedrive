@@ -22,6 +22,7 @@ type PasswordResetService struct {
 type Mailer interface {
 	SendPasswordReset(ctx context.Context, toEmail, toName, resetLink string) error
 	SendInvitation(ctx context.Context, toEmail, inviterName, inviteLink string) error
+	SendMFACode(ctx context.Context, toEmail, toName, code string) error
 }
 
 func NewPasswordResetService(db *pgxpool.Pool, mailer Mailer) *PasswordResetService {

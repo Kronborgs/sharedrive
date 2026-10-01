@@ -39,6 +39,8 @@ interface SystemSettings {
   rooms_guest_upload_max_file_bytes: number
   rooms_guest_upload_max_files_session: number
   rooms_guest_upload_max_files_room_day: number
+  mfa_email_enabled: boolean
+  mfa_email_mode: 'normal' | 'backup'
   rooms_encryption_ready: boolean
   rooms_data_used_bytes: number
   rooms_last_cleanup_at?: string
@@ -67,6 +69,8 @@ const settingsSchema = z.object({
   rooms_guest_upload_max_file_bytes: z.coerce.number().int().min(1).max(5120),
   rooms_guest_upload_max_files_session: z.coerce.number().int().min(1).max(1000),
   rooms_guest_upload_max_files_room_day: z.coerce.number().int().min(1).max(10000),
+  mfa_email_enabled: z.boolean(),
+  mfa_email_mode: z.enum(['normal', 'backup']),
 })
 
 type FormValues = z.infer<typeof settingsSchema>
@@ -149,7 +153,7 @@ function SettingsPage() {
   const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(settingsSchema),
     values: data
-      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '', playlist_max_tracks: data.playlist_max_tracks ?? 200, rooms_enabled: data.rooms_enabled ?? false, rooms_voice_enabled: data.rooms_voice_enabled ?? false, rooms_chat_max_length: data.rooms_chat_max_length ?? 4000, rooms_message_retention_days: data.rooms_message_retention_days ?? 0, rooms_backup_enabled: data.rooms_backup_enabled ?? true, rooms_max_data_bytes: MB(data.rooms_max_data_bytes ?? 500 * 1024 * 1024), rooms_guest_uploads_enabled: data.rooms_guest_uploads_enabled ?? false, rooms_guest_upload_max_file_bytes: MB(data.rooms_guest_upload_max_file_bytes ?? 25 * 1024 * 1024), rooms_guest_upload_max_files_session: data.rooms_guest_upload_max_files_session ?? 10, rooms_guest_upload_max_files_room_day: data.rooms_guest_upload_max_files_room_day ?? 100 }
+      ? { ...data, default_quota_bytes: GB(data.default_quota_bytes), max_upload_bytes: MB(data.max_upload_bytes), direct_upload_url: data.direct_upload_url ?? '', playlist_max_tracks: data.playlist_max_tracks ?? 200, rooms_enabled: data.rooms_enabled ?? false, rooms_voice_enabled: data.rooms_voice_enabled ?? false, rooms_chat_max_length: data.rooms_chat_max_length ?? 4000, rooms_message_retention_days: data.rooms_message_retention_days ?? 0, rooms_backup_enabled: data.rooms_backup_enabled ?? true, rooms_max_data_bytes: MB(data.rooms_max_data_bytes ?? 500 * 1024 * 1024), rooms_guest_uploads_enabled: data.rooms_guest_uploads_enabled ?? false, rooms_guest_upload_max_file_bytes: MB(data.rooms_guest_upload_max_file_bytes ?? 25 * 1024 * 1024), rooms_guest_upload_max_files_session: data.rooms_guest_upload_max_files_session ?? 10, rooms_guest_upload_max_files_room_day: data.rooms_guest_upload_max_files_room_day ?? 100, mfa_email_enabled: data.mfa_email_enabled ?? false, mfa_email_mode: data.mfa_email_mode ?? 'backup' }
       : undefined,
   })
 
@@ -270,6 +274,8 @@ function SettingsPage() {
             </Field>
             <Toggle label={t('settings.allowReg')} description={t('settings.allowRegDesc')} name="allow_registrations" register={register} />
             <Toggle label={t('settings.requireInvite')} description={t('settings.requireInviteDesc')} name="require_invite" register={register} />
+            <Toggle label="Tillad e-mail som MFA" description="Tillad brugere at tilføje e-mail som MFA-metode." name="mfa_email_enabled" register={register} />
+            {watch('mfa_email_enabled') && <Field label="E-mail MFA-tilstand"><select {...register('mfa_email_mode')} className={inputClass}><option value="backup">Kun backup</option><option value="normal">Normal MFA-metode</option></select></Field>}
             <Field label={t('settings.defaultQuota')} error={errors.default_quota_bytes?.message}>
               <input type="number" step="0.5" min="0" {...register('default_quota_bytes')} className={inputClass} />
             </Field>

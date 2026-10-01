@@ -69,6 +69,8 @@ type settingsResponse struct {
 	RoomsGuestMaxFilesRoomDay int    `json:"rooms_guest_upload_max_files_room_day"`
 	RoomsEncryptionReady      bool   `json:"rooms_encryption_ready"`
 	RoomsDataUsedBytes        int64  `json:"rooms_data_used_bytes"`
+	MFAEmailEnabled            bool   `json:"mfa_email_enabled"`
+	MFAEmailMode               string `json:"mfa_email_mode"`
 	RoomsLastCleanupAt        string `json:"rooms_last_cleanup_at,omitempty"`
 }
 
@@ -163,6 +165,8 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		RoomsEncryptionReady:      validRoomsEncryptionKey(h.cfg.RoomsEncryptKey),
 		RoomsDataUsedBytes:        roomsDataUsedBytes,
 		RoomsLastCleanupAt:        kv["rooms_last_cleanup_at"],
+		MFAEmailEnabled:           kv["mfa_email_enabled"] == "true",
+		MFAEmailMode:              kv["mfa_email_mode"],
 	})
 }
 
@@ -241,7 +245,9 @@ type updateSettingsRequest struct {
 	RoomsGuestUploadsEnabled  *bool   `json:"rooms_guest_uploads_enabled"`
 	RoomsGuestMaxFileBytes    *int64  `json:"rooms_guest_upload_max_file_bytes"`
 	RoomsGuestMaxFilesSession *int    `json:"rooms_guest_upload_max_files_session"`
-	RoomsGuestMaxFilesRoomDay *int    `json:"rooms_guest_upload_max_files_room_day"`
+	RoomsGuestMaxFilesRoomDay *int `json:"rooms_guest_max_files_room_day"`
+	MFAEmailEnabled           *bool   `json:"mfa_email_enabled"`
+	MFAEmailMode              *string `json:"mfa_email_mode"`
 }
 
 type settingsUpserter struct {
@@ -356,6 +362,9 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	upserter.setBoundedInt64("rooms_guest_upload_max_file_bytes", req.RoomsGuestMaxFileBytes, 1024*1024, 5*1024*1024*1024)
 	upserter.setBoundedInt("rooms_guest_upload_max_files_session", req.RoomsGuestMaxFilesSession, 1, 1000)
 	upserter.setBoundedInt("rooms_guest_upload_max_files_room_day", req.RoomsGuestMaxFilesRoomDay, 1, 10000)
+
+	upserter.setBool("mfa_email_enabled", req.MFAEmailEnabled)
+	if req.MFAEmailMode != nil && (*req.MFAEmailMode == "normal" || *req.MFAEmailMode == "backup") { upserter.upsert("mfa_email_mode", *req.MFAEmailMode) }
 
 	httputil.Respond(w, http.StatusOK, map[string]bool{"ok": true})
 }

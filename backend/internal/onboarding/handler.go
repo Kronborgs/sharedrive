@@ -88,6 +88,7 @@ type restoreBackupData struct {
 	FileTags       []map[string]any `json:"file_tags"`
 	Shares         []map[string]any `json:"shares"`
 	TOTPCreds      []map[string]any `json:"totp_credentials"`
+	MFAMethods     []map[string]any `json:"mfa_methods,omitempty"`
 	AppPasswords   []map[string]any `json:"app_passwords"`
 	SystemSettings []map[string]any `json:"system_settings"`
 }
@@ -144,6 +145,7 @@ func clearRestoreTables(ctx context.Context, tx pgx.Tx) error {
 		`DELETE FROM file_tags`,
 		`DELETE FROM shares`,
 		`DELETE FROM app_passwords`,
+		`DELETE FROM mfa_methods`
 		`DELETE FROM totp_credentials`,
 		`DELETE FROM group_members`,
 		`DELETE FROM tags`,
@@ -197,6 +199,7 @@ func insertRestoreRows(ctx context.Context, tx pgx.Tx, data restoreBackupData) e
 		{"file_tags", data.FileTags},
 		{"shares", data.Shares},
 		{"totp_credentials", data.TOTPCreds},
+		{"mfa_methods", data.MFAMethods},
 		{"app_passwords", data.AppPasswords},
 	} {
 		if err := insertRows(step.table, step.rows); err != nil {

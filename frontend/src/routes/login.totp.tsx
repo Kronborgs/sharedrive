@@ -24,12 +24,14 @@ export default function TOTPPage() {
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const onSubmitCode = async (codeToSend: string) => {
     setError(null)
     setIsSubmitting(true)
     try {
-      await api.post('/api/v1/auth/totp/verify', { pending_token, code: codeToSend, trust_device })
+      const result = await api.post<{ mfa_notice?: string }>('/api/v1/auth/totp/verify', { pending_token, code: codeToSend, trust_device })
+      setNotice(result.mfa_notice ?? null)
       await refetch()
       const user = await api.get<{ rooms_only_account?: boolean }>('/api/v1/me')
       if (user.rooms_only_account) {
@@ -70,6 +72,8 @@ export default function TOTPPage() {
           onSubmit={onSubmit}
           className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-6 space-y-4 shadow-sm"
         >
+          {notice && <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">{notice} Fjern den gamle MFA-metode under dine sikkerhedsindstillinger.</div>}
+
           {error && (
             <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
               {error}
@@ -126,3 +130,4 @@ export default function TOTPPage() {
     </div>
   )
 }
+

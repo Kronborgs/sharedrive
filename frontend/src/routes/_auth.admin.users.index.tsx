@@ -360,8 +360,8 @@ function AdminUsersPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 bg-zinc-100 dark:bg-[#0f1117] rounded-lg p-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex max-w-full items-center gap-1 overflow-x-auto bg-zinc-100 dark:bg-[#0f1117] rounded-lg p-1">
           {([
             ['users', 'users.tabUsers'],
             ['rooms', 'users.tabRooms'],
@@ -378,7 +378,7 @@ function AdminUsersPage() {
         </div>
         {tab === 'users' && (
           <button type="button" onClick={() => setShowDialog(true)}
-            className="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors">
+            className="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors">
             {t('users.newUser')}
           </button>
         )}
@@ -390,7 +390,7 @@ function AdminUsersPage() {
           {isLoading ? (
             <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.loading')}</div>
           ) : (
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto"><table className="min-w-[920px] w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117]">
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.colUser')}</th>
@@ -463,7 +463,7 @@ function AdminUsersPage() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       )}

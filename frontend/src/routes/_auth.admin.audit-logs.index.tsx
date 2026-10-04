@@ -134,7 +134,7 @@ export function AuditLogsPage() {
       return <div className="p-8 text-center text-sm text-muted">{t('audit.noEvents')}</div>
     }
     return (
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto"><table className="min-w-[720px] w-full text-sm">
         <thead>
           <tr className="border-b border-zinc-100 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117]">
             <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase w-36">{t('audit.colTime')}</th>
@@ -167,7 +167,7 @@ export function AuditLogsPage() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     )
   }
   return (

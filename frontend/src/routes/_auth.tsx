@@ -59,7 +59,7 @@ function AuthLayoutContent() {
       {/* Main content */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <Header user={user} onMenuToggle={() => setSidebarOpen(v => !v)} />
-        <main className={cn('min-h-0 flex-1 overflow-y-auto p-6', activePlaylistId ? 'pt-20 md:pt-6' : '')}>
+        <main className={cn('min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 md:p-6', activePlaylistId ? 'pt-20 md:pt-6' : '')}>
           <Outlet />
         </main>
         <Footer />

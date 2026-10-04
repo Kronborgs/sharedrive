@@ -312,7 +312,7 @@ function SettingsPage() {
                 <option value="custom">{t('settings.smtpProviderCustom')}</option>
               </select>
             </Field>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label={t('settings.smtpHost')} error={errors.smtp_host?.message}>
                 <input {...register('smtp_host')} placeholder="smtp.example.com" className={inputClass} />
               </Field>

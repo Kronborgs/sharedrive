@@ -231,3 +231,18 @@ Planens første administrative MVP er nu implementeret i kodebasen:
 - Automatisk deling til grupper (for eksempel Familie eller Venner) er forberedt gennem medlemsstyring, men er endnu ikke aktiv som en samlet delingsmekanisme.
 - Gæsteadministrationen omfatter nu notifikationer, invitationer, adgangskode, TOTP 2FA, låsning, promovering og sletning fra admin-visningen.
 - Backend-, frontend- og Sonar-kontroller indgår i projektets almindelige validering.
+
+
+## Current implementation: MFA and OnlyOffice
+
+The current Sharedrive implementation also includes:
+
+- Multiple active MFA methods per user and Guest, including multiple TOTP authenticators.
+- MFA method status and last-use visibility, with protection against deleting the last active method.
+- Administrator-controlled email MFA through SMTP and Redis, with expiry, one-time use, and invalidation when a new code is requested.
+- Automatic inactivation of unused MFA methods after 30 days when another active method remains in use.
+- OnlyOffice editing from Files, shared files, public shares, Rooms, direct conversations, and group chats.
+- OnlyOffice formats: DOC, DOCX, DOCM, DOT, DOTX, RTF, ODT, OTT, XLS, XLSX, XLSM, XLSB, XLTX, CSV, ODS, OTS, PPT, PPTX, PPTM, POTX, ODP, and OTP.
+
+Document access continues to use Sharedrive's existing file and sharing
+permissions. A Chat or Rooms reference does not grant access to the file.

@@ -573,7 +573,7 @@ function FileTable({
           </div>
         )}
       </div>
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto"><table className="min-w-[760px] w-full text-sm">
         <thead>
           <tr className="text-xs text-zinc-400 dark:text-zinc-500 border-b border-zinc-100 dark:border-[#2d3148]">
             <th className="px-4 py-2 text-left w-8">
@@ -610,7 +610,7 @@ function FileTable({
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </section>
   )
 }

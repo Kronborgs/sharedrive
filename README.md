@@ -11,6 +11,14 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 ---
 
 ## Changelog
+### October 2026
+
+#### New features
+- **Multiple MFA methods per account** — users and Guests can add multiple TOTP authenticator apps or devices, view each method and its last use, and remove methods while the last active MFA method is protected.
+- **Email MFA** — administrators can enable email MFA from Admin → Settings. One-time codes are delivered through the existing SMTP service, stored as one-time Redis challenges, expire after 10 minutes, and a new request invalidates the previous code.
+- **Automatic MFA hygiene** — an MFA method that has not been used for more than 30 days can be disabled when another active method has been used recently. The next successful MFA verification informs the user about the disabled method.
+- **OnlyOffice in Rooms and chat** — supported Word, spreadsheet, and presentation files shared in Rooms, direct chats, and group chats open in the configured OnlyOffice Document Server so participants with file access can collaborate on the same document. Other files continue to use the normal preview.
+- **Admin MFA policy** — administrators can allow or disallow email MFA and choose whether email MFA is available as a normal method or backup method.
 
 ### September 2026
 
@@ -189,9 +197,9 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 - **Text & code** — syntax-highlighted viewer; previews truncated at 1 MB with a notice
 - **Print button** — prints PDF, office, image, and text files directly from the preview modal using the browser's print dialog (no server-side printer required)
 
-### OnlyOffice Integration (optional)
+### OnlyOffice Integration
 - **Collaborative document editing** — connect an external [OnlyOffice Document Server](https://helpcenter.onlyoffice.com/installation/docs-community-install-docker.aspx) for full in-browser editing of Word, Excel, and PowerPoint files
-- **Supported formats** — DOCX, XLSX, PPTX, ODT, ODS, ODP, CSV, and more — opened directly in the OnlyOffice editor
+- **Supported formats** — DOC, DOCX, DOCM, DOT, DOTX, RTF, ODT, OTT; XLS, XLSX, XLSM, XLSB, XLTX, CSV, ODS, OTS; PPT, PPTX, PPTM, POTX, ODP, OTP.
 - **New document creation** — create blank Word, Excel, or PowerPoint documents from the "New document" dropdown in any folder
 - **Shared files & public links** — OnlyOffice editing works on files shared with other users and on public share links (respects per-share permissions)
 - **Easy setup** — enter the OnlyOffice Document Server URL in Admin → System Settings; Sharedrive validates the connection with a live connectivity test
@@ -220,6 +228,7 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 
 ### Rooms and chat
 - **Room collaboration** — join rooms, chat with members, reply and react to messages, and share file or note resources.
+- **OnlyOffice from Chat and Rooms** — supported Word, spreadsheet, and presentation files shared in Rooms, direct conversations, and group conversations open in the configured OnlyOffice editor for participants who already have file access.
 - **Private and group conversations** — start direct chats with room contacts or invited users, create named groups, and share attachments.
 - **GIFs and unread status** — search the self-hosted GIF library and see unread chat counts in the conversation list, sidebar, and browser title.
 - **Voice, video, and screen sharing** — optional LiveKit meetings; installation and security details are in [Rooms architecture and operations](docs/ROOMS.md).
@@ -299,12 +308,17 @@ See [Notes architecture and security](docs/NOTES.md) for the data model, API, li
 - Passwords: Argon2id
 - Sessions: opaque 256-bit tokens, SHA-256-stored in DB
 - TOTP secrets: AES-256-GCM at rest
+- **Multiple MFA methods** — several active TOTP authenticators can be attached to one account; the last active method cannot be deleted by the user.
+- **Email MFA** — administrator-controlled SMTP delivery with one-time, expiring Redis challenges.
+- **MFA usage tracking** — each method records last use and stale methods are disabled only when another active method remains available.
 - Security headers on every response: HSTS, CSP, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`
 - CSP `connect-src` updated dynamically with the configured direct upload URL
 - Audit log: immutable, covers all auth, file, share, and admin events — never deleted by the application
 
 ### Admin Dashboard
 - **User management** — create, edit, lock/unlock, force password reset, re-invite, view sessions
+- **MFA administration** — require or remove MFA for users and Guests, while users manage their own enrolled MFA methods.
+- **Email MFA policy** — enable email MFA and select normal or backup mode from Admin → Settings.
 - **Promote / Demote** — change a user's role between `user` and `admin` directly from the user table; a last-admin guard prevents the final admin from being demoted
 - **Quota management** — per-user storage quota with presets (10 GB – 1 TB) and custom values
 - **Per-user limits** — max upload size, daily bandwidth cap, WebDAV toggle

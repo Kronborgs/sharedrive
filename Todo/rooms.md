@@ -1,6 +1,6 @@
 # Implementer Sharedrive Rooms
 
-Status: Phase 0-7 er implementeret og brugertestet. Phase 8 er startet: den lokale regression er gron, mens afsluttende testserver-regression og GitLab/Sonar Quality Gate afventer naeste commit og push.
+Status: Phase 0-8 er implementeret i den nuværende Sharedrive-kodebase.
 
 
 ## Aktuel chatstatus (29. august 2026)
@@ -652,3 +652,11 @@ For hver fase:
 8. Opsummer aendrede filer, hvorfor, tests og kendte begrænsninger.
 
 Ingen automatiske commits. `VERSION` aendres ikke automatisk.
+
+### OnlyOffice fra Chat og Rooms
+
+Understøttede dokumenter, regneark og præsentationer, der deles i Rooms,
+direkte samtaler eller gruppechats, åbnes i den OnlyOffice Document Server, der
+er konfigureret i Admin. Sharedrive genbruger de eksisterende filrettigheder;
+chatreferencen giver ikke ekstra adgang. Ikke-understøttede filtyper åbnes i
+den normale preview.

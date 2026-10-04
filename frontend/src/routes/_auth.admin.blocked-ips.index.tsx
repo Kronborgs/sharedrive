@@ -63,7 +63,7 @@ function BlockedIPsPage() {
       return <div className="p-6 text-sm text-muted text-center">{t('blocked.noLockouts')}</div>
     }
     return (
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto"><table className="min-w-[680px] w-full text-sm">
         <thead>
           <tr className="border-b border-zinc-100 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117]">
             <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">{t('blocked.colIp')}</th>
@@ -110,7 +110,7 @@ function BlockedIPsPage() {
             )
           })}
         </tbody>
-      </table>
+      </table></div>
     )
   }
 
@@ -122,7 +122,7 @@ function BlockedIPsPage() {
       return <div className="p-6 text-sm text-muted text-center">{t('blocked.noWhitelist')}</div>
     }
     return (
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto"><table className="min-w-[680px] w-full text-sm">
         <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
           {whitelist?.map(entry => (
             <tr key={entry.id} className="hover:bg-zinc-50 dark:hover:bg-[#0f1117]">
@@ -141,7 +141,7 @@ function BlockedIPsPage() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     )
   }
 

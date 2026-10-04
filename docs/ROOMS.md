@@ -118,3 +118,23 @@ Chat notification delivery is controlled per user. It is enabled by default, can
 ## Mobile PWA player and navigation
 
 The compact mobile music player remains fixed below the application header so playback controls are available while navigating. Its stacking order is below the mobile sidebar overlay and sidebar, which keeps Notes, My Files, and the other navigation links usable when the menu is opened. Media Session and lock-screen playback behavior are unchanged.
+
+## Collaborative Office files in Chat
+
+Rooms resources reuse the existing Sharedrive file model. When an authorized
+participant opens a supported Word, spreadsheet, or presentation file from a
+Room, direct conversation, or group conversation, the file opens in the
+configured OnlyOffice Document Server.
+
+OnlyOffice support is controlled in Admin → System Settings. The supported
+formats are:
+
+- Word: DOC, DOCX, DOCM, DOT, DOTX, RTF, ODT, OTT
+- Spreadsheets: XLS, XLSX, XLSM, XLSB, XLTX, CSV, ODS, OTS
+- Presentations: PPT, PPTX, PPTM, POTX, ODP, OTP
+
+The existing Sharedrive authorization remains authoritative. Room membership or
+a chat resource reference does not grant file access by itself. Only users who
+can already access the file can open and edit it. Changes are written back
+through the OnlyOffice callback; images, PDFs, and unsupported formats continue
+to use the normal file preview.

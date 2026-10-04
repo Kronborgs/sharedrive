@@ -568,49 +568,54 @@ function GuestsPanel({
 
   return (
     <div className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl overflow-hidden">
-      {(() => {
-        if (isLoading) return <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.loading')}</div>
-        if (guests.length === 0) return <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.noGuests')}</div>
-        return <div className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
-          {guests.map(guest => {
-            const isExpanded = expanded.has(guest.id)
-            let totpAction: React.ReactNode
-            if (guest.totp_enabled) {
-              totpAction = <button type="button" onClick={() => { if (confirm(t('users.confirmRevokeTOTP'))) totp.mutate({ id: guest.id, operation: 'revoke' }) }} className="p-1.5 text-green-600 dark:text-green-400" title="Fjern 2FA"><ShieldCheck size={14} /></button>
-            } else if (guest.force_totp_setup) {
-              totpAction = <button type="button" onClick={() => totp.mutate({ id: guest.id, operation: 'unrequire' })} className="p-1.5 text-amber-600 dark:text-amber-400" title="Fjern 2FA-krav"><ShieldCheck size={14} /></button>
-            } else {
-              totpAction = <button type="button" onClick={() => totp.mutate({ id: guest.id, operation: 'require' })} className="p-1.5 text-zinc-400 hover:text-brand-600" title="Kræv 2FA"><ShieldOff size={14} /></button>
-            }
-            return <div key={guest.id}>
-              <div className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-[#0f1117] transition-colors">
-                <button type="button" onClick={() => toggle(guest.id)} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 shrink-0" title="Vis delte elementer">{isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>
-                <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0"><span className="text-xs font-semibold text-amber-700 dark:text-amber-400">{(guest.display_name || guest.email)[0]?.toUpperCase()}</span></div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2"><p className="text-sm font-medium text-zinc-900 dark:text-slate-100 truncate">{guest.display_name || guest.email}</p><span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 shrink-0">guest</span></div>
-                  <p className="text-xs text-muted truncate">{guest.email}</p>
-                  <p className="text-xs text-zinc-400 mt-0.5">{t('users.invitedBy')} {guest.invited_by_name ?? '—'} · {formatDate(guest.created_at)}{guest.last_login_at ? ' · ' + t('users.lastLoginAt') + ' ' + formatDate(guest.last_login_at) : ' · ' + t('users.neverLoggedIn')}</p>
-                </div>
-                <div className="hidden items-center gap-2 text-xs text-muted xl:flex"><span className={guest.is_active ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{guest.is_active ? 'Aktiv' : 'Låst'}</span><span>{guest.shared_items.length} {t('users.sharedItemLabel')}</span></div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button type="button" onClick={() => action.mutate({ id: guest.id, method: 'patch', body: { chat_notifications_enabled: !guest.chat_notifications_enabled } })} className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors" title="Chat-notifikationer"><span className="text-[10px] font-medium">{guest.chat_notifications_enabled ? 'Chat til' : 'Chat fra'}</span></button>
-                  {totpAction}
-                  <button type="button" onClick={() => invite.mutate(guest.id)} disabled={invite.isPending} className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors" title="Send ny invitationskode"><Mail size={14} /></button>
-                  {guest.is_active ? <button type="button" onClick={() => lock.mutate(guest.id)} className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors" title={t('users.lockAccount')}><LockOpen size={14} /></button> : <button type="button" onClick={() => unlock.mutate(guest.id)} className="p-1.5 rounded-lg text-zinc-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors" title={t('users.unlockAccount')}><Lock size={14} /></button>}
-                  <button type="button" onClick={() => { if (confirm(t('users.confirmForceReset'))) action.mutate({ id: guest.id, method: 'post' }) }} className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors" title={t('users.forcePasswordReset')}><KeyRound size={14} /></button>
-                  <button type="button" onClick={() => { if (confirm(t('users.confirmPromoteGuest', { name: guest.display_name || guest.email }))) promote.mutate(guest.id) }} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium transition-colors" title={t('users.promoteToUser')}><UserCheck size={13} />{t('users.promote')}</button>
-                  <button type="button" onClick={() => { if (confirm(t('users.confirmRemoveGuest', { email: guest.email }))) deactivate.mutate(guest.id) }} className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title={t('users.removeGuest')}><Trash2 size={14} /></button>
-                </div>
-              </div>
-              {isExpanded && <div className="px-12 pb-3 space-y-1">{guest.shared_items.length === 0 ? <p className="text-xs text-muted py-1">{t('users.nothingShared')}</p> : guest.shared_items.map(item => <div key={item.resource_id} className="flex items-center gap-2 text-xs text-zinc-600 dark:text-slate-400">{item.is_folder ? <Folder size={13} className="text-amber-500 shrink-0" /> : <File size={13} className="text-zinc-400 shrink-0" />}<span className="font-medium text-zinc-800 dark:text-slate-200 truncate">{item.name}</span><span className="text-zinc-400 shrink-0">{t('users.sharedBy')} {item.owner_email}</span></div>)}</div>}
-            </div>
-          })}
-        </div>
-      })()}
+      {isLoading ? <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.loading')}</div> : guests.length === 0 ? <div className="flex items-center justify-center h-40 text-sm text-muted">{t('users.noGuests')}</div> : (
+        <div className="overflow-x-auto"><table className="min-w-[1080px] w-full text-sm">
+          <thead><tr className="border-b border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117]">
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.colUser')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.invitedBy')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.status')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.sharedItemLabel')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">{t('users.twofa')}</th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wide">Chat</th>
+            <th className="px-4 py-3" />
+          </tr></thead>
+          <tbody className="divide-y divide-zinc-100 dark:divide-[#2d3148]">
+            {guests.map(guest => {
+              const isExpanded = expanded.has(guest.id)
+              const totpAction = guest.totp_enabled
+                ? <button type="button" onClick={() => { if (confirm(t('users.confirmRevokeTOTP'))) totp.mutate({ id: guest.id, operation: 'revoke' }) }} className="p-1.5 text-green-600 dark:text-green-400" title="Fjern 2FA"><ShieldCheck size={14} /></button>
+                : guest.force_totp_setup
+                  ? <button type="button" onClick={() => totp.mutate({ id: guest.id, operation: 'unrequire' })} className="p-1.5 text-amber-600 dark:text-amber-400" title="Fjern 2FA-krav"><ShieldCheck size={14} /></button>
+                  : <button type="button" onClick={() => totp.mutate({ id: guest.id, operation: 'require' })} className="p-1.5 text-zinc-400 hover:text-brand-600" title="Kræv 2FA"><ShieldOff size={14} /></button>
+              return <React.Fragment key={guest.id}>
+                <tr className="align-top hover:bg-zinc-50 dark:hover:bg-[#0f1117] transition-colors">
+                  <td className="px-4 py-3"><div className="flex items-center gap-3">
+                    <button type="button" onClick={() => toggle(guest.id)} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-slate-300 shrink-0" title="Vis delte elementer">{isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>
+                    <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0"><span className="text-xs font-semibold text-amber-700 dark:text-amber-400">{(guest.display_name || guest.email)[0]?.toUpperCase()}</span></div>
+                    <div className="min-w-[190px]"><div className="flex items-center gap-2"><p className="text-sm font-medium text-zinc-900 dark:text-slate-100">{guest.display_name || guest.email}</p><span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">guest</span></div><p className="text-xs text-muted">{guest.email}</p></div>
+                  </div></td>
+                  <td className="px-4 py-3 text-xs text-muted"><div>{guest.invited_by_name ?? '—'}</div><div className="mt-1 text-zinc-400">{formatDate(guest.created_at)}</div><div className="text-zinc-400">{guest.last_login_at ? t('users.lastLoginAt') + ' ' + formatDate(guest.last_login_at) : t('users.neverLoggedIn')}</div></td>
+                  <td className={`px-4 py-3 text-xs font-medium ${guest.is_active ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{guest.is_active ? 'Aktiv' : 'Låst'}</td>
+                  <td className="px-4 py-3 text-xs text-muted">{guest.shared_items.length}</td>
+                  <td className="px-4 py-3">{totpAction}</td>
+                  <td className="px-4 py-3"><button type="button" onClick={() => action.mutate({ id: guest.id, method: 'patch', body: { chat_notifications_enabled: !guest.chat_notifications_enabled } })} className="rounded-lg px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-[#2d3148] transition-colors">{guest.chat_notifications_enabled ? 'Chat til' : 'Chat fra'}</button></td>
+                  <td className="px-4 py-3"><div className="flex items-center justify-end gap-1">
+                    <button type="button" onClick={() => invite.mutate(guest.id)} disabled={invite.isPending} className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors" title="Send ny invitationskode"><Mail size={14} /></button>
+                    {guest.is_active ? <button type="button" onClick={() => lock.mutate(guest.id)} className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors" title={t('users.lockAccount')}><LockOpen size={14} /></button> : <button type="button" onClick={() => unlock.mutate(guest.id)} className="p-1.5 rounded-lg text-zinc-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors" title={t('users.unlockAccount')}><Lock size={14} /></button>}
+                    <button type="button" onClick={() => { if (confirm(t('users.confirmForceReset'))) action.mutate({ id: guest.id, method: 'post' }) }} className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors" title={t('users.forcePasswordReset')}><KeyRound size={14} /></button>
+                    <button type="button" onClick={() => { if (confirm(t('users.confirmPromoteGuest', { name: guest.display_name || guest.email }))) promote.mutate(guest.id) }} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium transition-colors" title={t('users.promoteToUser')}><UserCheck size={13} />{t('users.promote')}</button>
+                    <button type="button" onClick={() => { if (confirm(t('users.confirmRemoveGuest', { email: guest.email }))) deactivate.mutate(guest.id) }} className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title={t('users.removeGuest')}><Trash2 size={14} /></button>
+                  </div></td>
+                </tr>
+                {isExpanded && <tr><td colSpan={7} className="bg-zinc-50/70 px-16 pb-3 pt-1 dark:bg-[#0f1117]">{guest.shared_items.length === 0 ? <p className="text-xs text-muted py-1">{t('users.nothingShared')}</p> : <div className="space-y-1">{guest.shared_items.map(item => <div key={item.resource_id} className="flex items-center gap-2 text-xs text-zinc-600 dark:text-slate-400">{item.is_folder ? <Folder size={13} className="text-amber-500 shrink-0" /> : <File size={13} className="text-zinc-400 shrink-0" />}<span className="font-medium text-zinc-800 dark:text-slate-200">{item.name}</span><span className="text-zinc-400">{t('users.sharedBy')} {item.owner_email}</span></div>)}</div>}</td></tr>}
+              </React.Fragment>
+            })}
+          </tbody>
+        </table></div>
+      )}
     </div>
   )
 }
-
 function GroupsPanel({ groups, qc, users }: Readonly<{ groups: Group[]; qc: ReturnType<typeof useQueryClient>; users: User[] }>) {
   const [name, setName]         = useState('')
   const [color, setColor]       = useState(COLORS[0])

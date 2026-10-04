@@ -113,7 +113,7 @@ The admin Rooms access view is the operational overview for Rooms-related access
 
 The central admin Users view also exposes product access for Files, Rooms, Notes, and Music. The stored levels are `none`, `limited`, and `full`; the backend blocks disabled products while resource-level sharing and Room membership checks remain separate.
 
-Chat notification delivery is controlled per user. It is enabled by default, can be disabled by an administrator, and is checked by both unread chat email digests and generic Rooms Web Push delivery. Push content remains privacy-preserving: it does not reveal message text, sender, or conversation name on the lock screen.
+Chat notification delivery is controlled per user. It is enabled by default, can be disabled by an administrator, and is checked by both unread chat email digests and generic Rooms Web Push delivery. Push content remains privacy-preserving: it does not reveal message text, sender, or conversation name on the lock screen.`r`n`r`nThe three installable apps share the root service worker and the same chat push channel. Push payloads carry a stable message id; the service worker uses that id as the notification tag and disables re-notification, preventing duplicate visible notifications when Files, Notes, and Rooms are installed together. The desktop Sharedrive shell also shows the aggregate unread count in the sidebar and browser title and displays a generic toast when new unread chat messages arrive outside Rooms.
 
 ## Mobile PWA player and navigation
 

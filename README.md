@@ -28,7 +28,7 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 - **Files in direct chats** — share file attachments in private and group conversations, with the existing Sharedrive access checks applied to linked resources.
 - **Self-hosted GIF library** — search the Rooms GIF collection and share animated previews. GIFs imported from supported external sources are stored in Sharedrive before being used in chat.
 - **Unread chat email digests** — when SMTP is configured, users receive one digest for unread room and direct messages, at most once every 12 hours. The email links back to each message.
-- **Generic chat push notifications** — opt-in Web Push alerts for new room and direct messages show only “Ny besked” or “New message”, with no sender, chat name, or message content. Tap a notification to open the conversation.
+- **Generic chat push notifications** — opt-in Web Push alerts for new room and direct messages show only “Ny besked” or “New message”, with no sender, chat name, or message content. Tap a notification to open the conversation. A stable message id and notification tag prevent the same message from creating duplicate visible notifications when Sharedrive, Notes, and Rooms are installed together.
 - **Central admin access controls** — administrators can view and cycle per-user access for Files, Rooms, Notes, and Music between none, limited, and full. Backend middleware enforces disabled product access; the existing resource-level permission checks remain authoritative.
 - **Per-user chat notification control** — chat notifications are enabled by default and can be turned off for an individual user from the admin Users view. The preference is respected by chat email digests and generic Rooms Web Push notifications.
 - **Rooms access administration** — the admin Rooms view now includes Sharedrive/Rooms accounts, pending Room invitations, active guest sessions, and group membership management. Pending invitations and guest sessions can be revoked from the overview.
@@ -36,7 +36,7 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 - **Notes images and links** — paste an image from the clipboard or choose an image file in Notes. The image is uploaded through Sharedrive Files and inserted into the note; URLs are rendered as clickable links that open in a new browser tab, and supported image URLs are shown inline.
 
 #### Bug fixes and refinements
-- **Unread indicators** — total unread chat counts are visible in the Rooms conversation list, Sharedrive sidebar, and browser title.
+- **Unread indicators** — total unread chat counts are visible in the Rooms conversation list, Sharedrive sidebar, and browser title. When the user is in Files or Notes, a generic desktop toast also appears when new unread chat messages arrive.
 - **Mobile chat navigation** — conversation selection and chat layout have been refined for narrow screens.
 - **Chat and GIF reliability** — corrected group-member and chat-only account routing, handled mixed GIF catalogue metadata, and fixed animated GIF previews and import behavior.
 - **Meeting setup** — camera devices can be selected, and Rooms reports when LiveKit is unavailable before a user tries to join.
@@ -559,7 +559,7 @@ Sharedrive provides three focused Progressive Web Apps that can be installed sid
 | **Sharedrive Notes** | `/notes/` | Notes, checklists, and focused accountless guest access |
 | **Sharedrive Rooms** | `/rooms/` | Room chat, direct conversations, and meetings |
 
-Each app uses its own manifest identity and scope. Installing Notes or Rooms does not replace another Sharedrive app or its icon.
+Each app uses its own manifest identity and scope. Installing Notes or Rooms does not replace another Sharedrive app or its icon. All three apps use the shared root service worker for chat push delivery, so a message is deduplicated across the installed app contexts.
 
 ### Install Sharedrive
 

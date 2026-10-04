@@ -1,4 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
+import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Files,
@@ -23,7 +24,7 @@ import {
 	StickyNote,
   MessagesSquare,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
 import { api, createPlaylist } from '@/lib/api'
@@ -682,6 +683,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
   const [playerExpanded, setPlayerExpanded] = useState(true)
   const [mobilePlayerOpen, setMobilePlayerOpen] = useState(false)
   const [showAddMusic, setShowAddMusic] = useState(false)
+  const previousUnreadChatMessages = useRef<number | null>(null)
 
   const { data: versionInfo } = useQuery({
     queryKey: ['system', 'version'],
@@ -738,7 +740,13 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
     if (roomsApp) baseTitle = 'Sharedrive Rooms'
     const badge = unreadChatMessages > 99 ? '99+' : unreadChatMessages
     document.title = unreadChatMessages > 0 ? `(${badge}) ${baseTitle}` : baseTitle
-  }, [state.location.pathname, unreadChatMessages])
+
+    const previousUnread = previousUnreadChatMessages.current
+    if (previousUnread !== null && unreadChatMessages > previousUnread && !roomsApp) {
+      toast.info(t('rooms.newMessages' as never), { duration: 5000 })
+    }
+    previousUnreadChatMessages.current = unreadChatMessages
+  }, [state.location.pathname, unreadChatMessages, roomsApp, t])
 
   const handleAddMusic = async (fileIds: string[]) => {
     setShowAddMusic(false)

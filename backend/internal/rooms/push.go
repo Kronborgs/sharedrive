@@ -45,6 +45,7 @@ type storedPushSubscription struct {
 }
 
 type chatPushMessage struct {
+    ID     string `json:"id"`
 	Path string `json:"path"`
     Locale string `json:"locale"`
 }
@@ -136,7 +137,7 @@ func (service *pushService) notifyRoom(ctx context.Context, roomID, senderID uui
 		FROM room_push_subscriptions subscription
 		JOIN room_members member ON member.user_id=subscription.user_id JOIN users recipient ON recipient.id=subscription.user_id AND recipient.chat_notifications_enabled=TRUE
 		WHERE member.room_id=$1 AND member.user_id<>$2`
-	return service.sendForQuery(ctx, query, roomID, senderID, "/rooms/"+url.PathEscape(slug)+"?message_id="+messageID.String()+"#message-"+messageID.String())
+	return service.sendForQuery(ctx, query, roomID, senderID, messageID, "/rooms/"+url.PathEscape(slug)+"?message_id="+messageID.String()+"#message-"+messageID.String())
 }
 
 func (service *pushService) notifyDirect(ctx context.Context, conversationID, senderID uuid.UUID, messageID uuid.UUID) error {
@@ -144,10 +145,10 @@ func (service *pushService) notifyDirect(ctx context.Context, conversationID, se
 		FROM room_push_subscriptions subscription
 		JOIN direct_conversation_members member ON member.user_id=subscription.user_id JOIN users recipient ON recipient.id=subscription.user_id AND recipient.chat_notifications_enabled=TRUE
 		WHERE member.conversation_id=$1 AND member.user_id<>$2 AND member.hidden_at IS NULL`
-	return service.sendForQuery(ctx, query, conversationID, senderID, "/rooms/direct/"+conversationID.String()+"?message_id="+messageID.String()+"#message-"+messageID.String())
+	return service.sendForQuery(ctx, query, conversationID, senderID, messageID, "/rooms/direct/"+conversationID.String()+"?message_id="+messageID.String()+"#message-"+messageID.String())
 }
 
-func (service *pushService) sendForQuery(ctx context.Context, query string, conversationID, senderID uuid.UUID, path string) error {
+func (service *pushService) sendForQuery(ctx context.Context, query string, conversationID, senderID, messageID uuid.UUID, path string) error {
 	rows, err := service.db.Query(ctx, query, conversationID, senderID)
 	if err != nil {
 		return err
@@ -173,19 +174,19 @@ func (service *pushService) sendForQuery(ctx context.Context, query string, conv
 
 	var lastErr error
 	for _, item := range targets {
-		if err := service.sendToTarget(ctx, item.hash, item.ciphertext, path); err != nil {
+		if err := service.sendToTarget(ctx, item.hash, item.ciphertext, messageID, path); err != nil {
 			lastErr = err
 		}
 	}
 	return lastErr
 }
 
-func (service *pushService) sendToTarget(ctx context.Context, hash, ciphertext []byte, path string) error {
+func (service *pushService) sendToTarget(ctx context.Context, hash, ciphertext []byte, messageID uuid.UUID, path string) error {
 	stored, err := service.decryptSubscription(hash, ciphertext)
 	if err != nil {
 		return err
 	}
-	payload, _ := json.Marshal(chatPushMessage{Path: path, Locale: stored.Locale})
+	payload, _ := json.Marshal(chatPushMessage{ID: messageID.String(), Path: path, Locale: stored.Locale})
 	subscription := &webpush.Subscription{
 		Endpoint: stored.Subscription.Endpoint,
 		Keys: webpush.Keys{

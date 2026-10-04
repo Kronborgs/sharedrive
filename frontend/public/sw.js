@@ -110,12 +110,13 @@ self.addEventListener('push', (event) => {
     try { data = event.data ? event.data.json() : {} } catch { data = {} }
     const path = typeof data.path === 'string' && data.path.startsWith('/rooms') ? data.path : '/rooms'
     const locale = data.locale === 'da' ? 'da' : 'en'
+    const notificationID = typeof data.id === 'string' && data.id.length > 0 ? data.id : 'message'
     await self.registration.showNotification(locale === 'da' ? 'Ny besked' : 'New message', {
       icon: '/rooms-icon-192.png',
       badge: '/rooms-icon-192.png',
-      tag: 'sharedrive-chat-message',
-      renotify: true,
-      data: { path },
+      tag: `sharedrive-chat-${notificationID}`,
+      renotify: false,
+      data: { path, id: notificationID },
     })
   })())
 })

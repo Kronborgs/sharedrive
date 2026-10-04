@@ -166,6 +166,7 @@ const translations = {
   'rooms.role.member':       { da: 'Medlem', en: 'Member' },
   'rooms.role.guest':        { da: 'Gæst', en: 'Guest' },
   'rooms.unreadMessages':    { da: '{count} ulæste beskeder', en: '{count} unread messages' },
+  'rooms.newMessages':       { da: 'Nye chatbeskeder', en: 'New chat messages' },
   'rooms.chat':              { da: 'Chat', en: 'Chat' },
   'rooms.chatAria':          { da: 'Room-chat', en: 'Room chat' },
   'rooms.chatLoading':       { da: 'Indlæser chat…', en: 'Loading chat…' },

@@ -178,6 +178,7 @@ type DirectResource struct {
 	CreatedAt      time.Time  `json:"created_at"`
 	Name           string     `json:"name"`
 	MimeType       string     `json:"mime_type,omitempty"`
+	LibraryGIF     bool       `json:"library_gif"`
 }
 
 func NormalizeMessage(body string, maxRunes int) (string, error) {
@@ -204,6 +205,7 @@ type Resource struct {
 	AddedByName  string       `json:"added_by_name,omitempty"`
 	MessageID    *uuid.UUID   `json:"message_id,omitempty"`
 	CreatedAt    time.Time    `json:"created_at"`
+	LibraryGIF   bool         `json:"library_gif"`
 }
 
 func ValidResourceType(resourceType ResourceType) bool {

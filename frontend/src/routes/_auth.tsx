@@ -9,6 +9,7 @@ import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
 import { OfflineBanner } from '@/components/layout/OfflineBanner'
 import { PlaylistProvider, usePlaylist } from '@/lib/playlist-context'
 import { cn } from '@/lib/utils'
+import { ChatPushRegistration } from '@/components/rooms/ChatPushNotifications'
 
 // All authenticated routes live under this layout route.
 // The _auth prefix means this is a pathless layout route.
@@ -48,6 +49,7 @@ function AuthLayoutContent() {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-zinc-50 dark:bg-[#0f1117]">
+      <ChatPushRegistration />
       {/* Admin assistance banner — fixed at top */}
       <AdminBanner />
       {/* Offline indicator */}

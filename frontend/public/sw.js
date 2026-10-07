@@ -2,7 +2,7 @@
 // Provides app-shell caching for PWA installability and offline resilience.
 // Does NOT cache private user file data — only static assets and the app shell.
 
-const CACHE_NAME = 'sharedrive-shell-v5'
+const CACHE_NAME = 'sharedrive-shell-v6'
 
 // App shell: the minimal set of assets needed to render the UI.
 // Vite-built assets have content hashes in filenames, so they are safe to
@@ -111,7 +111,8 @@ self.addEventListener('push', (event) => {
     const path = typeof data.path === 'string' && data.path.startsWith('/rooms') ? data.path : '/rooms'
     const locale = data.locale === 'da' ? 'da' : 'en'
     const notificationID = typeof data.id === 'string' && data.id.length > 0 ? data.id : 'message'
-    await self.registration.showNotification(locale === 'da' ? 'Ny besked' : 'New message', {
+    const isTest = data.kind === 'test'
+    await self.registration.showNotification(isTest ? (locale === 'da' ? 'Testnotifikation' : 'Test notification') : (locale === 'da' ? 'Ny besked' : 'New message'), {
       icon: '/rooms-icon-192.png',
       badge: '/rooms-icon-192.png',
       tag: `sharedrive-chat-${notificationID}`,

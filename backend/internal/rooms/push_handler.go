@@ -3,9 +3,11 @@ package rooms
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/yourname/privatedrive/internal/httputil"
 	"github.com/yourname/privatedrive/internal/middleware"
+	"github.com/yourname/privatedrive/internal/ratelimit"
 )
 
 type pushSubscriptionRequest struct {
@@ -36,6 +38,25 @@ func (handler *Handler) SavePushSubscription(w http.ResponseWriter, request *htt
 		return
 	}
 	httputil.Respond(w, http.StatusNoContent, nil)
+}
+
+func (handler *Handler) SendTestPush(w http.ResponseWriter, request *http.Request) {
+	if !handler.push.isEnabled() {
+		httputil.RespondError(w, http.StatusServiceUnavailable, "push notifications are not configured")
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	allowed, _, _, limitErr := handler.limiter.Allow(request.Context(), ratelimit.KeyUserRoomPushTest, user.ID.String(), 3, 10*time.Minute)
+	if limitErr != nil || !allowed {
+		httputil.RespondError(w, http.StatusTooManyRequests, "push test rate limit exceeded")
+		return
+	}
+	count, err := handler.push.sendTest(request.Context(), user.ID)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, map[string]int{"subscriptions": count})
 }
 
 func (handler *Handler) DeletePushSubscription(w http.ResponseWriter, request *http.Request) {

@@ -45,9 +45,10 @@ type storedPushSubscription struct {
 }
 
 type chatPushMessage struct {
-    ID     string `json:"id"`
-	Path string `json:"path"`
-    Locale string `json:"locale"`
+	ID     string `json:"id"`
+	Path   string `json:"path"`
+	Locale string `json:"locale"`
+	Kind   string `json:"kind,omitempty"`
 }
 
 func newPushService(db *pgxpool.Pool, publicKey, privateKey, subject, sessionSecret string) *pushService {
@@ -127,7 +128,37 @@ func (service *pushService) deleteSubscription(ctx context.Context, userID uuid.
 	return err
 }
 
-func (service *pushService) notifyRoom(ctx context.Context, roomID, senderID uuid.UUID, messageID uuid.UUID) error {
+func (service *pushService) sendTest(ctx context.Context, userID uuid.UUID) (int, error) {
+	rows, err := service.db.Query(ctx, `SELECT endpoint_hash, subscription_ciphertext FROM room_push_subscriptions WHERE user_id=$1`, userID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	type target struct { hash, ciphertext []byte }
+	targets := make([]target, 0)
+	for rows.Next() {
+		var item target
+		if err := rows.Scan(&item.hash, &item.ciphertext); err != nil {
+			return 0, err
+		}
+		targets = append(targets, item)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	messageID := uuid.New()
+	var lastErr error
+	for _, item := range targets {
+		if err := service.sendToTarget(ctx, item.hash, item.ciphertext, messageID, "/rooms", "test"); err != nil {
+			lastErr = err
+		}
+	}
+	return len(targets), lastErr
+}
+
+func (service *pushService) notifyRoom(ctx context.Context, roomID, senderID, messageID uuid.UUID) error {
 	var slug string
 	if err := service.db.QueryRow(ctx, `SELECT slug FROM rooms WHERE id=$1 AND archived_at IS NULL`, roomID).Scan(&slug); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) { return nil }
@@ -174,19 +205,19 @@ func (service *pushService) sendForQuery(ctx context.Context, query string, conv
 
 	var lastErr error
 	for _, item := range targets {
-		if err := service.sendToTarget(ctx, item.hash, item.ciphertext, messageID, path); err != nil {
+		if err := service.sendToTarget(ctx, item.hash, item.ciphertext, messageID, path, ""); err != nil {
 			lastErr = err
 		}
 	}
 	return lastErr
 }
 
-func (service *pushService) sendToTarget(ctx context.Context, hash, ciphertext []byte, messageID uuid.UUID, path string) error {
+func (service *pushService) sendToTarget(ctx context.Context, hash, ciphertext []byte, messageID uuid.UUID, path, kind string) error {
 	stored, err := service.decryptSubscription(hash, ciphertext)
 	if err != nil {
 		return err
 	}
-	payload, _ := json.Marshal(chatPushMessage{ID: messageID.String(), Path: path, Locale: stored.Locale})
+	payload, _ := json.Marshal(chatPushMessage{ID: messageID.String(), Path: path, Locale: stored.Locale, Kind: kind})
 	subscription := &webpush.Subscription{
 		Endpoint: stored.Subscription.Endpoint,
 		Keys: webpush.Keys{

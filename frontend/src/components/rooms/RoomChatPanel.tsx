@@ -129,7 +129,7 @@ function ResourceCard({ resource, canModerate, onPreview, onRemove }: Readonly<{
   if (showThumbnail) {
     return <article className="group relative w-fit max-w-[min(22rem,85%)]">
       <button type="button" onClick={() => onPreview(resource.resource_id)} className="block overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-950 dark:border-[#34394f]" title={resource.name}>
-        <img src={`/api/v1/files/${resource.resource_id}/${isAnimatedGIF(resource) ? 'preview' : 'thumbnail'}`} alt={resource.name || t('rooms.sharedImage')} className="max-h-52 min-h-24 max-w-full object-contain" loading="lazy" onError={() => setThumbnailFailed(true)} />
+        <img src={resource.library_gif ? `/api/v1/rooms/gifs/${resource.resource_id}/preview` : `/api/v1/files/${resource.resource_id}/${isAnimatedGIF(resource) ? 'preview' : 'thumbnail'}`} alt={resource.name || t('rooms.sharedImage')} className="max-h-52 min-h-24 max-w-full object-contain" loading="lazy" onError={() => setThumbnailFailed(true)} />
       </button>
       {canModerate && <button type="button" onClick={() => onRemove(resource.id)} aria-label={t('rooms.removeImage')} className="absolute right-2 top-2 rounded-full bg-black/70 p-1.5 text-white opacity-80 shadow hover:bg-red-600 hover:opacity-100"><Trash2 size={14} /></button>}
       <span className="sr-only">{resource.name}</span>

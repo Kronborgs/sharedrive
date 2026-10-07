@@ -23,6 +23,7 @@ const (
 	KeyUserRoomTyping     = "user_room_typing:"
 	KeyUserRoomInvite     = "user_room_invite:"
 	KeyUserRoomGIFSearch  = "user_room_gif_search:"
+	KeyUserRoomPushTest   = "user_room_push_test:"
 	KeyIPRoomInviteAccept = "ip_room_invite_accept:"
 	KeyGuestRoomMutation  = "guest_room_mutation:"
 )

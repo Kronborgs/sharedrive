@@ -139,7 +139,8 @@ func (service *Service) ListResources(ctx context.Context, actorID, roomID uuid.
 
 func (service *Service) loadRoomResources(ctx context.Context, roomID uuid.UUID) ([]Resource, []uuid.UUID, []uuid.UUID, error) {
 	rows, err := service.db.Query(ctx, `SELECT resource.id, resource.room_id, resource.resource_type, resource.resource_id, resource.added_by,
-		COALESCE(account.display_name, account.email, ''), resource.message_id, resource.created_at
+		COALESCE(account.display_name, account.email, ''), resource.message_id, resource.created_at,
+		EXISTS(SELECT 1 FROM room_gif_library library WHERE library.file_id = resource.resource_id)
 		FROM room_resources resource LEFT JOIN users account ON account.id = resource.added_by
 		WHERE resource.room_id = $1 ORDER BY resource.created_at DESC, resource.id DESC`, roomID)
 	if err != nil {
@@ -151,7 +152,7 @@ func (service *Service) loadRoomResources(ctx context.Context, roomID uuid.UUID)
 	noteIDs := make([]uuid.UUID, 0)
 	for rows.Next() {
 		var resource Resource
-		if err := rows.Scan(&resource.ID, &resource.RoomID, &resource.ResourceType, &resource.ResourceID, &resource.AddedBy, &resource.AddedByName, &resource.MessageID, &resource.CreatedAt); err != nil {
+		if err := rows.Scan(&resource.ID, &resource.RoomID, &resource.ResourceType, &resource.ResourceID, &resource.AddedBy, &resource.AddedByName, &resource.MessageID, &resource.CreatedAt, &resource.LibraryGIF); err != nil {
 			return nil, nil, nil, err
 		}
 		resources = append(resources, resource)
@@ -257,6 +258,11 @@ func (service *Service) authorizeResourceAttach(ctx context.Context, actorID uui
 
 func (service *Service) resolveResource(ctx context.Context, actorID uuid.UUID, resource Resource) (ResourceView, error) {
 	view := ResourceView{Resource: resource, Accessible: true}
+	if resource.ResourceType == ResourceFile {
+		if err := service.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM room_gif_library WHERE file_id = $1)`, resource.ResourceID).Scan(&view.LibraryGIF); err != nil {
+			return ResourceView{}, err
+		}
+	}
 	switch resource.ResourceType {
 	case ResourceFile:
 		file, err := service.fileSvc.GetAccessible(ctx, resource.ResourceID.String(), actorID.String())

@@ -183,6 +183,7 @@ export interface DirectResource {
   created_at: string
   name: string
   mime_type?: string
+  library_gif: boolean
 }
 
 export function listDirectConversations(signal?: AbortSignal): Promise<DirectConversation[]> {
@@ -269,6 +270,7 @@ export interface RoomResource {
   mime_type?: string
   is_folder?: boolean
   note_type?: string
+  library_gif: boolean
 }
 export function listRoomResources(roomID: string, signal?: AbortSignal): Promise<RoomResource[]> {
   return api.get<RoomResource[]>(`/api/v1/rooms/${roomID}/resources`, signal)

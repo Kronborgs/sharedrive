@@ -262,6 +262,9 @@ func (service *Service) AddDirectFileResource(ctx context.Context, actorID, conv
 		return DirectResource{}, err
 	}
 	resource.Name, resource.MimeType = file.Name, file.MimeType
+	if err := service.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM room_gif_library WHERE file_id = $1)`, fileID).Scan(&resource.LibraryGIF); err != nil {
+		return DirectResource{}, err
+	}
 	return resource, nil
 }
 
@@ -277,7 +280,8 @@ func (service *Service) ListDirectResources(ctx context.Context, actorID, conver
 	if _, err := service.directConversationForActor(ctx, actorID, conversationID); err != nil {
 		return nil, err
 	}
-	rows, err := service.db.Query(ctx, `SELECT resource.id,resource.conversation_id,resource.file_id,resource.added_by,resource.message_id,resource.created_at,file.name,file.mime_type
+	rows, err := service.db.Query(ctx, `SELECT resource.id,resource.conversation_id,resource.file_id,resource.added_by,resource.message_id,resource.created_at,file.name,file.mime_type,
+		EXISTS(SELECT 1 FROM room_gif_library library WHERE library.file_id=resource.file_id)
 		FROM direct_resources resource JOIN files file ON file.id=resource.file_id WHERE resource.conversation_id=$1 AND file.deleted_at IS NULL ORDER BY resource.created_at`, conversationID)
 	if err != nil {
 		return nil, err
@@ -286,7 +290,7 @@ func (service *Service) ListDirectResources(ctx context.Context, actorID, conver
 	resources := make([]DirectResource, 0)
 	for rows.Next() {
 		var resource DirectResource
-		if err := rows.Scan(&resource.ID, &resource.ConversationID, &resource.FileID, &resource.AddedBy, &resource.MessageID, &resource.CreatedAt, &resource.Name, &resource.MimeType); err != nil {
+		if err := rows.Scan(&resource.ID, &resource.ConversationID, &resource.FileID, &resource.AddedBy, &resource.MessageID, &resource.CreatedAt, &resource.Name, &resource.MimeType, &resource.LibraryGIF); err != nil {
 			return nil, err
 		}
 		resources = append(resources, resource)

@@ -212,8 +212,11 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
             const previewResources = messageResources.map(resource => {
               const previewItem: FileItem = { id: resource.file_id, parent_id: null, owner_id: '', is_folder: false, name: resource.name, mime_type: resource.mime_type ?? null, size_bytes: 0, checksum_sha256: null, deleted_at: null, created_at: resource.created_at, updated_at: resource.created_at }
               const isImage = resource.mime_type?.startsWith('image/') || /\.(avif|gif|jpe?g|png|svg|webp)$/i.test(resource.name)
+              let previewURL = `/api/v1/files/${resource.file_id}/thumbnail`
+              if (resource.mime_type === 'image/gif') previewURL = `/api/v1/files/${resource.file_id}/preview`
+              if (resource.library_gif) previewURL = `/api/v1/rooms/gifs/${resource.file_id}/preview`
               return isImage
-                ? <button key={resource.id} type="button" onClick={() => openResource(previewItem)} className="mt-1 block max-w-[80%] overflow-hidden rounded-xl border border-subtle bg-zinc-950"><img src={resource.library_gif ? `/api/v1/rooms/gifs/${resource.file_id}/preview` : '/api/v1/files/' + resource.file_id + '/' + (resource.mime_type === 'image/gif' ? 'preview' : 'thumbnail')} alt={resource.name} className="max-h-64 max-w-full object-contain" loading="lazy" /></button>
+                ? <button key={resource.id} type="button" onClick={() => openResource(previewItem)} className="mt-1 block max-w-[80%] overflow-hidden rounded-xl border border-subtle bg-zinc-950"><img src={previewURL} alt={resource.name} className="max-h-64 max-w-full object-contain" loading="lazy" /></button>
                 : <button key={resource.id} type="button" onClick={() => openResource(previewItem)} className="mt-1 max-w-[80%] rounded-lg border border-subtle bg-surface px-3 py-2 text-left text-sm text-brand-600 hover:underline">{resource.name}</button>
             })
             return <Fragment key={message.id}>

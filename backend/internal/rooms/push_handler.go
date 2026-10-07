@@ -10,6 +10,8 @@ import (
 	"github.com/yourname/privatedrive/internal/ratelimit"
 )
 
+const pushNotificationsNotConfigured = "push notifications are not configured"
+
 type pushSubscriptionRequest struct {
 	pushSubscriptionPayload
 	Locale string `json:"locale"`
@@ -23,7 +25,7 @@ func (handler *Handler) GetPushConfig(w http.ResponseWriter, request *http.Reque
 
 func (handler *Handler) SavePushSubscription(w http.ResponseWriter, request *http.Request) {
 	if !handler.push.isEnabled() {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "push notifications are not configured")
+		httputil.RespondError(w, http.StatusServiceUnavailable, pushNotificationsNotConfigured)
 		return
 	}
 	var input pushSubscriptionRequest
@@ -42,7 +44,7 @@ func (handler *Handler) SavePushSubscription(w http.ResponseWriter, request *htt
 
 func (handler *Handler) SendTestPush(w http.ResponseWriter, request *http.Request) {
 	if !handler.push.isEnabled() {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "push notifications are not configured")
+		httputil.RespondError(w, http.StatusServiceUnavailable, pushNotificationsNotConfigured)
 		return
 	}
 	user := middleware.UserFromContext(request.Context())
@@ -61,7 +63,7 @@ func (handler *Handler) SendTestPush(w http.ResponseWriter, request *http.Reques
 
 func (handler *Handler) DeletePushSubscription(w http.ResponseWriter, request *http.Request) {
 	if !handler.push.isEnabled() {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "push notifications are not configured")
+		httputil.RespondError(w, http.StatusServiceUnavailable, pushNotificationsNotConfigured)
 		return
 	}
 	var input struct { Endpoint string `json:"endpoint"` }

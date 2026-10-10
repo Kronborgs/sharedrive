@@ -3,16 +3,26 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
 interface LinkPreview { url: string; canonical_url?: string; title?: string; description?: string; image_url?: string; hostname: string }
-const URL_PATTERN = /https?:\/\/[^\s<>"']{1,2048}/gi
-const TRAILING_PUNCTUATION = /[.,!?;:)]+$/
+const URL_SCHEME = /https?:\/\//gi
+const TRAILING_PUNCTUATION = new Set(['.', ',', '!', '?', ';', ':', ')'])
 
 function findURLs(body: string) {
-  return [...body.matchAll(URL_PATTERN)].map(match => {
-    const raw = match[0]
-    const suffix = TRAILING_PUNCTUATION.exec(raw)?.[0] ?? ''
-    const url = suffix ? raw.slice(0, -suffix.length) : raw
-    return { start: match.index ?? 0, end: (match.index ?? 0) + url.length, url }
-  }).filter(item => item.url.length > 0)
+  const links: { start: number; end: number; url: string }[] = []
+  let match: RegExpExecArray | null
+  while ((match = URL_SCHEME.exec(body)) !== null) {
+    const start = match.index
+    let end = start + match[0].length
+    while (end < body.length && !/\s/.test(body[end]) && !'<>' .includes(body[end]) && body[end] !== '"' && body[end] !== "'") {
+      end += 1
+    }
+    while (end > start + match[0].length && TRAILING_PUNCTUATION.has(body[end - 1])) {
+      end -= 1
+    }
+    if (end > start + match[0].length) {
+      links.push({ start, end, url: body.slice(start, end) })
+    }
+  }
+  return links
 }
 
 function LinkPreviewCard({ url, endpoint }: Readonly<{ url: string; endpoint: string }>) {

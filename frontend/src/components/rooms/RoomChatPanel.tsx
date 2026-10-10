@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { ArrowDown, File, FileText, Pencil, Reply, Send, Trash2 } from 'lucide-react'
 import { PreviewModal } from '@/components/files/PreviewModal'
+import { ChatMessageBody } from '@/components/rooms/ChatMessageBody'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { EmojiPicker } from '@/components/rooms/EmojiPicker'
 import { GifPicker } from '@/components/rooms/GifPicker'
@@ -84,7 +85,7 @@ function MessageCard(props: Readonly<MessageCardProps>) {
     <div className={`w-fit max-w-full rounded-2xl px-3 py-2 ${bubbleClass}`}>
     {!showSender && <div className="flex justify-end"><MessageActions message={message} currentUserID={currentUserID} canModerate={canModerate} onReply={onReply} onEdit={onEdit} onDelete={onDelete} /></div>}
     {message.reply_to_message_id && <p className="text-xs text-muted">{t('rooms.replyContext')}</p>}
-    {!hideBody && <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{deleted ? t('rooms.messageDeleted') : message.body}</p>}
+    {!hideBody && <ChatMessageBody body={deleted ? t('rooms.messageDeleted') : message.body} className="text-zinc-700 dark:text-slate-300" />}
     {!deleted && resources.length > 0 && <div className="mt-2 space-y-2">{resources.map(resource => <ResourceCard key={resource.id} resource={resource} canModerate={canModerate} onPreview={onPreviewResource} onRemove={onRemoveResource} />)}</div>}
     {!deleted && <div className="mt-2 flex flex-wrap items-center gap-1">
       {summarizeRoomReactions(message.reactions).map(summary => <button key={summary.emoji} type="button" onClick={() => onReaction(message, summary.emoji)} title={t('rooms.reactedBy', { names: summary.names.join(', ') })} aria-label={t('rooms.reactionAria', { emoji: summary.emoji, names: summary.names.join(', ') })} className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs dark:border-[#3a3f58]">{summary.emoji} {summary.count}</button>)}

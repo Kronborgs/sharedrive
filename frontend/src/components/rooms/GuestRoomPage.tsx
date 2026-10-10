@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ChatMessageBody } from '@/components/rooms/ChatMessageBody'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { DoorOpen, LogOut, Send } from 'lucide-react'
 import { EmojiPicker } from '@/components/rooms/EmojiPicker'
@@ -31,7 +32,7 @@ function GuestMessageCard({ message, canReact, onReaction, userKey }: Readonly<G
   const deleted = Boolean(message.deleted_at)
   return <article className="rounded-lg bg-white px-3 py-2 dark:bg-[#1a1d27]">
     <div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">{message.sender_name}</p><time dateTime={message.created_at} className="text-[11px] text-muted">{formatChatMessageTime(message.created_at, locale)}</time></div>
-    <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-slate-300">{deleted ? t('rooms.messageDeleted') : message.body}</p>
+    <ChatMessageBody body={deleted ? t('rooms.messageDeleted') : message.body} className="text-zinc-700 dark:text-slate-300" previewEndpoint="/api/v1/guest/rooms/link-preview" />
     {!deleted && <div className="mt-2 flex flex-wrap items-center gap-1">
       {summarizeRoomReactions(message.reactions).map(summary => <button key={summary.emoji} type="button" disabled={!canReact} onClick={() => onReaction(message, summary.emoji)} title={t('rooms.reactedBy', { names: summary.names.join(', ') })} aria-label={t('rooms.reactionAria', { emoji: summary.emoji, names: summary.names.join(', ') })} className="rounded-full border border-zinc-200 px-2 py-0.5 text-xs disabled:cursor-default dark:border-[#3a3f58]">{summary.emoji} {summary.count}</button>)}
       {canReact && <EmojiPicker userKey={userKey} label={t('rooms.addReaction')} onSelect={emoji => onReaction(message, emoji)} />}

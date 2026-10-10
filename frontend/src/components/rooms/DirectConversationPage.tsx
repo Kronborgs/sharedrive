@@ -12,6 +12,7 @@ import { RoomVoicePanel } from '@/components/rooms/RoomVoicePanel'
 import { EmojiPicker } from '@/components/rooms/EmojiPicker'
 import { GifPicker } from '@/components/rooms/GifPicker'
 import { PreviewModal } from '@/components/files/PreviewModal'
+import { ChatMessageBody } from '@/components/rooms/ChatMessageBody'
 import { OnlyOfficeEditor } from '@/components/files/OnlyOfficeEditor'
 import { api } from '@/lib/api'
 import { importRemoteGIF, isRemoteGIFURL } from '@/lib/rooms-gifs'
@@ -224,7 +225,7 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
               <article className={`flex flex-col ${own ? 'items-end' : 'items-start'}`}>
                 {conversation.kind === 'group' && !own && senderEmail ? <button type="button" onClick={() => startDirect.mutate(senderEmail)} className="mb-1 text-xs text-muted hover:text-brand-600 hover:underline" title={t('rooms.startDirect', { name: message.sender_name })}>{message.sender_name}</button> : <div className="mb-1 text-xs text-muted">{message.sender_name}</div>}
                 <time dateTime={message.created_at} className="mb-1 text-[11px] text-muted">{formatChatMessageTime(message.created_at, locale)}</time>
-                {!hideBody && <p className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${own ? 'bg-brand-600 text-white' : 'bg-surface'}`}>{message.deleted_at ? t('rooms.messageDeleted') : message.body}</p>}
+                {!hideBody && <div className={`max-w-[80%] rounded-2xl px-3 py-2 ${own ? 'bg-brand-600 text-white' : 'bg-surface'}`}><ChatMessageBody body={message.deleted_at ? t('rooms.messageDeleted') : message.body} className={own ? 'text-white' : ''} /></div>}
                 {previewResources}
               </article>
             </Fragment>

@@ -38,12 +38,15 @@ function LinkPreviewCard({ url, endpoint }: Readonly<{ url: string; endpoint: st
 export function ChatMessageBody({ body, className = '', previewEndpoint = '/api/v1/rooms/link-preview' }: Readonly<{ body: string; className?: string; previewEndpoint?: string }>) {
   const links = findURLs(body)
   const parts: ReactNode[] = []
+  const linkClassName = className.includes('text-white')
+    ? 'break-all text-zinc-950 underline decoration-zinc-700 underline-offset-2 hover:text-black'
+    : 'break-all text-brand-600 underline decoration-brand-300 underline-offset-2 hover:text-brand-700'
   let cursor = 0
   for (const link of links) {
     if (link.start > cursor) {
       parts.push(body.slice(cursor, link.start))
     }
-    parts.push(<a key={`${link.url}-${link.start}`} href={link.url} target="_blank" rel="noopener noreferrer" className="break-all text-brand-600 underline decoration-brand-300 underline-offset-2 hover:text-brand-700">{link.url}</a>)
+    parts.push(<a key={`${link.url}-${link.start}`} href={link.url} target="_blank" rel="noopener noreferrer" className={linkClassName}>{link.url}</a>)
     cursor = link.end
   }
   if (cursor < body.length) parts.push(body.slice(cursor))

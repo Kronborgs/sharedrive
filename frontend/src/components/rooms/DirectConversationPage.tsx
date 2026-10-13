@@ -184,7 +184,7 @@ export function DirectConversationPage({ conversationID }: Readonly<{ conversati
     const frame = requestAnimationFrame(() => requestAnimationFrame(settleAtLatest))
     const timer = window.setTimeout(settleAtLatest, 150)
     return () => { cancelAnimationFrame(frame); window.clearTimeout(timer) }
-  }, [conversationID, messages.data?.messages.length, scrollToLatest])
+  }, [conversationID, messages.data?.messages[0]?.id, scrollToLatest])
   useEffect(() => {
     const container = messageScrollRef.current
     if (!container || typeof ResizeObserver === 'undefined') return

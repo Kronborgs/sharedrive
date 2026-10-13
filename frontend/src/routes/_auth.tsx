@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
+import { createFileRoute, Outlet, redirect, useRouterState } from '@tanstack/react-router'
 import { useAuth } from '@/lib/auth-context'
 import { useState } from 'react'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -39,6 +39,7 @@ function AuthLayout() {
 function AuthLayoutContent() {
   const { user, refetch } = useAuth()
   const { activePlaylistId } = usePlaylist()
+  const isRoomsRoute = useRouterState({ select: state => state.location.pathname.startsWith('/rooms') })
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   if (!user) {
@@ -61,7 +62,7 @@ function AuthLayoutContent() {
       {/* Main content */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <Header user={user} onMenuToggle={() => setSidebarOpen(v => !v)} />
-        <main className={cn('min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 md:p-6', activePlaylistId ? 'pt-20 md:pt-6' : '')}>
+        <main className={cn('min-h-0 flex-1 overflow-y-auto', isRoomsRoute ? 'p-0 sm:p-2 md:p-6' : 'p-3 sm:p-4 md:p-6', activePlaylistId ? 'pt-20 md:pt-6' : '')}>
           <Outlet />
         </main>
         <Footer />

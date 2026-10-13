@@ -315,6 +315,7 @@ const translations = {
   'rooms.startDirect':       { da: 'Skriv privat med {name}', en: 'Write privately to {name}' },
   'rooms.startDirectFailed': { da: 'Privat samtale kunne ikke startes.', en: 'Could not start direct conversation.' },
   'rooms.unknownSender': { da: 'Ukendt afsender', en: 'Unknown sender' },
+  'rooms.newChat':          { da: 'Ny chat',                    en: 'New chat' },
   'rooms.startPrivateChat': { da: 'Skriv privat chat', en: 'Start private chat' },
   'rooms.startPrivateChatDescription': { da: 'Skriv e-mailadressen på kontakten. Eksisterende Chat-brugere får chatten med det samme; nye kontakter får en invitation.', en: 'Enter the contact email. Existing Chat users get the chat immediately; new contacts receive an invitation.' },
   'rooms.contactEmail': { da: 'Kontaktens e-mail', en: 'Contact email' },

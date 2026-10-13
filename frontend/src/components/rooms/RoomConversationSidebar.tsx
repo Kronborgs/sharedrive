@@ -116,7 +116,13 @@ export function RoomConversationSidebar({ activeRoomID, mobile = false }: Readon
   if (mobile) {
     const unreadCount = (roomsQuery.data ?? []).reduce((total, room) => total + room.unread_count, 0) + (directQuery.data ?? []).reduce((total, conversation) => total + conversation.unread_count, 0)
     const list = <div className="space-y-1">{rooms.map(room => <RoomConversationRow key={room.id} room={room} activeRoomID={activeRoomID} locale={locale} />)}{directConversations.map(conversation => <DirectConversationRow key={conversation.id} conversation={conversation} activeRoomID={activeRoomID} locale={locale} />)}{!roomsQuery.isLoading && rooms.length === 0 && directConversations.length === 0 && <p className="px-2 py-4 text-sm text-muted">{t('rooms.noMatchingRooms' as never)}</p>}</div>
-    const selectedConversation = rooms.some(room => room.id === activeRoomID || room.slug === activeRoomID) ? 'room:' + (rooms.find(room => room.id === activeRoomID || room.slug === activeRoomID)?.slug ?? '') : activeRoomID ? 'direct:' + activeRoomID : ''
+    let selectedConversation = ''
+    const activeRoom = rooms.find(room => room.id === activeRoomID || room.slug === activeRoomID)
+    if (activeRoom) {
+      selectedConversation = 'room:' + activeRoom.slug
+    } else if (activeRoomID) {
+      selectedConversation = 'direct:' + activeRoomID
+    }
     return <aside className={sidebarClass} aria-label={t('rooms.conversations' as never)}><label className="flex w-full items-center justify-between rounded-lg border border-subtle bg-surface px-3 py-2 text-sm font-medium"><span>{t('rooms.conversations' as never)}{unreadCount > 0 && <span className="ml-2 rounded-full bg-brand-600 px-1.5 py-0.5 text-xs text-white">{unreadCount}</span>}</span><select value={selectedConversation} onChange={event => {
   const value = event.target.value
   if (value.startsWith('room:')) {

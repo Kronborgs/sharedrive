@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, BellOff, Loader2 } from 'lucide-react'
+import { Bell, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
@@ -100,12 +100,14 @@ export function ChatPushNotifications() {
   const [subscribed, setSubscribed] = useState(false)
   const [busy, setBusy] = useState(true)
   const [chatNotificationsEnabled, setChatNotificationsEnabled] = useState(true)
+  const [permission, setPermission] = useState<NotificationPermission>('default')
 
   useEffect(() => {
     let cancelled = false
     const supportedHere = supportsPushNotifications()
     setSupported(supportedHere)
-    if (!supportedHere) { setBusy(false); return }
+    if (!supportedHere) { setPermission('denied'); setBusy(false); return }
+    setPermission(Notification.permission)
     void (async () => {
       try {
         const [currentUser, serverConfig] = await Promise.all([
@@ -131,7 +133,7 @@ export function ChatPushNotifications() {
   }, [locale])
 
   const toggleChatNotifications = async () => {
-    const enabled = !chatNotificationsEnabled
+    const enabled = !(chatNotificationsEnabled && subscribed)
     setBusy(true)
     try {
       await api.patch('/api/v1/me', { chat_notifications_enabled: enabled })
@@ -146,6 +148,7 @@ export function ChatPushNotifications() {
         return
       }
       const active = await subscribeRoomPush(config, locale, true)
+      setPermission(Notification.permission)
       setSubscribed(active)
       if (active) toast.success(t('rooms.pushEnabled'))
       else toast.error(t('rooms.pushPermissionDenied'))
@@ -156,54 +159,8 @@ export function ChatPushNotifications() {
     }
   }
 
-  const toggle = async () => {
-    if (!config?.enabled || !config.public_key || busy || !chatNotificationsEnabled) return
-    setBusy(true)
-    try {
-      const registration = await navigator.serviceWorker.ready
-      const current = await registration.pushManager.getSubscription()
-      if (current) {
-        await unregisterRoomPushSubscription()
-        setSubscribed(false)
-        toast.success(t('rooms.pushDisabled'))
-        return
-      }
-      const active = await subscribeRoomPush(config, locale, true)
-      setSubscribed(active)
-      if (active) toast.success(t('rooms.pushEnabled'))
-      else toast.error(t('rooms.pushPermissionDenied'))
-    } catch {
-      toast.error(t('rooms.pushFailed'))
-    } finally {
-      setBusy(false)
-    }
-  }
+  if (!supported) return <p className="mt-2 px-2 py-2 text-xs text-muted">{t('rooms.pushPermissionDenied')}</p>
 
-  const sendTest = async () => {
-    if (!config?.enabled || !subscribed || busy) return
-    setBusy(true)
-    try {
-      const result = await api.post<{ subscriptions: number }>('/api/v1/rooms/push-subscriptions/test', {})
-      if (result.subscriptions > 0) toast.success(t('rooms.pushTestSent'))
-      else toast.error(t('rooms.pushTestUnavailable'))
-    } catch {
-      toast.error(t('rooms.pushFailed'))
-    } finally {
-      setBusy(false)
-    }
-  }
-  if (!supported) return null
-
-  const globalToggle = <button type="button" onClick={() => { void toggleChatNotifications() }} disabled={busy} className="mt-2 flex min-h-10 w-full items-center justify-center rounded-lg border border-subtle px-3 py-2 text-xs font-medium text-muted hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-60 dark:hover:bg-[#2d3148] dark:hover:text-slate-100">
-    {chatNotificationsEnabled ? 'Slå chat-notifikationer fra' : 'Slå chat-notifikationer til'}
-  </button>
-
-  let notificationIcon = <Bell size={15} />
-  if (busy) notificationIcon = <Loader2 size={15} className="animate-spin" />
-  else if (subscribed) notificationIcon = <BellOff size={15} />
-
-  return <>{globalToggle}{config && !config.enabled ? <p className="px-2 py-2 text-xs text-muted">{t('rooms.pushUnavailable')}</p> : <button type="button" onClick={() => { void toggle() }} disabled={busy || !chatNotificationsEnabled || !config?.enabled} aria-pressed={subscribed} className="mt-2 flex min-h-10 w-full items-center gap-2 rounded-lg border border-subtle px-3 py-2 text-left text-xs font-medium text-muted hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-60 dark:hover:bg-[#2d3148] dark:hover:text-slate-100">
-    {notificationIcon}
-    <span>{subscribed ? t('rooms.pushDisable') : t('rooms.pushEnable')}</span>
-  </button>}{subscribed && config?.enabled && <button type="button" onClick={() => { void sendTest() }} disabled={busy} className="mt-2 flex min-h-10 w-full items-center justify-center rounded-lg border border-subtle px-3 py-2 text-xs font-medium text-muted hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-60 dark:hover:bg-[#2d3148] dark:hover:text-slate-100">{t('rooms.pushTest')}</button>}</>
+  return <><div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-subtle px-3 py-2 text-xs text-muted"><span className="flex items-center gap-2"><Bell size={15} />{t('rooms.pushEnable')}</span><button type="button" onClick={() => { void toggleChatNotifications() }} disabled={busy || !config?.enabled} aria-pressed={chatNotificationsEnabled && subscribed} aria-label={chatNotificationsEnabled && subscribed ? t('rooms.pushDisable') : t('rooms.pushEnable')} className={chatNotificationsEnabled && subscribed ? 'relative h-6 w-11 rounded-full bg-brand-600 transition-colors disabled:opacity-60' : 'relative h-6 w-11 rounded-full bg-zinc-400 transition-colors dark:bg-zinc-700 disabled:opacity-60'}><span className={chatNotificationsEnabled && subscribed ? 'absolute top-1 h-4 w-4 translate-x-6 rounded-full bg-white transition-transform' : 'absolute top-1 h-4 w-4 translate-x-1 rounded-full bg-white transition-transform'} />{busy && <Loader2 size={12} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin text-zinc-700" />}</button></div>{permission === 'denied' && <p className="px-2 py-2 text-xs text-amber-600 dark:text-amber-400">{t('rooms.pushPermissionDenied')}</p>}{config && !config.enabled && <p className="px-2 py-2 text-xs text-muted">{t('rooms.pushUnavailable')}</p>}</>
 }
+

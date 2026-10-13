@@ -2,7 +2,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronDown, DoorOpen, MailPlus, MessageCircle, PhoneCall, Plus, Search, X } from 'lucide-react'
+import { DoorOpen, MailPlus, MessageCircle, PhoneCall, Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { ChatPushNotifications } from '@/components/rooms/ChatPushNotifications'
@@ -22,7 +22,7 @@ function ConversationFilters({ value, onChange }: Readonly<{ value: Conversation
 }
 
 function roomTimestamp(updatedAt: string, locale: string) {
-  return new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { hour: '2-digit', minute: '2-digit' }).format(new Date(updatedAt))
+  return new Intl.DateTimeFormat(locale === 'da' ? 'da-DK' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(updatedAt))
 }
 
 function RoomConversationRow({ room, activeRoomID, locale }: Readonly<{ room: Room; activeRoomID?: string; locale: string }>) {
@@ -61,7 +61,6 @@ export function RoomConversationSidebar({ activeRoomID, mobile = false }: Readon
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ConversationFilter>('all')
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(() => !activeRoomID)
   const [roomName, setRoomName] = useState('')
   const [privateChatOpen, setPrivateChatOpen] = useState(false)
   const [contactEmail, setContactEmail] = useState('')
@@ -117,7 +116,14 @@ export function RoomConversationSidebar({ activeRoomID, mobile = false }: Readon
   if (mobile) {
     const unreadCount = (roomsQuery.data ?? []).reduce((total, room) => total + room.unread_count, 0) + (directQuery.data ?? []).reduce((total, conversation) => total + conversation.unread_count, 0)
     const list = <div className="space-y-1">{rooms.map(room => <RoomConversationRow key={room.id} room={room} activeRoomID={activeRoomID} locale={locale} />)}{directConversations.map(conversation => <DirectConversationRow key={conversation.id} conversation={conversation} activeRoomID={activeRoomID} locale={locale} />)}{!roomsQuery.isLoading && rooms.length === 0 && directConversations.length === 0 && <p className="px-2 py-4 text-sm text-muted">{t('rooms.noMatchingRooms' as never)}</p>}</div>
-    return <aside className={sidebarClass} aria-label={t('rooms.conversations' as never)}><Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}><Dialog.Trigger asChild><button type="button" className="flex w-full items-center justify-between rounded-lg border border-subtle bg-surface px-3 py-2 text-sm font-medium">{t('rooms.conversations' as never)}{unreadCount > 0 && <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-xs text-white">{unreadCount}</span>}<ChevronDown size={17} /></button></Dialog.Trigger><label className="relative my-3 block"><span className="sr-only">{t('rooms.searchConversations' as never)}</span><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('rooms.searchConversations' as never)} className="notes-input w-full pl-9" /></label><ConversationFilters value={filter} onChange={setFilter} /><ChatPushNotifications /><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" /><Dialog.Content className="fixed inset-x-0 bottom-0 top-0 z-50 flex flex-col bg-surface p-4 pt-[max(1rem,env(safe-area-inset-top))] shadow-xl"><div className="mb-4 flex items-center justify-between"><Dialog.Title className="text-lg font-semibold">{t('rooms.conversations' as never)}</Dialog.Title><Dialog.Close asChild><button type="button" className="notes-icon-button" aria-label={t('action.close')}><X size={18} /></button></Dialog.Close></div><div className="mb-3">{privateChatDialog}</div><label className="relative mb-3 block"><span className="sr-only">{t('rooms.searchConversations' as never)}</span><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('rooms.searchConversations' as never)} className="notes-input w-full pl-9" /></label><ConversationFilters value={filter} onChange={setFilter} /><div className="min-h-0 flex-1 overflow-y-auto">{list}</div></Dialog.Content></Dialog.Portal></Dialog.Root></aside>
+    return <aside className={sidebarClass} aria-label={t('rooms.conversations' as never)}><label className="flex w-full items-center justify-between rounded-lg border border-subtle bg-surface px-3 py-2 text-sm font-medium"><span>{t('rooms.conversations' as never)}{unreadCount > 0 && <span className="ml-2 rounded-full bg-brand-600 px-1.5 py-0.5 text-xs text-white">{unreadCount}</span>}</span><select value={rooms.some(room => room.id === activeRoomID || room.slug === activeRoomID) ? 'room:' + (rooms.find(room => room.id === activeRoomID || room.slug === activeRoomID)?.slug ?? '') : activeRoomID ? 'direct:' + activeRoomID : ''} onChange={event => { const value=event.target.value; if (value.startsWith('room:')) navigate({ to: '/rooms/$roomID', params: { roomID: value.slice(5) } }).catch(() => undefined); if (value.startsWith('direct:')) navigate({ to: '/rooms/direct/$conversationID', params: { conversationID: value.slice(7) } }).catch(() => undefined) }} className="max-w-[60%] bg-transparent text-right text-sm outline-none"><option value="">{t('rooms.chooseConversation' as never)}</option><optgroup label={t('rooms.filterRooms')}>{rooms.map(room => <option key={room.id} value={`room:${room.slug}`}>{room.name}</option>)}</optgroup><optgroup label={t('rooms.direct')}>{directConversations.map(conversation => <option key={conversation.id} value={`direct:${conversation.id}`}>{conversation.other_display_name || conversation.other_email}</option>)}</optgroup></select></label><div className="mt-3">{privateChatDialog}</div><div className="mt-3"><label className="relative block"><span className="sr-only">{t('rooms.searchConversations' as never)}</span><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('rooms.searchConversations' as never)} className="notes-input w-full pl-9" /></label><ConversationFilters value={filter} onChange={setFilter} /><ChatPushNotifications /></div><div className="mt-3">{list}</div></aside>
   }
   return <aside className={sidebarClass} aria-label={t('rooms.conversations' as never)}>{content}</aside>
 }
+
+
+
+
+
+
+

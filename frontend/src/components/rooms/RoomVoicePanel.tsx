@@ -239,7 +239,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
       if (withMicrophone) await room.localParticipant.setMicrophoneEnabled(true)
       setMicrophoneEnabled(withMicrophone); setMuted(!withMicrophone); syncParticipants(); syncSharedScreens(room)
     } catch {
-      await leave()
+      leave()
       if (reportFailure) setError(t('rooms.voiceConnectFailed'))
     }
   }
@@ -248,7 +248,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
     const room = roomRef.current
     if (!room) return
     if (muted && mediaModeRef.current === 'watch') {
-      await leave()
+      leave()
       await join('voice')
       return
     }
@@ -285,7 +285,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
   const toggleScreenShare = async () => {
     let room = roomRef.current
     if (!room || mediaModeRef.current === 'watch') {
-      if (room) await leave()
+      if (room) leave()
       await join('screen')
       room = roomRef.current
     }
@@ -295,7 +295,7 @@ export function RoomVoicePanel({ roomID, guest = false, canShareScreen = true, m
       if (sharingScreen) await publishScreenShareSignal(room, 'stopped')
       await room.localParticipant.setScreenShareEnabled(!sharingScreen, { audio: false, contentHint: 'detail' })
       setSharingScreen(value => !value)
-      if (sharingScreen && !microphoneEnabled) await leave()
+      if (sharingScreen && !microphoneEnabled) leave()
     } catch {
       setError(t('rooms.screenShareFailed'))
     }

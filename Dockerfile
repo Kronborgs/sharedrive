@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1: Build frontend
 # ─────────────────────────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:24.22.3-alpine AS frontend-builder
 ARG VERSION=dev
 
 WORKDIR /fe
@@ -14,7 +14,7 @@ RUN APP_VERSION=${VERSION} npm run build
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: Build backend (embeds frontend dist)
 # ─────────────────────────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine AS backend-builder
 ARG VERSION=dev
 ARG BUILD_DATE=unknown
 ARG TARGETOS
@@ -39,7 +39,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3: Final runtime — Gotenberg image includes LibreOffice for Office → PDF
 # ─────────────────────────────────────────────────────────────────────────────
-FROM gotenberg/gotenberg:8
+FROM gotenberg/gotenberg:8.40.0
 
 USER root
 

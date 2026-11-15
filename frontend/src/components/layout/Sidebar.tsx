@@ -72,7 +72,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/users',        labelKey: 'nav.users',       icon: <Users size={16} /> },
   { to: '/admin/audit-logs',   labelKey: 'nav.auditLog',    icon: <ScrollText size={16} /> },
   { to: '/admin/blocked-ips',  labelKey: 'nav.blockedIps',  icon: <ShieldBan size={16} /> },
-  { to: '/admin/backup',       labelKey: 'nav.backup',      icon: <Database size={16} /> },
+  { to: '/admin/backup',       labelKey: 'nav.systemBackup',      icon: <Database size={16} /> },
   { to: '/admin/storage',      labelKey: 'nav.storage',     icon: <ScanSearch size={16} /> },
   { to: '/admin/settings',     labelKey: 'nav.settings',    icon: <Settings size={16} /> },
 ]

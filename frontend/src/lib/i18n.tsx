@@ -12,6 +12,7 @@ const translations = {
   'nav.activity':      { da: 'Aktivitet',        en: 'Activity' },
   'nav.trash':         { da: 'Papirkurv',        en: 'Trash' },
   'nav.backup':        { da: 'Backup',           en: 'Backup' },
+  'nav.systemBackup':  { da: 'System backup',    en: 'System backup' },
   'nav.notes':         { da: 'Noter',            en: 'Notes' },
 
   'nav.rooms':         { da: 'Chat',             en: 'Chat' },

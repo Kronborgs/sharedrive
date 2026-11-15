@@ -3,6 +3,7 @@ module github.com/yourname/privatedrive
 go 1.26
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/alexedwards/argon2id v1.0.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/cors v1.2.1
@@ -12,7 +13,6 @@ require (
 	github.com/pressly/goose/v3 v3.24.1
 	github.com/redis/go-redis/v9 v9.20.0
 	github.com/rs/zerolog v1.34.0
-    github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/spf13/viper v1.20.1
 	github.com/tus/tusd/v2 v2.9.2
 	github.com/wneessen/go-mail v0.7.3
@@ -22,6 +22,8 @@ require (
 
 require (
 	github.com/hashicorp/yamux v0.1.2
+	github.com/livekit/protocol v1.49.0
+	github.com/livekit/server-sdk-go/v2 v2.18.1
 	golang.org/x/image v0.38.0
 	nhooyr.io/websocket v1.8.17
 )
@@ -49,9 +51,7 @@ require (
 	github.com/lithammer/shortuuid/v4 v4.2.0 // indirect
 	github.com/livekit/mageutil v0.0.0-20250511045019-0f1ff63f7731 // indirect
 	github.com/livekit/mediatransportutil v0.0.0-20260605212259-862d4a7bcb1e // indirect
-	github.com/livekit/protocol v1.49.0 // indirect
 	github.com/livekit/psrpc v0.7.2 // indirect
-	github.com/livekit/server-sdk-go/v2 v2.18.1 // indirect
 	github.com/magefile/mage v1.17.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nats-io/nats.go v1.52.0 // indirect

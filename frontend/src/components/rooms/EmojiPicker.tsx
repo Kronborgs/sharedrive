@@ -133,7 +133,7 @@ export function EmojiPicker({ userKey, onSelect, label }: Readonly<{ userKey: st
     <FloatingPanel anchorRef={buttonRef} open={open} onOpenChange={setOpen} ariaLabel={pickerLabel} className="w-[min(23rem,calc(100vw-1rem))] p-3">
       <div className="mb-3 flex items-center gap-2">
         <Search size={17} className="shrink-0 text-muted" />
-        <input autoFocus type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t('rooms.emojiSearch')} className="min-w-0 flex-1 bg-transparent text-sm text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-slate-100" />
+        <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t('rooms.emojiSearch')} className="min-w-0 flex-1 bg-transparent text-sm text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-slate-100" />
         <button type="button" onClick={() => setOpen(false)} className="rounded-full p-1 text-muted hover:bg-zinc-100 dark:hover:bg-[#2d3148]" aria-label={t('rooms.emojiClose')}><X size={16} /></button>
       </div>
       <CategoryBar active={activeCategory} onSelect={setActiveCategory} />

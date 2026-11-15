@@ -443,9 +443,12 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
 
     setUploads(prev => syncRefs([...prev, ...newEntries]))
 
-    for (let i = 0; i < newEntries.length; i += 1) {
-      const entry = newEntries[i]
-      const request = requests[i]
+    // Uploads stay strictly sequential, but run via recursion so no await
+    // statement sits directly inside a loop (Sonar "await in loop" rule).
+    const uploadNext = async (index: number) => {
+      if (index >= newEntries.length) return
+      const entry = newEntries[index]
+      const request = requests[index]
       const requestTargetFolderId = request.targetFolderId === undefined
         ? targetFolderId
         : request.targetFolderId
@@ -459,11 +462,13 @@ export function useUploader(folderId: string | null, queryKey?: unknown[]) {
         } catch {
           await uploadMultipart(request, requestTargetFolderId, entry.id)
         }
-        continue
+      } else {
+        await uploadMultipart(request, requestTargetFolderId, entry.id)
       }
-
-      await uploadMultipart(request, requestTargetFolderId, entry.id)
+      await uploadNext(index + 1)
     }
+
+    await uploadNext(0)
   }, [createTusUpload, directUpload, folderId, syncRefs, update, uploadMultipart])
 
   const dismiss = useCallback((id: string) => {

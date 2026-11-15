@@ -91,9 +91,9 @@ func loadSettings(ctx context.Context, db *pgxpool.Pool) (map[string]string, err
 	return kv, rows.Err()
 }
 
-func settingInt(kv map[string]string, key string, fallback, min, max int) int {
+func settingInt(kv map[string]string, key string, fallback, minValue, maxValue int) int {
 	value, err := strconv.Atoi(kv[key])
-	if err != nil || value < min || (max > 0 && value > max) {
+	if err != nil || value < minValue || (maxValue > 0 && value > maxValue) {
 		return fallback
 	}
 	return value
@@ -107,9 +107,9 @@ func settingInt64(kv map[string]string, key string, fallback int64) int64 {
 	return value
 }
 
-func settingInt64AtLeast(kv map[string]string, key string, fallback, min int64) int64 {
+func settingInt64AtLeast(kv map[string]string, key string, fallback, minValue int64) int64 {
 	value := settingInt64(kv, key, fallback)
-	if value < min {
+	if value < minValue {
 		return fallback
 	}
 	return value
@@ -311,14 +311,14 @@ func (u *settingsUpserter) setNonEmptyString(key string, value *string) {
 	}
 }
 
-func (u *settingsUpserter) setBoundedInt(key string, value *int, min, max int) {
-	if value != nil && *value >= min && *value <= max {
+func (u *settingsUpserter) setBoundedInt(key string, value *int, minValue, maxValue int) {
+	if value != nil && *value >= minValue && *value <= maxValue {
 		u.upsert(key, strconv.Itoa(*value))
 	}
 }
 
-func (u *settingsUpserter) setBoundedInt64(key string, value *int64, min, max int64) {
-	if value != nil && *value >= min && *value <= max {
+func (u *settingsUpserter) setBoundedInt64(key string, value *int64, minValue, maxValue int64) {
+	if value != nil && *value >= minValue && *value <= maxValue {
 		u.upsert(key, strconv.FormatInt(*value, 10))
 	}
 }

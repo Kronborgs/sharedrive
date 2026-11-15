@@ -26,7 +26,7 @@ function RoomInvitePage() {
       <h1 className="text-2xl font-semibold text-zinc-950 dark:text-white">{t('rooms.joinAsGuest')}</h1>
       <p className="mt-2 text-sm text-muted">{t('rooms.joinGuestDescription')}</p>
       <label className="mt-5 block text-sm"><span className="block">{t('rooms.yourName')}</span>
-        <input autoFocus required minLength={1} maxLength={80} value={displayName} onChange={event => setDisplayName(event.target.value)} className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-[#3a3f58] dark:bg-[#0f1117]" />
+        <input required minLength={1} maxLength={80} value={displayName} onChange={event => setDisplayName(event.target.value)} className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-[#3a3f58] dark:bg-[#0f1117]" />
       </label>
       {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
       <button type="submit" disabled={pending || !displayName.trim()} className="mt-5 w-full rounded-lg bg-brand-600 px-4 py-2 text-white disabled:opacity-50">{pending ? t('rooms.guestOpening') : t('rooms.join')}</button>

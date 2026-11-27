@@ -57,6 +57,7 @@ export interface CalendarEvent {
   etag?: string;
   caldavUrl?: string;
   rawIcs?: string;
+  seriesOccurrence?: boolean;
   updatedAt?: string;
   pendingSync?: boolean;
 }

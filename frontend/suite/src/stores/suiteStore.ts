@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { clearOfflineMail } from '../../../src/lib/offline-mail-storage';
 import { ref, computed } from 'vue';
 import type { SuiteModule, ToastMessage } from '../types/suite';
 import type { MailDetail, MailHeader } from '../types/mail';
@@ -243,6 +244,7 @@ export const useSuiteStore = defineStore('suite', () => {
   }
 
   async function logout() {
+    clearOfflineMail();
     await apiLogoutSuite();
     isAuthenticated.value = false;
     isPublicShareMode.value = false;

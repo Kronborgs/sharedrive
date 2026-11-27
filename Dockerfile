@@ -7,7 +7,7 @@ WORKDIR /frontend/suite
 COPY frontend/suite/package.json frontend/suite/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY frontend/suite/ ./
-COPY frontend/src/lib/file-types.ts frontend/src/lib/share-mail-draft.ts frontend/src/lib/theme-palettes.ts /frontend/src/lib/
+COPY frontend/src/lib/file-types.ts frontend/src/lib/share-mail-draft.ts frontend/src/lib/theme-palettes.ts frontend/src/lib/offline-mail-storage.ts /frontend/src/lib/
 RUN npm run build
 
 FROM --platform=$BUILDPLATFORM node:24.22.3-alpine AS frontend-builder

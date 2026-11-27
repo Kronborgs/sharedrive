@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
+import OfflineMail from './components/mail/OfflineMail.vue'
 import { setDatabaseScope } from './db/database'
 import { setStorageScope } from './sharedrive-storage'
 import './style.css'
@@ -18,8 +19,23 @@ async function accountScope(): Promise<string> {
   return session.scope
 }
 
+function mountOfflineMail(scope?: string) {
+  createApp(OfflineMail, { scope }).mount('#app')
+}
+
+const locationQuery = new URLSearchParams(window.location.search)
+const canOpenOfflineMail = !locationQuery.has('share')
+
 async function start() {
+  if (canOpenOfflineMail && !navigator.onLine) {
+    mountOfflineMail()
+    return
+  }
   const scope = await accountScope()
+  if (canOpenOfflineMail && locationQuery.get('view') === 'offline') {
+    mountOfflineMail(scope)
+    return
+  }
   setStorageScope(scope)
   setDatabaseScope(scope)
   const app = createApp(App)
@@ -31,6 +47,10 @@ async function start() {
 }
 
 void start().catch(() => {
+  if (canOpenOfflineMail && !navigator.onLine) {
+    mountOfflineMail()
+    return
+  }
   const root = document.getElementById('app')
   if (root) root.textContent = navigator.onLine
     ? 'Mail kunne ikke åbnes. Kontrollér din konto i Sharedrive.'

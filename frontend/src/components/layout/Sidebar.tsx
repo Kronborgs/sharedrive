@@ -710,7 +710,7 @@ function SidebarMobilePlayer({
 }
 
 export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean; onClose?: () => void }>) {
-  const { user, setUser } = useAuth()
+  const { user, logout } = useAuth()
   const qc = useQueryClient()
   const state = useRouterState()
   const { t, locale, setLocale } = useI18n()
@@ -811,13 +811,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
     } catch {
       // Continue logout even if the push service cannot be reached.
     }
-    try {
-      await api.post('/api/v1/auth/logout', {})
-    } finally {
-      setUser(null)
-      qc.clear()
-      window.location.href = '/login'
-    }
+    await logout()
   }
 
   const handleSeekClick = (e: React.MouseEvent<HTMLElement>) => {

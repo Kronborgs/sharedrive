@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiClientError } from '@/lib/api'
+import { clearOfflineMail } from '@/lib/offline-mail-storage'
 import type { User } from '@/types/api'
 
 interface AuthContextValue {
@@ -42,6 +43,7 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
   }, [qc])
 
   const logout = useCallback(async () => {
+    clearOfflineMail()
     try {
       await api.post('/api/v1/auth/logout')
     } catch {

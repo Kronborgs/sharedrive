@@ -127,7 +127,7 @@ const fcEvents = computed(() => {
     const isSelected = selectedSet.has(ev.id);
     const isInClipboard = clipSet.has(ev.id);
     const clipboardMode = isInClipboard ? clipMode : null;
-    const isReadOnly = isShare || Boolean(cal?.readOnly);
+    const isReadOnly = isShare || store.isEventReadOnly(ev);
     const hasGuests = store.hasInvitedAttendees(ev);
 
     return {
@@ -289,7 +289,7 @@ function handleGridContextMenu(e: MouseEvent) {
 
 async function handleEventDrop(arg: EventDropArg) {
   const ev = store.events.find((e) => e.id === arg.event.id) || (arg.event.extendedProps.rawEvent as CalendarEvent);
-  if (!ev || store.isCalendarReadOnly(ev.calendarId)) {
+  if (!ev || store.isEventReadOnly(ev)) {
     arg.revert();
     store.notify(
       'Skrivebeskyttet kalender (Read-Only)',
@@ -320,7 +320,7 @@ async function handleEventDrop(arg: EventDropArg) {
 
 async function handleEventResize(arg: EventResizeDoneArg) {
   const ev = store.events.find((e) => e.id === arg.event.id) || (arg.event.extendedProps.rawEvent as CalendarEvent);
-  if (!ev || store.isCalendarReadOnly(ev.calendarId)) {
+  if (!ev || store.isEventReadOnly(ev)) {
     arg.revert();
     store.notify(
       'Skrivebeskyttet kalender (Read-Only)',

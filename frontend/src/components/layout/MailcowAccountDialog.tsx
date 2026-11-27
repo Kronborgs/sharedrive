@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { api } from '@/lib/api'
+import { clearOfflineMail } from '@/lib/offline-mail-storage'
 import { useI18n } from '@/lib/i18n'
 import { ignorePromise } from '@/lib/ignore-promise'
 import {
@@ -116,6 +117,7 @@ export function MailcowAccountDialog({ userId, close, onConnected }: Readonly<{ 
               }))}>{t('mailcowTest.run')}</button>}
               <button type="button" disabled={busy} className={buttonClass} onClick={() => ignorePromise(run(async () => {
                 await api.delete(endpoint)
+                clearOfflineMail()
                 queryClient.setQueryData<MailcowAccountState>(queryKey, { enabled: data.enabled, ready: data.ready, account: null })
                 queryClient.removeQueries({ queryKey: ['mailcow-content', userId] })
                 setEnteredDetails(false)

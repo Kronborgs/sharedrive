@@ -1549,8 +1549,12 @@ export async function fetchUserSharedCalendarsForOwner(
  */
 async function fetchEventsFromCalendarDirectReport(
   creds: CalDavCredentials,
-  cal: CalendarInfoDTO
+  cal: Pick<CalendarInfoDTO, 'id' | 'url' | 'isContactBirthdays'>,
+  uid?: string
 ): Promise<CalendarEventDTO[]> {
+  const uidFilter = uid
+    ? `<C:prop-filter name="UID"><C:text-match>${escapeXml(uid)}</C:text-match></C:prop-filter>`
+    : '';
   const reportXml = `<?xml version="1.0" encoding="utf-8" ?>
 <C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
   <D:prop>
@@ -1559,7 +1563,7 @@ async function fetchEventsFromCalendarDirectReport(
   </D:prop>
   <C:filter>
     <C:comp-filter name="VCALENDAR">
-      <C:comp-filter name="VEVENT"/>
+      <C:comp-filter name="VEVENT">${uidFilter}</C:comp-filter>
     </C:comp-filter>
   </C:filter>
 </C:calendar-query>`;
@@ -1595,11 +1599,16 @@ async function fetchEventsFromCalendarDirectReport(
     const etagMatch = block.match(/<(?:[a-zA-Z0-9]+:)?getetag[^>]*>([^<]+)<\/(?:[a-zA-Z0-9]+:)?getetag>/i);
     const etag = etagMatch ? etagMatch[1].trim().replace(/^["']|["']$/g, '') : undefined;
 
-    const parsed = parseIcsToEvents(rawIcs, cal.id, objectUrl, etag, false, Boolean(cal.isContactBirthdays));
+    const parsed = parseIcsToEvents(rawIcs, cal.id, objectUrl, etag, Boolean(uid), !uid);
     events.push(...parsed);
   }
 
   return events;
+}
+
+export async function findCalendarEventByUid(creds: CalDavCredentials, calendarUrl: string, uid: string) {
+  const events = await fetchEventsFromCalendarDirectReport(creds, { id: calendarUrl, url: calendarUrl }, uid);
+  return events.find(event => event.uid === uid);
 }
 
 const CTAG_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutter (invalideres automatisk ved ctag-ændring eller skrivning)
@@ -1670,19 +1679,22 @@ export async function fetchAllEvents(
  */
 export async function saveCalDavEvent(
   creds: CalDavCredentials,
-  eventDto: CalendarEventDTO
+  eventDto: CalendarEventDTO,
+  options?: { createOnly?: boolean; invitationSeries?: string }
 ): Promise<CalendarEventDTO> {
   const uid = eventDto.uid || crypto.randomUUID();
-  const icsString = buildIcsFromEvent({ ...eventDto, uid });
+  const icsString = options?.invitationSeries ?? buildIcsFromEvent({ ...eventDto, uid }, { saveInvitation: options?.createOnly });
   const isUpdate = Boolean(eventDto.caldavUrl);
+  const objectName = options?.createOnly ? crypto.createHash('sha256').update(uid).digest('hex') : encodeURIComponent(uid);
   const objectUrl = isUpdate
     ? (eventDto.caldavUrl as string)
-    : `${ensureTrailingSlash(eventDto.calendarId)}${encodeURIComponent(uid)}.ics`;
+    : `${ensureTrailingSlash(eventDto.calendarId)}${objectName}.ics`;
 
   const headers: Record<string, string> = {
     'Content-Type': 'text/calendar; charset=utf-8'
   };
 
+  if (options?.createOnly) headers['If-None-Match'] = '*';
   const res = await davRequest(creds, 'PUT', objectUrl, icsString, headers);
   const newEtag = res.headers.get('etag') || undefined;
   invalidateUserEventCache(creds);

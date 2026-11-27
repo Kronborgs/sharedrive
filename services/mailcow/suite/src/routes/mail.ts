@@ -28,6 +28,7 @@ import {
   deleteAliasForUser
 } from '../services/aliasStore.js';
 import { resolveAliasesWithMailcow } from '../services/mailcowAliases.js';
+import { fetchSogoSignature, SogoSignatureError } from '../services/sogoSignature.js';
 import {
   type SieveRuleDTO,
   fetchSieveOverview,
@@ -537,6 +538,26 @@ mailRouter.get('/aliases', async (req: Request, res: Response) => {
     res.json({ ok: true, aliases });
   } catch (err: any) {
     res.status(401).json({ ok: false, error: err?.message || 'Ikke logget ind.' });
+  }
+});
+
+mailRouter.get('/aliases/sogo-signature', async (req, res) => {
+  const email = typeof req.query.email === 'string' ? req.query.email.trim() : '';
+  try {
+    const creds = requireDavCredentials(req);
+    const alias = getAliasesForUser(creds.username).find(item => item.email.toLowerCase() === email.toLowerCase());
+    if (!alias) {
+      res.status(404).json({ ok: false, error: 'Gem afsenderadressen i Sharedrive før import fra SOGo.' });
+      return;
+    }
+    const result = await fetchSogoSignature(creds, alias.email);
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    if (error instanceof SogoSignatureError) {
+      res.status(error.status).json({ ok: false, error: error.message });
+      return;
+    }
+    res.status(502).json({ ok: false, error: 'Kunne ikke hente signaturen fra SOGo.' });
   }
 });
 

@@ -19,7 +19,7 @@ const targetEvent = computed(() => store.contextMenu.event || null);
 
 const isReadOnlyEvent = computed(() => {
   if (!targetEvent.value) return false;
-  return store.isCalendarReadOnly(targetEvent.value.calendarId);
+  return store.isEventReadOnly(targetEvent.value);
 });
 
 const hasMeetingGuests = computed(() => {
@@ -103,7 +103,7 @@ async function handleUndo() {
             Dato: {{ store.contextMenu.dateStr?.slice(0, 10) || store.selectedDateStr }}
           </div>
           <div v-if="isReadOnlyEvent" class="flex items-center gap-1 text-[10px] text-amber-400 mt-0.5">
-            <Lock class="w-3 h-3" /> Delt Read-Only kalender
+            <Lock class="w-3 h-3" /> {{ targetEvent?.seriesOccurrence ? 'Forekomst i mødeserie' : 'Skrivebeskyttet kalender' }}
           </div>
           <div v-if="hasMeetingGuests" class="flex items-center gap-1 text-[10px] text-purple-300 mt-0.5">
             <ShieldAlert class="w-3 h-3" /> Mødesikkerhed: Har deltagere (Ctrl+C låst)
@@ -119,7 +119,7 @@ async function handleUndo() {
           >
             <span class="flex items-center gap-2">
               <Edit3 class="w-3.5 h-3.5 text-blue-400" />
-              {{ isReadOnlyEvent ? 'Se detaljer / RSVP' : 'Redigér begivenhed' }}
+              {{ isReadOnlyEvent ? 'Se detaljer' : 'Redigér begivenhed' }}
             </span>
             <span class="text-[10px] text-slate-400">Dobbeltklik</span>
           </button>

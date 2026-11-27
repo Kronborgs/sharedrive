@@ -49,6 +49,12 @@ export interface MailDetail extends MailHeader {
   htmlBody: string;
   attachments: MailAttachment[];
   calendarInvite?: {
+    uid?: string;
+    method?: string;
+    cancelled?: boolean;
+    recurring?: boolean;
+    occurrenceUpdate?: boolean;
+    canAddDirectly?: boolean;
     summary: string;
     start?: string;
     end?: string;

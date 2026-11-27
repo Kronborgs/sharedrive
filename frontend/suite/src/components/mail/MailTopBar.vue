@@ -431,6 +431,12 @@ function toggleLayout() {
         <span class="hidden sm:inline">Ny e-mail</span>
       </button>
 
+      <a href="/mail/suite-ui/?view=offline" target="_blank" rel="noopener"
+        aria-label="Offlinebeskeder" title="Offlinebeskeder"
+        class="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs text-slate-200 hover:bg-slate-700">
+        <WifiOff class="h-3.5 w-3.5" />
+        <span class="hidden lg:inline">Offlinebeskeder</span>
+      </a>
       <SuiteTopActions />
     </div>
   </header>

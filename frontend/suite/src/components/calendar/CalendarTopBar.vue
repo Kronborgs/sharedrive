@@ -259,7 +259,7 @@ function formatShortDateTime(ev: CalendarEvent): string {
               Gå til dag
             </button>
             <button
-              v-if="!store.isCalendarReadOnly(ev.calendarId)"
+              v-if="!store.isEventReadOnly(ev)"
               type="button"
               class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[10.5px] font-medium transition"
               title="Åbn og redigér begivenheden"

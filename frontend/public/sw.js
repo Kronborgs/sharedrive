@@ -4,6 +4,7 @@
 
 const CACHE_NAME = 'sharedrive-shell-v7'
 const MAIL_SHELL = '/mail/suite-ui/'
+const OFFLINE_MAIL_CACHE = 'sharedrive-offline-mail-shell-v1'
 
 // App shell: the minimal set of assets needed to render the UI.
 // Vite-built assets have content hashes in filenames, so they are safe to
@@ -43,7 +44,7 @@ self.addEventListener('install', (event) => {
 
 // ── Activate ────────────────────────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  const keep = new Set([CACHE_NAME, SHARE_CACHE])
+  const keep = new Set([CACHE_NAME, SHARE_CACHE, OFFLINE_MAIL_CACHE])
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(
@@ -82,7 +83,12 @@ self.addEventListener('fetch', (event) => {
           }
           return response
         })
-        .catch(() => caches.match(shell).then((r) => r || new Response('Offline', { status: 503 })))
+        .catch(async () => {
+          const mailShell = shell === MAIL_SHELL
+            ? await caches.match(MAIL_SHELL, { cacheName: OFFLINE_MAIL_CACHE })
+            : undefined
+          return mailShell || await caches.match(shell) || new Response('Offline', { status: 503 })
+        })
     )
     return
   }

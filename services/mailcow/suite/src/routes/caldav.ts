@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
+import { buildInvitationSeries, readCalendarInvitation } from '../../../src/calendarInvitation.ts';
 import {
   type CalDavCredentials,
   type CalendarInfoDTO,
@@ -13,6 +14,7 @@ import {
   canonicalSogoCalendarSignature,
   fetchAllEvents,
   saveCalDavEvent,
+  findCalendarEventByUid,
   deleteCalDavEvent,
   updateEventRsvp,
   normalizeMailcowUrl,
@@ -752,6 +754,50 @@ caldavRouter.post('/rsvp', async (req: Request, res: Response) => {
       ok: false,
       error: err?.message || 'Kunne ikke opdatere mødesvar på CalDAV-serveren.'
     });
+  }
+});
+
+async function addInvitation(creds: CalDavCredentials, calendarId: string, event: CalendarEventDTO, invitationSeries?: string) {
+  const existing = await findCalendarEventByUid(creds, calendarId, event.uid);
+  if (existing) return { event: existing, alreadyAdded: true };
+  try {
+    const saved = await saveCalDavEvent(creds, event, { createOnly: true, invitationSeries });
+    return { event: saved, alreadyAdded: false };
+  } catch (error) {
+    if (error instanceof Error && /\(HTTP (403|409|412)\b/.test(error.message)) {
+      const concurrent = await findCalendarEventByUid(creds, calendarId, event.uid);
+      if (concurrent) return { event: concurrent, alreadyAdded: true };
+    }
+    throw error;
+  }
+}
+
+caldavRouter.post('/invitation', async (req, res) => {
+  const calendarId = typeof req.body?.calendarId === 'string' ? req.body.calendarId.trim() : '';
+  const rawIcs = typeof req.body?.icsContent === 'string' ? req.body.icsContent : '';
+  const invitation = readCalendarInvitation(rawIcs);
+  if (!calendarId || !invitation?.canAddDirectly || !invitation.uid) {
+    res.status(400).json({ ok: false, error: 'Vælg en kalender og en gyldig mødeinvitation.' });
+    return;
+  }
+
+  try {
+    const { creds } = resolveEffectiveDavCredentials(requireDavCredentials(req), calendarId, 'write');
+    const event = parseIcsToEvents(rawIcs, calendarId).find(item => item.uid === invitation.uid);
+    if (!event || event.uid !== invitation.uid) {
+      res.status(400).json({ ok: false, error: 'Mødeinvitationen indeholder ingen gyldig aftale.' });
+      return;
+    }
+    const series = invitation.recurring ? buildInvitationSeries(rawIcs) : undefined;
+    const result = await addInvitation(creds, calendarId, event, series);
+    const storedSeries = result.alreadyAdded ? result.event.rawIcs : series;
+    const occurrences = storedSeries && invitation.recurring
+      ? parseIcsToEvents(storedSeries, calendarId, result.event.caldavUrl, undefined, false, true)
+      : undefined;
+    res.json({ ok: true, ...result, occurrences });
+  } catch (error) {
+    const status = error instanceof ForbiddenShareError ? 403 : 502;
+    res.status(status).json({ ok: false, error: 'Kunne ikke gemme invitationen i den valgte kalender.' });
   }
 });
 

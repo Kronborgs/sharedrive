@@ -39,6 +39,7 @@ const showAttendeeSuggestions = ref(false);
 const isExisting = computed(() => Boolean(store.editingEvent?.id));
 
 const isReadOnly = computed(() => {
+  if (store.editingEvent?.seriesOccurrence) return true;
   if (!calendarId.value) return false;
   return store.isCalendarReadOnly(calendarId.value);
 });
@@ -226,7 +227,7 @@ const safeVideoUrl = computed(() => {
               v-if="isReadOnly"
               class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-semibold"
             >
-              <Lock class="w-3 h-3" /> Skrivebeskyttet
+              <Lock class="w-3 h-3" /> {{ store.editingEvent?.seriesOccurrence ? 'Forekomst i mødeserie' : 'Skrivebeskyttet' }}
             </span>
           </div>
           <button
@@ -503,7 +504,7 @@ const safeVideoUrl = computed(() => {
               </div>
             </div>
 
-            <div v-if="isExisting && attendees.length > 0" class="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+            <div v-if="isExisting && attendees.length > 0 && !store.editingEvent?.seriesOccurrence" class="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
               <span class="text-slate-400 font-medium">Dit mødesvar (RSVP):</span>
               <div class="flex items-center gap-1.5">
                 <button

@@ -138,6 +138,10 @@ export async function downloadMboxFile(folder: string): Promise<Blob> {
   return (await mboxRequest(folder)).blob();
 }
 
+export function fetchSogoSignatureApi(email: string): Promise<{ signature: string; html: boolean }> {
+  return apiRequest('/aliases/sogo-signature?' + new URLSearchParams({ email }));
+}
+
 export function getAttachmentDownloadUrl(folder: string, uid: number, attachmentId: string, inline = false): string {
   const q = new URLSearchParams({
     folder,

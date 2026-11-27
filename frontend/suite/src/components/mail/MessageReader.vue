@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import DOMPurify from 'dompurify';
+import SaveOfflineMail from './SaveOfflineMail.vue';
 import {
   Reply,
   ReplyAll,
@@ -77,6 +78,17 @@ async function openAttachment(attachment: MailAttachment) {
 }
 
 const msg = computed(() => store.activeMessageDetail);
+const offlineText = computed(() => {
+  if (msg.value?.textBody?.trim()) return msg.value.textBody;
+  const text = DOMPurify.sanitize(msg.value?.htmlBody ?? '', {
+    ALLOWED_TAGS: ['br', 'div', 'p', 'li'],
+    ALLOWED_ATTR: [],
+    RETURN_DOM_FRAGMENT: true
+  });
+  text.querySelectorAll('br').forEach(node => node.replaceWith('\n'));
+  text.querySelectorAll('div, p, li').forEach(node => node.after('\n'));
+  return text.textContent?.trim() ?? '';
+});
 const isLightPaper = computed(() => store.readerThemeMode === 'LIGHT_PAPER');
 
 watch(
@@ -138,11 +150,35 @@ const senderEmailImageCandidates = computed<string[]>(() => {
   return results;
 });
 
-const inviteConflicts = computed(() => {
-  const invite = msg.value?.calendarInvite;
-  if (!invite?.start) return [];
-  return calendarStore.findConflictingEvents(invite.start, invite.end);
+const invite = computed(() => msg.value?.calendarInvite);
+const inviteNotice = computed(() => {
+  const method = invite.value?.method ?? invite.value?.rawIcs.match(/^METHOD:([A-Z]+)\s*$/im)?.[1]?.toUpperCase();
+  if (invite.value?.cancelled || method === 'CANCEL') return 'Mødet er aflyst.';
+  if (method === 'REPLY') return 'Beskeden indeholder et svar på mødet.';
+  if (invite.value?.occurrenceUpdate) return 'Beskeden ændrer en enkelt forekomst i en mødeserie.';
+  if (method && !['REQUEST', 'PUBLISH'].includes(method)) {
+    return 'Beskeden indeholder en meddelelse om mødet.';
+  }
+  return '';
 });
+const existingInviteEvent = computed(() => {
+  const uid = invite.value?.uid;
+  if (!uid || inviteNotice.value || !invite.value?.canAddDirectly) return undefined;
+  const matches = calendarStore.events.filter(event => event.uid === uid);
+  return matches.find(event => Date.parse(event.end) >= Date.now()) ?? matches[0];
+});
+const inviteConflicts = computed(() => {
+  const details = invite.value;
+  if (!details?.start || inviteNotice.value) return [];
+  return calendarStore.findConflictingEvents(details.start, details.end)
+    .filter(event => !details.uid || event.uid !== details.uid);
+});
+
+function openInviteCalendar() {
+  suiteStore.setActiveModule('calendar');
+  const existing = existingInviteEvent.value;
+  if (existing) calendarStore.openEditEventModal(existing);
+}
 
 function formatIcsDateLabel(raw?: string): string {
   if (!raw) return '';
@@ -167,10 +203,12 @@ function formatIcsDateLabel(raw?: string): string {
 }
 
 async function addInviteToCalendar() {
-  const rawIcs = msg.value?.calendarInvite?.rawIcs;
-  if (!rawIcs) return;
+  const messageId = msg.value?.id;
+  const details = invite.value;
+  if (!details || inviteNotice.value || isAddingInvite.value) return;
   const targetCal =
-    inviteCalendarId.value || calendarStore.defaultWritableCalendar?.id || '';
+    calendarStore.writableCalendars.find(calendar => calendar.id === inviteCalendarId.value)?.id ||
+    calendarStore.defaultWritableCalendar?.id || '';
   if (!targetCal) {
     suiteStore.notify(
       'Ingen skrivbar kalender',
@@ -182,9 +220,15 @@ async function addInviteToCalendar() {
 
   isAddingInvite.value = true;
   try {
-    await calendarStore.importIcsFile(targetCal, rawIcs);
-    addedInviteToCalendar.value = true;
-    void calendarStore.syncWithServer(true);
+    if (details.canAddDirectly) {
+      const saved = await calendarStore.addCalendarInvitation(targetCal, details.rawIcs);
+      if (msg.value?.id === messageId) addedInviteToCalendar.value = true;
+      const title = saved.alreadyAdded ? 'Aftalen findes allerede' : 'Invitation tilføjet';
+      suiteStore.notify(title, saved.event.title, 'success');
+      return;
+    }
+    const imported = await calendarStore.importIcsFile(targetCal, details.rawIcs);
+    if (msg.value?.id === messageId) addedInviteToCalendar.value = imported > 0;
   } catch (err: any) {
     suiteStore.notify(
       'Kunne ikke tilføje invitation',
@@ -736,15 +780,16 @@ function downloadIcsInvite() {
             </div>
             <div class="min-w-0 space-y-0.5">
               <div class="text-xs font-bold text-slate-100 truncate">
-                📅 Kalenderinvitation: {{ msg.calendarInvite.summary }}
+                {{ inviteNotice ? 'Kalendermeddelelse' : 'Kalenderinvitation' }} · {{ msg.calendarInvite.summary }}
               </div>
+              <p v-if="inviteNotice" class="text-xs text-amber-300">{{ inviteNotice }}</p>
               <div class="text-[11px] text-blue-200 truncate">
                 <span v-if="msg.calendarInvite.start">{{ formatIcsDateLabel(msg.calendarInvite.start) }} • </span>
                 <span v-if="msg.calendarInvite.location">{{ msg.calendarInvite.location }} • </span>
                 <span v-if="msg.calendarInvite.organizer">Arrangør: {{ msg.calendarInvite.organizer }}</span>
               </div>
               <div
-                v-if="suiteStore.isAnyModuleEnabled('calendar') && msg.calendarInvite.start"
+                v-if="suiteStore.isAnyModuleEnabled('calendar') && msg.calendarInvite.start && !inviteNotice"
                 class="pt-0.5"
               >
                 <span
@@ -755,7 +800,7 @@ function downloadIcsInvite() {
                   Konflikt med {{ inviteConflicts.length }} aftale(r): "{{ inviteConflicts[0].title }}"
                 </span>
                 <span
-                  v-else
+                  v-else-if="calendarStore.lastSyncedAt && !calendarStore.isSyncing"
                   class="inline-flex items-center gap-1 text-[10.5px] font-medium text-emerald-300"
                 >
                   <CheckCircle2 class="w-3 h-3 shrink-0" />
@@ -766,9 +811,20 @@ function downloadIcsInvite() {
           </div>
 
           <div class="flex flex-wrap items-center gap-2 shrink-0">
-            <template v-if="suiteStore.isAnyModuleEnabled('calendar') && calendarStore.writableCalendars.length > 0">
+            <template v-if="suiteStore.isAnyModuleEnabled('calendar') && !inviteNotice">
+              <button
+                v-if="existingInviteEvent || addedInviteToCalendar"
+                type="button"
+                class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow transition"
+                @click="openInviteCalendar"
+              >
+                <Calendar class="w-3.5 h-3.5" />
+                <span>{{ existingInviteEvent ? 'Åbn aftalen i Kalender' : 'Åbn i Kalender' }}</span>
+              </button>
+              <template v-else-if="calendarStore.writableCalendars.length > 0">
               <select
-                v-if="calendarStore.writableCalendars.length > 1 && !addedInviteToCalendar"
+                v-if="calendarStore.writableCalendars.length > 1"
+                aria-label="Vælg kalender"
                 v-model="inviteCalendarId"
                 class="px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-[11px] text-slate-200 focus:outline-none"
               >
@@ -782,25 +838,15 @@ function downloadIcsInvite() {
               </select>
 
               <button
-                v-if="!addedInviteToCalendar"
                 type="button"
                 :disabled="isAddingInvite"
                 class="px-3 py-1.5 rounded-lg dav-theme-btn text-xs font-semibold flex items-center gap-1.5 shadow transition disabled:opacity-50"
                 @click="addInviteToCalendar"
               >
                 <CalendarPlus class="w-3.5 h-3.5" />
-                <span>{{ isAddingInvite ? 'Tilføjer...' : 'Tilføj til kalender' }}</span>
+                <span>{{ isAddingInvite ? 'Tilføjer…' : msg.calendarInvite.recurring && msg.calendarInvite.canAddDirectly ? 'Tilføj mødeserie' : 'Tilføj til kalender' }}</span>
               </button>
-
-              <button
-                v-else
-                type="button"
-                class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow transition"
-                @click="suiteStore.setActiveModule('calendar')"
-              >
-                <Calendar class="w-3.5 h-3.5" />
-                <span>Åbn i Kalender</span>
-              </button>
+              </template>
             </template>
 
             <button
@@ -823,6 +869,8 @@ function downloadIcsInvite() {
           <Download class="h-3.5 w-3.5" />
           Eksportér mail (.eml)
         </a>
+
+        <SaveOfflineMail v-if="suiteStore.isOnline && offlineText" :key="msg.id" :message="msg" :plain-body="offlineText" />
 
         <!-- Vedhæftede filer -->
         <div

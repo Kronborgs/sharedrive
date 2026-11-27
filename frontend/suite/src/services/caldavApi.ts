@@ -404,6 +404,21 @@ export async function apiFetchPublicShare(token: string): Promise<PublicShareRes
   return data;
 }
 
+export async function apiAddCalendarInvitation(
+  calendarId: string,
+  icsContent: string
+): Promise<{ event: CalendarEvent; alreadyAdded: boolean; occurrences?: CalendarEvent[] }> {
+  const response = await fetch('/api/v1/me/mailcow/suite/caldav/invitation', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ calendarId, icsContent })
+  });
+  const result = await response.json();
+  if (!response.ok || !result.ok) throw new Error(result.error || 'Kunne ikke gemme invitationen.');
+  return result;
+}
+
 export async function apiImportIcs(
   calendarId: string,
   icsContent: string

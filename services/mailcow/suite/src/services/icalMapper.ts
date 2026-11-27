@@ -26,6 +26,7 @@ export interface CalendarEventDTO {
   etag?: string;
   caldavUrl?: string;
   rawIcs?: string;
+  seriesOccurrence?: boolean;
 }
 
 const VIDEO_URL_REGEX = /(https?:\/\/(?:[^\s"]*zoom\.us|teams\.microsoft\.com|meet\.google\.com|jitsi\.[^\s"]+|whereby\.com)[^\s">]*)/i;
@@ -89,6 +90,41 @@ function formatIcalDate(dt: ICAL.Time | null | undefined, allDay: boolean): stri
   return dt.toJSDate().toISOString();
 }
 
+function projectSeries(event: ICAL.Event, template: CalendarEventDTO, rawIcs: string): CalendarEventDTO[] {
+  const year = new Date().getFullYear();
+  const rangeStart = new Date(year - 1, 0, 1).getTime();
+  const rangeEnd = new Date(year + 3, 0, 1).getTime();
+  const projected: CalendarEventDTO[] = [];
+  const iterator = event.iterator();
+  for (let count = 0, occurrence = iterator.next(); occurrence && count < 12_000; count++, occurrence = iterator.next()) {
+    const originalTime = occurrence.toJSDate().getTime();
+    if (originalTime >= rangeEnd || projected.length >= 1_500) break;
+    const occurrenceKey = occurrence.toString();
+    const utcKey = occurrence.convertToZone(ICAL.Timezone.utcTimezone).toString();
+    const exception = event.exceptions[occurrenceKey] ?? event.exceptions[utcKey];
+    if (exception?.component.getFirstPropertyValue('status') === 'CANCELLED') continue;
+    if (originalTime < rangeStart && !exception) continue;
+
+    const details = event.getOccurrenceDetails(occurrence);
+    const actualTime = details.startDate.toJSDate().getTime();
+    if (actualTime < rangeStart || actualTime >= rangeEnd) continue;
+    const allDay = details.startDate.isDate;
+    projected.push({
+      ...template,
+      id: `${template.id}::${occurrenceKey}`,
+      title: normalizeDanishText(details.item.summary) || template.title,
+      start: formatIcalDate(details.startDate, allDay),
+      end: formatIcalDate(details.endDate, allDay),
+      location: normalizeDanishText(details.item.location) || template.location,
+      description: normalizeDanishText(details.item.description) || template.description,
+      allDay,
+      seriesOccurrence: true,
+      rawIcs: projected.length === 0 ? rawIcs : undefined
+    });
+  }
+  return projected;
+}
+
 /**
  * Parser en rå iCalendar (.ics) streng til strukturerede CalendarEventDTO-objekter.
  * Understøtter VTIMEZONE via ical.js TimezoneService, ATTENDEE/PARTSTAT (RSVP), VALARM og RRULE-udrulning for abonnementer.
@@ -115,7 +151,8 @@ export function parseIcsToEvents(
     }
 
     const vevents = vcalendar.getAllSubcomponents('vevent');
-    const keepRawIcs = includeRawIcs && vevents.length === 1;
+    const uidOf = (component: ICAL.Component) => component.getFirstPropertyValue('uid');
+    const keepRawIcs = includeRawIcs && vevents.every(component => uidOf(component) === uidOf(vevents[0]));
     const results: CalendarEventDTO[] = [];
 
     const nowYear = new Date().getFullYear();
@@ -123,13 +160,14 @@ export function parseIcsToEvents(
     const maxExpandMs = new Date(nowYear + 2, 11, 31, 23, 59, 59).getTime();
 
     for (const veventComp of vevents) {
-      const event = new ICAL.Event(veventComp);
-      // Spring enkelt-forekomster med RECURRENCE-ID over hvis vi ruller hovedbegivenheden ud i et abonnement
-      if (expandRecurrences && event.isRecurrenceException()) {
-        continue;
-      }
+      const isException = veventComp.hasProperty('recurrence-id');
+      const sameSeries = (component: ICAL.Component) => uidOf(component) === uidOf(veventComp);
+      if (isException && (expandRecurrences || vevents.some(component => !component.hasProperty('recurrence-id') && sameSeries(component)))) continue;
+      const exceptions = isException ? [] : vevents.filter(component => component.hasProperty('recurrence-id') && sameSeries(component));
+      const event = new ICAL.Event(veventComp, { exceptions });
       const uid = event.uid || crypto.randomUUID();
       const startDate = event.startDate;
+      if (!startDate) continue;
       const endDate = event.endDate || startDate;
 
       const allDay = Boolean(startDate?.isDate);
@@ -196,6 +234,19 @@ export function parseIcsToEvents(
 
       const baseTitle = normalizeDanishText(event.summary) || '(Ingen titel)';
 
+      const localSeries = Boolean(caldavUrl && event.isRecurring() && !veventComp.hasProperty('x-brogaard-managed'));
+      if (expandRecurrences && localSeries) {
+        const template = {
+          id: `${calendarId}::${uid}`, uid, calendarId, title: baseTitle,
+          start: startIso, end: endIso, allDay, description, location, videoUrl, timezone, attendees, organizer, reminderMinutes
+        };
+        try {
+          results.push(...projectSeries(event, template, rawIcs));
+        } catch {
+          results.push({ ...template, seriesOccurrence: true, rawIcs });
+        }
+        continue;
+      }
       if (expandRecurrences && event.isRecurring()) {
         try {
           const isBrogaardManaged =
@@ -304,7 +355,10 @@ export function parseIcsToEvents(
  * Hvis begivenheden allerede har rawIcs (f.eks. fra SOGo med VTIMEZONE og ekstra properties),
  * bevares eksisterende metadata og kun ændrede felter opdateres.
  */
-export function buildIcsFromEvent(dto: Partial<CalendarEventDTO> & { title: string; start: string; end: string }): string {
+export function buildIcsFromEvent(
+  dto: Partial<CalendarEventDTO> & { title: string; start: string; end: string },
+  options?: { saveInvitation?: boolean }
+): string {
   const uid = dto.uid || crypto.randomUUID();
   let vcalendar: ICAL.Component;
   let vevent: ICAL.Component;
@@ -365,6 +419,11 @@ export function buildIcsFromEvent(dto: Partial<CalendarEventDTO> & { title: stri
     vevent.updatePropertyWithValue('url', safeVideoUrl);
   }
 
+  if (options?.saveInvitation && dto.organizer) {
+    const organizer = vevent.updatePropertyWithValue('organizer', `mailto:${dto.organizer}`);
+    organizer.setParameter('schedule-agent', 'NONE');
+  }
+
   // Opdater deltagere / RSVP (PARTSTAT) hvis angivet
   if (dto.attendees && dto.attendees.length > 0) {
     vevent.removeAllProperties('attendee');
@@ -374,6 +433,7 @@ export function buildIcsFromEvent(dto: Partial<CalendarEventDTO> & { title: stri
       prop.setParameter('partstat', att.partstat || 'NEEDS-ACTION');
       prop.setParameter('role', att.role || 'REQ-PARTICIPANT');
       prop.setParameter('rsvp', 'TRUE');
+      if (options?.saveInvitation) prop.setParameter('schedule-agent', 'NONE');
       prop.setValue(`mailto:${att.email}`);
       vevent.addProperty(prop);
     }
@@ -410,8 +470,24 @@ export function buildCalendarExportIcs(events: CalendarEventDTO[], calendarName 
   const vcalendar = createBaseCalendarComponent();
   vcalendar.updatePropertyWithValue('x-wr-calname', calendarName);
 
+  const series = new Set<string>();
+  const timezones = new Set<unknown>();
   for (const dto of events) {
     try {
+      if (dto.seriesOccurrence) {
+        const key = `${dto.calendarId}::${dto.uid}`;
+        if (series.has(key) || !dto.rawIcs) continue;
+        const masterCalendar = new ICAL.Component(ICAL.parse(dto.rawIcs));
+        for (const component of masterCalendar.getAllSubcomponents('vtimezone')) {
+          const tzid = component.getFirstPropertyValue('tzid');
+          if (timezones.has(tzid)) continue;
+          timezones.add(tzid);
+          vcalendar.addSubcomponent(component);
+        }
+        for (const component of masterCalendar.getAllSubcomponents('vevent')) vcalendar.addSubcomponent(component);
+        series.add(key);
+        continue;
+      }
       const singleIcs = buildIcsFromEvent(dto);
       const parsed = ICAL.parse(singleIcs);
       const comp = new ICAL.Component(parsed);

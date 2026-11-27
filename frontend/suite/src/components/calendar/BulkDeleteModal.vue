@@ -69,7 +69,7 @@ const matchingEvents = computed<CalendarEvent[]>(() => {
 
   return store.events
     .filter((ev) => {
-      if (!writableCalIdSet.value.has(ev.calendarId)) return false;
+      if (!writableCalIdSet.value.has(ev.calendarId) || ev.seriesOccurrence) return false;
       if (selectedCalendarId.value !== 'ALL' && ev.calendarId !== selectedCalendarId.value) {
         return false;
       }

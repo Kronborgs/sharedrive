@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue';
-import { AtSign, Plus, Trash2, Check, X, Star, Pencil, RefreshCw } from 'lucide-vue-next';
+import { computed, nextTick, ref, watch } from 'vue';
+import DOMPurify from 'dompurify';
+import { AtSign, Plus, Trash2, Check, X, Star, Pencil, RefreshCw, Copy, ExternalLink } from 'lucide-vue-next';
 import { useMailStore } from '../../stores/mailStore';
+import { useSuiteStore } from '../../stores/suiteStore';
+import { fetchSogoSignatureApi } from '../../services/mailApi';
 import type { SenderAlias } from '../../types/mail';
 
 const store = useMailStore();
+const suite = useSuiteStore();
 
 const editingId = ref<string | undefined>(undefined);
 const email = ref('');
@@ -13,6 +17,9 @@ const signature = ref('');
 const isDefault = ref(false);
 const isSaving = ref(false);
 const signatureField = ref<HTMLTextAreaElement | null>(null);
+const importingSignature = ref(false);
+const canImportSignature = computed(() => store.aliases.some(alias =>
+  alias.id === editingId.value && alias.email.toLowerCase() === email.value.trim().toLowerCase()));
 
 watch(() => store.isAliasModalOpen, async (open) => {
   if (!open) return;
@@ -56,6 +63,50 @@ async function handleSave() {
     }
   } finally {
     isSaving.value = false;
+  }
+}
+
+function signatureAsText(markup: string) {
+  const fragment = DOMPurify.sanitize(markup, {
+    ALLOWED_TAGS: ['br', 'div', 'p', 'li', 'tr'],
+    ALLOWED_ATTR: [],
+    RETURN_DOM_FRAGMENT: true
+  });
+  fragment.querySelectorAll('br').forEach(node => node.replaceWith('\n'));
+  fragment.querySelectorAll('div, p, li, tr').forEach(node => node.after('\n'));
+  return (fragment.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+async function handleSogoSignatureImport() {
+  if (!canImportSignature.value || importingSignature.value || isSaving.value) return;
+  const aliasId = editingId.value;
+  const selectedEmail = email.value;
+  const original = signature.value;
+  importingSignature.value = true;
+  try {
+    const result = await fetchSogoSignatureApi(selectedEmail.trim());
+    if (!store.isAliasModalOpen || editingId.value !== aliasId || email.value !== selectedEmail || signature.value !== original) return;
+
+    const text = result.html ? signatureAsText(result.signature) : result.signature;
+    if (!text.trim()) throw new Error('Signaturen i SOGo indeholder ingen tekst.');
+    signature.value = text;
+    signatureField.value?.focus();
+    store.notify('Signatur hentet fra SOGo', 'Gennemse teksten, og gem ændringerne i Sharedrive.', 'success');
+  } catch (error) {
+    store.notify('Kunne ikke hente SOGo-signaturen', error instanceof Error ? error.message : undefined, 'error');
+  } finally {
+    importingSignature.value = false;
+  }
+}
+
+async function copySignatureForSogo() {
+  try {
+    await navigator.clipboard.writeText(signature.value);
+    store.notify('Signatur kopieret', 'Åbn SOGo, og indsæt teksten under Indstillinger → Mail → IMAP-konti → Identiteter.', 'success');
+  } catch {
+    signatureField.value?.focus();
+    signatureField.value?.select();
+    store.notify('Kopiér den markerede signatur', 'Brug Ctrl+C eller Cmd+C, og indsæt teksten i SOGo.', 'info');
   }
 }
 
@@ -161,6 +212,36 @@ async function setAsDefault(alias: SenderAlias) {
               <p id="mail-signature-help" class="mt-1 text-[11px] text-slate-400">
                 Gemmes i Sharedrive. Lad feltet være tomt, hvis afsenderen ikke skal have en signatur.
               </p>
+              <div v-if="suite.sogoUrl" class="mt-2 flex flex-wrap gap-2">
+                <button
+                  v-if="canImportSignature"
+                  type="button"
+                  :disabled="importingSignature || isSaving"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+                  @click="handleSogoSignatureImport"
+                >
+                  <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': importingSignature }" />
+                  {{ importingSignature ? 'Henter signatur…' : 'Hent signatur fra SOGo' }}
+                </button>
+                <button
+                  type="button"
+                  :disabled="!signature.trim() || importingSignature"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+                  @click="copySignatureForSogo"
+                >
+                  <Copy class="h-3.5 w-3.5" />
+                  Kopiér signatur til SOGo
+                </button>
+                <a
+                  :href="suite.sogoUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800"
+                >
+                  <ExternalLink class="h-3.5 w-3.5" />
+                  Åbn SOGo
+                </a>
+              </div>
             </div>
 
             <div class="flex items-center justify-between pt-1">
@@ -175,7 +256,7 @@ async function setAsDefault(alias: SenderAlias) {
 
               <button
                 type="submit"
-                :disabled="isSaving"
+                :disabled="isSaving || importingSignature"
                 class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold flex items-center gap-1.5 transition"
               >
                 <Check v-if="editingId" class="w-3.5 h-3.5" />

@@ -27,6 +27,7 @@ import {
   apiSetCalendarColor,
   apiFetchPublicShare,
   apiImportIcs,
+  apiAddCalendarInvitation,
   apiExportIcs,
   apiSubscribeCalendar,
   apiUnsubscribeCalendar,
@@ -244,6 +245,10 @@ export const useCalendarStore = defineStore('calendar', () => {
       };
     }
     return calendars.value.find((c) => c.id === calId);
+  }
+
+  function isEventReadOnly(event: CalendarEvent): boolean {
+    return Boolean(event.seriesOccurrence) || isCalendarReadOnly(event.calendarId);
   }
 
   function isCalendarReadOnly(calId: string): boolean {
@@ -831,6 +836,25 @@ export const useCalendarStore = defineStore('calendar', () => {
     isImportExportModalOpen.value = true;
   }
 
+  async function rememberImportedEvents(items: CalendarEvent[]) {
+    const imported = clonePlain(items);
+    for (const event of imported) {
+      const idx = events.value.findIndex(item => item.id === event.id);
+      if (idx === -1) events.value.push(event);
+      else events.value[idx] = event;
+    }
+    await db.events.bulkPut(imported);
+  }
+
+  async function addCalendarInvitation(calendarId: string, icsContent: string) {
+    if (session.value?.mode !== 'CALDAV' || isCalendarReadOnly(calendarId)) {
+      throw new Error('Vælg en skrivbar kalender til invitationen.');
+    }
+    const result = await apiAddCalendarInvitation(calendarId, icsContent);
+    await rememberImportedEvents(result.occurrences ?? [result.event]);
+    return result;
+  }
+
   async function importIcsFile(calendarId: string, icsContent: string): Promise<number> {
     if (!session.value || session.value.mode !== 'CALDAV') return 0;
     if (isCalendarReadOnly(calendarId)) {
@@ -839,16 +863,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     }
 
     const res = await apiImportIcs(calendarId, icsContent);
-    const plainImported = clonePlain(res.events);
-    for (const ev of plainImported) {
-      const idx = events.value.findIndex((e) => e.id === ev.id);
-      if (idx !== -1) {
-        events.value[idx] = ev;
-      } else {
-        events.value.push(ev);
-      }
-    }
-    await db.events.bulkPut(plainImported);
+    await rememberImportedEvents(res.events);
     notify(
       'Import gennemført!',
       `Importerede ${res.importedCount} begivenhed(er) til kalenderen.`,
@@ -1588,6 +1603,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     }
 
     const existing = eventInput.id ? events.value.find((e) => e.id === eventInput.id) : undefined;
+    if (existing?.seriesOccurrence) return null;
     const previousSnapshot = existing ? clonePlain(existing) : null;
 
     const uid = eventInput.uid || existing?.uid || generateId();
@@ -1657,11 +1673,11 @@ export const useCalendarStore = defineStore('calendar', () => {
     const toDelete = events.value.filter((e) => ids.includes(e.id));
     if (toDelete.length === 0) return;
 
-    const blockedReadOnly = toDelete.filter((e) => isCalendarReadOnly(e.calendarId));
+    const blockedReadOnly = toDelete.filter(isEventReadOnly);
     if (blockedReadOnly.length > 0) {
       notify(
         'Skrivebeskyttet kalender (Read-Only)',
-        `Kan ikke slette "${blockedReadOnly[0].title}", da kalenderen er skrivebeskyttet.`,
+        `Kan ikke slette "${blockedReadOnly[0].title}" i Sharedrive.`,
         'error'
       );
       return;
@@ -1725,7 +1741,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     if (isPublicShareMode.value || ids.length === 0) return 0;
     const targetIdSet = new Set(ids);
     const toDelete = events.value.filter(
-      (e) => targetIdSet.has(e.id) && !isCalendarReadOnly(e.calendarId)
+      (e) => targetIdSet.has(e.id) && !isEventReadOnly(e)
     );
     if (toDelete.length === 0) return 0;
 
@@ -1879,7 +1895,7 @@ export const useCalendarStore = defineStore('calendar', () => {
 
     const finalEvents =
       mode === 'CUT'
-        ? allowed.filter((e) => !isCalendarReadOnly(e.calendarId))
+        ? allowed.filter((e) => !isEventReadOnly(e))
         : allowed;
 
     if (mode === 'CUT' && finalEvents.length === 0) {
@@ -2055,7 +2071,7 @@ export const useCalendarStore = defineStore('calendar', () => {
   async function respondToInvite(eventId: string, partstat: RsvpStatus) {
     if (isPublicShareMode.value) return;
     const ev = events.value.find((e) => e.id === eventId);
-    if (!ev) return;
+    if (!ev || ev.seriesOccurrence) return;
 
     const userEmail = (session.value?.username || '').toLowerCase().trim();
     const updatedAttendees = (ev.attendees || []).map((a) =>
@@ -2821,6 +2837,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     loadPublicSharedCalendar,
     getCalendarById,
     isCalendarReadOnly,
+    isEventReadOnly,
     hasInvitedAttendees,
     toggleContactBirthdays,
     findConflictingEvents,
@@ -2839,6 +2856,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     revokeShare,
     openImportExportModal,
     importIcsFile,
+    addCalendarInvitation,
     exportCalendarIcs,
     toggleCalendarVisibility,
     setCalendarColorOverride,

@@ -2,6 +2,7 @@ import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import nodemailer, { type SendMailOptions } from 'nodemailer';
 import net from 'node:net';
+import { readCalendarInvitation } from '../calendarInvitation.ts';
 
 export interface MailServerCredentials {
   imapHost: string;
@@ -66,14 +67,7 @@ export interface MailDetailDTO extends MailHeaderDTO {
   textBody: string;
   htmlBody: string;
   attachments: MailAttachmentDTO[];
-  calendarInvite?: {
-    summary: string;
-    start?: string;
-    end?: string;
-    location?: string;
-    organizer?: string;
-    rawIcs: string;
-  };
+  calendarInvite?: ReturnType<typeof readCalendarInvitation>;
 }
 
 export interface SendMailPayload {
@@ -639,29 +633,6 @@ export async function searchAllFoldersMessages(
   });
 }
 
-function extractSimpleIcsInvite(rawIcs: string): MailDetailDTO['calendarInvite'] | undefined {
-  if (!rawIcs.includes('BEGIN:VEVENT')) return undefined;
-  const getField = (key: string): string | undefined => {
-    const regex = new RegExp(`^${key}(?:;[^:]*)?:(.*)$`, 'im');
-    const match = rawIcs.match(regex);
-    return match ? match[1].trim() : undefined;
-  };
-  const summary = getField('SUMMARY') || 'Mødeinvitation';
-  const start = getField('DTSTART');
-  const end = getField('DTEND');
-  const location = getField('LOCATION');
-  const organizer = getField('ORGANIZER')?.replace(/^mailto:/i, '');
-
-  return {
-    summary,
-    start,
-    end,
-    location,
-    organizer,
-    rawIcs
-  };
-}
-
 /**
  * Henter hele e-mailen (inkl. dekodet UTF-8 / ISO-8859-1 / Windows-1252 tekst, HTML og vedhæftningsliste).
  * Markerer automatisk beskeden som læst (\Seen), hvis markSeen = true.
@@ -731,7 +702,7 @@ export async function fetchMessageDetail(
           (contentType.includes('text/calendar') || filename.toLowerCase().endsWith('.ics')) &&
           att.content
         ) {
-          calendarInvite = extractSimpleIcsInvite(att.content.toString('utf8'));
+          calendarInvite = readCalendarInvitation(att.content.toString('utf8'));
         }
 
         if (isInline && att.cid && htmlBody && contentType.startsWith('image/') && att.content.length < 2 * 1024 * 1024) {

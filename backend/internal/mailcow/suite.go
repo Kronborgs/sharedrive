@@ -20,7 +20,10 @@ import (
 	mw "github.com/yourname/privatedrive/internal/middleware"
 )
 
-const suitePayloadLimit = 25 << 20
+const (
+	suitePayloadLimit = 25 << 20
+	contentTypeHeader = "Content-Type"
+)
 
 var calendarLinkToken = regexp.MustCompile(`^[A-Za-z0-9_-]{24}$`)
 
@@ -153,7 +156,7 @@ func (h *Accounts) forwardSuite(w http.ResponseWriter, r *http.Request, path str
 	}
 	request.Header.Set("Authorization", "Bearer "+h.probe.token)
 	request.Header.Set("X-Sharedrive-Mailcow-Account", base64.RawURLEncoding.EncodeToString(bridge))
-	request.Header.Set("Content-Type", r.Header.Get("Content-Type"))
+	request.Header.Set(contentTypeHeader, r.Header.Get(contentTypeHeader))
 	if ip := net.ParseIP(mw.ClientIP(r)); ip != nil {
 		request.Header.Set("X-Sharedrive-Client-IP", ip.String())
 	}
@@ -171,14 +174,14 @@ func writeSuiteResponse(w http.ResponseWriter, response *http.Response) {
 		httputil.RespondError(w, http.StatusBadGateway, errProbeUnavailable)
 		return
 	}
-	contentType := response.Header.Get("Content-Type")
+	contentType := response.Header.Get(contentTypeHeader)
 	disposition := response.Header.Get("Content-Disposition")
 	if !strings.HasPrefix(contentType, "application/json") && !strings.HasPrefix(strings.ToLower(disposition), "attachment;") {
 		httputil.RespondError(w, http.StatusBadGateway, errProbeUnavailable)
 		return
 	}
 	header := w.Header()
-	header.Set("Content-Type", contentType)
+	header.Set(contentTypeHeader, contentType)
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	if disposition != "" {

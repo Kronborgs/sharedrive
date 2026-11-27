@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -23,6 +24,7 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const { refetch } = useAuth()
   const { t } = useI18n()
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const {
@@ -62,86 +64,93 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-[#0f1117] px-4">
-      <div className="w-full max-w-sm">
-        {/* Logo / wordmark */}
-        <div className="mb-8 text-center">
-          <img src="/logo_name.png" alt="Sharedrive" className="h-10 w-auto mx-auto mb-2" />
-          <p className="text-sm text-muted">{t('login.signIn')}</p>
+    <>
+      <h1 className="mb-6 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+        {t('login.sharedriveTitle')}
+      </h1>
+
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="space-y-4"
+      >
+        {error && (
+          <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <label htmlFor="login-email" className="block text-sm font-medium text-slate-200">
+            {t('login.email')}
+          </label>
+          <input
+            {...register('email')}
+            id="login-email"
+            type="email"
+            autoComplete="email"
+            className="min-h-11 w-full rounded-xl border border-subtle bg-(--app-bg)/80 px-3 text-sm text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-400"
+            placeholder={t('login.emailPlaceholder')}
+          />
+          {errors.email && (
+            <p className="text-xs text-red-500">{errors.email.message}</p>
+          )}
         </div>
 
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-6 space-y-4 shadow-sm"
-        >
-          {error && (
-            <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
-              {error}
-            </div>
-          )}
-
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-zinc-700 dark:text-slate-300">
-              {t('login.email')}
-            </label>
-            <input
-              {...register('email')}
-              type="email"
-              autoComplete="email"
-              className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
-              placeholder={t('login.emailPlaceholder')}
-            />
-            {errors.email && (
-              <p className="text-xs text-red-500">{errors.email.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-zinc-700 dark:text-slate-300">
-              {t('login.password')}
-            </label>
+        <div className="space-y-1">
+          <label htmlFor="login-password" className="block text-sm font-medium text-slate-200">
+            {t('login.password')}
+          </label>
+          <div className="relative">
             <input
               {...register('password')}
-              type="password"
+              id="login-password"
+              type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
-              className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
-              placeholder="••••••••"
+              className="min-h-11 w-full rounded-xl border border-subtle bg-(--app-bg)/80 px-3 pr-11 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
-            {errors.password && (
-              <p className="text-xs text-red-500">{errors.password.message}</p>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              {...register('trust_device')}
-              id="trust"
-              type="checkbox"
-              className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-600 text-brand-600 focus:ring-brand-500"
-            />
-            <label htmlFor="trust" className="text-sm text-zinc-600 dark:text-slate-400">
-              {t('login.trustDevice')}
-            </label>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-medium py-2 text-sm transition-colors"
-          >
-            {isSubmitting ? t('login.signingIn') : t('login.submit')}
-          </button>
-
-          <div className="text-center">
-            <a
-              href="/reset-password"
-              className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
+            <button
+              type="button"
+              onClick={() => setShowPassword((visible) => !visible)}
+              aria-label={t(showPassword ? 'login.hidePassword' : 'login.showPassword')}
+              className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-r-xl text-slate-300 hover:text-white focus-visible:outline-2 focus-visible:outline-brand-400"
             >
-              {t('login.forgotPassword')}
-            </a>
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
           </div>
-        </form>
-      </div>
-    </div>
+          {errors.password && (
+            <p className="text-xs text-red-500">{errors.password.message}</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            {...register('trust_device')}
+            id="trust"
+            type="checkbox"
+            className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-600 text-brand-600 focus:ring-brand-500"
+          />
+          <label htmlFor="trust" className="text-sm text-zinc-600 dark:text-slate-400">
+            {t('login.trustDevice')}
+          </label>
+        </div>
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="min-h-11 w-full rounded-xl bg-brand-600 font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 disabled:opacity-60"
+        >
+          {isSubmitting ? t('login.signingIn') : t('login.submit')}
+        </button>
+
+        <div className="text-center">
+          <a
+            href="/reset-password"
+            className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
+          >
+            {t('login.forgotPassword')}
+          </a>
+        </div>
+      </form>
+    </>
   )
 }

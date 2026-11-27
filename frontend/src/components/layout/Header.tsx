@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
+import { ThemeSelect } from './ThemeSelect'
 import type { FileItem, User } from '@/types/api'
 import { formatBytes } from '@/lib/utils'
 import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
@@ -88,12 +89,12 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
   }
 
   return (
-    <header className="h-14 shrink-0 flex items-center gap-3 px-4 bg-white dark:bg-[#1a1d27] border-b border-zinc-200 dark:border-[#2d3148]">
+    <header className="app-chrome h-14 shrink-0 flex items-center gap-3 px-4 bg-white dark:bg-(--app-chrome-bg) border-b border-zinc-200 dark:border-(--app-border)">
       {/* Hamburger — mobile only */}
       <button type="button"
         onClick={onMenuToggle}
         aria-label="Toggle sidebar"
-        className="p-2 rounded-lg text-zinc-500 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors md:hidden"
+        className="p-2 rounded-lg text-zinc-500 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-(--app-border) transition-colors md:hidden"
       >
         <Menu size={18} />
       </button>
@@ -113,7 +114,7 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
           onFocus={() => { if (results.length > 0) setOpen(true) }}
           onKeyDown={handleKeyDown}
           placeholder={t('search.placeholder')}
-          className="w-full pl-9 pr-8 py-1.5 text-sm rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500/60"
+          className="w-full pl-9 pr-8 py-1.5 text-sm rounded-lg border border-zinc-200 dark:border-(--app-border) bg-zinc-50 dark:bg-(--app-bg) text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500/60"
         />
         {query && (
           <button type="button"
@@ -126,7 +127,7 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
 
         {/* Results dropdown */}
         {open && (
-          <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl border border-zinc-200 dark:border-[#2d3148] bg-white dark:bg-[#1a1d27] shadow-2xl z-50 overflow-hidden max-h-[60vh] overflow-y-auto">
+          <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl border border-zinc-200 dark:border-(--app-border) bg-white dark:bg-(--app-panel) shadow-2xl z-50 overflow-hidden max-h-[60vh] overflow-y-auto">
             {loading && (
               <div className="px-4 py-3 text-xs text-zinc-400">{t('search.placeholder')}…</div>
             )}
@@ -143,7 +144,7 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
                   className={`flex items-center gap-3 w-full px-4 py-2.5 text-left transition-colors ${
                     idx === activeIdx
                       ? 'bg-brand-50 dark:bg-brand-900/25'
-                      : 'hover:bg-zinc-50 dark:hover:bg-[#2d3148]/60'
+                      : 'hover:bg-zinc-50 dark:hover:bg-(--app-border)/60'
                   }`}
                 >
                   {item.is_folder
@@ -164,6 +165,7 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
         )}
       </div>
 
+      <div className="ml-auto flex min-w-0"><ThemeSelect /></div>
     </header>
   )
 }

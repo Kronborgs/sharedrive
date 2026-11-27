@@ -1,0 +1,15 @@
+services:
+  app:
+    environment:
+      SHAREDRIVE_MAILCOW_TOKEN: ${SHAREDRIVE_MAILCOW_TOKEN:?Set SHAREDRIVE_MAILCOW_TOKEN}
+      SHAREDRIVE_MAILCOW_PORT: ${SHAREDRIVE_MAILCOW_PORT:-3025}
+  mailcow-probe:
+    build:
+      context: ./services/mailcow
+    init: true
+    restart: unless-stopped
+    network_mode: service:app
+    environment:
+      SHAREDRIVE_MAILCOW_TOKEN: ${SHAREDRIVE_MAILCOW_TOKEN:?Set SHAREDRIVE_MAILCOW_TOKEN}
+      SHAREDRIVE_MAILCOW_PORT: ${SHAREDRIVE_MAILCOW_PORT:-3025}
+      SHAREDRIVE_MAILCOW_SMTP_PORT: ${SHAREDRIVE_MAILCOW_SMTP_PORT:-465}

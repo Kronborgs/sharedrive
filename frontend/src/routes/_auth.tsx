@@ -49,7 +49,7 @@ function AuthLayoutContent() {
   const needsTOTPSetup = !!user.force_totp_setup && !user.totp_enabled
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-zinc-50 dark:bg-[#0f1117]">
+    <div className="app-wallpaper flex h-dvh overflow-hidden">
       <ChatPushRegistration />
       {/* Admin assistance banner — fixed at top */}
       <AdminBanner />

@@ -30,6 +30,7 @@ import (
 	"github.com/yourname/privatedrive/internal/config"
 	"github.com/yourname/privatedrive/internal/embed"
 	"github.com/yourname/privatedrive/internal/files"
+	"github.com/yourname/privatedrive/internal/mailcow"
 	mw "github.com/yourname/privatedrive/internal/middleware"
 	"github.com/yourname/privatedrive/internal/notes"
 	"github.com/yourname/privatedrive/internal/onboarding"
@@ -496,6 +497,7 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Delete("/api/v1/backup/buddy/sender-archives/{filename}", s.backupHandler.DeleteSenderArchive) // Reverse-tunnel endpoint: CGNAT peers connect here via WebSocket so this
 	// instance can push archives back through the tunnel.
 	r.Get("/api/v1/backup/buddy/tunnel", s.backupHandler.BuddyTunnel)
+	mailcowProbe := mailcow.NewProbe(s.cfg.MailcowProbePort, s.cfg.MailcowProbeToken, mailcow.PostgresHostStore{DB: s.db})
 	// ── Authenticated API routes ───────────────────────────────────────────
 	r.Group(func(r chi.Router) {
 		r.Use(s.authHandler.SessionMiddleware)
@@ -505,6 +507,11 @@ func (s *Server) buildRouter() *chi.Mux {
 		// Current user
 		r.Get("/api/v1/me", s.authHandler.Me)
 		r.Patch("/api/v1/me", s.handleUpdateMe)
+		mailcowAccounts := mailcow.NewAccounts(s.db, mailcowProbe, s.cfg.TOTPEncryptKey)
+		r.Get("/api/v1/me/mailcow", mailcowAccounts.Get)
+		r.Put("/api/v1/me/mailcow", mailcowAccounts.Save)
+		r.Delete("/api/v1/me/mailcow", mailcowAccounts.Remove)
+		r.Post("/api/v1/me/mailcow/test", mailcowAccounts.Test)
 		r.Get("/api/v1/me/app-passwords", s.handleListAppPasswords)
 		r.Post("/api/v1/me/app-passwords", s.handleCreateAppPassword)
 		r.Delete("/api/v1/me/app-passwords/{id}", s.handleRevokeAppPassword)
@@ -739,6 +746,9 @@ r.Patch("/api/v1/admin/users/{id}/product-access", s.userHandler.UpdateProductAc
 			r.Get("/api/v1/admin/settings", s.handleAdminGetSettings)
 			r.Patch("/api/v1/admin/settings", s.handleAdminUpdateSettings)
 			r.Post("/api/v1/admin/settings/smtp-test", s.handleAdminSMTPTest)
+			r.Get("/api/v1/admin/settings/mailcow-test", mailcowProbe.Settings)
+			r.Patch("/api/v1/admin/settings/mailcow-test", mailcowProbe.UpdateHost)
+			r.Post("/api/v1/admin/settings/mailcow-test", mailcowProbe.ServeHTTP)
 
 			r.Get("/api/v1/admin/backup", s.handleAdminListBackups)
 			r.Post("/api/v1/admin/backup", s.handleAdminExport)

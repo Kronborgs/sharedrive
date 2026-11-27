@@ -57,77 +57,76 @@ export default function TOTPPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-[#0f1117] px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">
-            {t('totp.title')}
-          </h1>
-          <p className="text-sm text-muted mt-1">
-            {t('totp.enterCode')}
-          </p>
+    <>
+      <div className="mb-8 text-center">
+        <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">
+          {t('totp.title')}
+        </h1>
+        <p className="text-sm text-muted mt-1">
+          {t('totp.enterCode')}
+        </p>
+      </div>
+
+      <form
+        onSubmit={onSubmit}
+        className="space-y-4"
+      >
+        {notice && <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">{notice} Fjern den gamle MFA-metode under dine sikkerhedsindstillinger.</div>}
+
+        {error && (
+          <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+            {error}
+            {error.toLowerCase().includes('expired') && (
+              <div className="mt-1">
+                <Link to="/login" className="underline font-medium">
+                  {t('totp.returnToLogin')}
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <label htmlFor="login-totp" className="block text-sm font-medium text-zinc-700 dark:text-slate-300">
+            {t('totp.codeLabel')}
+          </label>
+          <input
+            type="text"
+            id="login-totp"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={6}
+            value={code}
+            onChange={e => {
+              const val = e.target.value.replace(/\D/g, '').slice(0, 6)
+              setCode(val)
+              if (val.length === 6) {
+                // auto-submit so the code doesn't expire while user reaches for button
+                ignorePromise(onSubmitCode(val))
+              }
+            }}
+            autoComplete="one-time-code"
+            autoFocus
+            className="w-full rounded-lg border border-zinc-200 dark:border-(--app-border) bg-zinc-50 dark:bg-(--app-bg) px-3 py-2 text-center text-xl tracking-widest font-mono text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            placeholder="000000"
+          />
         </div>
 
-        <form
-          onSubmit={onSubmit}
-          className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-6 space-y-4 shadow-sm"
+        <button
+          type="submit"
+          disabled={isSubmitting || code.length !== 6}
+          className="w-full rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-medium py-2 text-sm transition-colors"
         >
-          {notice && <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">{notice} Fjern den gamle MFA-metode under dine sikkerhedsindstillinger.</div>}
+          {isSubmitting ? t('totp.verifying') : t('totp.verify')}
+        </button>
 
-          {error && (
-            <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
-              {error}
-              {error.toLowerCase().includes('expired') && (
-                <div className="mt-1">
-                  <Link to="/login" className="underline font-medium">
-                    {t('totp.returnToLogin')}
-                  </Link>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-zinc-700 dark:text-slate-300">
-              {t('totp.codeLabel')}
-            </label>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
-              value={code}
-              onChange={e => {
-                const val = e.target.value.replace(/\D/g, '').slice(0, 6)
-                setCode(val)
-                if (val.length === 6) {
-                  // auto-submit so the code doesn't expire while user reaches for button
-                  ignorePromise(onSubmitCode(val))
-                }
-              }}
-              autoComplete="one-time-code"
-              autoFocus
-              className="w-full rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2 text-center text-xl tracking-widest font-mono text-zinc-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              placeholder="000000"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isSubmitting || code.length !== 6}
-            className="w-full rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-medium py-2 text-sm transition-colors"
-          >
-            {isSubmitting ? t('totp.verifying') : t('totp.verify')}
-          </button>
-
-          <div className="text-center">
-            <Link to="/login" className="text-xs text-brand-600 dark:text-brand-400 hover:underline">
-              {t('totp.backToLogin')}
-            </Link>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="text-center">
+          <Link to="/login" className="text-xs text-brand-600 dark:text-brand-400 hover:underline">
+            {t('totp.backToLogin')}
+          </Link>
+        </div>
+      </form>
+    </>
   )
 }
 

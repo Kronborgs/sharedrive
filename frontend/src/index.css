@@ -84,6 +84,27 @@
     --text:        241 245 249;
     --text-muted:  148 163 184;
     --accent:      59 130 246;
+    --app-bg:      #0f1117;
+    --app-panel:   #1a1d27;
+    --app-border:  #2d3148;
+  }
+
+  .dark[data-theme="nordic-blue-hour"] {
+    --bg:          8 14 26;
+    --bg-subtle:   16 30 49;
+    --surface:     16 30 49;
+    --border:      48 70 98;
+    --accent:      71 118 173;
+    --app-bg:      #080e1a;
+    --app-panel:   #101e31;
+    --app-border:  #304662;
+    --color-brand-400: #79a4d3;
+    --color-brand-500: #5787bf;
+    --color-brand-600: #4776ad;
+    --color-brand-700: #385f8e;
+    --color-surface: #101e31;
+    --color-surface-raised: #1a2b44;
+    --color-surface-border: #304662;
   }
 
   * {
@@ -91,7 +112,7 @@
   }
 
   body {
-    @apply bg-white text-zinc-900 dark:bg-[#0f1117] dark:text-slate-100 antialiased;
+    @apply bg-white text-zinc-900 dark:bg-(--app-bg) dark:text-slate-100 antialiased;
     font-family: 'InterVariable', 'Inter', system-ui, sans-serif;
   }
 
@@ -113,10 +134,10 @@
   @apply text-zinc-500 dark:text-slate-400;
 }
 @utility bg-surface {
-  @apply bg-white dark:bg-[#1a1d27];
+  @apply bg-white dark:bg-(--app-panel);
 }
 @utility border-subtle {
-  @apply border-zinc-200 dark:border-[#2d3148];
+  @apply border-zinc-200 dark:border-(--app-border);
 }
 
 @layer components {
@@ -126,19 +147,19 @@
     gap: 1rem;
   }
   .notes-card {
-    @apply rounded-lg border border-zinc-200 border-t-4 bg-white p-4 shadow-sm transition-[box-shadow,transform] hover:-translate-y-0.5 hover:shadow-md dark:border-zinc-700 dark:bg-[#1a1d27];
+    @apply rounded-lg border border-zinc-200 border-t-4 bg-white p-4 shadow-sm transition-[box-shadow,transform] hover:-translate-y-0.5 hover:shadow-md dark:border-zinc-700 dark:bg-(--app-panel);
   }
   .notes-primary-button {
     @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50;
   }
   .notes-secondary-button {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:bg-[#1a1d27] dark:hover:bg-zinc-800;
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:bg-(--app-panel) dark:hover:bg-zinc-800;
   }
   .notes-icon-button {
     @apply inline-flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 dark:hover:bg-zinc-800;
   }
   .rooms-toolbar-panel {
-    @apply rounded-xl border border-zinc-200 bg-white/70 p-2 dark:border-[#2d3148] dark:bg-[#11141e]/80;
+    @apply rounded-xl border border-zinc-200 bg-white/70 p-2 dark:border-(--app-border) dark:bg-[#11141e]/80;
   }
   .rooms-toolbar-button {
     @apply inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_1px_1px_rgba(15,23,42,0.12)] transition-[transform,background-color,border-color,box-shadow] duration-75 hover:bg-zinc-100 active:translate-y-px active:shadow-[inset_0_2px_3px_rgba(15,23,42,0.2)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#3a4052] dark:bg-[#171b26] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_3px_rgba(0,0,0,0.45)] dark:hover:border-[#525b73] dark:hover:bg-[#202635] dark:active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.55)];
@@ -170,4 +191,44 @@
 @keyframes led-ticker {
   0%,  18% { transform: translateX(0%); }
   82%, 100% { transform: translateX(var(--led-shift, -55%)); }
+}
+
+@layer components {
+  .login-layout,
+  .app-wallpaper {
+    background-color: var(--app-bg);
+    background-image: var(--app-wallpaper, none);
+    background-position: center;
+    background-size: cover;
+  }
+
+  .dark[data-theme="nordic-blue-hour"] .login-layout {
+    --app-wallpaper: linear-gradient(180deg, rgb(6 12 24 / 25%), rgb(6 12 24 / 50%)),
+      url('/themes/nordic-blue-hour.jpg');
+  }
+
+  .dark[data-theme="nordic-blue-hour"] .app-wallpaper {
+    --app-wallpaper: linear-gradient(rgb(6 12 24 / 78%), rgb(6 12 24 / 84%)),
+      url('/themes/nordic-blue-hour.jpg');
+  }
+
+  .login-card {
+    background-color: var(--app-panel);
+    border-color: var(--app-border);
+  }
+
+  .dark[data-theme="nordic-blue-hour"] .login-card {
+    background-color: rgb(12 23 39 / 80%);
+    border-color: rgb(200 223 255 / 18%);
+    backdrop-filter: blur(16px);
+  }
+
+  .app-chrome {
+    --app-chrome-bg: var(--app-panel);
+  }
+
+  .dark[data-theme="nordic-blue-hour"] .app-chrome {
+    --app-chrome-bg: rgb(10 20 34 / 88%);
+    backdrop-filter: blur(12px);
+  }
 }

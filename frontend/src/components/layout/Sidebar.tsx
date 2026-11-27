@@ -30,6 +30,7 @@ import { useI18n } from '@/lib/i18n'
 import { api, createPlaylist } from '@/lib/api'
 import { formatBytes, cn } from '@/lib/utils'
 import { WebDAVDialog } from '@/components/layout/WebDAVDialog'
+import { MailcowAccountDialog } from '@/components/layout/MailcowAccountDialog'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
 import { AddMusicDialog } from '@/components/files/AddMusicDialog'
 import { Dial, RetroButton, LedDisplay, CassetteIcon } from '@/components/files/Dial'
@@ -90,7 +91,7 @@ function NavLink({ item, badge = 0 }: Readonly<{ item: NavItem; badge?: number }
       className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
         active
           ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 font-medium'
-          : 'text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] hover:text-zinc-900 dark:hover:text-slate-100'
+          : 'text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-(--app-border) hover:text-zinc-900 dark:hover:text-slate-100'
       }`}
     >
       <span className={active ? 'text-brand-600 dark:text-brand-400' : ''}>{item.icon}</span>
@@ -215,7 +216,7 @@ function SidebarDesktopPlayer({
   const canAddMoreTracks = playlist.tracks.length > 0 && playlist.tracks.length < playlist.playlistMaxTracks
 
   return (
-    <div className="mx-2 mb-2 rounded-xl border border-zinc-200 dark:border-[#2d3148] overflow-hidden bg-white dark:bg-[#1a1d27]">
+    <div className="mx-2 mb-2 rounded-xl border border-zinc-200 dark:border-(--app-border) overflow-hidden bg-white dark:bg-(--app-panel)">
       <div className="px-2 pt-2 pb-1.5">
         <div className="flex items-center gap-1 mb-1.5">
           <LedDisplay
@@ -271,7 +272,7 @@ function SidebarDesktopPlayer({
           progress={playlist.progress}
           duration={playlist.duration}
           onSeek={onSeek}
-          className="w-full h-1 bg-zinc-200 dark:bg-[#2d3148] rounded-full cursor-pointer"
+          className="w-full h-1 bg-zinc-200 dark:bg-(--app-border) rounded-full cursor-pointer"
           fillClassName="block h-full bg-brand-500 rounded-full"
         />
         <div className="flex justify-between mt-0.5">
@@ -281,12 +282,12 @@ function SidebarDesktopPlayer({
       </div>
 
       {playerExpanded && (
-        <div className="border-t border-zinc-100 dark:border-[#2d3148]">
-          <div className="overflow-y-auto max-h-[180px] divide-y divide-zinc-50 dark:divide-[#2d3148]">
+        <div className="border-t border-zinc-100 dark:border-(--app-border)">
+          <div className="overflow-y-auto max-h-[180px] divide-y divide-zinc-50 dark:divide-(--app-border)">
             {playlist.tracks.length === 0 && !playlist.isLoadingTracks ? (
               <button type="button"
                 onClick={onShowAddMusic}
-                className="w-full flex flex-col items-center justify-center gap-1.5 py-5 text-center hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors group"
+                className="w-full flex flex-col items-center justify-center gap-1.5 py-5 text-center hover:bg-zinc-50 dark:hover:bg-(--app-border) transition-colors group"
               >
                 <Plus size={18} className="text-zinc-300 dark:text-slate-600 group-hover:text-brand-500 transition-colors" />
                 <span className="text-[11px] text-zinc-400 dark:text-slate-500 group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
@@ -335,7 +336,7 @@ function SidebarDesktopPlayer({
           </div>
 
           {canAddMoreTracks && (
-            <div className="border-t border-zinc-50 dark:border-[#2d3148]">
+            <div className="border-t border-zinc-50 dark:border-(--app-border)">
               <button type="button"
                 onClick={onShowAddMusic}
                 className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
@@ -346,7 +347,7 @@ function SidebarDesktopPlayer({
             </div>
           )}
 
-          <div className="flex items-end justify-center gap-5 px-2.5 py-3 border-t border-zinc-100 dark:border-[#2d3148]" style={{ background: '#181b28' }}>
+          <div className="flex items-end justify-center gap-5 px-2.5 py-3 border-t border-zinc-100 dark:border-(--app-border)" style={{ background: '#181b28' }}>
             <Dial value={playlist.bass} onChange={playlist.setBass} label="Bass" color="#22d3ee" size={60} min={-12} max={12} step={0.5} />
             <Dial value={playlist.volume} onChange={playlist.setVolume} label="Volume" color="#4ade80" size={60} min={0} max={1} step={0.01} />
             <Dial value={playlist.treble} onChange={playlist.setTreble} label="Treble" color="#f87171" size={60} min={-12} max={12} step={0.5} />
@@ -378,8 +379,8 @@ function SidebarBuildInfoModal({
         className="absolute inset-0 bg-black/60"
         onClick={onClose}
       />
-      <div className="relative z-10 w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-2xl bg-white dark:bg-[#151826] border border-zinc-200 dark:border-[#2d3148] shadow-xl">
-        <div className="px-4 py-3 border-b border-zinc-200 dark:border-[#2d3148] flex items-start justify-between gap-3">
+      <div className="relative z-10 w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-2xl bg-white dark:bg-[#151826] border border-zinc-200 dark:border-(--app-border) shadow-xl">
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-(--app-border) flex items-start justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-zinc-900 dark:text-slate-100">{t('buildInfo.title')}</h3>
             <p className="text-xs text-zinc-500 dark:text-slate-400 mt-0.5">
@@ -398,7 +399,7 @@ function SidebarBuildInfoModal({
           </button>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto divide-y divide-zinc-100 dark:divide-[#2d3148]">
+        <div className="max-h-[70vh] overflow-y-auto divide-y divide-zinc-100 dark:divide-(--app-border)">
           {CHANGELOG_ENTRIES.length === 0 && (
             <p className="px-4 py-3 text-sm text-zinc-500 dark:text-slate-400">{t('buildInfo.empty')}</p>
           )}
@@ -440,11 +441,12 @@ function SidebarUserPanel({
   onLogout: () => void
   t: ReturnType<typeof useI18n>['t']
 }>) {
+  const [showMailcow, setShowMailcow] = useState(false)
   return (
-    <div className="border-t border-zinc-200 dark:border-[#2d3148] p-2 relative">
+    <div className="border-t border-zinc-200 dark:border-(--app-border) p-2 relative">
       <button type="button"
         onClick={onToggleMenu}
-        className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors"
+        className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-(--app-border) transition-colors"
       >
         <div className="w-7 h-7 rounded-full bg-brand-600 dark:bg-brand-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
           {user?.display_name?.charAt(0).toUpperCase() ?? '?'}
@@ -456,37 +458,47 @@ function SidebarUserPanel({
         <ChevronDown size={14} className="text-zinc-400 shrink-0" />
       </button>
 
+      {showMailcow && user && <MailcowAccountDialog userId={user.id} close={() => setShowMailcow(false)} />}
+
       {showUserMenu && (
-        <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl shadow-lg py-1 z-50">
+        <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-(--app-panel) border border-zinc-200 dark:border-(--app-border) rounded-xl shadow-lg py-1 z-50">
           <button type="button"
             onClick={onOpenTOTP}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-(--app-border) transition-colors"
           >
             <ShieldCheck size={14} className={user?.totp_enabled ? 'text-green-500' : 'text-zinc-400'} />
             {user?.totp_enabled ? t('auth.2faEnabled') : t('auth.enable2fa')}
           </button>
+          {user && user.role !== 'guest' && !user.rooms_only_account && (
+            <button type="button"
+              onClick={() => { setShowMailcow(true); onToggleMenu() }}
+              className="w-full px-3 py-2 text-left text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-(--app-border) transition-colors"
+            >
+              {t('mailcowAccount.title')}
+            </button>
+          )}
           <button type="button"
             onClick={onToggleLocale}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-(--app-border) transition-colors"
           >
             <span className="text-sm">{locale === 'da' ? '🇬🇧' : '🇩🇰'}</span>
             {locale === 'da' ? 'English' : 'Dansk'}
           </button>
           <button type="button"
             onClick={onOpenBuildInfo}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-(--app-border) transition-colors"
           >
             <ScrollText size={14} className="text-zinc-400" />
             {t('buildInfo.title')}
           </button>
           <button type="button"
             onClick={onLogout}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-50 dark:hover:bg-[#2d3148] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-50 dark:hover:bg-(--app-border) transition-colors"
           >
             <LogOut size={14} />
             {t('action.signOut')}
           </button>
-          <div className="px-3 py-2 border-t border-zinc-100 dark:border-[#2d3148]">
+          <div className="px-3 py-2 border-t border-zinc-100 dark:border-(--app-border)">
             <p className="text-xs text-zinc-400 dark:text-zinc-600">v{APP_VERSION}</p>
           </div>
         </div>
@@ -525,10 +537,10 @@ function SidebarMobilePlayer({
 
       {mobilePlayerOpen && (
         <div
-          className="md:hidden fixed left-0 right-0 z-20 bg-white dark:bg-[#1a1d27] rounded-b-2xl border-b border-zinc-200 dark:border-[#2d3148] shadow-2xl flex flex-col"
+          className="md:hidden fixed left-0 right-0 z-20 bg-white dark:bg-(--app-panel) rounded-b-2xl border-b border-zinc-200 dark:border-(--app-border) shadow-2xl flex flex-col"
           style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))', maxHeight: 'calc(100dvh - 4rem - env(safe-area-inset-top, 0px))' }}
         >
-          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-[#2d3148] shrink-0">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-(--app-border) shrink-0">
             <div className="flex items-center gap-2 min-w-0">
               <Music size={14} className="text-brand-500 shrink-0" />
               <span className="font-semibold text-sm text-zinc-900 dark:text-slate-100 truncate">{playlist.activePlaylistName ?? 'Playlist'}</span>
@@ -547,7 +559,7 @@ function SidebarMobilePlayer({
               progress={playlist.progress}
               duration={playlist.duration}
               onSeek={onSeek}
-              className="w-full h-1.5 bg-zinc-200 dark:bg-[#2d3148] rounded-full cursor-pointer mb-1"
+              className="w-full h-1.5 bg-zinc-200 dark:bg-(--app-border) rounded-full cursor-pointer mb-1"
               fillClassName="block h-full bg-brand-500 rounded-full"
             />
             <div className="flex justify-between mb-4">
@@ -582,7 +594,7 @@ function SidebarMobilePlayer({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto border-t border-zinc-100 dark:border-[#2d3148] divide-y divide-zinc-50 dark:divide-[#2d3148]">
+          <div className="flex-1 overflow-y-auto border-t border-zinc-100 dark:border-(--app-border) divide-y divide-zinc-50 dark:divide-(--app-border)">
             {playlist.tracks.map((track, index) => {
               const isCurrent = index === playlist.currentIndex
 
@@ -622,14 +634,14 @@ function SidebarMobilePlayer({
       )}
 
       <div
-        className="md:hidden fixed top-14 left-0 right-0 z-20 bg-white/95 dark:bg-[#1a1d27]/95 backdrop-blur-sm border-b border-zinc-200 dark:border-[#2d3148] shadow-lg"
+        className="md:hidden fixed top-14 left-0 right-0 z-20 bg-white/95 dark:bg-(--app-panel)/95 backdrop-blur-sm border-b border-zinc-200 dark:border-(--app-border) shadow-lg"
         style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}
       >
         <SidebarProgressBar
           progress={playlist.progress}
           duration={playlist.duration}
           onSeek={onSeek}
-          className="h-0.5 bg-zinc-200 dark:bg-[#2d3148] cursor-pointer"
+          className="h-0.5 bg-zinc-200 dark:bg-(--app-border) cursor-pointer"
           fillClassName="block h-full bg-brand-500"
         />
         <div className="flex items-center gap-1.5 px-3 py-2">
@@ -798,12 +810,12 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
       )}
 
       <aside className={[
-        'flex flex-col w-60 shrink-0 bg-white dark:bg-[#1a1d27] border-r border-zinc-200 dark:border-[#2d3148] h-screen',
+        'app-chrome flex flex-col w-60 shrink-0 bg-white dark:bg-(--app-chrome-bg) border-r border-zinc-200 dark:border-(--app-border) h-screen',
         'fixed inset-y-0 left-0 z-40 transition-transform duration-200',
         isOpen ? 'translate-x-0' : '-translate-x-full',
         'md:relative md:translate-x-0 md:z-auto',
       ].join(' ')}>
-        <div className="px-4 h-14 flex items-center border-b border-zinc-200 dark:border-[#2d3148] shrink-0">
+        <div className="px-4 h-14 flex items-center border-b border-zinc-200 dark:border-(--app-border) shrink-0">
           <div className="rounded-md bg-[#171b27] px-1.5 py-1 shadow-sm dark:bg-transparent dark:px-0 dark:py-0 dark:shadow-none">
             <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
           </div>
@@ -820,7 +832,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
             <div className="px-2 pb-2">
               <button type="button"
                 onClick={() => setShowAddMusic(true)}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] hover:text-zinc-900 dark:hover:text-slate-100"
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-(--app-border) hover:text-zinc-900 dark:hover:text-slate-100"
               >
                 <Music size={16} />
                 {t('player.addMusic' as any)}
@@ -840,7 +852,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
 
           {user?.is_admin && (
             <>
-              <div className="mx-4 border-t border-zinc-200 dark:border-[#2d3148] my-1" />
+              <div className="mx-4 border-t border-zinc-200 dark:border-(--app-border) my-1" />
               <div className="px-4 py-1">
                 <p className="text-[11px] uppercase tracking-widest text-zinc-400 dark:text-slate-500 font-medium">Admin</p>
               </div>
@@ -854,11 +866,11 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
 
           {!isGuest && state.location.pathname.startsWith('/files') && (
             <>
-              <div className="mx-4 border-t border-zinc-200 dark:border-[#2d3148] my-1" />
+              <div className="mx-4 border-t border-zinc-200 dark:border-(--app-border) my-1" />
               <nav className="px-2 pb-3 space-y-0.5">
                 <button type="button"
                   onClick={() => setShowWebDAV(true)}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] hover:text-zinc-900 dark:hover:text-slate-100"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-(--app-border) hover:text-zinc-900 dark:hover:text-slate-100"
                 >
                   <HardDrive size={16} />
                   WebDAV
@@ -869,12 +881,12 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
         </div>
 
         {quota > 0 && (
-          <div className="px-4 py-3 border-t border-zinc-100 dark:border-[#2d3148]">
+          <div className="px-4 py-3 border-t border-zinc-100 dark:border-(--app-border)">
             <div className="flex justify-between text-xs text-muted mb-1">
               <span>{formatBytes(used)} used</span>
               <span>{formatBytes(quota)}</span>
             </div>
-            <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-[#2d3148] overflow-hidden">
+            <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-(--app-border) overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${getQuotaBarClass(pct)}`}
                 style={{ width: `${pct}%` }}

@@ -62,6 +62,9 @@ type Config struct {
     WebPushPrivateKey string `mapstructure:"WEB_PUSH_PRIVATE_KEY"`
     WebPushSubject string `mapstructure:"WEB_PUSH_SUBJECT"`
 
+	MailcowProbePort  int    `mapstructure:"SHAREDRIVE_MAILCOW_PORT"`
+	MailcowProbeToken string `mapstructure:"SHAREDRIVE_MAILCOW_TOKEN"`
+
 	// SMTP
 	SMTPHost     string `mapstructure:"SMTP_HOST"`
 	SMTPPort     int    `mapstructure:"SMTP_PORT"`
@@ -162,6 +165,7 @@ func bindExplicitEnvKeys(v *viper.Viper) {
 		"BACKUP_WRAP_KEY",
 		"TOTP_ENCRYPT_KEY",
 		"DEVICE_TRUST_SECRET",
+		"SHAREDRIVE_MAILCOW_TOKEN",
 		"SMTP_HOST",
 		"SMTP_USER",
 		"SMTP_PASSWORD",
@@ -189,6 +193,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("BACKUPS_ROOT", "")
 	v.SetDefault("TUS_UPLOAD_DIR", "/data/files/tmp/uploads")
 	v.SetDefault("PREVIEW_CACHE_DIR", "/data/preview-cache")
+	v.SetDefault("SHAREDRIVE_MAILCOW_PORT", 3025)
 	v.SetDefault("SMTP_PORT", 587)
 	v.SetDefault("SMTP_TLS", "starttls")
 	v.SetDefault("WEBDAV_ENABLED", true)

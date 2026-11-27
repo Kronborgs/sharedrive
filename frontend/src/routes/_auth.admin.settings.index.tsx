@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
+import { MailcowTestPanel } from '@/components/admin/MailcowTestPanel'
 import { useForm, type UseFormRegister } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -533,6 +534,7 @@ function SettingsPage() {
           </div>
         </form>
       )}
+      {tab === 'smtp' && <MailcowTestPanel />}
     </div>
   )
 }

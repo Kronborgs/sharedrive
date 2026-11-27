@@ -1,0 +1,18 @@
+{
+  "name": "sharedrive-mailcow",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "imapflow": "2.12.2",
+    "mailparser": "3.15.0",
+    "nodemailer": "10.6.1",
+    "saxes": "6.0.0"
+  }
+}

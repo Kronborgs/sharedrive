@@ -417,11 +417,15 @@ export function buildIcsFromEvent(
   const safeVideoUrl = sanitizeHttpUrl(dto.videoUrl);
   if (safeVideoUrl) {
     vevent.updatePropertyWithValue('url', safeVideoUrl);
+  } else if (dto.videoUrl === '') {
+    vevent.removeAllProperties('url');
+    vevent.removeAllProperties('x-google-conference');
+    vevent.removeAllProperties('x-microsoft-skypeteamsmeetingurl');
   }
 
-  if (options?.saveInvitation && dto.organizer) {
+  if (dto.organizer) {
     const organizer = vevent.updatePropertyWithValue('organizer', `mailto:${dto.organizer}`);
-    organizer.setParameter('schedule-agent', 'NONE');
+    if (options?.saveInvitation) organizer.setParameter('schedule-agent', 'NONE');
   }
 
   // Opdater deltagere / RSVP (PARTSTAT) hvis angivet

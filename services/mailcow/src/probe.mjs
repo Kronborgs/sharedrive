@@ -1,6 +1,7 @@
 import { checkSogo } from './dav-probe.mjs'
 import nodemailer from 'nodemailer'
 import { fetchMailFolders } from './brogaard/mailClient.ts'
+import { imapLoginRejected } from '../suite/src/mailcow-auth.ts'
 import { resolveMailcowAddress } from './network.mjs'
 
 async function check(operation) {
@@ -51,8 +52,16 @@ export function createProbe({ smtpPort }) {
       smtpPort,
       smtpSecure: smtpPort === 465,
     }
-    const [imap, smtp, caldav, carddav] = await Promise.all([
-      check(() => fetchMailFolders(mail)),
+    let imap = 'ok'
+    try {
+      await fetchMailFolders(mail)
+    } catch (error) {
+      if (imapLoginRejected(error)) {
+        return { imap: 'failed', smtp: 'failed', caldav: 'failed', carddav: 'failed' }
+      }
+      imap = 'failed'
+    }
+    const [smtp, caldav, carddav] = await Promise.all([
       check(() => checkSmtp(mail, account.host)),
       check(() => checkSogo(address, account, 'Calendar')),
       check(() => checkSogo(address, account, 'Contacts')),

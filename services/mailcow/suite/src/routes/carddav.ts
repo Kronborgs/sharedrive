@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import {
   type ContactDTO,
+  canonicalAddressBookKey,
   fetchAddressBooks,
   fetchAllContacts,
   saveCardDavContact,
@@ -11,8 +12,8 @@ import {
   buildVcardFromContact,
   fetchExternalContactPhotoAsDataUrl
 } from '../services/carddavClient.js';
-import { normalizeDanishText } from '../services/icalMapper.js';
 import { updateCalDavCalendarColor } from '../services/davClient.js';
+import { normalizeDanishText } from '../services/icalMapper.js';
 import {
   syncContactBirthdaysToCalDav,
   maybeAutoSyncContactBirthdays
@@ -497,86 +498,82 @@ carddavRouter.post('/contacts/bulk-delete', async (req: Request, res: Response) 
   }
 });
 
-/**
- * POST /api/carddav/import
- * Importerer en .vcf fil (med ét eller flere vCards) ind i en adressebog.
- */
-carddavRouter.post('/import', async (req: Request, res: Response) => {
-  try {
-    const creds = requireDavCredentials(req);
-    const addressBookId = String(req.body?.addressBookId || '').trim();
-    const rawVcf = normalizeDanishText(String(req.body?.vcfContent || ''));
-
-    if (!addressBookId || !/BEGIN:VCARD/i.test(rawVcf)) {
-      res.status(400).json({
-        ok: false,
-        error: 'Ugyldig .vcf-fil eller manglende mål-adressebog.'
-      });
-      return;
-    }
-
-    const parsed = parseVcardToContacts(rawVcf, addressBookId);
-    if (parsed.length === 0) {
-      res.status(400).json({
-        ok: false,
-        error: 'Ingen gyldige kontakter fundet i .vcf-filen.'
-      });
-      return;
-    }
-
-    // Hent evt. eksterne HTTPS PHOTO-links (f.eks. fra Google Kontakter .vcf-eksport) i små batches
-    const PHOTO_BATCH_SIZE = 5;
-    for (let i = 0; i < parsed.length; i += PHOTO_BATCH_SIZE) {
-      const slice = parsed.slice(i, i + PHOTO_BATCH_SIZE);
-      await Promise.all(
-        slice.map(async (c) => {
-          if (!c.photoDataUrl && c.externalPhotoUrl) {
-            const downloaded = await fetchExternalContactPhotoAsDataUrl(c.externalPhotoUrl);
-            if (downloaded) {
-              c.photoDataUrl = downloaded;
-            }
-          }
-        })
-      );
-    }
-
-    const savedContacts: ContactDTO[] = [];
-    for (const c of parsed) {
-      const saved = await saveCardDavContact(creds, {
-        ...c,
+async function importContactsIntoBook(creds: CalDavCredentials, addressBookId: string, contacts: ContactDTO[]) {
+  const savedContacts: ContactDTO[] = [];
+  for (const contact of contacts) {
+    let saved: ContactDTO;
+    try {
+      saved = await saveCardDavContact(creds, {
+        ...contact,
         externalPhotoUrl: undefined,
         addressBookId,
         uid: crypto.randomUUID(),
         vcardUrl: undefined,
         etag: undefined
       });
-      if (c.starred) {
-        setUserContactFavorite(creds.username, saved.id, true);
-        if (saved.uid) {
-          setUserContactFavorite(creds.username, saved.uid, true);
-        }
-        saved.starred = true;
-      }
-      savedContacts.push(saved);
+    } catch (error) {
+      if (error instanceof Error && /\(HTTP (401|403|404)\b/.test(error.message)) break;
+      continue;
+    }
+    if (contact.starred) {
+      setUserContactFavorite(creds.username, saved.id, true);
+      if (saved.uid) setUserContactFavorite(creds.username, saved.uid, true);
+      saved.starred = true;
+    }
+    savedContacts.push(saved);
+  }
+  return savedContacts;
+}
+
+async function downloadImportedContactPhotos(contacts: ContactDTO[]) {
+  const batchSize = 5;
+  for (let i = 0; i < contacts.length; i += batchSize) {
+    await Promise.all(contacts.slice(i, i + batchSize).map(async contact => {
+      if (contact.photoDataUrl || !contact.externalPhotoUrl) return;
+      const photo = await fetchExternalContactPhotoAsDataUrl(contact.externalPhotoUrl);
+      if (photo) contact.photoDataUrl = photo;
+    }));
+  }
+}
+
+/**
+ * POST /api/carddav/import
+ */
+carddavRouter.post('/import', async (req: Request, res: Response) => {
+  try {
+    const creds = requireDavCredentials(req);
+    const addressBookId = String(req.body?.addressBookId || '').trim();
+    const rawVcf = normalizeDanishText(String(req.body?.vcfContent || ''));
+    if (!addressBookId || !/BEGIN:VCARD/i.test(rawVcf)) {
+      res.status(400).json({ ok: false, error: 'Ugyldig .vcf-fil eller manglende mål-adressebog.' });
+      return;
+    }
+    const key = canonicalAddressBookKey(addressBookId);
+    const book = (await fetchAddressBooks(creds)).find(item => canonicalAddressBookKey(item.id) === key);
+    if (!book || book.readOnly || book.canCreate === false) {
+      res.status(403).json({ ok: false, error: 'Vælg en adressebog, der tillader nye kontakter.' });
+      return;
     }
 
+    const parsed = parseVcardToContacts(rawVcf, book.id);
+    if (!parsed.length) {
+      res.status(400).json({ ok: false, error: 'Ingen gyldige kontakter fundet i .vcf-filen.' });
+      return;
+    }
+    await downloadImportedContactPhotos(parsed);
+    const contacts = await importContactsIntoBook(creds, book.id, parsed);
+    if (!contacts.length) {
+      res.status(502).json({ ok: false, error: 'SOGo gemte ingen kontakter. Kontrollér skriveadgangen til adressebogen.' });
+      return;
+    }
     if (getUserContactPrefs(creds.username).birthdayCalendarSyncEnabled) {
-      await syncContactBirthdaysToCalDav(creds).catch((e) =>
-        console.warn('Kunne ikke auto-synke fødselsdagskalender:', e)
-      );
+      await syncContactBirthdaysToCalDav(creds).catch(e =>
+        console.warn('Kunne ikke auto-synke fødselsdagskalender:', e));
     }
 
-    res.json({
-      ok: true,
-      importedCount: savedContacts.length,
-      contacts: savedContacts
-    });
-  } catch (err: any) {
-    console.error('Fejl ved VCF import:', err?.message || err);
-    res.status(500).json({
-      ok: false,
-      error: err?.message || 'Kunne ikke importere .vcf-filen.'
-    });
+    res.json({ ok: true, importedCount: contacts.length, failedCount: parsed.length - contacts.length, contacts });
+  } catch {
+    res.status(502).json({ ok: false, error: 'Kunne ikke gennemføre kontaktimporten i SOGo.' });
   }
 });
 

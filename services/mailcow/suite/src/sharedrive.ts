@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import express, { type Request, type Response, type NextFunction } from 'express'
 import { Agent } from 'undici'
 import { isMailcowHostname, resolveMailcowAddress } from '../../src/network.mjs'
@@ -10,7 +10,9 @@ import { carddavRouter } from './routes/carddav.js'
 import { shareOwner } from './services/shareStore.js'
 import { getAliasesForUser } from './services/aliasStore.js'
 
-type ProxyAccount = { host: string; username: string; password: string; scope: string; owner: string }
+import { MailcowAuthGate, pausedMailcowMessage } from './mailcow-auth.js'
+
+type ProxyAccount = { host: string; username: string; password: string; scope: string; owner: string; credentialRevision?: string }
 const checkedLookup = new Agent({
   connect: {
     lookup(host, options, callback) {
@@ -38,12 +40,18 @@ globalThis.fetch = (input, init) => {
   if (url.hostname !== active.host && headers.has('authorization')) {
     return Promise.reject(new Error('Mailcow credentials may only be used on the saved provider'))
   }
-  return fetchNormally(input, {
+  const request = () => fetchNormally(input, {
     ...init,
     redirect: init?.redirect === 'manual' ? 'manual' : 'error',
     signal: init?.signal ?? AbortSignal.timeout(20_000),
     dispatcher: checkedLookup,
   } as RequestInit)
+  if (url.hostname !== active.host || headers.get('authorization') !== active.authorization) return request()
+  return active.authGate.run(async () => {
+    const response = await request()
+    if (response.status === 401) active.authGate.blocked = true
+    return response
+  })
 }
 
 function fingerprint(value: string) {
@@ -66,6 +74,7 @@ function readAccount(req: Request): ProxyAccount | null {
 export function createSuiteHandler({ token, smtpPort }: { token: string; smtpPort: number }) {
   const app = express()
   const expected = fingerprint('Bearer ' + token)
+  const authGates = new Map<string, MailcowAuthGate>()
   app.disable('x-powered-by')
   app.use(async (req, res, next) => {
     if (!timingSafeEqual(fingerprint(req.get('Authorization') ?? ''), expected)) {
@@ -93,7 +102,15 @@ export function createSuiteHandler({ token, smtpPort }: { token: string; smtpPor
         smtpHost: address, smtpServerName: account.host, smtpPort, smtpSecure: smtpPort === 465,
       })
       res.locals.account = account
-      binding.run({ host: account.host, address, scope: account.scope, owner: account.owner }, next)
+      const revision = account.credentialRevision ?? createHmac('sha256', token).update(account.password).digest('hex')
+      const gateKey = account.scope + ':' + revision
+      let authGate = authGates.get(gateKey)
+      if (!authGate) {
+        authGate = new MailcowAuthGate()
+        authGates.set(gateKey, authGate)
+      }
+      const authorization = 'Basic ' + Buffer.from(account.username + ':' + account.password).toString('base64')
+      binding.run({ host: account.host, address, scope: account.scope, owner: account.owner, authorization, authGate }, next)
     } catch {
       res.status(502).json({ ok: false, error: 'Mailcow host is unavailable' })
     }
@@ -104,7 +121,14 @@ export function createSuiteHandler({ token, smtpPort }: { token: string; smtpPor
   })
   app.get('/api/auth/session', (_req, res) => {
     const { username, scope } = res.locals.account as ProxyAccount
-    res.json({ ok: true, authenticated: true, username, scope, aliases: getAliasesForUser(username, false) })
+    res.json({ ok: true, authenticated: true, username, scope, authBlocked: binding.getStore()?.authGate.blocked, aliases: getAliasesForUser(username, false) })
+  })
+  app.use(['/api/mail', '/api/caldav', '/api/carddav'], (_req, res, next) => {
+    if (binding.getStore()?.authGate.blocked) {
+      res.status(424).json({ ok: false, error: pausedMailcowMessage })
+      return
+    }
+    next()
   })
   app.use('/api/mail', mailRouter)
   app.use('/api/caldav', caldavRouter)

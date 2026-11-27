@@ -3,8 +3,9 @@ import { createHash } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import type { MailcowAuthGate } from './mailcow-auth.js'
 
-export const suiteContext = new AsyncLocalStorage<{ host: string; address: string; scope: string; owner: string }>()
+export const suiteContext = new AsyncLocalStorage<{ host: string; address: string; scope: string; owner: string; authorization: string; authGate: MailcowAuthGate }>()
 const root = process.env.DATA_DIR || path.join(tmpdir(), 'sharedrive-mail-suite')
 
 export function suiteRoot() {

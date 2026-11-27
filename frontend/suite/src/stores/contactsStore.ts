@@ -61,9 +61,10 @@ export const useContactsStore = defineStore('contacts', () => {
     addressBooks.value.filter((b) => !b.readOnly)
   );
 
-  const defaultWritableAddressBook = computed<AddressBook | undefined>(
-    () => writableAddressBooks.value[0] || addressBooks.value[0]
-  );
+  const defaultWritableAddressBook = computed<AddressBook | undefined>(() => {
+    const books = writableAddressBooks.value.filter(book => book.canCreate !== false);
+    return books.find(book => /\/Contacts\/personal\/?$/i.test(book.url)) ?? books[0];
+  });
 
   const allCategories = computed<Array<{ name: string; count: number }>>(() => {
     const counts = new Map<string, number>();
@@ -527,9 +528,9 @@ export const useContactsStore = defineStore('contacts', () => {
   }
 
   async function importVcfFile(addressBookId: string, vcfContent: string): Promise<number> {
-    if (isAddressBookReadOnly(addressBookId)) {
-      suiteStore.notify('Skrivebeskyttet adressebog', 'Vælg en skrivbar adressebog.', 'error');
-      return 0;
+    const book = getAddressBookById(addressBookId);
+    if (!book || book.readOnly || book.canCreate === false) {
+      throw new Error('Vælg en adressebog, der tillader nye kontakter.');
     }
 
     const res = await apiImportVcf(addressBookId, vcfContent);
@@ -546,12 +547,20 @@ export const useContactsStore = defineStore('contacts', () => {
     if (res.importedCount > 0) {
       contactsMutationCounter.value += 1;
     }
+    const summary = `${res.importedCount} kontakt(er) gemt i ${book.name}.`;
     suiteStore.notify(
-      'Kontakter importeret (.vcf)',
-      `Importerede ${res.importedCount} kontakt(er) til Mailcow.`,
-      'success'
+      res.failedCount ? 'Import delvist gennemført' : 'Kontakter importeret',
+      res.failedCount
+        ? summary + ` ${res.failedCount} blev ikke gemt. Genimportér kun de kontakter, der mangler.`
+        : summary,
+      res.failedCount ? 'warning' : 'success'
     );
     return res.importedCount;
+  }
+
+  async function copyDirectoryContacts(addressBookId: string, targets: Contact[]) {
+    const vcf = await apiExportVcf(toPlainObject(targets));
+    return importVcfFile(addressBookId, vcf);
   }
 
   async function exportContactsVcf(list?: Contact[]): Promise<void> {
@@ -1396,6 +1405,7 @@ export const useContactsStore = defineStore('contacts', () => {
     setContactCalendarColor,
     deleteContact,
     importVcfFile,
+    copyDirectoryContacts,
     exportContactsVcf,
     findContactByEmail,
     findBestWritableNameMatch,

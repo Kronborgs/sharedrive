@@ -16,10 +16,13 @@ import {
 } from 'lucide-vue-next';
 import { useCalendarStore } from '../../stores/calendarStore';
 import { useContactsStore } from '../../stores/contactsStore';
+import { sharedriveRoomLink, useRoomSettings } from '../../services/roomLinks';
+import RoomLinkPicker from '../shared/RoomLinkPicker.vue';
 import type { Attendee, RsvpStatus } from '../../types/calendar';
 
 const store = useCalendarStore();
 const contactsStore = useContactsStore();
+const { settings: roomSettings, failed: roomSettingsFailed } = useRoomSettings(() => store.isEventModalOpen && !store.isPublicShareMode);
 
 const title = ref('');
 const calendarId = ref('');
@@ -30,6 +33,10 @@ const endDate = ref('');
 const endTime = ref('10:00');
 const location = ref('');
 const videoUrl = ref('');
+const originalVideoUrl = computed(() => store.editingEvent?.videoUrl?.trim() ?? '');
+const roomLink = computed(() => sharedriveRoomLink(videoUrl.value, window.location.origin));
+const roomsEnabled = computed(() => roomSettings.value?.rooms_enabled);
+const invalidRoomLink = computed(() => roomsEnabled.value === true && videoUrl.value.trim() !== '' && !roomLink.value && videoUrl.value.trim() !== originalVideoUrl.value);
 const description = ref('');
 const reminderMinutes = ref<number | null>(null);
 const attendees = ref<Attendee[]>([]);
@@ -146,7 +153,7 @@ function removeAttendee(email: string) {
 }
 
 async function handleSave() {
-  if (isReadOnly.value) return;
+  if (isReadOnly.value || invalidRoomLink.value) return;
 
   let startIso: string;
   let endIso: string;
@@ -173,7 +180,7 @@ async function handleSave() {
     end: endIso,
     allDay: allDay.value,
     location: location.value,
-    videoUrl: videoUrl.value,
+    videoUrl: roomLink.value || videoUrl.value.trim(),
     description: description.value,
     reminderMinutes: reminderMinutes.value,
     attendees: attendees.value
@@ -205,7 +212,7 @@ const mapsSearchUrl = computed(() => {
 const safeVideoUrl = computed(() => {
   const raw = videoUrl.value.trim();
   if (!raw) return '';
-  return /^https?:\/\//i.test(raw) ? raw : '';
+  return roomLink.value || (/^https?:\/\//i.test(raw) ? raw : '');
 });
 </script>
 
@@ -362,7 +369,7 @@ const safeVideoUrl = computed(() => {
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="flex items-center gap-1 text-slate-400 font-medium">
-                  <Video class="w-3.5 h-3.5 text-sky-400" /> Videomøde-link
+                  <Video class="w-3.5 h-3.5 text-sky-400" /> {{ roomsEnabled ? 'Rooms-møde' : 'Videomøde-link' }}
                 </label>
                 <a
                   v-if="safeVideoUrl"
@@ -374,13 +381,24 @@ const safeVideoUrl = computed(() => {
                   Deltag i videomøde <ExternalLink class="w-3 h-3" />
                 </a>
               </div>
-              <input
-                v-model="videoUrl"
-                type="url"
-                :disabled="isReadOnly"
-                placeholder="https://meet.google.com/... eller Teams/Zoom"
-                class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100"
-              />
+              <template v-if="!isReadOnly">
+                <RoomLinkPicker v-if="roomsEnabled" v-model="videoUrl" />
+                <input
+                  v-else-if="roomsEnabled === false"
+                  v-model="videoUrl"
+                  type="url"
+                  aria-label="Videomøde-link"
+                  placeholder="https://meet.google.com/… eller Teams/Zoom"
+                  class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100"
+                />
+                <p v-else class="text-slate-400">
+                  {{ roomSettingsFailed ? 'Mødeindstillingen kunne ikke hentes.' : 'Henter mødeindstillingen…' }}
+                </p>
+                <p v-if="invalidRoomLink" class="mt-1 text-rose-300">Indsæt et Rooms-link fra denne Sharedrive.</p>
+                <p v-else-if="roomsEnabled && !roomSettings?.rooms_voice_enabled" class="mt-1 text-slate-400">
+                  Videoopkald er slået fra i Rooms.
+                </p>
+              </template>
             </div>
           </div>
 
@@ -576,7 +594,8 @@ const safeVideoUrl = computed(() => {
               <button
                 v-if="!isReadOnly"
                 type="submit"
-                class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow transition"
+                :disabled="invalidRoomLink"
+                class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow transition disabled:opacity-50"
               >
                 Gem begivenhed
               </button>

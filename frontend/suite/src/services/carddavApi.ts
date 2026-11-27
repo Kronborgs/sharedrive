@@ -1,4 +1,5 @@
 import type { AddressBook, Contact } from '../types/contacts';
+import { reportPausedMailcow } from './authApi';
 
 export interface CardDavSyncResponse {
   ok: boolean;
@@ -16,6 +17,7 @@ export async function apiSyncCardDav(): Promise<CardDavSyncResponse> {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json; charset=utf-8' }
   });
+  reportPausedMailcow(res);
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
     throw new Error(data.error || 'Synkronisering med CardDAV-adressebog mislykkedes.');
@@ -135,7 +137,7 @@ export async function apiBulkSetFavorite(
 export async function apiImportVcf(
   addressBookId: string,
   vcfContent: string
-): Promise<{ importedCount: number; contacts: Contact[] }> {
+): Promise<{ importedCount: number; failedCount: number; contacts: Contact[] }> {
   const res = await fetch('/api/v1/me/mailcow/suite/carddav/import', {
     method: 'POST',
     credentials: 'include',
@@ -148,6 +150,7 @@ export async function apiImportVcf(
   }
   return {
     importedCount: data.importedCount || 0,
+    failedCount: data.failedCount || 0,
     contacts: data.contacts || []
   };
 }

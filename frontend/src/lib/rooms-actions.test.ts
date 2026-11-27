@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.hoisted(() => { vi.resetModules() })
+
 const mocks = vi.hoisted(() => ({
   get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn(),
 }))

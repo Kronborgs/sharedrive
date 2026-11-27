@@ -18,13 +18,21 @@ import {
   ListOrdered,
   Link,
   Eraser,
-  FileCode
+  FileCode,
+  MessagesSquare
 } from 'lucide-vue-next';
 import { useMailStore } from '../../stores/mailStore';
 import { useContactsStore } from '../../stores/contactsStore';
+import { sharedriveRoomLink, useRoomSettings } from '../../services/roomLinks';
+import RoomLinkPicker from '../shared/RoomLinkPicker.vue';
 
 const store = useMailStore();
 const contactsStore = useContactsStore();
+const { settings: roomSettings } = useRoomSettings(() => store.isComposeModalOpen);
+const showRoomPicker = ref(false);
+const roomLinkInput = ref('');
+const roomLink = computed(() => sharedriveRoomLink(roomLinkInput.value, window.location.origin));
+const insertedRoomLinks = new Set<string>();
 
 const selectedAliasEmail = ref('');
 const customAliasMode = ref(false);
@@ -129,13 +137,17 @@ function formatSignature(signature?: string) {
 }
 
 function formatEditorText(text: string) {
-  const html = plainTextToHtml(text);
+  let html = plainTextToHtml(text);
+  const links = new Set(insertedRoomLinks);
   const fileUrl = store.composePrefill?.sharedFileUrl;
-  if (!fileUrl) return html;
-  const link = document.createElement('a');
-  link.href = fileUrl;
-  link.textContent = fileUrl;
-  return html.replace(escapeHtml(fileUrl), link.outerHTML);
+  if (fileUrl) links.add(fileUrl);
+  for (const url of links) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.textContent = url;
+    html = html.replace(escapeHtml(url), () => link.outerHTML);
+  }
+  return html;
 }
 
 function renderEditorBody() {
@@ -237,6 +249,9 @@ watch(
   async ([isOpen]) => {
     composeSession++;
     isReadingAttachments.value = false;
+    showRoomPicker.value = false;
+    roomLinkInput.value = '';
+    insertedRoomLinks.clear();
     if (!isOpen) return;
 
     customAliasMode.value = false;
@@ -394,6 +409,32 @@ function promptInsertLink() {
   if (url && url.trim()) {
     execFormat('createLink', url.trim());
   }
+}
+
+function insertRoomLink() {
+  const url = roomLink.value;
+  if (!roomSettings.value?.rooms_enabled || !url) return;
+  insertedRoomLinks.add(url);
+
+  if (useRichHtml.value && richEditorRef.value) {
+    const editor = richEditorRef.value;
+    const line = document.createElement('div');
+    const link = document.createElement('a');
+    link.href = url;
+    link.textContent = url;
+    line.append('Deltag i Sharedrive-chatten: ', link);
+    const signature = editor.querySelector('[data-mail-signature]');
+    if (signature) signature.before(line);
+    else editor.append(line);
+    editor.focus();
+  } else {
+    const suffix = signatureBlock + quotedBody;
+    const offset = textBody.value.endsWith(suffix) ? textBody.value.length - suffix.length : textBody.value.length;
+    const before = textBody.value.slice(0, offset).trimEnd();
+    textBody.value = (before ? before + '\n\n' : '') + 'Deltag i Sharedrive-chatten: ' + url + textBody.value.slice(offset);
+  }
+  roomLinkInput.value = '';
+  showRoomPicker.value = false;
 }
 
 async function toggleEditorMode() {
@@ -884,6 +925,30 @@ async function handleDiscardDraft() {
                   <Trash2 class="w-3 h-3" />
                 </button>
               </div>
+            </div>
+          </div>
+
+          <div v-if="roomSettings?.rooms_enabled" class="space-y-2">
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200"
+              :aria-expanded="showRoomPicker"
+              @click="showRoomPicker = !showRoomPicker"
+            >
+              <MessagesSquare class="w-3.5 h-3.5 text-blue-400" />
+              Indsæt chatlink
+            </button>
+            <div v-if="showRoomPicker" class="rounded-xl border border-slate-700 p-3 space-y-2">
+              <RoomLinkPicker v-model="roomLinkInput" />
+              <p v-if="roomLinkInput.trim() && !roomLink" class="text-rose-300">Indsæt et Rooms-link fra denne Sharedrive.</p>
+              <button
+                type="button"
+                class="rounded-lg bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-500 disabled:opacity-50"
+                :disabled="!roomLink"
+                @click="insertRoomLink"
+              >
+                Indsæt i mail
+              </button>
             </div>
           </div>
 

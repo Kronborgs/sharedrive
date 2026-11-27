@@ -2,6 +2,7 @@ import net from 'node:net';
 import tls from 'node:tls';
 import crypto from 'node:crypto';
 import type { MailServerCredentials } from './mailClient.js';
+import { suiteContext } from '../sharedrive-context.js';
 
 export interface SieveConditionDTO {
   field: 'from' | 'to' | 'subject' | 'header' | 'size';
@@ -147,7 +148,13 @@ class ManageSieveClient {
 
     // SASL PLAIN: base64(\0username\0password)
     const authPayload = Buffer.from(`\u0000${username}\u0000${password}`, 'utf8').toString('base64');
-    const authResp = await this.sendCommand(`AUTHENTICATE "PLAIN" "${authPayload}"`);
+    const gate = suiteContext.getStore()?.authGate;
+    const authenticate = async () => {
+      const response = await this.sendCommand(`AUTHENTICATE "PLAIN" "${authPayload}"`);
+      if (gate && response.status === 'NO') gate.blocked = true;
+      return response;
+    };
+    const authResp = await (gate ? gate.run(authenticate) : authenticate());
     if (authResp.status !== 'OK') {
       throw new Error(`ManageSieve login afvist: ${authResp.message}`);
     }

@@ -3,6 +3,8 @@ import { simpleParser } from 'mailparser';
 import nodemailer, { type SendMailOptions } from 'nodemailer';
 import net from 'node:net';
 import { readCalendarInvitation } from '../calendarInvitation.ts';
+import { suiteContext } from '../../suite/src/sharedrive-context.ts';
+import { imapLoginRejected, smtpLoginRejected } from '../../suite/src/mailcow-auth.ts';
 
 export interface MailServerCredentials {
   imapHost: string;
@@ -222,7 +224,9 @@ export async function withImap<T>(creds: MailServerCredentials, fn: (client: Ima
   const client = createImapClient(creds);
   client.on('error', () => client.close());
   try {
-    await client.connect();
+    const gate = suiteContext.getStore()?.authGate;
+    if (gate) await gate.run(() => client.connect(), imapLoginRejected);
+    else await client.connect();
     return await fn(client);
   } finally {
     if (client.usable) {
@@ -1162,7 +1166,9 @@ export async function sendEmailViaSmtp(
   });
 
   const mailOptions = buildMailOptions(payload);
-  const info = await transporter.sendMail(mailOptions).finally(() => transporter.close());
+  const send = () => transporter.sendMail(mailOptions);
+  const gate = suiteContext.getStore()?.authGate;
+  const info = await (gate ? gate.run(send, smtpLoginRejected) : send()).finally(() => transporter.close());
 
   // Gem en kopi i IMAP "Sendt"-mappen, sæt evt. \Answered flag og fjern evt. afsendt kladde fra "Kladder"
   if (payload.saveToSent !== false || (replaceDraft?.folder && replaceDraft?.uid)) {

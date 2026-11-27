@@ -1,8 +1,8 @@
 # Sharedrive
 
-Privacy-first, self-hosted file sharing and personal cloud platform with secure storage, resumable uploads, WebDAV, collaborative document editing, built-in notes and checklists, granular sharing, TOTP 2FA, backups, and a full admin dashboard — packaged as a single Docker container.
+Privacy-first, self-hosted file sharing and personal cloud platform with secure storage, resumable uploads, WebDAV, collaborative document editing, built-in notes and checklists, granular sharing, TOTP 2FA, backups, and a full admin dashboard — packaged as a single Docker container. An optional Mailcow integration adds mail, calendar, and contacts to the Sharedrive workspace.
 
-[GitLab CI/CD pipeline and release documentation](docs/PIPELINE.md)
+[Mailcow setup and user guide](#mail-calendar-and-contacts-with-mailcow) · [GitLab CI/CD pipeline and release documentation](docs/PIPELINE.md)
 
 ![Admin Dashboard](pics/dashboard.png)
 
@@ -234,6 +234,55 @@ Privacy-first, self-hosted file sharing and personal cloud platform with secure 
 - **Voice, video, and screen sharing** — optional LiveKit meetings; installation and security details are in [Rooms architecture and operations](docs/ROOMS.md).
 - **Unread email digests** — optional SMTP email reminders for unread room and direct messages.
 - **Generic chat push notifications** — opt-in alerts show only that a new message arrived; the lock screen never shows the sender, conversation name, or message text.
+
+### Mail, calendar, and contacts with Mailcow
+
+Sharedrive connects to an existing Mailcow server with SOGo. Each Sharedrive user connects one mailbox with their own hostname, email address, and app password. Users on the same Sharedrive installation can connect to different Mailcow servers. The workspace opens within Sharedrive, with Files, chat, and the other sections still available in the sidebar.
+
+The mail, calendar, and contacts workspace adapts code from **Brogaard Suite** for Sharedrive. The screenshots below illustrate the original workspace. The Sharedrive version includes its own navigation, settings, and Rooms integration. [Brogaard Suite source and screenshots](https://github.com/mrbridgefarm/Brogaard-Suite) · [Imported code revision and service notes](services/mailcow/README.md#kilderevision)
+
+#### Set up the Mailcow connection
+
+1. **Administrator.** In **Admin → Settings → Mail**, turn on **Enable Mail, Calendar and Contacts**. The standard Sharedrive image runs the internal Mailcow service. The **SMTP** tab separately configures Sharedrive's own notifications and share emails.
+2. **Mailcow user.** Create an app password for your mailbox in Mailcow. Use the hostname that serves both Mailcow and SOGo, for example `mail.example.com`. Enter the hostname without `https://` or a path. It must resolve to a public IPv4 address and present a valid TLS certificate.
+3. **Sharedrive user.** Click **Mail** next to the theme selector, continue to the account details, and enter your Mailcow hostname, full email address, and app password. Choose **Test and connect account**. Sharedrive saves the account once IMAP, SMTP, CalDAV, and CardDAV all pass. The test checks SMTP login without sending a message.
+4. Open **Mail**, **Calendar**, or **Contacts** from the Sharedrive sidebar. The setup button disappears after the account is connected. Use the gear in the workspace to open **My Mailcow account** to test, update, or disconnect your mailbox.
+
+| Service | What Sharedrive uses it for |
+|---|---|
+| IMAP over TLS, port 993 | Read mail, list folders, and save or move messages |
+| SMTP over TLS, port 465 by default | Send from your mailbox |
+| CalDAV over HTTPS | Sync SOGo calendars and events |
+| CardDAV over HTTPS | Sync SOGo address books and contacts |
+
+If a connection test fails, check the result for each protocol. Verify the mailbox's app password, server name, certificate, and access to the failing service. If Mailcow refuses a saved login, Sharedrive pauses automatic attempts for that account. Reopen **My Mailcow account** and save a working app password. Keep the installation's `TOTP_ENCRYPT_KEY` with the database when migrating Sharedrive, since the key is used to derive the encryption key for stored app passwords. [Mailcow service configuration and optional settings](services/mailcow/README.md)
+
+#### Mail
+
+![Original Brogaard Suite mail workspace showing the IMAP folder tree, message list, and reading pane](pics/brogaard-suite/mail-overview.png)
+
+- Read and search mail, open nested IMAP folders, and filter for unread, starred, or attachment-bearing messages. Reply, forward, move, or archive messages, and save drafts. Manage server-side mail rules when ManageSieve is available.
+- Compose formatted or plain-text mail and attach images and files. Received attachments can be opened in the browser or downloaded. Supported Office, text, and 3D attachments can be opened as copies in Sharedrive, using OnlyOffice when configured for Office files.
+- Open **Signatures and senders** from the compose window to set a signature per sender identity. You can import a supported signature from SOGo or copy your Sharedrive signature and paste it into SOGo's identity settings.
+- Import `.eml` files or an MBOX archive into the selected IMAP folder. Export a single message as `.eml` or the selected folder as MBOX. MBOX transfers are limited to 20 MiB.
+- In **Files**, right-click a file or folder and choose **Add to email**. Create a share link and open a draft with that link so you can write a personal message. To send a standard Sharedrive sharing email instead, use the existing **Share** dialog and the server's SMTP setup.
+
+#### Calendar and meeting links
+
+![Original Brogaard Suite calendar showing the calendar list and month view](pics/brogaard-suite/calendar-month.png)
+
+- View events by month, week, or day, add reminders, and manage participants and RSVP. Open supported calendar invitations from Mail and add them to a writable calendar. Use **Import/Export** in the calendar sidebar to transfer `.ics` files. You can share a calendar with other users or publish a read-only link.
+- With **Rooms** enabled in **Admin → Settings → Rooms**, use **Rooms meeting** when creating or editing an event. Select a room you can access or paste a Sharedrive Rooms link, then add participants and save. The Rooms URL is stored with the event. When Rooms is disabled, the calendar offers a field for external meeting links such as Google Meet, Teams, or Zoom.
+- To send a Rooms link by email, open **Compose → Insert chat link**, choose a room or paste a Sharedrive Rooms link, and choose **Insert into email**. The link is added to your draft so you can write your message and send it yourself.
+- Room links follow the room's existing access rules. For recipients without access, use a guest link created in Rooms and make sure it remains valid through the meeting. For calls, enable Rooms voice and video and configure LiveKit. Guest links also need permission to use voice and video. [Rooms setup and guest access](docs/ROOMS.md)
+
+#### Contacts
+
+![Original Brogaard Suite contacts workspace showing address books, contact list, and bulk actions](pics/brogaard-suite/contacts-bulk.png)
+
+- Sync SOGo address books, search contacts, manage favorites, and select multiple contacts for bulk actions. Mail and Calendar can suggest addresses from your contacts as you add recipients or attendees.
+- Import `.vcf` (vCard) files into a writable address book, such as your personal address book. Export the displayed or selected contacts as `.vcf`.
+- If SOGo publishes a Global Address List (GAL), use it to look up directory entries. Select entries and copy them into a writable address book to make personal copies you can edit. The GAL itself is read-only.
 
 ### M3U Playlists
 - Create M3U playlists directly from selected audio files in the file manager

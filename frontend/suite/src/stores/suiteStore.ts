@@ -8,7 +8,8 @@ import {
   apiGetSuiteConfig,
   apiGetSuiteSession,
   apiLoginSuite,
-  apiLogoutSuite
+  apiLogoutSuite,
+  mailcowAuthPausedEvent
 } from '../services/authApi';
 import { clearAllSuiteCaches } from '../db/database';
 import { useMailStore } from './mailStore';
@@ -39,6 +40,7 @@ export const useSuiteStore = defineStore('suite', () => {
   const sogoUrl = ref<string | null>(null);
 
   const isAuthenticated = ref<boolean>(false);
+  const mailcowAuthBlocked = ref(false);
   const isPublicShareMode = ref<boolean>(false);
   const username = ref<string>('');
   const isLoginModalOpen = ref<boolean>(false);
@@ -110,6 +112,7 @@ export const useSuiteStore = defineStore('suite', () => {
 
   async function initSuite() {
     if (typeof window !== 'undefined') {
+      window.addEventListener(mailcowAuthPausedEvent, () => { mailcowAuthBlocked.value = true; });
       window.addEventListener('online', () => {
         isOnline.value = true;
         if (isAuthenticated.value) {
@@ -175,6 +178,7 @@ export const useSuiteStore = defineStore('suite', () => {
     try {
       const sess = await apiGetSuiteSession();
       if (sess.authenticated && sess.username) {
+        mailcowAuthBlocked.value = mailcowAuthBlocked.value || sess.authBlocked === true;
         isAuthenticated.value = true;
         username.value = sess.username;
         isLoginModalOpen.value = false;
@@ -342,6 +346,7 @@ export const useSuiteStore = defineStore('suite', () => {
     enabledModules,
     sogoUrl,
     isAuthenticated,
+    mailcowAuthBlocked,
     isPublicShareMode,
     username,
     isLoginModalOpen,

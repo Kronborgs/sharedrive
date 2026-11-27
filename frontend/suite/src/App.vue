@@ -276,6 +276,9 @@ onUnmounted(() => {
       v-else-if="suiteStore.isAuthenticated || suiteStore.isPublicShareMode"
       class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative z-10"
     >
+      <output v-if="suiteStore.mailcowAuthBlocked" class="shrink-0 bg-amber-950 px-4 py-2 text-sm text-amber-100">
+        Mailcow afviste login. Synkronisering er sat på pause. Opdatér app-adgangskoden under Min Mailcow-konto.
+      </output>
       <MailView
         v-if="suiteStore.isAnyModuleEnabled('mail') && suiteStore.visitedModules.mail && !suiteStore.isPublicShareMode"
         v-show="suiteStore.activeModule === 'mail'"

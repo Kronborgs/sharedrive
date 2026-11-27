@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue';
 import {
   Search,
   RefreshCw,
@@ -9,6 +10,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Upload,
+  Copy,
   Download
 } from 'lucide-vue-next';
 import { useContactsStore } from '../../stores/contactsStore';
@@ -29,15 +31,24 @@ const emit = defineEmits<{
 const store = useContactsStore();
 const suiteStore = useSuiteStore();
 const { currentTheme } = useTheme();
+const isImporting = ref(false);
+const selectedBook = computed(() => store.addressBooks.find(book => book.id === store.selectedAddressBookId));
+const directorySelection = computed(() => {
+  const book = selectedBook.value;
+  if (!book?.isDirectory) return [];
+  const contacts = store.selectedContacts.length ? store.selectedContacts : store.contacts.filter(contact => contact.id === store.selectedContactId);
+  return contacts.filter(contact => contact.addressBookId === book.id);
+});
 
 async function handleVcfUpload(e: Event) {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = '';
-  if (!file) return;
+  if (!file || isImporting.value) return;
 
-  const targetBook = store.addressBooks.find(book => book.id === store.selectedAddressBookId) ?? store.defaultWritableAddressBook;
-  if (!targetBook || targetBook.readOnly) {
+  const current = selectedBook.value;
+  const targetBook = current && !current.readOnly && current.canCreate !== false ? current : store.defaultWritableAddressBook;
+  if (!targetBook) {
     suiteStore.notify(
       'Ingen skrivbar adressebog',
       'Kan ikke importere, da der ikke findes en skrivbar adressebog.',
@@ -46,15 +57,32 @@ async function handleVcfUpload(e: Event) {
     return;
   }
 
+  isImporting.value = true;
   try {
-    const text = await file.text();
-    await store.importVcfFile(targetBook.id, text);
+    const imported = await store.importVcfFile(targetBook.id, await file.text());
+    if (imported) store.selectedAddressBookId = targetBook.id;
   } catch (err: any) {
     suiteStore.notify(
       'Import fejlede',
       err?.message || 'Kunne ikke læse .vcf-filen.',
       'error'
     );
+  } finally {
+    isImporting.value = false;
+  }
+}
+
+async function copyFromDirectory() {
+  const target = store.defaultWritableAddressBook;
+  if (!target || !directorySelection.value.length || isImporting.value) return;
+  isImporting.value = true;
+  try {
+    const imported = await store.copyDirectoryContacts(target.id, directorySelection.value);
+    if (imported) store.selectedAddressBookId = target.id;
+  } catch (error) {
+    suiteStore.notify('Kunne ikke kopiere kontakter', error instanceof Error ? error.message : undefined, 'error');
+  } finally {
+    isImporting.value = false;
   }
 }
 </script>
@@ -131,9 +159,23 @@ async function handleVcfUpload(e: Event) {
           accept=".vcf,.vcard,text/vcard"
           class="sr-only"
           aria-label="Importér kontakter (.vcf)"
+          :disabled="isImporting"
           @change="handleVcfUpload"
         />
       </label>
+
+      <button
+        v-if="directorySelection.length && store.defaultWritableAddressBook"
+        type="button"
+        :disabled="isImporting"
+        :title="`Kopiér til ${store.defaultWritableAddressBook.name}`"
+        aria-label="Kopiér valgte GAL-kontakter"
+        class="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+        @click="copyFromDirectory"
+      >
+        <Copy class="w-3.5 h-3.5" />
+        <span class="hidden md:inline">Kopiér GAL-kontakter</span>
+      </button>
 
       <button
         type="button"

@@ -7,6 +7,7 @@ import type {
   CalendarSharePermission,
   SharedCalendarSearchResult
 } from '../types/calendar';
+import { reportPausedMailcow } from './authApi';
 
 export interface SyncResponse {
   ok: boolean;
@@ -53,6 +54,7 @@ export async function apiSyncCalDav(
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify({ timeRange, subscriptions, forceBirthdaySync })
   });
+  reportPausedMailcow(res);
   const data = await res.json();
   if (!res.ok || !data.ok) {
     throw new Error(data.error || 'Synkronisering med Mailcow/SOGo mislykkedes.');

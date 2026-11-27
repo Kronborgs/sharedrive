@@ -4,6 +4,8 @@ export interface AddressBook {
   name: string;
   readOnly: boolean;
   isShared: boolean;
+  isDirectory?: boolean;
+  canCreate?: boolean;
   owner?: string;
   ctag?: string;
   description?: string;

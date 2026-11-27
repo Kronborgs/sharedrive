@@ -9,7 +9,8 @@ import {
   assertSameServerOrigin,
   readResponseTextSmart,
   buildForwardedIpHeaders,
-  createForwardedIpFetch
+  createForwardedIpFetch,
+  extractOkPropstatXml
 } from './davClient.js';
 import { normalizeDanishText, sanitizeHttpUrl } from './icalMapper.js';
 
@@ -19,6 +20,8 @@ export interface AddressBookDTO {
   name: string;
   readOnly: boolean;
   isShared: boolean;
+  isDirectory?: boolean;
+  canCreate?: boolean;
   owner?: string;
   ctag?: string;
   description?: string;
@@ -92,7 +95,7 @@ function foldVcardLine(line: string, maxChars = 74): string {
   return chunks.join('\r\n');
 }
 
-function canonicalAddressBookKey(rawUrl: string): string {
+export function canonicalAddressBookKey(rawUrl: string): string {
   try {
     const u = new URL(ensureTrailingSlash(rawUrl.trim()));
     const decodedPath = u.pathname
@@ -148,14 +151,16 @@ async function carddavRequest(
 function detectAddressBookPermissions(
   bookUrl: string,
   displayName: string,
-  normalizedUser: string
-): { isShared: boolean; readOnly: boolean; owner?: string } {
+  normalizedUser: string,
+  directory = false
+): { isShared: boolean; readOnly: boolean; isDirectory?: boolean; owner?: string } {
   const decoded = decodeURIComponent(bookUrl || '');
   let isShared = false;
   let readOnly = false;
   let owner: string | undefined;
 
-  if (/\/Contacts\/public(?:\/|$)/i.test(decoded)) {
+  const isDirectory = directory || /\/Contacts\/public(?:\/|$)/i.test(decoded) || /^GAL(?:\s|$)/i.test(displayName);
+  if (isDirectory) {
     isShared = true;
     readOnly = true;
   }
@@ -182,7 +187,7 @@ function detectAddressBookPermissions(
     readOnly = true;
   }
 
-  return { isShared, readOnly, owner };
+  return { isShared, readOnly, isDirectory, owner };
 }
 
 async function fetchAddressBooksDirectPropfind(
@@ -195,6 +200,7 @@ async function fetchAddressBooksDirectPropfind(
   <D:prop>
     <D:displayname/>
     <D:resourcetype/>
+    <D:current-user-privilege-set/>
     <CS:getctag/>
     <CR:addressbook-description/>
   </D:prop>
@@ -223,12 +229,14 @@ async function fetchAddressBooksDirectPropfind(
       continue;
     }
 
-    const resourceTypeMatch = block.match(
+    const properties = extractOkPropstatXml(block);
+    const resourceTypeMatch = properties.match(
       /<(?:[a-zA-Z0-9]+:)?resourcetype[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?resourcetype>/i
     );
     const resourceTypeXml = resourceTypeMatch ? resourceTypeMatch[1] : '';
-    const isAddressBook = /<(?:[a-zA-Z0-9]+:)?addressbook(?:\s|>|\/)/i.test(resourceTypeXml);
-    if (!isAddressBook) {
+    const isDirectory = /<(?:[\w.-]+:)?directory(?:\s|>|\/)/i.test(resourceTypeXml);
+    const isAddressBook = /<(?:[\w.-]+:)?addressbook(?:\s|>|\/)/i.test(resourceTypeXml);
+    if (!isAddressBook && !isDirectory) {
       continue;
     }
 
@@ -252,19 +260,20 @@ async function fetchAddressBooksDirectPropfind(
 
     const isPublicDir = /\/Contacts\/public\/$/i.test(decodedFull);
     const name = rawName || (isPublicDir ? 'Global Adressebog' : 'Personlig adressebog');
-    const { isShared, readOnly, owner } = detectAddressBookPermissions(
-      fullUrl,
-      name,
-      normalizedUser
-    );
+    const permissions = detectAddressBookPermissions(fullUrl, name, normalizedUser, isDirectory);
+    const privileges = properties.match(/<(?:[\w.-]+:)?current-user-privilege-set[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?current-user-privilege-set>/i)?.[1];
+    const canCreate = !permissions.readOnly && (privileges === undefined ||
+      /<(?:[\w.-]+:)?(?:bind|write|all)(?:\s|>|\/)/i.test(privileges));
+    const canEdit = privileges === undefined ||
+      /<(?:[\w.-]+:)?(?:write-content|unbind)(?:\s|>|\/)/i.test(privileges);
 
     results.push({
       id: fullUrl,
       url: fullUrl,
       name,
-      readOnly,
-      isShared,
-      owner,
+      ...permissions,
+      readOnly: permissions.readOnly || (!canCreate && !canEdit),
+      canCreate,
       ctag: ctagMatch ? ctagMatch[1].trim() : undefined,
       description
     });
@@ -322,19 +331,14 @@ export async function fetchAddressBooks(creds: CalDavCredentials): Promise<Addre
             ? normalizeDanishText(book.displayName.trim())
             : 'Adressebog';
 
-        const { isShared, readOnly, owner } = detectAddressBookPermissions(
-          fullUrl,
-          name,
-          normalizedUser
-        );
+        const permissions = detectAddressBookPermissions(fullUrl, name, normalizedUser);
 
         discoveredByKey.set(key, {
           id: fullUrl,
           url: fullUrl,
           name,
-          readOnly,
-          isShared,
-          owner,
+          ...permissions,
+          canCreate: !permissions.readOnly,
           ctag: book.ctag,
           description: typeof book.description === 'string' ? book.description : undefined
         });
@@ -345,7 +349,7 @@ export async function fetchAddressBooks(creds: CalDavCredentials): Promise<Addre
   }
 
   // 3. Sidste fallback: prøv standard SOGo personal adressebog
-  if (![...discoveredByKey.values()].some((book) => !book.readOnly && !book.isShared)) {
+  if (![...discoveredByKey.values()].some((book) => !book.readOnly && book.canCreate !== false && !book.isShared)) {
     const fallbackUrl = `${buildSogoUserContactsHomeUrl(creds.serverUrl, creds.username)}personal/`;
     try {
       const [personal] = await fetchAddressBooksDirectPropfind(creds, fallbackUrl, '0');
@@ -909,9 +913,9 @@ function parseContactResponse(xml: string, book: AddressBookDTO): ContactDTO[] {
 
 const xmlContentType = 'application/xml; charset=utf-8';
 
-async function fetchContactsFromAddressBookReport(creds: CalDavCredentials, book: AddressBookDTO): Promise<ContactDTO[]> {
+async function fetchContactsFromAddressBookReport(creds: CalDavCredentials, book: AddressBookDTO, filter = '<CR:filter/>'): Promise<ContactDTO[]> {
   const xml = '<?xml version="1.0"?><CR:addressbook-query xmlns:D="DAV:" xmlns:CR="urn:ietf:params:xml:ns:carddav">' +
-    '<D:prop><D:getetag/><CR:address-data/></D:prop><CR:filter/></CR:addressbook-query>';
+    '<D:prop><D:getetag/><CR:address-data/></D:prop>' + filter + '</CR:addressbook-query>';
   const result = await carddavRequest(creds, 'REPORT', ensureTrailingSlash(book.url), xml, {
     'Content-Type': xmlContentType, Depth: '1'
   });
@@ -974,7 +978,11 @@ export async function fetchAllContacts(
           return;
         }
 
-        const query = await fetchContactsFromAddressBookReport(creds, book).catch(() => []);
+        let query = await fetchContactsFromAddressBookReport(creds, book).catch(() => []);
+        if (!query.length && book.isDirectory) {
+          const filter = '<CR:filter><CR:prop-filter name="EMAIL"><CR:text-match match-type="contains">@</CR:text-match></CR:prop-filter></CR:filter>';
+          query = await fetchContactsFromAddressBookReport(creds, book, filter).catch(() => []);
+        }
         const list = query.length ? query : await fetchContactsByMember(creds, book);
         if (book.ctag) {
           contactsCache.set(cacheKey, {

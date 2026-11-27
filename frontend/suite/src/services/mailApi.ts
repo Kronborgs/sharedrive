@@ -7,6 +7,8 @@ import type {
   SieveRule
 } from '../types/mail';
 
+import { reportPausedMailcow } from './authApi';
+
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api/v1/me/mailcow/suite/mail${path}`, {
     ...options,
@@ -16,6 +18,7 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
       ...(options.headers || {})
     }
   });
+  reportPausedMailcow(res);
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) {
     throw new Error(data.error || `HTTP fejl ${res.status}`);

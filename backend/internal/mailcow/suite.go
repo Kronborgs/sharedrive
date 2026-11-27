@@ -64,7 +64,7 @@ func (h *Accounts) Suite(w http.ResponseWriter, r *http.Request) {
 		accountError(w)
 		return
 	}
-	h.forwardSuite(w, r, path, owner, account.accountSummary, password)
+	h.forwardSuite(w, r, path, owner, account, password)
 }
 
 func (h *Accounts) suiteScope(owner uuid.UUID, account accountSummary) string {
@@ -103,7 +103,7 @@ func (h *Accounts) PublicCalendar(w http.ResponseWriter, r *http.Request) {
 		calendarLinkUnavailable(w)
 		return
 	}
-	h.forwardSuite(w, r, "caldav/public/"+token, link.Owner, account.accountSummary, password)
+	h.forwardSuite(w, r, "caldav/public/"+token, link.Owner, account, password)
 }
 
 func calendarLinkUnavailable(w http.ResponseWriter) {
@@ -133,12 +133,14 @@ func (h *Accounts) lookupCalendarLink(r *http.Request, token string) (calendarLi
 	return link, err
 }
 
-func (h *Accounts) forwardSuite(w http.ResponseWriter, r *http.Request, path string, owner uuid.UUID, account accountSummary, password []byte) {
+func (h *Accounts) forwardSuite(w http.ResponseWriter, r *http.Request, path string, owner uuid.UUID, account storedAccount, password []byte) {
+	revision := sha256.Sum256(account.encryptedPassword)
 	bridge, err := json.Marshal(struct {
 		accountSummary
-		Password string `json:"password"`
+		Password           string `json:"password"`
+		CredentialRevision string `json:"credentialRevision"`
 		calendarLinkOwner
-	}{account, string(password), calendarLinkOwner{Owner: owner, Scope: h.suiteScope(owner, account)}})
+	}{account.accountSummary, string(password), hex.EncodeToString(revision[:]), calendarLinkOwner{Owner: owner, Scope: h.suiteScope(owner, account.accountSummary)}})
 	if err != nil {
 		accountError(w)
 		return

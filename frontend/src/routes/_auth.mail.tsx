@@ -22,6 +22,7 @@ function MailPage() {
   const feature = useMailcowNavigation(user)
   const account = useMailcowAccount(user?.id, feature.enabled)
   const [showSettings, setShowSettings] = useState(false)
+  const [connectionRevision, setConnectionRevision] = useState(0)
   const closeSettings = () => {
     setShowSettings(false)
     if (manage) void navigate({ search: { view }, replace: true })
@@ -36,7 +37,7 @@ function MailPage() {
     <>
       {linked && !manage ? (
         <MailcowLauncher
-          key={user.id + '/' + accountKey}
+          key={user.id + '/' + accountKey + '/' + connectionRevision}
           userId={user.id}
           accountKey={accountKey}
           username={linked.username}
@@ -55,7 +56,7 @@ function MailPage() {
           </button>
         </section>
       )}
-      {(showSettings || manage) && <MailcowAccountDialog userId={user.id} close={closeSettings} />}
+      {(showSettings || manage) && <MailcowAccountDialog userId={user.id} close={closeSettings} onConnected={() => setConnectionRevision(revision => revision + 1)} />}
     </>
   )
 }

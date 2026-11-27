@@ -7,6 +7,7 @@ export interface SuiteSessionResponse {
   authenticated: boolean;
   username?: string;
   aliases?: SenderAlias[];
+  authBlocked?: boolean;
 }
 
 export interface SuiteLoginResponse {
@@ -50,11 +51,18 @@ export async function apiGetSuiteSession(): Promise<SuiteSessionResponse> {
       ok: Boolean(data?.ok),
       authenticated: Boolean(data?.authenticated),
       username: data?.username || '',
+      authBlocked: data?.authBlocked === true,
       aliases: Array.isArray(data?.aliases) ? data.aliases : []
     };
   } catch {
     return { ok: false, authenticated: false };
   }
+}
+
+export const mailcowAuthPausedEvent = 'sharedrive-mailcow-auth-paused';
+
+export function reportPausedMailcow(response: Response): void {
+  if (response.status === 424) window.dispatchEvent(new Event(mailcowAuthPausedEvent));
 }
 
 export async function apiLoginSuite(params: {

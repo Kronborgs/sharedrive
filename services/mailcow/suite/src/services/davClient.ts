@@ -314,7 +314,7 @@ export async function davRequest(
 /**
  * XML-hjælpere til robust CalDAV/SOGo parsing
  */
-function extractOkPropstatXml(responseBlock: string): string {
+export function extractOkPropstatXml(responseBlock: string): string {
   const propstats =
     responseBlock.match(
       /<(?:[a-zA-Z0-9_-]+:)?propstat\b[^>]*>[\s\S]*?<\/(?:[a-zA-Z0-9_-]+:)?propstat>/gi
@@ -1683,8 +1683,9 @@ export async function saveCalDavEvent(
   options?: { createOnly?: boolean; invitationSeries?: string }
 ): Promise<CalendarEventDTO> {
   const uid = eventDto.uid || crypto.randomUUID();
-  const icsString = options?.invitationSeries ?? buildIcsFromEvent({ ...eventDto, uid }, { saveInvitation: options?.createOnly });
   const isUpdate = Boolean(eventDto.caldavUrl);
+  const organizer = eventDto.organizer ?? (!isUpdate && !options?.createOnly && eventDto.attendees?.length ? creds.username : undefined);
+  const icsString = options?.invitationSeries ?? buildIcsFromEvent({ ...eventDto, uid, organizer }, { saveInvitation: options?.createOnly });
   const objectName = options?.createOnly ? crypto.createHash('sha256').update(uid).digest('hex') : encodeURIComponent(uid);
   const objectUrl = isUpdate
     ? (eventDto.caldavUrl as string)
@@ -1702,6 +1703,7 @@ export async function saveCalDavEvent(
   return {
     ...eventDto,
     uid,
+    organizer,
     id: `${eventDto.calendarId}::${uid}`,
     caldavUrl: objectUrl,
     etag: newEtag

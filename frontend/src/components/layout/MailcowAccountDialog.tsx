@@ -5,7 +5,6 @@ import { type FormEvent, useState } from 'react'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { ignorePromise } from '@/lib/ignore-promise'
-import { MailcowWorkspace } from './MailcowWorkspace'
 import {
   mailcowAccountEndpoint as endpoint,
   mailcowAccountKey,
@@ -13,18 +12,17 @@ import {
   type MailcowAccountState,
   type MailcowConnection,
   type MailcowProbeResult,
-  type MailcowTab,
 } from '@/lib/mailcow'
 
 const protocols = ['imap', 'smtp', 'caldav', 'carddav'] as const
 
-export function MailcowAccountDialog({ userId, close, initialTab = 'inbox' }: Readonly<{ userId: string; close: () => void; initialTab?: MailcowTab }>) {
+export function MailcowAccountDialog({ userId, close, onConnected }: Readonly<{ userId: string; close: () => void; onConnected?: () => void }>) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const queryKey = mailcowAccountKey(userId)
   const { data, isError, isPending } = useMailcowAccount(userId)
   const [busy, setBusy] = useState(false)
-  const [view, setView] = useState<'intro' | 'details' | 'workspace' | 'settings' | 'saved'>('intro')
+  const [enteredDetails, setEnteredDetails] = useState(false)
   const [failed, setFailed] = useState(false)
   const [result, setResult] = useState<MailcowProbeResult | null>(null)
 
@@ -58,13 +56,13 @@ export function MailcowAccountDialog({ userId, close, initialTab = 'inbox' }: Re
         await queryClient.cancelQueries({ queryKey })
         queryClient.setQueryData<MailcowAccountState>(queryKey, { enabled: true, ready: true, account })
         await queryClient.invalidateQueries({ queryKey: ['mailcow-content', userId] })
-        setView('saved')
+        close()
+        onConnected?.()
       }
     }))
   }
 
-  const workspace = Boolean(data?.enabled && data.ready && data.account && view !== 'settings')
-  const details = data?.enabled && data.ready && (view === 'details' || view === 'settings')
+  const details = data?.enabled && data.ready && (enteredDetails || Boolean(data.account))
   const inputClass = 'w-full rounded-lg border border-subtle bg-(--app-bg) px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400'
   const buttonClass = 'rounded-lg border border-subtle px-3 py-2 text-sm hover:bg-(--app-bg) disabled:opacity-50'
 
@@ -72,23 +70,19 @@ export function MailcowAccountDialog({ userId, close, initialTab = 'inbox' }: Re
     <Dialog.Root open onOpenChange={(open) => { if (!open) close() }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[100] bg-black/65" />
-        <Dialog.Content className="fixed inset-x-4 top-1/2 z-[101] mx-auto max-h-[calc(100dvh-2rem)] max-w-3xl -translate-y-1/2 overflow-auto rounded-2xl border border-subtle bg-surface p-5 shadow-xl">
+        <Dialog.Content className="fixed inset-x-4 top-1/2 z-[101] mx-auto max-h-[calc(100dvh-2rem)] max-w-lg -translate-y-1/2 overflow-auto rounded-2xl border border-subtle bg-surface p-5 shadow-xl">
           <div className="flex items-center justify-between gap-3">
-            <Dialog.Title className="text-lg font-semibold">{t(workspace ? 'mailcowModule.title' : 'mailcowModule.setupTitle')}</Dialog.Title>
+            <Dialog.Title className="text-lg font-semibold">{t(data?.account ? 'mailcowAccount.title' : 'mailcowModule.setupTitle')}</Dialog.Title>
             <Dialog.Close className="rounded p-1 text-muted hover:text-white" aria-label={t('action.close')}><X size={18} /></Dialog.Close>
           </div>
           <Dialog.Description className="mt-1 text-sm text-muted">{t('mailcowAccount.description')}</Dialog.Description>
           {isPending && <p className="mt-3 text-sm text-muted">{t('settings.loading')}</p>}
           {isError && <p role="alert" className="mt-3 text-sm text-red-400">{t('mailcowTest.settingsUnavailable')}</p>}
           {data && (!data.enabled || !data.ready) && <p className="mt-3 text-sm text-muted">{t('mailcowAccount.disabled')}</p>}
-          {workspace && view === 'saved' && <output className="mt-3 block text-sm text-emerald-400">{t('mailcowTest.savedOwn')}</output>}
-          {workspace && data?.account && (
-            <MailcowWorkspace initialTab={initialTab} userId={userId} accountKey={data.account.host + '/' + data.account.username} settings={() => setView('settings')} />
-          )}
-          {data?.enabled && data.ready && !data.account && view === 'intro' && (
+          {data?.enabled && data.ready && !data.account && !enteredDetails && (
             <div className="mt-4 space-y-3">
               <p className="text-sm text-muted">{t('mailcowModule.setupHint')}</p>
-              <button type="button" className={buttonClass} onClick={() => setView('details')}>{t('mailcowModule.setupContinue')}</button>
+              <button type="button" className={buttonClass} onClick={() => setEnteredDetails(true)}>{t('mailcowModule.setupContinue')}</button>
             </div>
           )}
           {details && data?.account && (
@@ -115,9 +109,8 @@ export function MailcowAccountDialog({ userId, close, initialTab = 'inbox' }: Re
               </button>
             </form>
           )}
-          {view === 'settings' && data?.account && (
+          {data?.account && (
             <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" className={buttonClass} onClick={() => setView('workspace')}>{t('mailcowWorkspace.back')}</button>
               {data.ready && <button type="button" disabled={busy} className={buttonClass} onClick={() => ignorePromise(run(async () => {
                 setResult(await api.post<MailcowProbeResult>(endpoint + '/test', {}))
               }))}>{t('mailcowTest.run')}</button>}
@@ -125,14 +118,14 @@ export function MailcowAccountDialog({ userId, close, initialTab = 'inbox' }: Re
                 await api.delete(endpoint)
                 queryClient.setQueryData<MailcowAccountState>(queryKey, { enabled: data.enabled, ready: data.ready, account: null })
                 queryClient.removeQueries({ queryKey: ['mailcow-content', userId] })
-                setView('intro')
+                setEnteredDetails(false)
               }))}>{t('mailcowAccount.disconnect')}</button>
             </div>
           )}
           <div aria-live="polite">
             {busy && <p className="mt-3 text-sm text-muted">{t('mailcowAccount.working')}</p>}
             {failed && <p className="mt-3 text-sm text-red-400">{t('mailcowAccount.failed')}</p>}
-            {result && !workspace && <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+            {result && <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
               {protocols.map((protocol) => <div key={protocol}>
                 <dt>{protocol.toUpperCase()}</dt>
                 <dd className={result[protocol] === 'ok' ? 'text-emerald-400' : 'text-red-400'}>

@@ -70,10 +70,11 @@ type Accounts struct {
 	probe         *Probe
 	aead          cipher.AEAD
 	moduleEnabled func(context.Context) (bool, error)
+	scopeSecret   [sha256.Size]byte
 }
 
 func NewAccounts(db *pgxpool.Pool, probe *Probe, installationKey string, module Module) *Accounts {
-	return &Accounts{store: postgresAccounts{db}, probe: probe, aead: makeAccountCipher(installationKey), moduleEnabled: module.Enabled}
+	return &Accounts{store: postgresAccounts{db}, probe: probe, aead: makeAccountCipher(installationKey), moduleEnabled: module.Enabled, scopeSecret: sha256.Sum256([]byte("sharedrive/mailcow/browser-scope/v1:" + installationKey))}
 }
 
 func makeAccountCipher(installationKey string) cipher.AEAD {

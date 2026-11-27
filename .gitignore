@@ -42,3 +42,4 @@ desktop.ini
 
 # Backup exports (do not commit real exports)
 /data/
+frontend/public/mail/suite-ui/

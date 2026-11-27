@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e3a8a"/>
+      <stop offset="55%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+    <linearGradient id="glassGrad" x1="12" y1="12" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.04"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="#0f172a"/>
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#bgGrad)"/>
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#glassGrad)" stroke="#93c5fd" stroke-opacity="0.35" stroke-width="1.2"/>
+  <!-- Unified Envelope + Calendar Grid + Contact Badge -->
+  <rect x="14" y="18" width="36" height="28" rx="6" fill="#0f172a" fill-opacity="0.32" stroke="#ffffff" stroke-opacity="0.9" stroke-width="2.2"/>
+  <path d="M16 21L32 33L48 21" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Small bottom-right suite indicator dots (Mail / Cal / Contacts) -->
+  <circle cx="24" cy="39" r="2.2" fill="#60a5fa"/>
+  <circle cx="32" cy="39" r="2.2" fill="#34d399"/>
+  <circle cx="40" cy="39" r="2.2" fill="#f472b6"/>
+</svg>

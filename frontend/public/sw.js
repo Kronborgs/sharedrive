@@ -19,6 +19,7 @@ const SHELL_ASSETS = [
 
 // Patterns that should NEVER be cached (sensitive / dynamic data):
 const NO_CACHE_PATTERNS = [
+  /^\/mail\/suite-ui(?:\/|$)/,
   /^\/api\//,
   /^\/upload\//,
   /^\/dav\//,

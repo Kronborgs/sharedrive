@@ -401,6 +401,7 @@ export async function fetchFolderMessages(
         return { messages: [], total: 0, unread: 0 };
       }
 
+      let resultTotal = total;
       let rangeOrUids: string | number[] = '';
       let useUidFetch = false;
 
@@ -418,6 +419,7 @@ export async function fetchFolderMessages(
           { uid: true }
         );
         const uidList = Array.isArray(matchedUids) ? matchedUids : [];
+        resultTotal = uidList.length;
         if (uidList.length === 0) {
           return { messages: [], total: 0, unread: 0 };
         }
@@ -473,7 +475,7 @@ export async function fetchFolderMessages(
       }
 
       if (Array.isArray(rangeOrUids) && rangeOrUids.length === 0) {
-        return { messages: [], total, unread: 0 };
+        return { messages: [], total: resultTotal, unread: 0 };
       }
 
       const items: MailHeaderDTO[] = [];
@@ -526,7 +528,7 @@ export async function fetchFolderMessages(
 
       return {
         messages: items,
-        total,
+        total: resultTotal,
         unread: unreadCount
       };
     } finally {

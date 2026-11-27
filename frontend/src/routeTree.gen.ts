@@ -18,6 +18,7 @@ import { Route as ResetPasswordIndexRouteImport } from './routes/reset-password.
 import { Route as LoginIndexRouteImport } from './routes/login.index'
 import { Route as AcceptInviteIndexRouteImport } from './routes/accept-invite.index'
 import { Route as LoginTotpRouteImport } from './routes/login.totp'
+import { Route as AuthMailRouteImport } from './routes/_auth.mail'
 import { Route as AuthTrashIndexRouteImport } from './routes/_auth.trash.index'
 import { Route as AuthSharesIndexRouteImport } from './routes/_auth.shares.index'
 import { Route as AuthSharedBrowseIndexRouteImport } from './routes/_auth.shared-browse.index'
@@ -89,6 +90,11 @@ const LoginTotpRoute = LoginTotpRouteImport.update({
   id: '/totp',
   path: '/totp',
   getParentRoute: () => LoginRoute,
+} as any)
+const AuthMailRoute = AuthMailRouteImport.update({
+  id: '/mail',
+  path: '/mail',
+  getParentRoute: () => AuthRoute,
 } as any)
 const AuthTrashIndexRoute = AuthTrashIndexRouteImport.update({
   id: '/trash/',
@@ -231,6 +237,7 @@ const AuthRoomsDirectConversationIDRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRouteWithChildren
+  '/mail': typeof AuthMailRoute
   '/login/totp': typeof LoginTotpRoute
   '/accept-invite/': typeof AcceptInviteIndexRoute
   '/login/': typeof LoginIndexRoute
@@ -267,6 +274,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/mail': typeof AuthMailRoute
   '/login/totp': typeof LoginTotpRoute
   '/accept-invite': typeof AcceptInviteIndexRoute
   '/login': typeof LoginIndexRoute
@@ -306,6 +314,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_auth': typeof AuthRouteWithChildren
   '/login': typeof LoginRouteWithChildren
+  '/_auth/mail': typeof AuthMailRoute
   '/login/totp': typeof LoginTotpRoute
   '/accept-invite/': typeof AcceptInviteIndexRoute
   '/login/': typeof LoginIndexRoute
@@ -345,6 +354,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/mail'
     | '/login/totp'
     | '/accept-invite/'
     | '/login/'
@@ -381,6 +391,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/mail'
     | '/login/totp'
     | '/accept-invite'
     | '/login'
@@ -419,6 +430,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_auth'
     | '/login'
+    | '/_auth/mail'
     | '/login/totp'
     | '/accept-invite/'
     | '/login/'
@@ -532,6 +544,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/login/totp'
       preLoaderRoute: typeof LoginTotpRouteImport
       parentRoute: typeof LoginRoute
+    }
+    '/_auth/mail': {
+      id: '/_auth/mail'
+      path: '/mail'
+      fullPath: '/mail'
+      preLoaderRoute: typeof AuthMailRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/_auth/trash/': {
       id: '/_auth/trash/'
@@ -726,6 +745,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthRouteChildren {
+  AuthMailRoute: typeof AuthMailRoute
   AuthNotesIdRoute: typeof AuthNotesIdRoute
   AuthNotesArchiveRoute: typeof AuthNotesArchiveRoute
   AuthNotesTrashRoute: typeof AuthNotesTrashRoute
@@ -752,6 +772,7 @@ interface AuthRouteChildren {
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
+  AuthMailRoute: AuthMailRoute,
   AuthNotesIdRoute: AuthNotesIdRoute,
   AuthNotesArchiveRoute: AuthNotesArchiveRoute,
   AuthNotesTrashRoute: AuthNotesTrashRoute,

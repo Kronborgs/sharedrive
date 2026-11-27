@@ -42,10 +42,10 @@ function icalTime(date) {
   return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
 }
 
-export async function listEvents(address, account) {
+export async function listEvents(address, account, range = {}) {
   const now = Date.now()
-  const start = icalTime(new Date(now - 86400000))
-  const end = icalTime(new Date(now + 30 * 86400000))
+  const start = icalTime(new Date(range.start ?? now - 86400000))
+  const end = icalTime(new Date(range.end ?? now + 30 * 86400000))
   const xml = `<c:calendar-query xmlns:d="DAV:" xmlns:c="${calendarNamespace}">
     <d:prop><c:calendar-data><c:expand start="${start}" end="${end}"/></c:calendar-data></d:prop>
     <c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="${start}" end="${end}"/></c:comp-filter></c:comp-filter></c:filter>

@@ -1,10 +1,10 @@
-import { fetchFolderMessages, fetchMessageDetail, sendEmailViaSmtp } from './brogaard/mailClient.ts'
+import { fetchFolderMessages, fetchMailFolders, fetchMessageDetail, sendEmailViaSmtp } from './brogaard/mailClient.ts'
 import { createContact, createEvent, listContacts, listEvents } from './dav-data.mjs'
 import { resolveMailcowAddress } from './network.mjs'
 
 const email = /^[A-Za-z0-9.!#$%&'*+=?^_`{|}~-]+@[A-Za-z0-9.-]+$/
 const inbox = 'INBOX'
-const operations = new Set(['inbox', 'message', 'send', 'calendar', 'event', 'contacts', 'contact'])
+const operations = new Set(['inbox', 'folders', 'folder', 'message', 'send', 'calendar', 'event', 'contacts', 'contact'])
 
 export function hasOperation(name) {
   return operations.has(name)
@@ -14,10 +14,27 @@ function shortText(value, max) {
   return typeof value === 'string' && value.length <= max && !/[\x00-\x1f\x7f]/.test(value)
 }
 
+function validFolder(value) {
+  return shortText(value, 512) && value.length > 0
+}
+
+function validRange(input) {
+  if (input.start === undefined && input.end === undefined) return true
+  if (!shortText(input.start, 35) || !shortText(input.end, 35)) return false
+  const duration = Date.parse(input.end) - Date.parse(input.start)
+  return duration > 0 && duration <= 45 * 86_400_000
+}
+
 function validArguments(name, input) {
   switch (name) {
+    case 'folder':
+      return validFolder(input.folder) && Number.isInteger(input.page) && input.page >= 1 &&
+        input.page <= 10_000 && shortText(input.search, 240)
+    case 'calendar':
+      return validRange(input)
     case 'message':
-      return Number.isInteger(input.uid) && input.uid >= 1 && input.uid <= 0xffffffff
+      return (input.folder === undefined || validFolder(input.folder)) &&
+        Number.isInteger(input.uid) && input.uid >= 1 && input.uid <= 0xffffffff
     case 'send':
       return shortText(input.to, 254) && email.test(input.to) && shortText(input.subject, 255) &&
         typeof input.body === 'string' && input.body.length <= 24_000 && input.body.trim().length > 0
@@ -33,6 +50,13 @@ function validArguments(name, input) {
   }
 }
 
+function messageSummary({ uid, subject, from, date, seen, hasAttachments }) {
+  return {
+    uid, subject: subject.slice(0, 240), from: from[0]?.address ?? '', fromName: (from[0]?.name ?? '').slice(0, 240),
+    date, seen, hasAttachments,
+  }
+}
+
 export function createOperations({ smtpPort }) {
   return async (name, account, input = {}) => {
     if (!input || typeof input !== 'object' || Array.isArray(input) || !validArguments(name, input)) return null
@@ -45,17 +69,26 @@ export function createOperations({ smtpPort }) {
     switch (name) {
       case 'inbox': {
         const { messages } = await fetchFolderMessages(creds, inbox, { limit: 20 })
-        return messages.map(({ uid, subject, from, date }) => ({ uid, subject: subject.slice(0, 240), from: from[0]?.address ?? '', date }))
+        return messages.map(messageSummary)
+      }
+      case 'folders':
+        return (await fetchMailFolders(creds)).slice(0, 300).map(({ path, name, specialUse, unreadMessages }) =>
+          ({ path, name, specialUse, unread: unreadMessages }))
+      case 'folder': {
+        const { messages, total } = await fetchFolderMessages(creds, input.folder, {
+          limit: 20, page: input.page, searchQuery: input.search,
+        })
+        return { messages: messages.map(messageSummary), total }
       }
       case 'message': {
-        const message = await fetchMessageDetail(creds, inbox, input.uid, false, 2 * 1024 * 1024)
-        return { subject: message.subject.slice(0, 240), text: message.textBody.slice(0, 200_000) }
+        const message = await fetchMessageDetail(creds, input.folder ?? inbox, input.uid, false, 2 * 1024 * 1024)
+        return { ...messageSummary(message), text: message.textBody.slice(0, 200_000) }
       }
       case 'send':
         await sendEmailViaSmtp(creds, { fromEmail: account.username, to: [input.to], subject: input.subject, textBody: input.body })
         return { ok: true }
       case 'calendar':
-        return listEvents(address, account)
+        return listEvents(address, account, input)
       case 'event':
         await createEvent(address, account, input)
         return { ok: true }

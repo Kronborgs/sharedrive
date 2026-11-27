@@ -182,7 +182,11 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
         <ThemeSelect />
       </div>
 
-      {showMailcow && mailcow.enabled && user && <MailcowAccountDialog userId={user.id} close={() => setShowMailcow(false)} />}
+      {showMailcow && mailcow.enabled && user && <MailcowAccountDialog
+        userId={user.id}
+        close={() => setShowMailcow(false)}
+        onConnected={() => ignorePromise(navigate({ to: '/mail' }))}
+      />}
     </header>
   )
 }

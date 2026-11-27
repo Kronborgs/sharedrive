@@ -2,6 +2,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1: Build frontend
 # ─────────────────────────────────────────────────────────────────────────────
+FROM --platform=$BUILDPLATFORM node:24.22.3-alpine AS suite-ui-builder
+WORKDIR /suite
+COPY frontend/suite/package.json frontend/suite/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY frontend/suite/ ./
+RUN npm run build
+
 FROM --platform=$BUILDPLATFORM node:24.22.3-alpine AS frontend-builder
 ARG VERSION=dev
 
@@ -9,6 +16,7 @@ WORKDIR /fe
 COPY frontend/package*.json ./
 RUN npm install --prefer-offline
 COPY frontend/ .
+COPY --from=suite-ui-builder /suite/dist ./public/mail/suite-ui
 RUN APP_VERSION=${VERSION} npm run build
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -42,8 +50,10 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
 FROM node:22.22.0-bookworm-slim AS mailcow-runtime
 WORKDIR /opt/sharedrive-mailcow
 COPY services/mailcow/package.json services/mailcow/package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm ci --ignore-scripts
 COPY services/mailcow/src ./src
+COPY services/mailcow/suite/src ./suite/src
+RUN npm run build:suite && npm prune --omit=dev --ignore-scripts
 
 FROM gotenberg/gotenberg:8.40.0
 

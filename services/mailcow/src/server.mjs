@@ -44,12 +44,16 @@ async function readAccount(request, maxBytes, diagnostic) {
   return { account: { username, password, host }, input }
 }
 
-export function createProbeServer({ token, probe, operation }) {
+export function createProbeServer({ token, probe, operation, suite }) {
   const expected = digest(`Bearer ${token}`)
   let busy = false
   let active = 0
 
   return createServer({ requestTimeout: 15_000, headersTimeout: 10_000, connectionsCheckingInterval: 1_000 }, async (request, response) => {
+    if (suite && request.url?.startsWith('/suite/api/')) {
+      request.url = request.url.slice('/suite'.length)
+      return suite(request, response)
+    }
     if (request.method === 'GET' && request.url === '/healthz') {
       return reply(response, 200, { status: 'ok' })
     }

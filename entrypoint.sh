@@ -40,6 +40,7 @@ if [ -z "${SHAREDRIVE_MAILCOW_TOKEN:-}" ]; then
     SHAREDRIVE_MAILCOW_TOKEN="$SHAREDRIVE_MAILCOW_TOKEN" \
     SHAREDRIVE_MAILCOW_PORT="${SHAREDRIVE_MAILCOW_PORT:-3025}" \
     SHAREDRIVE_MAILCOW_SMTP_PORT="${SHAREDRIVE_MAILCOW_SMTP_PORT:-465}" \
+    DATA_DIR="${SHAREDRIVE_MAILCOW_DATA_DIR:-/data/backups/.mailcow-suite}" \
     /usr/local/bin/sharedrive-node /opt/sharedrive-mailcow/src/index.mjs &
 fi
 

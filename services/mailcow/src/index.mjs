@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { createOperations } from './operations.mjs'
 import { createProbe } from './probe.mjs'
 import { createProbeServer } from './server.mjs'
@@ -16,7 +17,9 @@ if (process.env.ALLOW_INSECURE_TLS === 'true' || process.env.NODE_TLS_REJECT_UNA
   throw new Error('Mailcow requires certificate verification')
 }
 
-const server = createProbeServer({ token, probe: createProbe({ smtpPort }), operation: createOperations({ smtpPort }) })
+const suitePath = new URL('../suite/dist/index.mjs', import.meta.url)
+const suite = existsSync(suitePath) ? (await import(suitePath.href)).createSuiteHandler({ token, smtpPort }) : undefined
+const server = createProbeServer({ token, suite, probe: createProbe({ smtpPort }), operation: createOperations({ smtpPort }) })
 server.listen(port, '127.0.0.1', () => {
   console.log(`Sharedrive Mailcow probe listening on 127.0.0.1:${port}`)
 })

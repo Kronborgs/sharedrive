@@ -12,7 +12,7 @@ Kør `npm ci`, `npm test` og `npm start` fra `services/mailcow` med Node 22.22.0
 | `SHAREDRIVE_MAILCOW_PORT` | Valgfri lokal port, standard 3025 |
 | `SHAREDRIVE_MAILCOW_SMTP_PORT` | 465 med TLS som standard, eller 587 med STARTTLS |
 
-`GET /healthz` viser, at tjenesten kører. Åbn Administration → Indstillinger → SMTP → Mailcow-forbindelse i Sharedrive. Gem serverens DNS-værtsnavn, og prøv to separate testkonti med deres applikationsadgangskoder. Go læser den gemte vært og sender den sammen med testkontoen til den interne Node-tjeneste. Tjenesten bruger et offentligt IPv4-resultat fra DNS og validerer TLS-certifikatet mod det gemte værtsnavn. Adgangskoden gemmes ikke af testen.
+`GET /healthz` viser, at tjenesten kører. Åbn Administration → Indstillinger → Mail → Mailcow-forbindelse i Sharedrive. Gem serverens DNS-værtsnavn, og prøv to separate testkonti med deres applikationsadgangskoder. Go læser den gemte vært og sender den sammen med testkontoen til den interne Node-tjeneste. Tjenesten bruger et offentligt IPv4-resultat fra DNS og validerer TLS-certifikatet mod det gemte værtsnavn. Adgangskoden gemmes ikke af testen.
 
 Eksempel på svar:
 
@@ -22,23 +22,17 @@ Eksempel på svar:
 
 Hver protokol returnerer `ok` eller `failed`. Prøven viser, om kontoen kan hente sin liste over IMAP-mapper, godkende sig til SMTP og finde en læsbar SOGo-kalender og adressebog. DAV-prøven kontrollerer både samlingstypen og status for egenskaben i DAV-svaret. SMTP-prøven sender ingen mail. DAV-prøven ændrer ingen kalenderaftaler eller kontakter. Se [arbejdsplanen](../../docs/sharedrive-mailcow-plan.md) for næste etape med adskilte testkonti og skrivning.
 
-## Kontotilknytning for en Sharedrive-bruger
+## Aktivér modulet
 
-Åbn **Min Mailcow-konto** i brugermenuen. Gem din egen Mailcow-vært, e-mailadresse og applikationsadgangskode. Brug **Test forbindelse** til at kontrollere den gemte konto, og **Frakobl konto** for at fjerne den fra Sharedrive. Flere brugere kan bruge hver sin offentlige Mailcow-vært. Administratorens testvært er uafhængig af disse konti.
+Standardimaget starter Node-tjenesten på loopback og lader funktionen være slået fra som standard. Gå til **Administration → Indstillinger → Mail**, og slå **Mail, Kalender og Kontakter** til. SMTP-fanen styrer stadig Sharedrives egne notifikationer.
 
-Go krypterer adgangskoderne med en separat nøgle afledt af installationens `TOTP_ENCRYPT_KEY`. Behold denne installationsnøgle sammen med databasen ved flytning. Hvis nøglen skiftes, skal brugerne gemme deres Mailcow-adgangskoder igen. Det almindelige SMTP til Sharedrive-notifikationer er adskilt fra brugerkontiene.
+Brugeren åbner **Mail** i brugermenuen eller i topbjælken. Guiden beder om brugerens egen offentlige Mailcow-vært, e-mailadresse og app-adgangskode. Kontoen gemmes, når IMAP, SMTP, CalDAV og CardDAV er bekræftet. Herefter kan brugeren læse indbakken og sende almindelig tekstmail, se og oprette aftaler i den primære kalender samt se og oprette kontakter i den primære adressebog.
 
-## Kør på testserveren
+Go krypterer adgangskoderne med en separat nøgle afledt af installationens `TOTP_ENCRYPT_KEY`. Behold denne installationsnøgle sammen med databasen ved flytning. Hvis nøglen skiftes, skal brugerne gemme deres Mailcow-adgangskoder igen.
 
-`docker-compose.mailcow.yml` er et valgfrit tillæg, der lader Go og Node dele loopback uden at publicere en ekstra port. Angiv `SHAREDRIVE_MAILCOW_TOKEN` i testmiljøet, og læg tillægget oven på testserverens eksisterende Compose-filer. Det ændrer ikke, hvilket Sharedrive-image testserveren bruger. Teststacken bør pege på GitLab-imaget med det godkendte commits korte hash, så den testede version kan identificeres i Sharedrives build-info.
+## Valgfri separat tjeneste
 
-I repoets nuværende pipeline publicerer et push til standardbranchen både commit-tagget og GitLab-registryets `latest`. Tjek, hvad der bruger dette tag, før et testpush godkendes. Publicering til GitHub er et separat manuelt job. Pipelinen starter ikke selv Node-tillægget. Det skal tilføjes til teststacken og have samme token og port som Go-processen.
-
-For eksempel ved lokal Docker-udvikling:
-
-```sh
-docker compose -f docker-compose.dev.yml -f docker-compose.mailcow.yml up -d --build
-```
+Sæt kun `SHAREDRIVE_MAILCOW_TOKEN` eksplicit, hvis Go skal bruge en separat tjeneste. Brug i så fald samme token og port i begge processer. `docker-compose.mailcow.yml` kan bruges til det i udvikling.
 
 ## Kilderevision
 

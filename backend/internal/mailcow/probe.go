@@ -163,18 +163,40 @@ func (p *Probe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Probe) replyProbe(w http.ResponseWriter, r *http.Request, host string, account credentials) {
+	result, ok := p.test(w, r, host, account)
+	if ok {
+		httputil.Respond(w, http.StatusOK, result)
+	}
+}
+
+func (p *Probe) test(w http.ResponseWriter, r *http.Request, host string, account credentials) (probeResult, bool) {
+	data, ok := p.operation(w, r, "probe", host, account, nil)
+	var result probeResult
+	if !ok {
+		return result, false
+	}
+	if json.Unmarshal(data, &result) != nil || !result.valid() {
+		httputil.RespondError(w, http.StatusBadGateway, errProbeUnavailable)
+		return probeResult{}, false
+	}
+	return result, true
+}
+
+func (p *Probe) operation(w http.ResponseWriter, r *http.Request, operation, host string, account credentials, arguments json.RawMessage) (json.RawMessage, bool) {
 	data, err := json.Marshal(struct {
 		credentials
-		Host string `json:"host"`
-	}{account, host})
-	if err != nil || len(data) > maxPayload {
+		Host      string          `json:"host"`
+		Arguments json.RawMessage `json:"arguments,omitempty"`
+	}{account, host, arguments})
+	if err != nil || len(data) > 96*1024 {
 		httputil.RespondError(w, http.StatusBadRequest, errInvalidCredentials)
-		return
+		return nil, false
 	}
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, p.target, bytes.NewReader(data))
+	target := strings.TrimSuffix(p.target, "probe") + operation
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, target, bytes.NewReader(data))
 	if err != nil {
 		httputil.RespondError(w, http.StatusBadGateway, errProbeUnavailable)
-		return
+		return nil, false
 	}
 	request.Header.Set("Authorization", "Bearer "+p.token)
 	request.Header.Set("Content-Type", "application/json")
@@ -182,22 +204,24 @@ func (p *Probe) replyProbe(w http.ResponseWriter, r *http.Request, host string, 
 	response, err := p.client.Do(request)
 	if err != nil {
 		httputil.RespondError(w, http.StatusBadGateway, errProbeUnavailable)
-		return
+		return nil, false
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusTooManyRequests {
-		httputil.RespondError(w, http.StatusTooManyRequests, "A Mailcow connection test is already running")
-		return
+		httputil.RespondError(w, http.StatusTooManyRequests, "A Mailcow request is already running")
+		return nil, false
+	}
+	if response.StatusCode == http.StatusBadRequest && operation != "probe" {
+		httputil.RespondError(w, http.StatusBadRequest, "Invalid Mailcow request")
+		return nil, false
 	}
 
-	var result probeResult
-	if response.StatusCode != http.StatusOK ||
-		json.NewDecoder(io.LimitReader(response.Body, maxPayload)).Decode(&result) != nil ||
-		!result.valid() {
+	payload, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+	if response.StatusCode != http.StatusOK || err != nil || !json.Valid(payload) {
 		httputil.RespondError(w, http.StatusBadGateway, errProbeUnavailable)
-		return
+		return nil, false
 	}
-	httputil.Respond(w, http.StatusOK, result)
+	return payload, true
 }
 
 func (c credentials) valid() bool {

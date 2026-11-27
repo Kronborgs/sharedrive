@@ -31,5 +31,17 @@ chown -R "${PUID}:${PGID}" /data 2>/dev/null || true
   --libreoffice-restart-after=10 \
   --log-level=warn &
 
+# Run the bundled Mailcow service on loopback. An explicitly supplied token
+# selects an external companion service, such as the optional Compose overlay.
+if [ -z "${SHAREDRIVE_MAILCOW_TOKEN:-}" ]; then
+  SHAREDRIVE_MAILCOW_TOKEN=$(/usr/local/bin/sharedrive-node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')
+  export SHAREDRIVE_MAILCOW_TOKEN
+  su-exec sharedrive env -i \
+    SHAREDRIVE_MAILCOW_TOKEN="$SHAREDRIVE_MAILCOW_TOKEN" \
+    SHAREDRIVE_MAILCOW_PORT="${SHAREDRIVE_MAILCOW_PORT:-3025}" \
+    SHAREDRIVE_MAILCOW_SMTP_PORT="${SHAREDRIVE_MAILCOW_SMTP_PORT:-465}" \
+    /usr/local/bin/sharedrive-node /opt/sharedrive-mailcow/src/index.mjs &
+fi
+
 # Drop privileges: exec the app as the non-root sharedrive user.
 exec su-exec sharedrive /usr/local/bin/privatedrive "$@"

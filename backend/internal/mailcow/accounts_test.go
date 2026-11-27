@@ -53,7 +53,7 @@ func TestAccountRequestsUseOnlyTheCurrentUsersSavedHostAndCredentials(t *testing
 	defer sidecar.Close()
 	store := make(memoryAccounts)
 	probe := NewProbe(sidecar.Listener.Addr().(*net.TCPAddr).Port, testToken, &memoryHost{host: "admin.example.test"})
-	handler := Accounts{store: store, probe: probe, aead: makeAccountCipher(strings.Repeat("12", 32))}
+	handler := Accounts{store: store, probe: probe, aead: makeAccountCipher(strings.Repeat("12", 32)), moduleEnabled: func(context.Context) (bool, error) { return true, nil }}
 	alice, bob := uuid.New(), uuid.New()
 
 	assertSavedMailcowConnection(t, handler, store, requests, alice, "mail-alice.example.test")
@@ -101,6 +101,9 @@ func assertSavedMailcowConnection(t *testing.T, handler Accounts, store memoryAc
 		strings.Contains(string(store[id].encryptedPassword), accountTestPassword) {
 		t.Fatalf("account was not stored safely: %d", got.Code)
 	}
+	if input := <-requests; input.Host != host {
+		t.Fatal("setup did not probe the selected host")
+	}
 	if got := requestAccount(id, http.MethodPost, `{}`, handler.Test, false); got.Code != http.StatusOK {
 		t.Fatalf("probe failed: %d %s", got.Code, got.Body)
 	}
@@ -111,5 +114,29 @@ func assertSavedMailcowConnection(t *testing.T, handler Accounts, store memoryAc
 		}
 	default:
 		t.Fatal("probe did not contact the test sidecar")
+	}
+}
+
+func TestDisabledModuleRejectsUserOperations(t *testing.T) {
+	handler := Accounts{
+		store:         make(memoryAccounts),
+		probe:         NewProbe(3025, testToken, &memoryHost{}),
+		aead:          makeAccountCipher(strings.Repeat("12", 32)),
+		moduleEnabled: func(context.Context) (bool, error) { return false, nil },
+	}
+	owner := uuid.New()
+	for _, endpoint := range []struct {
+		method string
+		body   string
+		handle http.HandlerFunc
+	}{
+		{http.MethodPut, `{"host":"mail.example.test","username":"mailbox@example.test","password":"fixture"}`, handler.Save},
+		{http.MethodPost, `{}`, handler.Test},
+		{http.MethodGet, "", handler.Operation("inbox")},
+	} {
+		response := requestAccount(owner, endpoint.method, endpoint.body, endpoint.handle, false)
+		if response.Code != http.StatusServiceUnavailable {
+			t.Errorf("%s returned %d, want 503", endpoint.method, response.Code)
+		}
 	}
 }

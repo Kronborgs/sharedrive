@@ -13,12 +13,12 @@ Sharedrive får et valgfrit modul med Mail, Kalender og Kontakter i React. Go ej
 Den første [lokale forbindelsesprøve](../services/mailcow/README.md) er implementeret. Den genbruger Brogaards IMAP-klient og afprøver godkendelse og adgang via de fire protokoller.
 
 - Start med Brogaards `mailClient.ts` (IMAP/SMTP), `davClient.ts` og `icalMapper.ts` (CalDAV) samt `carddavClient.ts` (CardDAV), alle under `backend/src/services`. Kortlæg, hvilke dele der kan bruges uden Brogaards egen session og Express-ruter. Importér de nødvendige dele med dokumenteret commit-id fra [Brogaard Suite](https://github.com/mrbridgefarm/Brogaard-Suite). Hold Sharedrives integrationskode adskilt fra de importerede filer.
-- Kør klienterne i en intern Node-tjeneste med et lille API til Go. Sharedrive er det offentlige indgangspunkt. Den nuværende adminprøve gemmer én værtsadresse under Administration → Indstillinger → SMTP. Det er en diagnosefunktion. Brugernes kontotilknytning bruger den enkelte kontos eget værtsnavn.
+- Kør klienterne i en intern Node-tjeneste med et lille API til Go. Sharedrive er det offentlige indgangspunkt. Den nuværende adminprøve gemmer én værtsadresse under Administration → Indstillinger → Mail. Det er en diagnosefunktion. Brugernes kontotilknytning bruger den enkelte kontos eget værtsnavn.
 - Brug to separate testkonti til at bekræfte TLS, app-adgangskoder, modtagelse og afsendelse af mail samt læsning og skrivning af en aftale og kontakt. Kontrollér ændringerne i SOGo og at den anden konto ikke kan læse private data.
 
 ## 3. Kontotilknytning og brugerflade
 
-Kontotilknytning er implementeret lokalt i **Min Mailcow-konto** i brugermenuen. Den gemmer brugerens egen vært og konto, kan prøve forbindelsen og kan frakoble kontoen. Mail-, kalender- og kontaktvisningerne følger i næste etape.
+Kontotilknytning er implementeret lokalt i **Min Mailcow-konto** i brugermenuen. Den gemmer brugerens egen vært og konto, kan prøve forbindelsen og kan frakoble kontoen. Første brugerflade har en adminafbryder, en guide med forbindelsesprøve, indbakke og afsendelse samt læsning og oprettelse i SOGos primære kalender og adressebog. Deling, avancerede arbejdsgange og øvrige mapper følger senere.
 
 - Tilføj en administratorindstilling, der aktiverer modulet. Hver bruger angiver sit eget Mailcow-værtsnavn, sin mailadresse og sin applikationsadgangskode og kan frakoble kontoen. To brugere kan bruge samme Mailcow-server eller hver sin. Go henter værten og de krypterede legitimationsoplysninger for den indloggede Sharedrive-bruger og kontrollerer ejerskab ved hver forespørgsel. Bevar validering af værtsnavn, DNS og TLS som i forbindelsesprøven. Administratorens testvært begrænser ikke brugernes valg af server.
 - Tilføj Mail, Kalender og Kontakter i Sharedrives menu. Første version dækker indbakke, læsning og afsendelse af mail, kalender og aftaler samt søgning, oprettelse og redigering af kontakter.

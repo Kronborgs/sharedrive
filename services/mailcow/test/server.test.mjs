@@ -54,3 +54,26 @@ test('omits internal errors and allows retry after a failed probe', async (t) =>
   assert.deepEqual(await failed.json(), { error: 'probe_unavailable' })
   assert.deepEqual(await (await request(account)).json(), ok)
 })
+
+
+test('workspace operations require the internal token and accept fixed operation names', async (t) => {
+  const server = createProbeServer({
+    token,
+    probe: async () => ok,
+    operation: async (name, credentials, input) => ({ name, host: credentials.host, uid: input.uid }),
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => new Promise(resolve => server.close(resolve)))
+  const base = `http://127.0.0.1:${server.address().port}/internal/v1/`
+  const send = (operation, authorization) => fetch(base + operation, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: authorization },
+    body: JSON.stringify({ ...account, arguments: { uid: 8 } }),
+  })
+  assert.equal((await send('message', 'Bearer wrong')).status, 401)
+  assert.equal((await send('unknown', `Bearer ${token}`)).status, 404)
+  const response = await send('message', `Bearer ${token}`)
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { name: 'message', host: account.host, uid: 8 })
+})

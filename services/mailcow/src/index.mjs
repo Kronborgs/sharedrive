@@ -1,3 +1,4 @@
+import { createOperations } from './operations.mjs'
 import { createProbe } from './probe.mjs'
 import { createProbeServer } from './server.mjs'
 
@@ -15,7 +16,7 @@ if (process.env.ALLOW_INSECURE_TLS === 'true' || process.env.NODE_TLS_REJECT_UNA
   throw new Error('Mailcow requires certificate verification')
 }
 
-const server = createProbeServer({ token, probe: createProbe({ smtpPort }) })
+const server = createProbeServer({ token, probe: createProbe({ smtpPort }), operation: createOperations({ smtpPort }) })
 server.listen(port, '127.0.0.1', () => {
   console.log(`Sharedrive Mailcow probe listening on 127.0.0.1:${port}`)
 })

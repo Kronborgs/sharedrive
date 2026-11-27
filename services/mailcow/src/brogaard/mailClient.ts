@@ -9,6 +9,7 @@ export interface MailServerCredentials {
   imapPort: number;
   imapSecure: boolean;
   smtpHost: string;
+  smtpServerName?: string;
   smtpPort: number;
   smtpSecure: boolean;
   username: string;
@@ -667,11 +668,18 @@ export async function fetchMessageDetail(
   creds: MailServerCredentials,
   folderPath: string,
   uid: number,
-  markSeen = true
+  markSeen = true,
+  maxSize?: number
 ): Promise<MailDetailDTO> {
   return withImap(creds, async (client) => {
     const lock = await client.getMailboxLock(folderPath);
     try {
+      if (maxSize !== undefined) {
+        const metadata = await client.fetchOne(String(uid), { size: true }, { uid: true });
+        if (!metadata || metadata.size === undefined || metadata.size > maxSize) {
+          throw new Error('Beskeden er for stor eller findes ikke.');
+        }
+      }
       const msg = await client.fetchOne(
         String(uid),
         {
@@ -1147,17 +1155,22 @@ export async function sendEmailViaSmtp(
     host: creds.smtpHost,
     port: creds.smtpPort,
     secure: creds.smtpSecure,
+    requireTLS: !creds.smtpSecure,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
     auth: {
       user: creds.username,
       pass: creds.password
     },
     tls: {
-      rejectUnauthorized: !allowInsecure
+      rejectUnauthorized: !allowInsecure,
+      servername: creds.smtpServerName
     }
   });
 
   const mailOptions = buildMailOptions(payload);
-  const info = await transporter.sendMail(mailOptions);
+  const info = await transporter.sendMail(mailOptions).finally(() => transporter.close());
 
   // Gem en kopi i IMAP "Sendt"-mappen, sæt evt. \Answered flag og fjern evt. afsendt kladde fra "Kladder"
   if (payload.saveToSent !== false || (replaceDraft?.folder && replaceDraft?.uid)) {
@@ -1202,9 +1215,8 @@ export async function sendEmailViaSmtp(
           }
         }
       });
-    } catch (err) {
+    } catch {
       // Mails på visse servere (f.eks. Gmail/Exchange) gemmer selv i Sendt automatisk, så vi fejler ikke hvis APPEND afvises
-      console.warn('Kunne ikke opdatere IMAP efter afsendelse:', (err as any)?.message || err);
     }
   }
 

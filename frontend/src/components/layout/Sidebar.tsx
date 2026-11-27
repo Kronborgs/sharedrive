@@ -30,6 +30,7 @@ import { useI18n } from '@/lib/i18n'
 import { api, createPlaylist } from '@/lib/api'
 import { formatBytes, cn } from '@/lib/utils'
 import { WebDAVDialog } from '@/components/layout/WebDAVDialog'
+import { useMailcowEnabled } from '@/lib/mailcow'
 import { MailcowAccountDialog } from '@/components/layout/MailcowAccountDialog'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
 import { AddMusicDialog } from '@/components/files/AddMusicDialog'
@@ -441,6 +442,7 @@ function SidebarUserPanel({
   onLogout: () => void
   t: ReturnType<typeof useI18n>['t']
 }>) {
+  const mailcowEnabled = useMailcowEnabled(user)
   const [showMailcow, setShowMailcow] = useState(false)
   return (
     <div className="relative shrink-0 border-t border-zinc-200 dark:border-(--app-border) p-2">
@@ -458,7 +460,7 @@ function SidebarUserPanel({
         <ChevronDown size={14} className="text-zinc-400 shrink-0" />
       </button>
 
-      {showMailcow && user && <MailcowAccountDialog userId={user.id} close={() => setShowMailcow(false)} />}
+      {showMailcow && mailcowEnabled && user && <MailcowAccountDialog userId={user.id} close={() => setShowMailcow(false)} />}
 
       {showUserMenu && (
         <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-(--app-panel) border border-zinc-200 dark:border-(--app-border) rounded-xl shadow-lg py-1 z-50">
@@ -469,12 +471,12 @@ function SidebarUserPanel({
             <ShieldCheck size={14} className={user?.totp_enabled ? 'text-green-500' : 'text-zinc-400'} />
             {user?.totp_enabled ? t('auth.2faEnabled') : t('auth.enable2fa')}
           </button>
-          {user && user.role !== 'guest' && !user.rooms_only_account && (
+          {mailcowEnabled && (
             <button type="button"
               onClick={() => { setShowMailcow(true); onToggleMenu() }}
               className="w-full px-3 py-2 text-left text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-(--app-border) transition-colors"
             >
-              {t('mailcowAccount.title')}
+              {t('mailcowModule.tab')}
             </button>
           )}
           <button type="button"

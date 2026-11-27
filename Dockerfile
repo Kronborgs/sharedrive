@@ -39,13 +39,19 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3: Final runtime — Gotenberg image includes LibreOffice for Office → PDF
 # ─────────────────────────────────────────────────────────────────────────────
+FROM node:22.22.0-bookworm-slim AS mailcow-runtime
+WORKDIR /opt/sharedrive-mailcow
+COPY services/mailcow/package.json services/mailcow/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+COPY services/mailcow/src ./src
+
 FROM gotenberg/gotenberg:8.40.0
 
 USER root
 
 # Create a sharedrive user (uid 1000) — matches ownership of existing host-mounted
 # data directories. Gotenberg only requires non-root, any uid works.
-RUN apt-get update && apt-get install -y --no-install-recommends curl gosu && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl gosu libstdc++6 && \
     rm -rf /var/lib/apt/lists/* && \
     # Create su-exec compatible wrapper using gosu (Debian alternative)
     ln -sf /usr/sbin/gosu /usr/local/bin/su-exec && \
@@ -57,6 +63,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl gosu && \
 WORKDIR /app
 
 COPY --from=backend-builder /app/server /usr/local/bin/privatedrive
+COPY --from=mailcow-runtime /usr/local/bin/node /usr/local/bin/sharedrive-node
+COPY --from=mailcow-runtime /opt/sharedrive-mailcow /opt/sharedrive-mailcow
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

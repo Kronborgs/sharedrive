@@ -66,13 +66,14 @@ func (s postgresAccounts) remove(ctx context.Context, owner uuid.UUID) error {
 }
 
 type Accounts struct {
-	store accountStore
-	probe *Probe
-	aead  cipher.AEAD
+	store         accountStore
+	probe         *Probe
+	aead          cipher.AEAD
+	moduleEnabled func(context.Context) (bool, error)
 }
 
-func NewAccounts(db *pgxpool.Pool, probe *Probe, installationKey string) *Accounts {
-	return &Accounts{store: postgresAccounts{db}, probe: probe, aead: makeAccountCipher(installationKey)}
+func NewAccounts(db *pgxpool.Pool, probe *Probe, installationKey string, module Module) *Accounts {
+	return &Accounts{store: postgresAccounts{db}, probe: probe, aead: makeAccountCipher(installationKey), moduleEnabled: module.Enabled}
 }
 
 func makeAccountCipher(installationKey string) cipher.AEAD {
@@ -110,13 +111,18 @@ func accountOwner(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	return current.ID, true
 }
 
-func (h *Accounts) enabled() bool {
+func (h *Accounts) ready() bool {
 	return h.aead != nil && h.probe.client != nil
 }
 
 func (h *Accounts) Get(w http.ResponseWriter, r *http.Request) {
 	owner, ok := accountOwner(w, r)
 	if !ok {
+		return
+	}
+	enabled, err := h.moduleEnabled(r.Context())
+	if err != nil {
+		accountError(w)
 		return
 	}
 	account, err := h.store.load(r.Context(), owner)
@@ -130,8 +136,9 @@ func (h *Accounts) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.Respond(w, http.StatusOK, struct {
 		Enabled bool            `json:"enabled"`
+		Ready   bool            `json:"ready"`
 		Account *accountSummary `json:"account"`
-	}{h.enabled(), summary})
+	}{enabled, h.ready(), summary})
 }
 
 func (h *Accounts) Save(w http.ResponseWriter, r *http.Request) {
@@ -139,8 +146,7 @@ func (h *Accounts) Save(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !h.enabled() {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "Mailcow account linking is unavailable")
+	if !h.requireModule(w, r) {
 		return
 	}
 	if !isJSON(r) {
@@ -163,13 +169,26 @@ func (h *Accounts) Save(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondError(w, http.StatusBadRequest, "Invalid Mailcow account")
 		return
 	}
+	protocols, ok := h.probe.test(w, r, host, input.credentials)
+	if !ok {
+		return
+	}
+	type connectResult struct {
+		Account   *accountSummary `json:"account"`
+		Protocols probeResult     `json:"protocols"`
+	}
+	if protocols.IMAP != "ok" || protocols.SMTP != "ok" || protocols.CalDAV != "ok" || protocols.CardDAV != "ok" {
+		httputil.Respond(w, http.StatusOK, connectResult{Protocols: protocols})
+		return
+	}
+
 	summary := accountSummary{Host: host, Username: input.Username}
 	encrypted := h.aead.Seal(nil, nil, []byte(input.Password), accountAAD(owner, summary))
 	if err := h.store.save(r.Context(), owner, storedAccount{summary, encrypted}); err != nil {
 		accountError(w)
 		return
 	}
-	httputil.Respond(w, http.StatusOK, summary)
+	httputil.Respond(w, http.StatusOK, connectResult{Account: &summary, Protocols: protocols})
 }
 
 func (h *Accounts) Remove(w http.ResponseWriter, r *http.Request) {
@@ -189,8 +208,7 @@ func (h *Accounts) Test(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !h.enabled() {
-		httputil.RespondError(w, http.StatusServiceUnavailable, "Mailcow account linking is unavailable")
+	if !h.requireModule(w, r) {
 		return
 	}
 	// The JSON media type keeps cross-site HTML forms from triggering a probe.

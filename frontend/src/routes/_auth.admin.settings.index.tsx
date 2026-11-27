@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { MailcowTestPanel } from '@/components/admin/MailcowTestPanel'
+import { MailcowModuleSettings } from '@/components/admin/MailcowModuleSettings'
 import { useForm, type UseFormRegister } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -76,7 +76,7 @@ const settingsSchema = z.object({
 
 type FormValues = z.infer<typeof settingsSchema>
 
-type Tab = 'general' | 'smtp' | 'onlyoffice' | 'texteditor' | 'player' | 'rooms'
+type Tab = 'general' | 'smtp' | 'mailcow' | 'onlyoffice' | 'texteditor' | 'player' | 'rooms'
 type SMTPProviderId = 'gmail' | 'microsoft365' | 'outlook' | 'yahoo' | 'zoho' | 'custom'
 
 const SMTP_PROVIDER_PRESETS: Record<Exclude<SMTPProviderId, 'custom'>, { host: string; port: number; tls: boolean }> = {
@@ -238,6 +238,7 @@ function SettingsPage() {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'general',    label: t('settings.tabGeneral') },
     { id: 'smtp',       label: t('settings.tabSmtp') },
+    { id: 'mailcow',    label: t('mailcowModule.tab') },
     { id: 'onlyoffice', label: t('settings.tabOnlyOffice') },
     { id: 'texteditor', label: t('settings.tabTextEditor') },
     { id: 'player',     label: t('settings.tabPlayer') },
@@ -249,7 +250,7 @@ function SettingsPage() {
       <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('settings.title')}</h1>
 
       {/* Tab bar */}
-      <div className="flex gap-1 border-b border-zinc-200 dark:border-[#2d3148]">
+      <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-[#2d3148]">
         {tabs.map(t => (
           <button
             key={t.id}
@@ -534,7 +535,7 @@ function SettingsPage() {
           </div>
         </form>
       )}
-      {tab === 'smtp' && <MailcowTestPanel />}
+      {tab === 'mailcow' && <MailcowModuleSettings />}
     </div>
   )
 }

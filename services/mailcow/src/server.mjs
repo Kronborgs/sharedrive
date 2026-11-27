@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { createServer } from 'node:http'
+import { hasOperation } from './operations.mjs'
 import { isMailcowHostname } from './network.mjs'
 
 const maxBodyBytes = 4096
@@ -17,19 +18,20 @@ function reply(response, status, body) {
   response.end(JSON.stringify(body))
 }
 
-async function readAccount(request) {
+async function readAccount(request, maxBytes, diagnostic) {
   const chunks = []
   let size = 0
   for await (const chunk of request.iterator({ destroyOnReturn: false })) {
     size += chunk.length
-    if (size > maxBodyBytes) return null
+    if (size > maxBytes) return null
     chunks.push(chunk)
   }
   const account = JSON.parse(Buffer.concat(chunks).toString('utf8'))
   if (!account || typeof account !== 'object' || Array.isArray(account)) return null
-  const { username, password, host } = account
+  const { username, password, host, arguments: input } = account
   if (
-    Object.keys(account).length !== 3 ||
+    Object.keys(account).length !== (input === undefined ? 3 : 4) ||
+    (diagnostic && input !== undefined) ||
     !isMailcowHostname(host) ||
     typeof username !== 'string' ||
     username.length > 254 ||
@@ -39,18 +41,21 @@ async function readAccount(request) {
     password.length > 1024 ||
     /[\x00-\x1f\x7f]/.test(password)
   ) return null
-  return { username, password, host }
+  return { account: { username, password, host }, input }
 }
 
-export function createProbeServer({ token, probe }) {
+export function createProbeServer({ token, probe, operation }) {
   const expected = digest(`Bearer ${token}`)
   let busy = false
+  let active = 0
 
   return createServer({ requestTimeout: 15_000, headersTimeout: 10_000, connectionsCheckingInterval: 1_000 }, async (request, response) => {
     if (request.method === 'GET' && request.url === '/healthz') {
       return reply(response, 200, { status: 'ok' })
     }
-    if (request.method !== 'POST' || request.url !== '/internal/v1/probe') {
+    const name = request.url?.startsWith('/internal/v1/') ? request.url.slice('/internal/v1/'.length) : ''
+    const diagnostic = name === 'probe'
+    if (request.method !== 'POST' || !(diagnostic || (operation && hasOperation(name)))) {
       return reply(response, 404, { error: 'not_found' })
     }
     if (!timingSafeEqual(digest(request.headers.authorization ?? ''), expected)) {
@@ -59,25 +64,29 @@ export function createProbeServer({ token, probe }) {
     if (request.headers['content-type']?.split(';')[0].trim() !== 'application/json') {
       return reply(response, 415, { error: 'unsupported_media_type' })
     }
-    if (Number(request.headers['content-length']) > maxBodyBytes) {
+    const maxBytes = diagnostic ? maxBodyBytes : 96 * 1024
+    if (Number(request.headers['content-length']) > maxBytes) {
       response.setHeader('Connection', 'close')
       return reply(response, 413, { error: 'request_too_large' })
     }
-    if (busy) return reply(response, 429, { error: 'probe_in_progress' })
+    if (active >= 6 || (diagnostic && busy)) return reply(response, 429, { error: 'probe_in_progress' })
 
-    busy = true
+    if (diagnostic) busy = true
+    active++
     try {
-      const account = await readAccount(request).catch(() => null)
-      if (!account) {
+      const payload = await readAccount(request, maxBytes, diagnostic).catch(() => null)
+      if (!payload) {
         response.setHeader('Connection', 'close')
         return reply(response, 400, { error: 'invalid_account' })
       }
-      const result = await probe(account)
+      const result = diagnostic ? await probe(payload.account) : await operation(name, payload.account, payload.input)
+      if (result === null) return reply(response, 400, { error: 'invalid_arguments' })
       return reply(response, 200, result)
     } catch {
       return reply(response, 502, { error: 'probe_unavailable' })
     } finally {
-      busy = false
+      active--
+      if (diagnostic) busy = false
     }
   })
 }

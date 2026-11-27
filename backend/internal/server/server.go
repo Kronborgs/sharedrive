@@ -497,7 +497,9 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Delete("/api/v1/backup/buddy/sender-archives/{filename}", s.backupHandler.DeleteSenderArchive) // Reverse-tunnel endpoint: CGNAT peers connect here via WebSocket so this
 	// instance can push archives back through the tunnel.
 	r.Get("/api/v1/backup/buddy/tunnel", s.backupHandler.BuddyTunnel)
+	mailcowModule := mailcow.NewModule(s.db)
 	mailcowProbe := mailcow.NewProbe(s.cfg.MailcowProbePort, s.cfg.MailcowProbeToken, mailcow.PostgresHostStore{DB: s.db})
+	mailcowAccounts := mailcow.NewAccounts(s.db, mailcowProbe, s.cfg.TOTPEncryptKey, mailcowModule)
 	// ── Authenticated API routes ───────────────────────────────────────────
 	r.Group(func(r chi.Router) {
 		r.Use(s.authHandler.SessionMiddleware)
@@ -507,11 +509,18 @@ func (s *Server) buildRouter() *chi.Mux {
 		// Current user
 		r.Get("/api/v1/me", s.authHandler.Me)
 		r.Patch("/api/v1/me", s.handleUpdateMe)
-		mailcowAccounts := mailcow.NewAccounts(s.db, mailcowProbe, s.cfg.TOTPEncryptKey)
+		r.Get("/api/v1/mailcow/status", mailcowAccounts.Feature)
 		r.Get("/api/v1/me/mailcow", mailcowAccounts.Get)
 		r.Put("/api/v1/me/mailcow", mailcowAccounts.Save)
 		r.Delete("/api/v1/me/mailcow", mailcowAccounts.Remove)
 		r.Post("/api/v1/me/mailcow/test", mailcowAccounts.Test)
+		r.Get("/api/v1/me/mailcow/inbox", mailcowAccounts.Operation("inbox"))
+		r.Post("/api/v1/me/mailcow/message", mailcowAccounts.Operation("message"))
+		r.Post("/api/v1/me/mailcow/send", mailcowAccounts.Operation("send"))
+		r.Get("/api/v1/me/mailcow/calendar", mailcowAccounts.Operation("calendar"))
+		r.Post("/api/v1/me/mailcow/event", mailcowAccounts.Operation("event"))
+		r.Get("/api/v1/me/mailcow/contacts", mailcowAccounts.Operation("contacts"))
+		r.Post("/api/v1/me/mailcow/contact", mailcowAccounts.Operation("contact"))
 		r.Get("/api/v1/me/app-passwords", s.handleListAppPasswords)
 		r.Post("/api/v1/me/app-passwords", s.handleCreateAppPassword)
 		r.Delete("/api/v1/me/app-passwords/{id}", s.handleRevokeAppPassword)
@@ -746,6 +755,8 @@ r.Patch("/api/v1/admin/users/{id}/product-access", s.userHandler.UpdateProductAc
 			r.Get("/api/v1/admin/settings", s.handleAdminGetSettings)
 			r.Patch("/api/v1/admin/settings", s.handleAdminUpdateSettings)
 			r.Post("/api/v1/admin/settings/smtp-test", s.handleAdminSMTPTest)
+			r.Get("/api/v1/admin/mailcow", mailcowAccounts.AdminFeature)
+			r.Put("/api/v1/admin/mailcow", mailcowModule.Update)
 			r.Get("/api/v1/admin/settings/mailcow-test", mailcowProbe.Settings)
 			r.Patch("/api/v1/admin/settings/mailcow-test", mailcowProbe.UpdateHost)
 			r.Post("/api/v1/admin/settings/mailcow-test", mailcowProbe.ServeHTTP)

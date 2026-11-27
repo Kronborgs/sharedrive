@@ -1,8 +1,8 @@
-import { Search, Menu, File, Folder, Mail, X } from 'lucide-react'
+import { Search, Menu, File, Folder, X } from 'lucide-react'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { api } from '@/lib/api'
-import { useMailcowEnabled } from '@/lib/mailcow'
+import { useMailcowNavigation } from '@/lib/mailcow'
 import { useI18n } from '@/lib/i18n'
 import { ThemeSelect } from './ThemeSelect'
 import { MailcowAccountDialog } from './MailcowAccountDialog'
@@ -12,7 +12,7 @@ import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types
 import { ignorePromise } from '@/lib/ignore-promise'
 
 export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuToggle?: () => void }>) {
-  const mailcowEnabled = useMailcowEnabled(user)
+  const mailcow = useMailcowNavigation(user)
   const [showMailcow, setShowMailcow] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<FileItem[]>([])
@@ -170,22 +170,19 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
       </div>
 
       <div className="ml-auto flex min-w-0 items-center gap-2">
-        {mailcowEnabled && (
+        {mailcow.enabled && !mailcow.connected && !mailcow.loading && (
           <button
             type="button"
-            aria-label={t('mailcowAccount.title')}
-            title={t('mailcowAccount.title')}
             onClick={() => setShowMailcow(true)}
             className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-subtle bg-surface px-2.5 py-2 text-xs font-medium hover:bg-(--app-bg) focus-visible:outline-2 focus-visible:outline-brand-400 sm:px-3 sm:text-sm"
           >
-            <Mail size={16} aria-hidden="true" />
-            <span className="hidden sm:inline">{t('mailcowModule.tab')}</span>
+            {t('mailcowModule.tab')}
           </button>
         )}
         <ThemeSelect />
       </div>
 
-      {showMailcow && mailcowEnabled && user && <MailcowAccountDialog userId={user.id} close={() => setShowMailcow(false)} />}
+      {showMailcow && mailcow.enabled && user && <MailcowAccountDialog userId={user.id} close={() => setShowMailcow(false)} />}
     </header>
   )
 }

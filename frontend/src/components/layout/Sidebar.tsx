@@ -30,7 +30,7 @@ import { useI18n } from '@/lib/i18n'
 import { api, createPlaylist } from '@/lib/api'
 import { formatBytes, cn } from '@/lib/utils'
 import { WebDAVDialog } from '@/components/layout/WebDAVDialog'
-import { useMailcowEnabled } from '@/lib/mailcow'
+import { mailcowTabs, useMailcowNavigation, type MailcowTab } from '@/lib/mailcow'
 import { MailcowAccountDialog } from '@/components/layout/MailcowAccountDialog'
 import { TOTPSetupDialog } from '@/components/layout/TOTPSetupDialog'
 import { AddMusicDialog } from '@/components/files/AddMusicDialog'
@@ -442,8 +442,8 @@ function SidebarUserPanel({
   onLogout: () => void
   t: ReturnType<typeof useI18n>['t']
 }>) {
-  const mailcowEnabled = useMailcowEnabled(user)
-  const [showMailcow, setShowMailcow] = useState(false)
+  const mailcow = useMailcowNavigation(user)
+  const [mailcowTab, setMailcowTab] = useState<MailcowTab | null>(null)
   return (
     <div className="relative shrink-0 border-t border-zinc-200 dark:border-(--app-border) p-2">
       <button type="button"
@@ -460,7 +460,7 @@ function SidebarUserPanel({
         <ChevronDown size={14} className="text-zinc-400 shrink-0" />
       </button>
 
-      {showMailcow && mailcowEnabled && user && <MailcowAccountDialog userId={user.id} close={() => setShowMailcow(false)} />}
+      {mailcowTab && mailcow.enabled && user && <MailcowAccountDialog userId={user.id} initialTab={mailcowTab} close={() => setMailcowTab(null)} />}
 
       {showUserMenu && (
         <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-(--app-panel) border border-zinc-200 dark:border-(--app-border) rounded-xl shadow-lg py-1 z-50">
@@ -471,14 +471,16 @@ function SidebarUserPanel({
             <ShieldCheck size={14} className={user?.totp_enabled ? 'text-green-500' : 'text-zinc-400'} />
             {user?.totp_enabled ? t('auth.2faEnabled') : t('auth.enable2fa')}
           </button>
-          {mailcowEnabled && (
-            <button type="button"
-              onClick={() => { setShowMailcow(true); onToggleMenu() }}
+          {mailcow.enabled && mailcow.connected && mailcowTabs.map(tab => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => { setMailcowTab(tab); onToggleMenu() }}
               className="w-full px-3 py-2 text-left text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-(--app-border) transition-colors"
             >
-              {t('mailcowModule.tab')}
+              {t(tab === 'inbox' ? 'mailcowModule.tab' : `mailcowWorkspace.${tab}`)}
             </button>
-          )}
+          ))}
           <button type="button"
             onClick={onToggleLocale}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-(--app-border) transition-colors"

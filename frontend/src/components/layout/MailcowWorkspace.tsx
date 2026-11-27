@@ -3,6 +3,7 @@ import { type FormEvent, useState } from 'react'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { ignorePromise } from '@/lib/ignore-promise'
+import { mailcowTabs, type MailcowTab } from '@/lib/mailcow'
 
 const endpoint = '/api/v1/me/mailcow'
 const input = 'w-full rounded-lg border border-subtle bg-(--app-bg) px-3 py-2 text-sm'
@@ -11,7 +12,6 @@ type AccountProps = Readonly<{ userId: string; accountKey: string }>
 type Message = { uid: number; subject: string; from: string; date: string }
 type CalendarEvent = { id: string; title: string; start: string; end: string; allDay: boolean }
 type Contact = { id: string; name: string; email: string; phone: string }
-type Tab = 'inbox' | 'calendar' | 'contacts'
 
 function useMailList<T>({ userId, accountKey }: AccountProps, path: string) {
   return useQuery({
@@ -164,15 +164,13 @@ function Contacts(props: AccountProps) {
   )
 }
 
-const tabs = ['inbox', 'calendar', 'contacts'] as const
-
-export function MailcowWorkspace(props: AccountProps & Readonly<{ settings: () => void }>) {
+export function MailcowWorkspace(props: AccountProps & Readonly<{ initialTab: MailcowTab; settings: () => void }>) {
   const { t } = useI18n()
-  const [tab, setTab] = useState<Tab>('inbox')
+  const [tab, setTab] = useState(props.initialTab)
   return (
     <div className="mt-4 space-y-3">
       <nav className="flex flex-wrap gap-2" aria-label={t('mailcowModule.title')}>
-        {tabs.map(value => <button key={value} type="button" aria-pressed={tab === value} className={button} onClick={() => setTab(value)}>{t(`mailcowWorkspace.${value}`)}</button>)}
+        {mailcowTabs.map(value => <button key={value} type="button" aria-pressed={tab === value} className={button} onClick={() => setTab(value)}>{t(`mailcowWorkspace.${value}`)}</button>)}
         <button type="button" className={button} onClick={props.settings}>{t('mailcowAccount.title')}</button>
       </nav>
       {tab === 'inbox' && <Inbox userId={props.userId} accountKey={props.accountKey} />}

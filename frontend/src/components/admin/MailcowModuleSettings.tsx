@@ -4,7 +4,6 @@ import { ignorePromise } from '@/lib/ignore-promise'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { mailcowAdminEndpoint, mailcowFeatureKey, type MailcowStatus } from '@/lib/mailcow'
-import { MailcowTestPanel } from './MailcowTestPanel'
 
 export function MailcowModuleSettings() {
   const { t } = useI18n()
@@ -25,30 +24,27 @@ export function MailcowModuleSettings() {
   })
 
   return (
-    <div className="space-y-4">
-      <section className="space-y-3 rounded-xl border border-subtle bg-surface p-4">
-        <h2 className="font-semibold">{t('mailcowModule.title')}</h2>
-        <p className="text-sm text-muted">{t('mailcowModule.description')}</p>
-        {isError && <p role="alert" className="text-sm text-red-400">{t('mailcowTest.settingsUnavailable')}</p>}
-        {data && (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={draft ?? data.enabled}
-              disabled={draft !== null}
-              onChange={(event) => {
-                const checked = event.currentTarget.checked
-                setDraft(checked)
-                ignorePromise(save.mutateAsync(checked).catch(() => undefined).finally(() => setDraft(null)))
-              }}
-            />
-            {t('mailcowModule.enable')}
-          </label>
-        )}
-        {save.isError && <p role="alert" className="text-sm text-red-400">{t('settings.saveFailed')}</p>}
-        {data?.enabled && !data.ready && <p className="text-sm text-amber-400">{t('mailcowModule.unconfigured')}</p>}
-      </section>
-      {data?.enabled && <MailcowTestPanel />}
-    </div>
+    <section className="space-y-3 rounded-xl border border-subtle bg-surface p-4">
+      <h2 className="font-semibold">{t('mailcowModule.title')}</h2>
+      <p className="text-sm text-muted">{t('mailcowModule.description')}</p>
+      {isError && <p role="alert" className="text-sm text-red-400">{t('mailcowTest.settingsUnavailable')}</p>}
+      {data && (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={draft ?? data.enabled}
+            disabled={draft !== null}
+            onChange={(event) => {
+              const checked = event.currentTarget.checked
+              setDraft(checked)
+              ignorePromise(save.mutateAsync(checked).catch(() => undefined).finally(() => setDraft(null)))
+            }}
+          />
+          {t('mailcowModule.enable')}
+        </label>
+      )}
+      {save.isError && <p role="alert" className="text-sm text-red-400">{t('settings.saveFailed')}</p>}
+      {data?.enabled && !data.ready && <p className="text-sm text-amber-400">{t('mailcowModule.unconfigured')}</p>}
+    </section>
   )
 }

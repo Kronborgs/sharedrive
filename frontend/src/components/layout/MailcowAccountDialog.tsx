@@ -1,31 +1,32 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { ignorePromise } from '@/lib/ignore-promise'
 import { MailcowWorkspace } from './MailcowWorkspace'
+import {
+  mailcowAccountEndpoint as endpoint,
+  mailcowAccountKey,
+  useMailcowAccount,
+  type MailcowAccountState,
+  type MailcowConnection,
+  type MailcowProbeResult,
+  type MailcowTab,
+} from '@/lib/mailcow'
 
-const endpoint = '/api/v1/me/mailcow'
 const protocols = ['imap', 'smtp', 'caldav', 'carddav'] as const
-type Account = { host: string; username: string }
-type AccountState = { enabled: boolean; ready: boolean; account: Account | null }
-type ProbeResult = Record<(typeof protocols)[number], 'ok' | 'failed'>
 
-export function MailcowAccountDialog({ userId, close }: Readonly<{ userId: string; close: () => void }>) {
+export function MailcowAccountDialog({ userId, close, initialTab = 'inbox' }: Readonly<{ userId: string; close: () => void; initialTab?: MailcowTab }>) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
-  const queryKey = ['mailcow-account', userId]
-  const { data, isError, isPending } = useQuery({
-    queryKey,
-    queryFn: ({ signal }) => api.get<AccountState>(endpoint, signal),
-    retry: false,
-  })
+  const queryKey = mailcowAccountKey(userId)
+  const { data, isError, isPending } = useMailcowAccount(userId)
   const [busy, setBusy] = useState(false)
-  const [view, setView] = useState<'intro' | 'details' | 'workspace' | 'settings'>('intro')
+  const [view, setView] = useState<'intro' | 'details' | 'workspace' | 'settings' | 'saved'>('intro')
   const [failed, setFailed] = useState(false)
-  const [result, setResult] = useState<ProbeResult | null>(null)
+  const [result, setResult] = useState<MailcowProbeResult | null>(null)
 
   async function run(action: () => Promise<void>) {
     if (busy) return
@@ -49,14 +50,15 @@ export function MailcowAccountDialog({ userId, close }: Readonly<{ userId: strin
     const passwordInput = form.elements.namedItem('password') as HTMLInputElement
     passwordInput.value = ''
     ignorePromise(run(async () => {
-      const { account, protocols } = await api.put<{ account: Account | null; protocols: ProbeResult }>(endpoint, {
+      const { account, protocols } = await api.put<MailcowConnection>(endpoint, {
         host: fields.get('host'), username: fields.get('username'), password: fields.get('password'),
       })
       setResult(protocols)
       if (account) {
-        queryClient.setQueryData<AccountState>(queryKey, { enabled: true, ready: true, account })
+        await queryClient.cancelQueries({ queryKey })
+        queryClient.setQueryData<MailcowAccountState>(queryKey, { enabled: true, ready: true, account })
         await queryClient.invalidateQueries({ queryKey: ['mailcow-content', userId] })
-        setView('workspace')
+        setView('saved')
       }
     }))
   }
@@ -79,8 +81,9 @@ export function MailcowAccountDialog({ userId, close }: Readonly<{ userId: strin
           {isPending && <p className="mt-3 text-sm text-muted">{t('settings.loading')}</p>}
           {isError && <p role="alert" className="mt-3 text-sm text-red-400">{t('mailcowTest.settingsUnavailable')}</p>}
           {data && (!data.enabled || !data.ready) && <p className="mt-3 text-sm text-muted">{t('mailcowAccount.disabled')}</p>}
+          {workspace && view === 'saved' && <output className="mt-3 block text-sm text-emerald-400">{t('mailcowTest.savedOwn')}</output>}
           {workspace && data?.account && (
-            <MailcowWorkspace userId={userId} accountKey={data.account.host + '/' + data.account.username} settings={() => setView('settings')} />
+            <MailcowWorkspace initialTab={initialTab} userId={userId} accountKey={data.account.host + '/' + data.account.username} settings={() => setView('settings')} />
           )}
           {data?.enabled && data.ready && !data.account && view === 'intro' && (
             <div className="mt-4 space-y-3">
@@ -116,11 +119,11 @@ export function MailcowAccountDialog({ userId, close }: Readonly<{ userId: strin
             <div className="mt-4 flex flex-wrap gap-2">
               <button type="button" className={buttonClass} onClick={() => setView('workspace')}>{t('mailcowWorkspace.back')}</button>
               {data.ready && <button type="button" disabled={busy} className={buttonClass} onClick={() => ignorePromise(run(async () => {
-                setResult(await api.post<ProbeResult>(endpoint + '/test', {}))
+                setResult(await api.post<MailcowProbeResult>(endpoint + '/test', {}))
               }))}>{t('mailcowTest.run')}</button>}
               <button type="button" disabled={busy} className={buttonClass} onClick={() => ignorePromise(run(async () => {
                 await api.delete(endpoint)
-                queryClient.setQueryData<AccountState>(queryKey, { enabled: data.enabled, ready: data.ready, account: null })
+                queryClient.setQueryData<MailcowAccountState>(queryKey, { enabled: data.enabled, ready: data.ready, account: null })
                 queryClient.removeQueries({ queryKey: ['mailcow-content', userId] })
                 setView('intro')
               }))}>{t('mailcowAccount.disconnect')}</button>

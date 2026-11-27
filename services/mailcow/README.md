@@ -12,7 +12,7 @@ Kør `npm ci`, `npm test` og `npm start` fra `services/mailcow` med Node 22.22.0
 | `SHAREDRIVE_MAILCOW_PORT` | Valgfri lokal port, standard 3025 |
 | `SHAREDRIVE_MAILCOW_SMTP_PORT` | 465 med TLS som standard, eller 587 med STARTTLS |
 
-`GET /healthz` viser, at tjenesten kører. Åbn Administration → Indstillinger → Mail → Mailcow-forbindelse i Sharedrive. Gem serverens DNS-værtsnavn, og prøv to separate testkonti med deres applikationsadgangskoder. Go læser den gemte vært og sender den sammen med testkontoen til den interne Node-tjeneste. Tjenesten bruger et offentligt IPv4-resultat fra DNS og validerer TLS-certifikatet mod det gemte værtsnavn. Adgangskoden gemmes ikke af testen.
+`GET /healthz` viser, at tjenesten kører. Slå modulet til under Administration → Indstillinger → Mail i Sharedrive. Prøv to separate Sharedrive-brugere fra Mail-knappen ved temavælgeren. Hver bruger indtaster sin egen Mailcow-vært og applikationsadgangskode. Go læser den gemte vært og sender den sammen med testkontoen til den interne Node-tjeneste. Tjenesten bruger et offentligt IPv4-resultat fra DNS og validerer TLS-certifikatet mod det gemte værtsnavn. Adgangskoden gemmes ikke af testen.
 
 Eksempel på svar:
 
@@ -26,7 +26,7 @@ Hver protokol returnerer `ok` eller `failed`. Prøven viser, om kontoen kan hent
 
 Standardimaget starter Node-tjenesten på loopback og lader funktionen være slået fra som standard. Gå til **Administration → Indstillinger → Mail**, og slå **Mail, Kalender og Kontakter** til. SMTP-fanen styrer stadig Sharedrives egne notifikationer.
 
-Brugeren åbner **Mail** i brugermenuen eller i topbjælken. Guiden beder om brugerens egen offentlige Mailcow-vært, e-mailadresse og app-adgangskode. Kontoen gemmes, når IMAP, SMTP, CalDAV og CardDAV er bekræftet. Herefter kan brugeren læse indbakken og sende almindelig tekstmail, se og oprette aftaler i den primære kalender samt se og oprette kontakter i den primære adressebog.
+Brugeren åbner **Mail** ved temavælgeren. Guiden beder om brugerens egen offentlige Mailcow-vært, e-mailadresse og app-adgangskode. Når alle fire protokoller er bekræftet og kontoen gemt, erstattes knappen af **Mail**, **Kalender** og **Kontakter** i brugermenuen. Herefter kan brugeren læse indbakken og sende almindelig tekstmail, se og oprette aftaler i den primære kalender samt se og oprette kontakter i den primære adressebog.
 
 Go krypterer adgangskoderne med en separat nøgle afledt af installationens `TOTP_ENCRYPT_KEY`. Behold denne installationsnøgle sammen med databasen ved flytning. Hvis nøglen skiftes, skal brugerne gemme deres Mailcow-adgangskoder igen.
 

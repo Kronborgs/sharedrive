@@ -69,7 +69,11 @@ async function openAttachment(attachment: MailAttachment) {
   openingAttachment.value = attachment.id;
   try {
     const target = await openMailAttachment(message, attachment);
-    window.location.assign(target);
+    if (target.startsWith('/files?') && window.parent !== window) {
+      window.parent.location.assign(target);
+    } else {
+      window.location.assign(target);
+    }
   } catch (error) {
     suiteStore.notify('Kunne ikke åbne filen', error instanceof Error ? error.message : undefined, 'error');
   } finally {

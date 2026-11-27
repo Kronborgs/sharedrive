@@ -96,9 +96,16 @@ func (config *securityHeadersConfig) middleware(next http.Handler) http.Handler 
 	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		headers := w.Header()
 		setBaseSecurityHeaders(headers, request)
+		if isMailSuitePath(request.URL.Path) {
+			headers.Set("X-Frame-Options", "SAMEORIGIN")
+		}
 		headers.Set("Content-Security-Policy", config.contentSecurityPolicy(request.URL.Path))
 		next.ServeHTTP(w, request)
 	})
+}
+
+func isMailSuitePath(path string) bool {
+	return strings.HasPrefix(path, "/mail/suite-ui/")
 }
 
 func (config *securityHeadersConfig) contentSecurityPolicy(path string) string {
@@ -107,18 +114,20 @@ func (config *securityHeadersConfig) contentSecurityPolicy(path string) string {
 	connectSrc = appendCSPSource(connectSrc, config.connectCache.resolve(config.extraConnectSrc))
 	scriptSrc, frameSrc := config.scriptAndFrameSources()
 	imgSrc := "'self' data: blob:"
-	if strings.HasPrefix(path, "/mail/suite-ui/") {
+	frameAncestors := "'none'"
+	if isMailSuitePath(path) {
 		imgSrc += " https://www.gravatar.com"
+		frameAncestors = "'self'"
 	}
-	return "default-src 'self'; script-src " + scriptSrc + "; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src " + imgSrc + "; font-src 'self' data:; connect-src " + connectSrc + "; worker-src 'self' blob:; frame-src " + frameSrc + "; frame-ancestors 'none';"
+	return "default-src 'self'; script-src " + scriptSrc + "; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src " + imgSrc + "; font-src 'self' data:; connect-src " + connectSrc + "; worker-src 'self' blob:; frame-src " + frameSrc + "; frame-ancestors " + frameAncestors + ";"
 }
 
 func (config *securityHeadersConfig) scriptAndFrameSources() (string, string) {
 	extra := config.scriptFrameCache.resolve(config.extraScriptAndFrameSrc)
 	if extra == "" {
-		return config.staticScriptSrc, "'none'"
+		return config.staticScriptSrc, "'self'"
 	}
-	return config.staticScriptSrc + " " + extra + " 'unsafe-inline'", extra
+	return config.staticScriptSrc + " " + extra + " 'unsafe-inline'", "'self' " + extra
 }
 
 func appendCSPSource(value, source string) string {

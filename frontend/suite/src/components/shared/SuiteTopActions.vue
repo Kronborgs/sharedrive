@@ -5,6 +5,12 @@ import { useViewport } from '../../composables/useViewport';
 
 const suiteStore = useSuiteStore();
 const { isMobile, canPromptPwaInstall, triggerPwaInstall } = useViewport();
+function openAccountSettings(event: MouseEvent) {
+  if (window.parent === window) return;
+  event.preventDefault();
+  window.parent.postMessage({ type: 'sharedrive-mail-settings' }, window.location.origin);
+}
+
 function backToSharedrive() {
   if (window.parent === window) window.location.assign('/files');
   else window.parent.postMessage({ type: 'sharedrive-mail-close' }, window.location.origin);
@@ -31,7 +37,7 @@ function backToSharedrive() {
       <Download class="w-3.5 h-3.5" />
     </button>
 
-    <a href="/mail?manage=true" title="Min Mailcow-konto" aria-label="Min Mailcow-konto"
+    <a href="/mail?manage=true" title="Min Mailcow-konto" aria-label="Min Mailcow-konto" @click="openAccountSettings"
       class="p-2 rounded-lg border border-slate-700 bg-slate-800/85 hover:bg-slate-700 text-slate-300">
       <Settings class="w-3.5 h-3.5" />
     </a>

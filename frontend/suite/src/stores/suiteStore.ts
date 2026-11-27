@@ -167,6 +167,9 @@ export const useSuiteStore = defineStore('suite', () => {
     const initialMod = detectInitialModule(cfg.enabledModules);
     activeModule.value = initialMod;
     visitedModules.value[initialMod] = true;
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'sharedrive-mail-ready' }, window.location.origin);
+    }
 
     // 3. Tjek eksisterende SSO HttpOnly session-cookie
     try {

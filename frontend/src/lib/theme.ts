@@ -1,4 +1,4 @@
-import { getTheme, readTheme, refreshThemeCatalogue, saveTheme, subscribeThemeCatalogue, type AppTheme, type ThemeId } from './theme-palettes'
+import { getTheme, readTheme, refreshThemeCatalogue, saveTheme, subscribeThemeCatalogue, themeStorageKey, type AppTheme, type ThemeId } from './theme-palettes'
 
 export type Theme = Exclude<ThemeId, 'classic-dark'> | 'dark'
 
@@ -48,5 +48,8 @@ export function initTheme() {
   renderTheme(readTheme())
   subscribeThemeCatalogue(() => renderTheme(readTheme()))
   window.addEventListener('focus', sync)
+  window.addEventListener('storage', event => {
+    if (event.key === themeStorageKey || event.key === null) renderTheme(readTheme())
+  })
   sync()
 }

@@ -35,7 +35,18 @@ function MailPage() {
   return (
     <>
       {linked && !manage ? (
-        <MailcowLauncher key={user.id + '/' + accountKey} userId={user.id} accountKey={accountKey} username={linked.username} tab={view} settings={() => setShowSettings(true)} />
+        <MailcowLauncher
+          key={user.id + '/' + accountKey}
+          userId={user.id}
+          accountKey={accountKey}
+          username={linked.username}
+          tab={view}
+          settings={() => setShowSettings(true)}
+          onTabChange={tab => {
+            if (tab !== view) void navigate({ search: { view: tab === 'inbox' ? undefined : tab } })
+          }}
+          onClose={() => { void navigate({ to: '/files' }) }}
+        />
       ) : (
         <section className="rounded-2xl border border-subtle bg-surface p-5">
           <h1 className="text-lg font-semibold">{t('mailcowModule.setupTitle')}</h1>

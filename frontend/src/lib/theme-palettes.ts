@@ -220,7 +220,7 @@ export const THEMES: AppTheme[] = [
   }
 ];
 
-const storageKey = 'sharedrive-theme'
+export const themeStorageKey = 'sharedrive-theme'
 
 type ThemeCatalogue = { available: AppTheme[]; hidden: string[] }
 let catalogue: ThemeCatalogue = { available: THEMES, hidden: [] }
@@ -274,7 +274,7 @@ export function getTheme(id: string | null): AppTheme | undefined {
 
 export function readTheme(): AppTheme {
   try {
-    const stored = localStorage.getItem(storageKey) ?? localStorage.getItem('sharedrive-mail-theme-v1')
+    const stored = localStorage.getItem(themeStorageKey) ?? localStorage.getItem('sharedrive-mail-theme-v1')
     return getTheme(stored) ?? catalogue.available[0]
   } catch {
     return catalogue.available[0]
@@ -283,7 +283,7 @@ export function readTheme(): AppTheme {
 
 export function saveTheme(id: ThemeId) {
   try {
-    localStorage.setItem(storageKey, id === 'classic-dark' ? 'dark' : id)
+    localStorage.setItem(themeStorageKey, id === 'classic-dark' ? 'dark' : id)
   } catch {
     // The chosen theme still applies to the current page.
   }

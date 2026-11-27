@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import { getTheme, readTheme, saveTheme, refreshThemeCatalogue, getThemeCatalogue, subscribeThemeCatalogue, type AppTheme, type ThemeId } from '../../../src/lib/theme-palettes';
+import { getTheme, readTheme, saveTheme, refreshThemeCatalogue, getThemeCatalogue, subscribeThemeCatalogue, themeStorageKey, type AppTheme, type ThemeId } from '../../../src/lib/theme-palettes';
 
 export type { ThemeId } from '../../../src/lib/theme-palettes';
 
@@ -23,12 +23,19 @@ function applyThemeToDocument(theme: AppTheme) {
   root.style.setProperty('--theme-app-overlay', theme.appOverlay);
 }
 
-applyThemeToDocument(readTheme());
-subscribeThemeCatalogue(() => {
-  themes.value = getThemeCatalogue().available;
+function syncTheme() {
   const current = readTheme();
   activeThemeId.value = current.id;
   applyThemeToDocument(current);
+}
+
+syncTheme();
+subscribeThemeCatalogue(() => {
+  themes.value = getThemeCatalogue().available;
+  syncTheme();
+});
+window.addEventListener('storage', event => {
+  if (event.key === themeStorageKey || event.key === null) syncTheme();
 });
 
 function refreshThemes() {

@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -166,27 +168,56 @@ func (h *Accounts) forwardSuite(w http.ResponseWriter, r *http.Request, path str
 		return
 	}
 	defer upstream.Body.Close()
-	writeSuiteResponse(w, upstream)
+	writeSuiteResponse(w, upstream, path == "mail/attachment" && r.URL.Query().Get("inline") == "1")
 }
 
-func writeSuiteResponse(w http.ResponseWriter, response *http.Response) {
+const contentDispositionHeader = "Content-Disposition"
+
+func inlineMailAttachment(contentType, disposition string) (string, string) {
+	kind, params, err := mime.ParseMediaType(disposition)
+	if err != nil || kind != "attachment" {
+		return contentType, disposition
+	}
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	if mediaType == "application/octet-stream" {
+		mediaType, _, _ = mime.ParseMediaType(mime.TypeByExtension(filepath.Ext(params["filename"])))
+	}
+	switch mediaType {
+	case "application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "image/bmp", "image/x-icon", "image/vnd.microsoft.icon", "audio/mpeg", "audio/wav", "audio/x-wav", "audio/ogg", "audio/flac", "audio/mp4", "video/mp4", "video/webm", "video/ogg", "video/quicktime":
+		return mediaType, mime.FormatMediaType("inline", params)
+	default:
+		return contentType, disposition
+	}
+}
+
+func writeSuiteResponse(w http.ResponseWriter, response *http.Response, allowInlineAttachment bool) {
 	if response.StatusCode >= 300 && response.StatusCode < 400 {
 		httputil.RespondError(w, http.StatusBadGateway, errProbeUnavailable)
 		return
 	}
 	contentType := response.Header.Get(contentTypeHeader)
-	disposition := response.Header.Get("Content-Disposition")
+	disposition := response.Header.Get(contentDispositionHeader)
 	if !strings.HasPrefix(contentType, "application/json") && !strings.HasPrefix(strings.ToLower(disposition), "attachment;") {
 		httputil.RespondError(w, http.StatusBadGateway, errProbeUnavailable)
 		return
+	}
+	if allowInlineAttachment {
+		contentType, disposition = inlineMailAttachment(contentType, disposition)
 	}
 	header := w.Header()
 	header.Set(contentTypeHeader, contentType)
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	if disposition != "" {
-		header.Set("Content-Disposition", disposition)
+		header.Set(contentDispositionHeader, disposition)
+		if length := response.Header.Get("Content-Length"); length != "" {
+			header.Set("Content-Length", length)
+		}
 	}
 	w.WriteHeader(response.StatusCode)
+	if disposition != "" {
+		_, _ = io.Copy(w, response.Body)
+		return
+	}
 	_, _ = io.CopyN(w, response.Body, 32<<20)
 }

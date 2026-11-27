@@ -3,6 +3,7 @@ import type { FileItem } from '@/types/api'
 import {
   Download,
   Share2,
+  MailPlus,
   Pencil,
   Trash2,
   FolderOpen,
@@ -20,6 +21,7 @@ export type ContextAction =
   | 'open'
   | 'download'
   | 'share'
+  | 'addToEmail'
   | 'rename'
   | 'move'
   | 'copy'
@@ -41,6 +43,7 @@ interface FileContextMenuProps {
   allowedActions?: ContextAction[]
   canAddToQueue?: boolean
   canAddToPlayer?: boolean
+  canAddToEmail?: boolean
   onAction: (action: ContextAction, item: FileItem) => void
   onClose: () => void
 }
@@ -61,7 +64,7 @@ interface MenuItem {
   requiresActivePlayer?: boolean
 }
 
-export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, canAddToQueue = false, canAddToPlayer = false, onAction, onClose }: Readonly<FileContextMenuProps>) {
+export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, canAddToQueue = false, canAddToPlayer = false, canAddToEmail = false, onAction, onClose }: Readonly<FileContextMenuProps>) {
   const ref = useRef<HTMLDivElement>(null)
   const { t } = useI18n()
 
@@ -69,6 +72,7 @@ export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, c
     { action: 'open',       label: t('ctx.open'),          icon: <FolderOpen size={14} /> },
     { action: 'download',   label: t('ctx.download'),      icon: <Download size={14} />, divider: true },
     { action: 'share',      label: t('ctx.share'),         icon: <Share2 size={14} /> },
+    { action: 'addToEmail', label: t('ctx.addToEmail'), icon: <MailPlus size={14} /> },
     { action: 'rename',     label: t('ctx.rename'),        icon: <Pencil size={14} /> },
     { action: 'move',       label: t('ctx.move'),          icon: <Scissors size={14} /> },
     { action: 'copy',       label: t('ctx.copy'),          icon: <Copy size={14} />, divider: true },
@@ -119,6 +123,7 @@ export function FileContextMenu({ item, x, y, isTrash = false, allowedActions, c
   // Hide m3u-only actions for non-m3u items; hide requiresActivePlayer when no active player
   items = items.filter(mi => !mi.m3uOnly || isM3u)
   items = items.filter(mi => !mi.requiresActivePlayer || canAddToPlayer)
+  items = items.filter(mi => mi.action !== 'addToEmail' || canAddToEmail)
 
   return (
     <div

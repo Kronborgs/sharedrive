@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +14,41 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
+
+func TestSuiteAttachmentDisposition(t *testing.T) {
+	for _, tc := range []struct {
+		name, contentType, filename, wantType, wantDisposition string
+		inline                                                 bool
+	}{
+		{"PDF opens inline", "application/pdf", "oversigt.pdf", "application/pdf", "inline", true},
+		{"generic photo opens inline", "application/octet-stream", "billede.png", "image/png", "inline", true},
+		{"PDF download stays attachment", "application/pdf", "oversigt.pdf", "application/pdf", "attachment", false},
+		{"HTML stays attachment", "text/html", "side.html", "text/html", "attachment", true},
+		{"SVG stays attachment", "image/svg+xml", "billede.svg", "image/svg+xml", "attachment", true},
+		{"archive stays attachment", "application/zip", "filer.zip", "application/zip", "attachment", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const content = "fixture attachment"
+			headers := make(http.Header)
+			headers.Set(contentTypeHeader, tc.contentType)
+			headers.Set(contentDispositionHeader, mime.FormatMediaType("attachment", map[string]string{"filename": tc.filename}))
+			result := httptest.NewRecorder()
+			writeSuiteResponse(result, &http.Response{
+				StatusCode: http.StatusOK, Header: headers, Body: io.NopCloser(strings.NewReader(content)),
+			}, tc.inline)
+			mode, params, err := mime.ParseMediaType(result.Header().Get(contentDispositionHeader))
+			if err != nil || params["filename"] != tc.filename || mode != tc.wantDisposition {
+				t.Errorf("attachment disposition %q", result.Header().Get(contentDispositionHeader))
+			}
+			if result.Header().Get(contentTypeHeader) != tc.wantType || result.Header().Get("X-Content-Type-Options") != "nosniff" {
+				t.Errorf("unexpected response headers %v", result.Header())
+			}
+			if result.Body.String() != content {
+				t.Error("attachment body was changed")
+			}
+		})
+	}
+}
 
 func TestPublicCalendarUsesLinkOwnersConnectedAccount(t *testing.T) {
 	owner := uuid.New()

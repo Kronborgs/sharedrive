@@ -131,6 +131,7 @@ export interface ComposePrefill {
   bcc?: string[];
   subject?: string;
   textBody?: string;
+  sharedFileUrl?: string;
 }
 
 export type ComposeMode = 'NEW' | 'REPLY' | 'REPLY_ALL' | 'FORWARD' | 'DRAFT';

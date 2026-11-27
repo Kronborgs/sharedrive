@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { consumeShareMailDraft } from '../../src/lib/share-mail-draft';
 
 import MobileBottomNav from './components/shared/MobileBottomNav.vue';
 import MailView from './components/mail/MailView.vue';
@@ -219,6 +220,14 @@ function handleGlobalKeyDown(e: KeyboardEvent) {
     }
   }
 }
+
+watch(() => suiteStore.isAuthenticated, (authenticated) => {
+  if (!authenticated || suiteStore.isPublicShareMode) return;
+  const draft = consumeShareMailDraft();
+  if (!draft) return;
+  suiteStore.setActiveModule('mail');
+  mailStore.openComposeModal('NEW', null, draft);
+});
 
 onMounted(async () => {
   window.addEventListener('keydown', handleGlobalKeyDown);

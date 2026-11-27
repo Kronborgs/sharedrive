@@ -206,7 +206,6 @@ async function fetchAddressBooksDirectPropfind(
   });
 
   const xml = await readResponseTextSmart(res);
-  const baseOrigin = new URL(targetUrl).origin;
   const normalizedUser = creds.username.toLowerCase().trim();
   const responseBlocks =
     xml.match(/<(?:[a-zA-Z0-9]+:)?response\b[\s\S]*?<\/(?:[a-zA-Z0-9]+:)?response>/gi) || [];
@@ -217,7 +216,8 @@ async function fetchAddressBooksDirectPropfind(
     const hrefMatch = block.match(/<(?:[a-zA-Z0-9]+:)?href[^>]*>([^<]+)<\/(?:[a-zA-Z0-9]+:)?href>/i);
     if (!hrefMatch) continue;
 
-    const fullUrl = ensureTrailingSlash(new URL(hrefMatch[1].trim(), baseOrigin).toString());
+    const fullUrl = ensureTrailingSlash(new URL(normalizeDanishText(hrefMatch[1].trim()), targetUrl).toString());
+    if (new URL(fullUrl).origin !== new URL(targetUrl).origin) continue;
     const decodedFull = decodeURIComponent(fullUrl);
     if (/\/Contacts\/$/i.test(decodedFull)) {
       continue;
@@ -345,18 +345,17 @@ export async function fetchAddressBooks(creds: CalDavCredentials): Promise<Addre
   }
 
   // 3. Sidste fallback: prøv standard SOGo personal adressebog
-  if (discoveredByKey.size === 0) {
+  if (![...discoveredByKey.values()].some((book) => !book.readOnly && !book.isShared)) {
     const fallbackUrl = `${buildSogoUserContactsHomeUrl(creds.serverUrl, creds.username)}personal/`;
-    await carddavRequest(creds, 'PROPFIND', fallbackUrl, undefined, { Depth: '0' });
-    discoveredByKey.set(canonicalAddressBookKey(fallbackUrl), {
-      id: fallbackUrl,
-      url: fallbackUrl,
-      name: 'Personlig adressebog',
-      readOnly: false,
-      isShared: false
-    });
+    try {
+      const [personal] = await fetchAddressBooksDirectPropfind(creds, fallbackUrl, '0');
+      if (personal) discoveredByKey.set(canonicalAddressBookKey(personal.url), personal);
+    } catch (error) {
+      if (!discoveredByKey.size) throw error;
+    }
   }
 
+  if (!discoveredByKey.size) throw new Error('SOGo returnerede ingen læsbare adressebøger.');
   return Array.from(discoveredByKey.values());
 }
 
@@ -881,53 +880,72 @@ function invalidateUserContactsCache(creds: CalDavCredentials) {
   }
 }
 
-async function fetchContactsFromAddressBookReport(
-  creds: CalDavCredentials,
-  book: AddressBookDTO
-): Promise<ContactDTO[]> {
-  const reportXml = `<?xml version="1.0" encoding="utf-8" ?>
-<CR:addressbook-query xmlns:D="DAV:" xmlns:CR="urn:ietf:params:xml:ns:carddav">
-  <D:prop>
-    <D:getetag/>
-    <CR:address-data/>
-  </D:prop>
-</CR:addressbook-query>`;
+function cardDavResponses(xml: string): string[] {
+  if (!/<(?:[\w.-]+:)?multistatus\b/i.test(xml)) {
+    throw new Error('SOGo returnerede ikke et CardDAV-svar.');
+  }
+  return xml.match(/<(?:[\w.-]+:)?response\b[\s\S]*?<\/(?:[\w.-]+:)?response>/gi) || [];
+}
 
-  const bookUrl = ensureTrailingSlash(book.url);
-  const res = await carddavRequest(creds, 'REPORT', bookUrl, reportXml, {
-    'Content-Type': 'application/xml; charset=utf-8',
-    Depth: '1'
-  });
+function responseHref(block: string): string {
+  return normalizeDanishText(block.match(/<(?:[\w.-]+:)?href[^>]*>([^<]+)<\/(?:[\w.-]+:)?href>/i)?.[1].trim());
+}
 
-  const xml = await readResponseTextSmart(res);
-  const baseOrigin = new URL(bookUrl).origin;
-  const responseBlocks =
-    xml.match(/<(?:[a-zA-Z0-9]+:)?response\b[\s\S]*?<\/(?:[a-zA-Z0-9]+:)?response>/gi) || [];
-
+function parseContactResponse(xml: string, book: AddressBookDTO): ContactDTO[] {
   const contacts: ContactDTO[] = [];
+  for (const block of cardDavResponses(xml)) {
+    const data = block.match(/<(?:[\w.-]+:)?address-data[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?address-data>/i)?.[1].trim();
+    if (!data) continue;
+    const cdata = /^<!\[CDATA\[([\s\S]*)\]\]>$/.exec(data);
+    const vcard = cdata ? cdata[1] : normalizeDanishText(data);
+    if (!/BEGIN:VCARD/i.test(vcard)) continue;
+    const href = responseHref(block);
+    const url = href ? new URL(href, ensureTrailingSlash(book.url)).toString() : undefined;
+    const etag = block.match(/<(?:[\w.-]+:)?getetag[^>]*>([^<]+)<\/(?:[\w.-]+:)?getetag>/i)?.[1];
+    contacts.push(...parseVcardToContacts(vcard, book.id, url, etag ? normalizeDanishText(etag.trim()).replace(/^["']|["']$/g, '') : undefined));
+  }
+  return contacts;
+}
 
-  for (const block of responseBlocks) {
-    const hrefMatch = block.match(/<(?:[a-zA-Z0-9]+:)?href[^>]*>([^<]+)<\/(?:[a-zA-Z0-9]+:)?href>/i);
-    const dataMatch = block.match(
-      /<(?:[a-zA-Z0-9]+:)?address-data[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?address-data>/i
-    );
-    if (!dataMatch) continue;
+const xmlContentType = 'application/xml; charset=utf-8';
 
-    const rawVcf = normalizeDanishText(
-      dataMatch[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim()
-    );
-    if (!/BEGIN:VCARD/i.test(rawVcf)) continue;
+async function fetchContactsFromAddressBookReport(creds: CalDavCredentials, book: AddressBookDTO): Promise<ContactDTO[]> {
+  const xml = '<?xml version="1.0"?><CR:addressbook-query xmlns:D="DAV:" xmlns:CR="urn:ietf:params:xml:ns:carddav">' +
+    '<D:prop><D:getetag/><CR:address-data/></D:prop><CR:filter/></CR:addressbook-query>';
+  const result = await carddavRequest(creds, 'REPORT', ensureTrailingSlash(book.url), xml, {
+    'Content-Type': xmlContentType, Depth: '1'
+  });
+  return parseContactResponse(await readResponseTextSmart(result), book);
+}
 
-    const objectUrl = hrefMatch ? new URL(hrefMatch[1].trim(), baseOrigin).toString() : undefined;
-    const etagMatch = block.match(
-      /<(?:[a-zA-Z0-9]+:)?getetag[^>]*>([^<]+)<\/(?:[a-zA-Z0-9]+:)?getetag>/i
-    );
-    const etag = etagMatch ? etagMatch[1].trim().replace(/^["']|["']$/g, '') : undefined;
-
-    const parsed = parseVcardToContacts(rawVcf, book.id, objectUrl, etag);
-    contacts.push(...parsed);
+async function fetchContactsByMember(creds: CalDavCredentials, book: AddressBookDTO): Promise<ContactDTO[]> {
+  const bookUrl = new URL(ensureTrailingSlash(book.url));
+  const properties = '<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:getetag/><D:resourcetype/></D:prop></D:propfind>';
+  const listing = await carddavRequest(creds, 'PROPFIND', bookUrl.href, properties, {
+    'Content-Type': xmlContentType, Depth: '1'
+  });
+  const members = new Set<string>();
+  for (const block of cardDavResponses(await readResponseTextSmart(listing))) {
+    const href = responseHref(block);
+    if (!href || /<(?:[\w.-]+:)?collection(?:\s|\/|>)/i.test(block)) continue;
+    const url = new URL(href, bookUrl);
+    if (url.origin === bookUrl.origin && url.pathname.startsWith(bookUrl.pathname) && url.pathname !== bookUrl.pathname) {
+      members.add(url.pathname);
+    }
   }
 
+  const paths = [...members];
+  const contacts: ContactDTO[] = [];
+  for (let offset = 0; offset < paths.length; offset += 50) {
+    const hrefs = paths.slice(offset, offset + 50)
+      .map(path => '<D:href>' + path.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') + '</D:href>').join('');
+    const xml = '<?xml version="1.0"?><CR:addressbook-multiget xmlns:D="DAV:" xmlns:CR="urn:ietf:params:xml:ns:carddav">' +
+      '<D:prop><D:getetag/><CR:address-data/></D:prop>' + hrefs + '</CR:addressbook-multiget>';
+    const result = await carddavRequest(creds, 'REPORT', bookUrl.href, xml, { 'Content-Type': xmlContentType });
+    const page = parseContactResponse(await readResponseTextSmart(result), book);
+    if (page.length === 0) throw new Error('SOGo returnerede ingen vCards for adressebogens kontakter.');
+    contacts.push(...page);
+  }
   return contacts;
 }
 
@@ -936,7 +954,8 @@ async function fetchContactsFromAddressBookReport(
  */
 export async function fetchAllContacts(
   creds: CalDavCredentials,
-  addressBooks: AddressBookDTO[]
+  addressBooks: AddressBookDTO[],
+  failedAddressBookIds?: string[]
 ): Promise<ContactDTO[]> {
   const allContacts: ContactDTO[] = [];
 
@@ -955,7 +974,8 @@ export async function fetchAllContacts(
           return;
         }
 
-        const list = await fetchContactsFromAddressBookReport(creds, book);
+        const query = await fetchContactsFromAddressBookReport(creds, book).catch(() => []);
+        const list = query.length ? query : await fetchContactsByMember(creds, book);
         if (book.ctag) {
           contactsCache.set(cacheKey, {
             ctag: book.ctag,
@@ -965,6 +985,7 @@ export async function fetchAllContacts(
         }
         allContacts.push(...list);
       } catch (err) {
+        failedAddressBookIds?.push(book.id);
         console.warn(`Kunne ikke hente kontakter fra ${book.name} (${book.url}):`, err);
       }
     })

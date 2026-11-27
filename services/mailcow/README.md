@@ -11,8 +11,10 @@ Kør `npm ci`, `npm test` og `npm start` fra `services/mailcow` med Node 22.22.0
 | `SHAREDRIVE_MAILCOW_TOKEN` | Lokal tjenestetoken med mindst 32 URL-sikre tegn |
 | `SHAREDRIVE_MAILCOW_PORT` | Valgfri lokal port, standard 3025 |
 | `SHAREDRIVE_MAILCOW_SMTP_PORT` | 465 med TLS som standard, eller 587 med STARTTLS |
+| `MAILCOW_API_URL` | Valgfri HTTPS-adresse på den Mailcow-instans, hvis skjulte aliaser skal hentes |
+| `MAILCOW_API_KEY` | Valgfri Mailcow-læsenøgle til aliaser på værten angivet i `MAILCOW_API_URL` |
 
-`GET /healthz` viser, at tjenesten kører. Slå modulet til under Administration → Indstillinger → Mail i Sharedrive. Prøv to separate Sharedrive-brugere fra Mail-knappen ved temavælgeren. Hver bruger indtaster sin egen Mailcow-vært og applikationsadgangskode. Go læser den gemte vært og sender den sammen med testkontoen til den interne Node-tjeneste. Tjenesten bruger et offentligt IPv4-resultat fra DNS og validerer TLS-certifikatet mod det gemte værtsnavn. Adgangskoden gemmes ikke af testen.
+`GET /healthz` viser, at tjenesten kører. Slå modulet til under Administration → Indstillinger → Mail i Sharedrive. Kør forbindelsesprøven fra **Mail** ved temavælgeren for testbrugere uden konto. For en allerede tilknyttet testkonto åbnes **Min Mailcow-konto** via tandhjulet i Mail. Brug hver postkasses egen Mailcow-vært og app-adgangskode. Go videresender prøven til den interne Node-tjeneste, som bruger et offentligt IPv4-resultat fra DNS og validerer TLS-certifikatet mod kontoens værtsnavn. Adgangskoden gemmes kun, når brugeren vælger at tilknytte kontoen.
 
 Eksempel på svar:
 

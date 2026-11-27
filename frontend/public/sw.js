@@ -2,7 +2,8 @@
 // Provides app-shell caching for PWA installability and offline resilience.
 // Does NOT cache private user file data — only static assets and the app shell.
 
-const CACHE_NAME = 'sharedrive-shell-v6'
+const CACHE_NAME = 'sharedrive-shell-v7'
+const MAIL_SHELL = '/mail/suite-ui/'
 
 // App shell: the minimal set of assets needed to render the UI.
 // Vite-built assets have content hashes in filenames, so they are safe to
@@ -19,7 +20,6 @@ const SHELL_ASSETS = [
 
 // Patterns that should NEVER be cached (sensitive / dynamic data):
 const NO_CACHE_PATTERNS = [
-  /^\/mail\/suite-ui(?:\/|$)/,
   /^\/api\//,
   /^\/upload\//,
   /^\/dav\//,
@@ -72,15 +72,17 @@ self.addEventListener('fetch', (event) => {
   // This ensures logged-out users always get the server redirect, but if
   // offline the cached shell can still render the login page.
   if (request.mode === 'navigate') {
+    const shell = path.startsWith(MAIL_SHELL) || path === MAIL_SHELL.slice(0, -1) ? MAIL_SHELL : '/'
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Cache a fresh copy of the shell
-          const clone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put('/', clone))
+          if (response.ok && response.headers.get('Content-Type')?.includes('text/html')) {
+            const clone = response.clone()
+            caches.open(CACHE_NAME).then((cache) => cache.put(shell, clone))
+          }
           return response
         })
-        .catch(() => caches.match('/').then((r) => r || new Response('Offline', { status: 503 })))
+        .catch(() => caches.match(shell).then((r) => r || new Response('Offline', { status: 503 })))
     )
     return
   }

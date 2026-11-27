@@ -1,5 +1,18 @@
-import { reactive } from 'vue';
+import { reactive, ref } from 'vue';
+import { suiteStorage } from '../sharedrive-storage';
 import type { Contact } from '../types/contacts';
+
+const avatarPreferenceKey = 'gravatar-profile-pictures';
+const gravatarPreference = ref<boolean>();
+
+export function gravatarEnabled() {
+  return gravatarPreference.value ?? suiteStorage.getItem(avatarPreferenceKey) === 'true';
+}
+
+export function setGravatarEnabled(enabled: boolean) {
+  gravatarPreference.value = enabled;
+  suiteStorage.setItem(avatarPreferenceKey, String(enabled));
+}
 
 const FAILED_STORAGE_KEY = 'brogaard_gravatar_404_v1';
 
@@ -150,6 +163,7 @@ export function resolveContactAvatarSrc(
   size = 160
 ): string | null {
   if (contact.photoDataUrl) return contact.photoDataUrl;
+  if (!gravatarEnabled()) return null;
   for (const em of contact.emails || []) {
     const url = getGravatarAvatarUrlForEmail(em.value, size);
     if (url) return url;

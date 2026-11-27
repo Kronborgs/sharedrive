@@ -3,10 +3,11 @@
 # Stage 1: Build frontend
 # ─────────────────────────────────────────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM node:24.22.3-alpine AS suite-ui-builder
-WORKDIR /suite
+WORKDIR /frontend/suite
 COPY frontend/suite/package.json frontend/suite/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY frontend/suite/ ./
+COPY frontend/src/lib/file-types.ts frontend/src/lib/share-mail-draft.ts frontend/src/lib/theme-palettes.ts /frontend/src/lib/
 RUN npm run build
 
 FROM --platform=$BUILDPLATFORM node:24.22.3-alpine AS frontend-builder
@@ -16,7 +17,7 @@ WORKDIR /fe
 COPY frontend/package*.json ./
 RUN npm install --prefer-offline
 COPY frontend/ .
-COPY --from=suite-ui-builder /suite/dist ./public/mail/suite-ui
+COPY --from=suite-ui-builder /frontend/suite/dist ./public/mail/suite-ui
 RUN APP_VERSION=${VERSION} npm run build
 
 # ─────────────────────────────────────────────────────────────────────────────

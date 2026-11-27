@@ -432,6 +432,8 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Get("/api/v1/system/health", s.handleHealth)
 	r.Get("/api/v1/system/version", s.handleVersion)
 	r.Get("/api/v1/system/settings", s.adminHandler.GetPublicSettings)
+	r.Get("/api/v1/themes", s.adminHandler.ListThemes)
+	r.Get("/api/v1/themes/{id}/image", s.adminHandler.ThemeImage)
 	r.Get("/api/v1/system/onboarding-status", s.onboarding.Status)
 	r.Post("/api/v1/system/onboarding", s.onboarding.Setup)
 	r.Post("/api/v1/system/onboarding/restore", s.onboarding.RestoreSetup)
@@ -757,6 +759,9 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Post("/api/v1/admin/ip-whitelist", s.handleAdminAddWhitelist)
 			r.Delete("/api/v1/admin/ip-whitelist/{id}", s.handleAdminRemoveWhitelist)
 
+			r.Post("/api/v1/admin/themes", s.adminHandler.UploadTheme)
+			r.Delete("/api/v1/admin/themes/{id}", s.adminHandler.DeleteTheme)
+			r.Put("/api/v1/admin/themes/{id}/restore", s.adminHandler.RestoreTheme)
 			r.Get("/api/v1/admin/settings", s.handleAdminGetSettings)
 			r.Patch("/api/v1/admin/settings", s.handleAdminUpdateSettings)
 			r.Post("/api/v1/admin/settings/smtp-test", s.handleAdminSMTPTest)

@@ -333,7 +333,9 @@ export async function syncContactBirthdaysToCalDav(
   const calUrl = ensureTrailingSlash(targetCal.url);
 
   const addressBooks = await fetchAddressBooks(creds);
-  const contacts = await fetchAllContacts(creds, addressBooks);
+  const failedAddressBookIds: string[] = [];
+  const contacts = await fetchAllContacts(creds, addressBooks, failedAddressBookIds);
+  if (failedAddressBookIds.length) throw new Error('Fødselsdagskalenderen kræver, at alle adressebøger kan synkroniseres.');
 
   const desired = new Map<string, DesiredBirthdayEvent>();
   let uniqueSpecialDates = 0;

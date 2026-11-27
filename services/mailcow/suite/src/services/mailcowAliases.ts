@@ -218,13 +218,15 @@ async function discoverViaMailcowApi(
   creds: CalDavCredentials
 ): Promise<{ ok: boolean; emails: string[]; displayName?: string }> {
   const apiKey = process.env.MAILCOW_API_KEY?.trim();
-  if (!apiKey) {
+  const configuredProvider = process.env.MAILCOW_API_URL?.trim();
+  if (!apiKey || !configuredProvider) {
     return { ok: false, emails: [] };
   }
 
-  const rawApiBase =
-    process.env.MAILCOW_API_URL?.trim() || new URL(normalizeMailcowUrl(creds.serverUrl)).origin;
-  const apiBase = assertSafeCalDavUrl(rawApiBase).toString().replace(/\/+$/, '');
+  const provider = assertSafeCalDavUrl(configuredProvider);
+  const accountOrigin = new URL(normalizeMailcowUrl(creds.serverUrl)).origin;
+  if (provider.origin !== accountOrigin) return { ok: false, emails: [] };
+  const apiBase = provider.origin;
   const username = creds.username.trim();
   const usernameLower = username.toLowerCase();
 

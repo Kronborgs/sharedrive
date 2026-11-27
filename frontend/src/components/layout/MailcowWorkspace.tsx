@@ -12,8 +12,8 @@ import { cn } from '@/lib/utils'
 
 const icons = { inbox: Mail, calendar: CalendarDays, contacts: ContactRound }
 
-export function MailcowWorkspace({ userId, accountKey, username, tab, settings }: MailScope & Readonly<{
-  username: string; tab: MailcowTab; settings: () => void
+export function MailcowWorkspace({ userId, accountKey, username, tab, settings, draft }: MailScope & Readonly<{
+  username: string; tab: MailcowTab; settings: () => void; draft?: { subject: string; textBody: string }
 }>) {
   const { t } = useI18n()
   const navigate = useNavigate()
@@ -36,7 +36,7 @@ export function MailcowWorkspace({ userId, accountKey, username, tab, settings }
         <span className="ml-auto max-w-56 truncate px-2 text-xs text-muted">{username}</span>
         <button type="button" className={control} onClick={settings}><Settings size={16} />{t('mailcowAccount.title')}</button>
       </header>
-      {tab === 'inbox' && <Mailbox scope={scope} recipient={recipient} />}
+      {tab === 'inbox' && <Mailbox scope={scope} recipient={recipient} initialDraft={draft} />}
       {tab === 'calendar' && <MailCalendar scope={scope} username={username} />}
       {tab === 'contacts' && <MailContacts scope={scope} compose={email => {
         setRecipient(email)

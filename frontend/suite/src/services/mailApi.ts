@@ -96,12 +96,29 @@ export async function fetchMessageDetailApi(
   };
 }
 
-export function getAttachmentDownloadUrl(folder: string, uid: number, attachmentId: string): string {
+export function getEmlDownloadUrl(folder: string, uid: number): string {
+  const query = new URLSearchParams({ folder, uid: String(uid) });
+  return `/api/v1/me/mailcow/suite/mail/eml?${query}`;
+}
+
+export async function importEmlFile(folder: string, file: File): Promise<void> {
+  if (!/\.eml$/i.test(file.name)) throw new Error('Vælg en .eml-fil.');
+  if (file.size > 20 * 1024 * 1024) throw new Error('En .eml-fil må højst fylde 20 MiB.');
+  const query = new URLSearchParams({ folder });
+  const response = await fetch(`/api/v1/me/mailcow/suite/mail/eml?${query}`, {
+    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'message/rfc822' }, body: file
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.ok) throw new Error(typeof result.error === 'string' ? result.error : 'Kunne ikke importere mailen.');
+}
+
+export function getAttachmentDownloadUrl(folder: string, uid: number, attachmentId: string, inline = false): string {
   const q = new URLSearchParams({
     folder,
     uid: String(uid),
     id: attachmentId
   });
+  if (inline) q.set('inline', '1');
   return `/api/v1/me/mailcow/suite/mail/attachment?${q.toString()}`;
 }
 

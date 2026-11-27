@@ -33,7 +33,7 @@ import { useSuiteStore } from '../../stores/suiteStore';
 import { useTheme } from '../../composables/useTheme';
 import { useViewport } from '../../composables/useViewport';
 import { processContactPhotoFile } from '../../utils/contactPhoto';
-import { resolveContactAvatarSrc, markGravatarFailed } from '../../utils/gravatar';
+import { resolveContactAvatarSrc, markGravatarFailed, gravatarEnabled, setGravatarEnabled } from '../../utils/gravatar';
 import type { Contact } from '../../types/contacts';
 
 const SIDEBAR_WIDTH_KEY = 'brogaard_contacts_sidebar_width_v1';
@@ -469,6 +469,9 @@ async function handleQuickPhotoChange(e: Event, contact: Contact) {
       :sidebar-collapsed="isMobile ? !mobileDrawerOpen : sidebarCollapsed"
       @toggle-sidebar="toggleSidebar"
     />
+    <p v-if="store.syncError" role="alert" class="mx-2.5 mt-2 rounded-lg border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+      {{ store.syncError }}
+    </p>
 
     <!-- Backdrop for mobil slide-over skuffe -->
     <div
@@ -634,6 +637,11 @@ async function handleQuickPhotoChange(e: Event, contact: Contact) {
 
           <!-- Bund: Fødselsdage & Mærkedage-status + visningstilstand -->
           <div class="pt-3 border-t border-white/10 space-y-2">
+            <label class="flex items-center gap-2 text-xs text-slate-300">
+              <input type="checkbox" :checked="gravatarEnabled()"
+                @change="setGravatarEnabled(($event.target as HTMLInputElement).checked)" />
+              Vis profilbilleder fra Gravatar
+            </label>
             <div
               v-if="store.contactsWithSpecialDatesCount > 0"
               class="p-2.5 rounded-xl bg-pink-500/10 border border-pink-500/25 text-[11px] text-pink-200 flex items-start gap-2"

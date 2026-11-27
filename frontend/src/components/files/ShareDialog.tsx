@@ -4,14 +4,17 @@ import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import type { FileItem, Share, SharePermissions, Group, AppPassword, CreatedAppPassword } from '@/types/api'
 import { formatDate } from '@/lib/utils'
-import { X, Check, Link, Trash2, UserPlus, ChevronDown, ChevronUp, Copy, HardDrive, Plus } from 'lucide-react'
+import { X, Check, Link, MailPlus, Trash2, UserPlus, ChevronDown, ChevronUp, Copy, HardDrive, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { ignorePromise } from '@/lib/ignore-promise'
+import { mailcowAccountEndpoint, useMailcowNavigation, type MailcowAccountState } from '@/lib/mailcow'
+import { shareMailDraftFragment, sharedFileUrl } from '@/lib/share-mail-draft'
 
 interface ShareDialogProps {
   item: FileItem
   onClose: () => void
+  startWithMail?: boolean
 }
 
 type ShareTargetType = 'user' | 'group' | 'link' | 'webdav'
@@ -160,6 +163,8 @@ function ActiveShareRow({
   s,
   onRevoke,
   onCopyLink,
+  onEmailLink,
+  emailPending,
   copied,
   onUpdate,
   isFolder = true,
@@ -167,6 +172,8 @@ function ActiveShareRow({
   s: Share
   onRevoke: () => void
   onCopyLink?: () => void
+  onEmailLink?: () => void
+  emailPending?: boolean
   copied: boolean
   onUpdate: (perms: SharePermissions, expiresAt: string | null) => void
   isFolder?: boolean
@@ -218,6 +225,13 @@ function ActiveShareRow({
             title={t('share.copyLink')}
           >
             {copied ? <Check size={13} /> : <Link size={13} />}
+          </button>
+        )}
+        {onEmailLink && (
+          <button type="button" onClick={onEmailLink} disabled={emailPending}
+            className="p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 disabled:opacity-50"
+            aria-label={t('share.mailExistingLink')} title={t('share.mailExistingLink')}>
+            <MailPlus size={13} />
           </button>
         )}
         <button type="button"
@@ -274,11 +288,15 @@ function ActiveShareRow({
   )
 }
 
-export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
+export function ShareDialog({ item, onClose, startWithMail = false }: Readonly<ShareDialogProps>) {
   const qc = useQueryClient()
   const { user } = useAuth()
   const { t } = useI18n()
-  const [tab, setTab] = useState<ShareTargetType>('user')
+  const mail = useMailcowNavigation(user)
+  const canCompose = mail.enabled && mail.ready && mail.connected
+  const [tab, setTab] = useState<ShareTargetType>(startWithMail ? 'link' : 'user')
+  const tabs: ShareTargetType[] = startWithMail ? ['link'] : ['user', 'group', 'link', 'webdav']
+  const createLabel = startWithMail ? 'share.mailCreate' : 'share.title'
   const [email, setEmail] = useState('')
   const [groupId, setGroupId] = useState('')
   const [perms, setPerms] = useState<SharePermissions>(DEFAULT_PERMS)
@@ -355,15 +373,43 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
     onError: () => toast.error(t('share.appPwdDeleteFailed')),
   })
 
+  async function verifyMailAccount() {
+    const state = await api.get<MailcowAccountState>(mailcowAccountEndpoint)
+    if (!state.enabled || !state.ready || !state.account) throw new Error(t('share.mailUnavailable'))
+  }
+
+  function openMailDraft(token: string) {
+    window.location.assign('/mail' + shareMailDraftFragment(token, item.name))
+  }
+
+  const emailExistingLink = useMutation({
+    mutationFn: async (token: string) => {
+      await verifyMailAccount()
+      return token
+    },
+    onSuccess: openMailDraft,
+  })
+
   const createShare = useMutation({
-    mutationFn: (body: object) => api.post<Share>(`/api/v1/shares`, body),
-    onSuccess: () => {
+    mutationFn: async ({ body, compose }: { body: object; compose: boolean }) => {
+      if (compose) await verifyMailAccount()
+      const share = await api.post<Share>('/api/v1/shares', body)
+      if (compose && !share.token) throw new Error(t('share.createFailed'))
+      return share
+    },
+    onSuccess: (share, { compose }) => {
       ignorePromise(qc.invalidateQueries({ queryKey: ['shares', item.id] }))
       ignorePromise(qc.invalidateQueries({ queryKey: ['files'] }))
       setEmail('')
+      if (compose && share.token) {
+        openMailDraft(share.token)
+        return
+      }
       toast.success(t('share.created'))
     },
-    onError: (e: Error) => toast.error(e.message || t('share.createFailed')),
+    onError: (e: Error, { compose }) => {
+      if (!compose) toast.error(e.message || t('share.createFailed'))
+    },
   })
 
   const disableCreateShare = isCreateShareDisabled({
@@ -392,8 +438,9 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
     onError: () => toast.error(t('share.updateFailed')),
   })
 
-  const handleCreate = () => {
-    createShare.mutate(buildShareCreateBody({
+  const handleCreate = (compose: boolean) => {
+    emailExistingLink.reset()
+    const body = buildShareCreateBody({
       itemId: item.id,
       perms,
       hasExpiry,
@@ -401,11 +448,15 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
       tab,
       email,
       groupId,
-    }))
+    })
+    createShare.mutate({ body, compose })
   }
 
+  const mailError = emailExistingLink.error ?? (createShare.variables?.compose ? createShare.error : null)
+  const mailPending = createShare.isPending || emailExistingLink.isPending
+
   const copyLink = (token: string) => {
-    ignorePromise(navigator.clipboard.writeText(`${window.location.origin}/shared/${token}`))
+    ignorePromise(navigator.clipboard.writeText(sharedFileUrl(window.location.origin, token)))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -416,7 +467,7 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 dark:border-[#2d3148]">
           <div>
-            <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t('share.title')}</h2>
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-slate-100">{t(startWithMail ? 'ctx.addToEmail' : 'share.title')}</h2>
             <p className="text-xs text-muted truncate max-w-[280px]" title={item.name}>{item.name}</p>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 dark:hover:bg-[#2d3148] transition-colors">
@@ -426,7 +477,7 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
 
         {/* Tab bar */}
         <div className="flex border-b border-zinc-100 dark:border-[#2d3148] px-5">
-          {(['user', 'group', 'link', 'webdav'] as ShareTargetType[]).map(tabType => (
+          {tabs.map(tabType => (
             <button type="button"
               key={tabType}
               onClick={() => setTab(tabType)}
@@ -636,14 +687,23 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
             )}
           </div>
 
+          {mailError && (
+            <p role="alert" className="text-xs text-red-600 dark:text-red-300">{mailError.message}</p>
+          )}
           <button type="button"
-            onClick={handleCreate}
-            disabled={disableCreateShare}
+            onClick={() => handleCreate(startWithMail)}
+            disabled={disableCreateShare || mailPending || (startWithMail && !canCompose)}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
           >
             <UserPlus size={14} />
-            {createShare.isPending ? t('share.sharing') : t('share.title')}
+            {t(createShare.isPending ? 'share.sharing' : createLabel)}
           </button>
+          {tab === 'link' && !startWithMail && canCompose && (
+            <button type="button" onClick={() => handleCreate(true)} disabled={mailPending}
+              className="w-full flex items-center justify-center gap-2 rounded-lg border border-subtle px-4 py-2 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-[#222638] disabled:opacity-50">
+              <MailPlus size={14} />{t('share.mailCreate')}
+            </button>
+          )}
           </>}
 
           {/* Existing shares */}
@@ -651,14 +711,21 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
             <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-[#2d3148]">
               <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">{t('share.activeShares')}</p>
               <ul className="space-y-1.5">
-                {shares.map(s => (
-                  <ActiveShareRow
+                {shares.map(s => {
+                  const token = s.token
+                  const activeLink = s.grantee_type === 'link' && token && (!s.expires_at || Date.parse(s.expires_at) > Date.now())
+                  return <ActiveShareRow
                     key={s.id}
                     s={s}
                     isFolder={item.is_folder}
                     copied={copied}
                     onRevoke={() => revokeShare.mutate(s.id)}
-                    onCopyLink={s.grantee_type === 'link' ? () => copyLink(s.token ?? '') : undefined}
+                    onCopyLink={s.grantee_type === 'link' && token ? () => copyLink(token) : undefined}
+                    emailPending={mailPending}
+                    onEmailLink={canCompose && activeLink ? () => {
+                      createShare.reset()
+                      emailExistingLink.mutate(token)
+                    } : undefined}
                     onUpdate={(editedPerms, expiresAt) =>
                       updateShare.mutate({
                         id: s.id,
@@ -673,7 +740,7 @@ export function ShareDialog({ item, onClose }: Readonly<ShareDialogProps>) {
                       })
                     }
                   />
-                ))}
+                })}
               </ul>
             </div>
           )}

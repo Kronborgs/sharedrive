@@ -1,10 +1,12 @@
-import { Router, type Request, type Response } from 'express';
+import { raw, Router, type Request, type Response } from 'express';
 import {
   type SendMailPayload,
   fetchMailFolders,
   fetchFolderMessages,
   searchAllFoldersMessages,
   fetchMessageDetail,
+  fetchRawEmail,
+  importRawEmail,
   downloadMessageAttachment,
   updateMessageFlags,
   markAllFolderMessagesAsSeen,
@@ -37,6 +39,43 @@ import {
 } from '../services/sessionAuth.js';
 
 export const mailRouter = Router();
+
+const emlType = 'message/rfc822';
+
+mailRouter.get('/eml', async (req, res) => {
+  const folder = String(req.query.folder || 'INBOX');
+  const uid = Number(req.query.uid);
+  if (!Number.isSafeInteger(uid) || uid < 1) {
+    res.status(400).json({ ok: false, error: 'Ugyldigt beskednummer.' });
+    return;
+  }
+  try {
+    const message = await fetchRawEmail(requireMailCredentials(req), folder, uid);
+    if (!message) {
+      res.status(404).json({ ok: false, error: 'Beskeden findes ikke længere i mappen.' });
+      return;
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="mail-${uid}.eml"`);
+    res.type(emlType).send(message);
+  } catch {
+    res.status(502).json({ ok: false, error: 'Kunne ikke eksportere mailen fra IMAP.' });
+  }
+});
+
+mailRouter.post('/eml', raw({ type: emlType, limit: '20mb' }), async (req, res) => {
+  const folder = String(req.query.folder || '').trim();
+  const message = req.body as unknown;
+  if (!folder || !Buffer.isBuffer(message) || !/^[!-9;-~]+:[^\r\n]*\r?\n/.test(message.subarray(0, 4096).toString('latin1'))) {
+    res.status(400).json({ ok: false, error: 'Vælg en mappe og en gyldig .eml-fil.' });
+    return;
+  }
+  try {
+    await importRawEmail(requireMailCredentials(req), folder, message);
+    res.status(201).json({ ok: true });
+  } catch {
+    res.status(502).json({ ok: false, error: 'IMAP kunne ikke gemme mailen i den valgte mappe.' });
+  }
+});
 
 const sendMailLimiter = createRateLimiter(
   45,

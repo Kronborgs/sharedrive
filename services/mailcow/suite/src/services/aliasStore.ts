@@ -40,11 +40,14 @@ function readAllAliases(): UserAliasesFile {
 }
 
 function writeAllAliases(data: UserAliasesFile) {
+  const aliasesFile = path.join(getWritableDataDir(), 'aliases.json');
+  const temporaryFile = `${aliasesFile}.${crypto.randomUUID()}.tmp`;
   try {
-    const aliasesFile = path.join(getWritableDataDir(), 'aliases.json');
-    fs.writeFileSync(aliasesFile, JSON.stringify(data, null, 2), 'utf8');
-  } catch (err) {
-    console.warn('Kunne ikke skrive aliases.json til disk:', err);
+    fs.writeFileSync(temporaryFile, JSON.stringify(data, null, 2), { mode: 0o600 });
+    fs.renameSync(temporaryFile, aliasesFile);
+  } catch {
+    fs.rmSync(temporaryFile, { force: true });
+    throw new Error('Kunne ikke gemme dine afsenderindstillinger i Sharedrive.');
   }
 }
 
@@ -104,7 +107,7 @@ function clearDismissedAliases(usernameLower: string) {
 const VALID_ALIAS_EMAIL_REGEX =
   /^[^\s@/\\:<>()[\],;"]+@[^\s@/\\:<>()[\],;"]+\.[a-zA-Z0-9-]{2,}$/;
 
-export function getAliasesForUser(username: string): SenderAliasRecord[] {
+export function getAliasesForUser(username: string, persistDefaults = true): SenderAliasRecord[] {
   const key = username.toLowerCase().trim();
   const all = readAllAliases();
   const rawList = Array.isArray(all[key]) ? all[key] : [];
@@ -133,7 +136,7 @@ export function getAliasesForUser(username: string): SenderAliasRecord[] {
     changed = true;
   }
 
-  if (changed) {
+  if (changed && persistDefaults) {
     all[key] = list;
     writeAllAliases(all);
   }

@@ -1,6 +1,8 @@
 # Arbejdsplan for Mailcow i Sharedrive
 
-Sharedrive får et valgfrit modul med Mail, Kalender og Kontakter i React. Go ejer brugeradgang og kontotilknytning. Mailcow og SOGo forbliver datakilden. Temaet styres af Sharedrive og virker også uden Mailcow.
+Sharedrives React-app åbner den valgfrie Vue-arbejdsflade til Mail, Kalender og Kontakter. Go ejer brugeradgang og kontotilknytning. Den interne Node-tjeneste forbinder til Mailcow og SOGo for den indloggede brugers konto. Temaet styres af Sharedrive og virker også uden Mailcow.
+
+Den aktuelle [funktionssammenligning med Brogaard Suite](sharedrive-brogaard-sammenligning.md) viser, hvad Sharedrive har i koden, og hvilke forløb der stadig kræver afprøvning.
 
 ## 1. Temaer i Sharedrive
 
@@ -10,11 +12,11 @@ Sharedrive får et valgfrit modul med Mail, Kalender og Kontakter i React. Go ej
 
 ## 2. Afprøv genbrug af Brogaards Mailcow-kode
 
-Den første [lokale forbindelsesprøve](../services/mailcow/README.md) er implementeret. Den genbruger Brogaards IMAP-klient og afprøver godkendelse og adgang via de fire protokoller.
+[Forbindelsesprøven](../services/mailcow/README.md) kører gennem Go og den interne Node-tjeneste. Den genbruger Brogaards IMAP-klient og afprøver godkendelse og adgang via de fire protokoller.
 
 - Start med Brogaards `mailClient.ts` (IMAP/SMTP), `davClient.ts` og `icalMapper.ts` (CalDAV) samt `carddavClient.ts` (CardDAV), alle under `backend/src/services`. Kortlæg, hvilke dele der kan bruges uden Brogaards egen session og Express-ruter. Importér de nødvendige dele med dokumenteret commit-id fra [Brogaard Suite](https://github.com/mrbridgefarm/Brogaard-Suite). Hold Sharedrives integrationskode adskilt fra de importerede filer.
 - Kør klienterne i en intern Node-tjeneste med et lille API til Go. Sharedrive er det offentlige indgangspunkt. Administration → Indstillinger → Mail styrer kun, om modulet er aktiveret. Brugernes kontotilknytning bruger den enkelte kontos eget værtsnavn.
-- Brug to separate testkonti til at bekræfte TLS, app-adgangskoder, modtagelse og afsendelse af mail samt læsning og skrivning af en aftale og kontakt. Kontrollér ændringerne i SOGo og at den anden konto ikke kan læse private data.
+- Knyt to separate testpostkasser til hver sin Sharedrive-testbruger. Kør forbindelsesprøven for hver bruger, og registrér resultatet for IMAP, SMTP, CalDAV og CardDAV. Brug derefter de samme testkonti til modtagelse og afsendelse af testmail samt læsning og skrivning af en testaftale og en testkontakt. Kontrollér ændringerne i SOGo, og kontrollér at den anden konto ikke kan læse de private data.
 
 ## 3. Kontotilknytning og brugerflade
 

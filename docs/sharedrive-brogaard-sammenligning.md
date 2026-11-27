@@ -1,0 +1,16 @@
+# Sharedrive sammenlignet med Brogaard Suite
+
+Sammenligningen bruger Brogaard Suites hovedgren ved revision `e0f4c8a1847138114d6651d685bec8ef960d97d9` og Sharedrives lokale arbejdsmappe. Tabellen beskriver funktioner i koden. Afprøvning mod den konkrete Mailcow-installation er angivet særskilt. [Brogaard Suites funktionsoversigt](https://github.com/mrbridgefarm/Brogaard-Suite/blob/e0f4c8a1847138114d6651d685bec8ef960d97d9/README.md)
+
+| Område | Funktioner i Sharedrive | Miljøafhængighed eller forskel |
+| --- | --- | --- |
+| Mail | IMAP-mapper og undermapper, læserude med to layouts, lys og mørk læsning, global søgning, filtre, sidevis indlæsning, kladder, vedhæftninger, EML-import og -eksport, udklipsholder, fortrydelse og opdatering ved fokus. Eksterne billeder åbnes efter brugerens valg. | Spamtræning og ManageSieve afhænger af Mailcow og Dovecot. Afprøv dem på testserveren. |
+| Afsenderidentiteter | SOGo-synlige aliaser hentes automatisk. Der er lokale signaturer og valg af standardafsender. Skjulte aliaser kan hentes med en administratorkonfigureret læsenøgle. | Læsenøglen kræver både `MAILCOW_API_URL` og `MAILCOW_API_KEY` i Node-tjenestens miljø. Den bruges kun for brugere på den konfigurerede HTTPS-vært. Signaturer gemmes i Sharedrive. |
+| Kalender | År, måned, uge, dag og liste, danske ugenumre, flytning af aftaler, import og eksport af ICS, danske helligdage, fødselsdage, abonnementer, papirkurv, fortrydelse, kalenderfarver og kalenderdeling. Offentlige links kan udløbe. | Eksterne abonnementer skal bruge HTTPS eller `webcal://`, der omskrives til HTTPS. Delt læse-/skriveadgang og farvesynkronisering afhænger af den tilsluttede SOGo. |
+| Kontakter | CardDAV, valg af adressebog, VCF, kontaktfelter og fotos, favoritter, flermarkering, masseredigering, sletning og mail i BCC. Automatisk Gravatar er et frivilligt valg. | Gravatar sender et hash af e-mailadressen til Gravatar, når brugeren slår funktionen til. CardDAV-rettigheder afgør, hvilke bøger der kan redigeres. |
+| Tværgående handlinger | Kontaktforslag i mail og kalender, gem afsender som kontakt, opret aftale fra mail, konflikttjek for ICS-invitationer og skift mellem moduler med Alt+1/2/3. | Sharedrives login giver adgang til brugerens tilknyttede Mailcow-konto. |
+| Temaer | De 11 farvetemaer er fælles for login, hovedappen og mailarbejdsfladen. Nordisk Blå Time er standard. | Farver i særlige komponenter følger deres egne status- og kontrastregler. |
+| Installation og offline | Mail kan installeres som en særskilt app. En allerede åbnet session kan bruge lokal cache, og kalenderen kan sætte ændringer i kø. | Genåbning offline af privat Mail mangler. Sharedrive validerer session og kontotilknytning ved opstart. Mail- og konto-API'er caches ikke af service workeren. |
+| Sharedrives fil- og mappedeling | **Del → Link** kan oprette et link og åbne en personlig mail. Et aktivt link kan genbruges i en mail. **Del → Bruger** bruger eksisterende Sharedrive-notifikationer og SMTP. Højreklik er en genvej. | Personlig mail kræver en aktiv Mailcow-tilknytning for den aktuelle bruger. |
+
+Brugeren har bekræftet, at to Sharedrive-brugere har hver sin fungerende mailkonto. Liveverifikation af alle funktionerne i tabellen og installation som app er stadig udestående efter deploy af denne ændring.

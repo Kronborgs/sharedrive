@@ -747,7 +747,7 @@ export async function fetchMessageDetail(
           size: Number(att.size || att.content?.length || 0),
           cid: att.cid,
           isInline,
-          ...(isDraftMsg && !isInline && att.content && att.content.length <= 15 * 1024 * 1024
+          ...(isDraftMsg && !isInline && att.content && att.content.length <= 18 * 1024 * 1024
             ? { contentBase64: att.content.toString('base64') }
             : {})
         });
@@ -817,6 +817,25 @@ export async function fetchMessageDetail(
     } finally {
       lock.release();
     }
+  });
+}
+
+export async function fetchRawEmail(creds: MailServerCredentials, folder: string, uid: number): Promise<Buffer | undefined> {
+  return withImap(creds, async (client) => {
+    const lock = await client.getMailboxLock(folder, { readOnly: true });
+    try {
+      const message = await client.fetchOne(String(uid), { source: true }, { uid: true });
+      return message ? message.source : undefined;
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+export async function importRawEmail(creds: MailServerCredentials, folder: string, raw: Buffer): Promise<void> {
+  await withImap(creds, async (client) => {
+    const result = await client.append(folder, raw);
+    if (!result) throw new Error('IMAP kunne ikke gemme beskeden.');
   });
 }
 

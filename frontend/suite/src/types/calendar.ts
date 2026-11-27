@@ -122,6 +122,7 @@ export interface PublicShareLink {
   calendarNames: string[];
   hideDetails: boolean;
   createdAt: string;
+  expiresAt?: string;
 }
 
 export interface UserCalendarShare {

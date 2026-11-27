@@ -35,6 +35,7 @@ const showUserSuggestions = ref(false);
 const label = ref('');
 const selectedCalendarIds = ref<string[]>([]);
 const hideDetails = ref(false);
+const expiryDays = ref(0);
 const isCreating = ref(false);
 const copiedToken = ref<string | null>(null);
 
@@ -87,6 +88,7 @@ watch(
       label.value = 'Min Kalender';
     }
     hideDetails.value = false;
+    expiryDays.value = 0;
   }
 );
 
@@ -145,7 +147,8 @@ async function handleCreateShare() {
     const created = await store.createShare({
       label: label.value.trim() || 'Delt kalender',
       calendarIds: selectedCalendarIds.value,
-      hideDetails: hideDetails.value
+      hideDetails: hideDetails.value,
+      expiresAt: expiryDays.value ? new Date(Date.now() + expiryDays.value * 86_400_000).toISOString() : undefined
     });
     if (created) {
       await copyShareUrl(created.token);
@@ -475,6 +478,15 @@ async function handleCreateShare() {
               </span>
             </label>
 
+            <label class="block space-y-1 text-slate-300">
+              <span>Linket udløber</span>
+              <select v-model.number="expiryDays" class="block w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5">
+                <option :value="0">Udløber aldrig</option>
+                <option :value="1">Efter 24 timer</option>
+                <option :value="7">Efter 7 dage</option>
+                <option :value="30">Efter 30 dage</option>
+              </select>
+            </label>
             <button
               type="submit"
               :disabled="isCreating || selectedCalendarIds.length === 0"
@@ -488,14 +500,14 @@ async function handleCreateShare() {
           <!-- Aktive delingslinks -->
           <div class="space-y-2">
             <h4 class="font-bold uppercase tracking-wider text-slate-400 text-[11px]">
-              Dine aktive delingslinks ({{ store.shares.length }})
+              Dine delingslinks ({{ store.shares.length }})
             </h4>
 
             <div
               v-if="store.shares.length === 0"
               class="p-6 text-center rounded-xl bg-slate-950/60 border border-slate-800 text-slate-400"
             >
-              Du har ingen aktive delingslinks endnu.
+              Du har ingen delingslinks endnu.
             </div>
 
             <div
@@ -508,6 +520,9 @@ async function handleCreateShare() {
                   <div class="font-semibold text-slate-100 truncate">
                     {{ share.label }}
                   </div>
+                  <p v-if="share.expiresAt" class="text-[11px] text-slate-400">
+                    {{ Date.parse(share.expiresAt) <= Date.now() ? 'Udløbet' : 'Udløber ' + new Date(share.expiresAt).toLocaleString('da-DK') }}
+                  </p>
                   <div class="text-[11px] text-slate-400 truncate">
                     Kalendere: {{ share.calendarNames.join(', ') }}
                     <span v-if="share.hideDetails" class="text-amber-300 ml-1">(Kun "Optaget")</span>

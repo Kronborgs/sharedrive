@@ -8,6 +8,7 @@ import { mailRouter } from './routes/mail.js'
 import { caldavRouter } from './routes/caldav.js'
 import { carddavRouter } from './routes/carddav.js'
 import { shareOwner } from './services/shareStore.js'
+import { getAliasesForUser } from './services/aliasStore.js'
 
 type ProxyAccount = { host: string; username: string; password: string; scope: string; owner: string }
 const checkedLookup = new Agent({
@@ -103,7 +104,7 @@ export function createSuiteHandler({ token, smtpPort }: { token: string; smtpPor
   })
   app.get('/api/auth/session', (_req, res) => {
     const { username, scope } = res.locals.account as ProxyAccount
-    res.json({ ok: true, authenticated: true, username, scope })
+    res.json({ ok: true, authenticated: true, username, scope, aliases: getAliasesForUser(username, false) })
   })
   app.use('/api/mail', mailRouter)
   app.use('/api/caldav', caldavRouter)

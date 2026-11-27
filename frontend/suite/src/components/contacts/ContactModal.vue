@@ -17,7 +17,7 @@ import { useContactsStore } from '../../stores/contactsStore';
 import { useSuiteStore } from '../../stores/suiteStore';
 import { apiFetchContactPhoto } from '../../services/carddavApi';
 import { processContactPhotoFile, processContactPhotoDataUrl } from '../../utils/contactPhoto';
-import { getGravatarAvatarUrlForEmail, markGravatarFailed } from '../../utils/gravatar';
+import { getGravatarAvatarUrlForEmail, gravatarEnabled, markGravatarFailed } from '../../utils/gravatar';
 import type { Contact, ContactEmail, ContactPhone } from '../../types/contacts';
 
 const store = useContactsStore();
@@ -98,7 +98,7 @@ const autoGravatarUrl = computed(() => {
   return null;
 });
 
-const effectivePreviewSrc = computed(() => photoDataUrl.value || autoGravatarUrl.value || null);
+const effectivePreviewSrc = computed(() => photoDataUrl.value || (gravatarEnabled() ? autoGravatarUrl.value : null));
 
 watch(
   () => store.editingContact,

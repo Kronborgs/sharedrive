@@ -258,11 +258,12 @@ function toggleLayout() {
         v-if="!isMobile"
         type="button"
         class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
-        title="Administrér dine afsender-aliaser og signaturer"
+        title="Signaturer og afsenderadresser"
+        aria-label="Signaturer og afsenderadresser"
         @click="store.isAliasModalOpen = true"
       >
         <AtSign class="w-3.5 h-3.5 text-blue-400" />
-        <span class="hidden 2xl:inline">Aliaser</span>
+        <span class="hidden 2xl:inline">Signaturer</span>
         <span class="px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-semibold">
           {{ store.aliases.length }}
         </span>

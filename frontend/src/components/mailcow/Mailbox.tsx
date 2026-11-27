@@ -9,7 +9,7 @@ type FolderKind = 'inbox' | 'sent' | 'drafts' | 'trash' | 'archive' | 'junk' | '
 type MailFolder = { path: string; name: string; specialUse: FolderKind; unread: number }
 type Message = { uid: number; subject: string; from: string; fromName: string; date: string; seen: boolean; hasAttachments: boolean }
 type MessageDetail = Message & { text: string }
-type Draft = { to: string; subject: string }
+type Draft = { to: string; subject: string; textBody?: string }
 const defaultFolder: MailFolder = { path: 'INBOX', name: 'INBOX', specialUse: 'inbox', unread: 0 }
 
 function MailComposer({ draft, close }: Readonly<{ draft: Draft; close: () => void }>) {
@@ -24,7 +24,7 @@ function MailComposer({ draft, close }: Readonly<{ draft: Draft; close: () => vo
       <MailField name="subject" label={t('mailcowWorkspace.subject')} defaultValue={draft.subject} />
       <label className="block space-y-1 text-sm">
         <span>{t('mailcowWorkspace.body')}</span>
-        <textarea name="body" rows={9} maxLength={24_000} required className={fieldClass} />
+        <textarea name="body" rows={9} maxLength={24_000} defaultValue={draft.textBody} required className={fieldClass} />
       </label>
       <div className="flex gap-2">
         <button type="submit" className={primary} disabled={write.status === 'pending'}>{t('mailcowWorkspace.send')}</button>
@@ -65,14 +65,15 @@ function ReadingPane({ scope, folder, uid, close, reply }: Readonly<{
   )
 }
 
-export function Mailbox({ scope, recipient }: Readonly<{ scope: MailScope; recipient?: string }>) {
+export function Mailbox({ scope, recipient, initialDraft }: Readonly<{ scope: MailScope; recipient?: string; initialDraft?: Omit<Draft, 'to'> }>) {
   const { t, locale } = useI18n()
   const folders = useMailData<MailFolder[]>(scope, 'folders')
   const [folder, setFolder] = useState('INBOX')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [uid, setUid] = useState<number | null>(null)
-  const [draft, setDraft] = useState<Draft | null>(recipient ? { to: recipient, subject: '' } : null)
+  const recipientDraft = recipient ? { to: recipient, subject: '' } : null
+  const [draft, setDraft] = useState<Draft | null>(initialDraft ? { to: '', ...initialDraft } : recipientDraft)
   const list = useMailData<{ messages: Message[]; total: number }>(scope, 'folder', { folder, page, search })
   const allFolders = folders.data?.length ? folders.data : [defaultFolder]
   const folderName = (value: MailFolder) => value.specialUse === 'custom' ? value.name : t(`mailcowFolder.${value.specialUse}`)

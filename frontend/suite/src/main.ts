@@ -25,9 +25,14 @@ async function start() {
   const app = createApp(App)
   app.use(createPinia())
   app.mount('#app')
+  if ('serviceWorker' in navigator) {
+    void navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {})
+  }
 }
 
 void start().catch(() => {
   const root = document.getElementById('app')
-  if (root) root.textContent = 'Mail kunne ikke åbnes. Kontrollér din konto i Sharedrive.'
+  if (root) root.textContent = navigator.onLine
+    ? 'Mail kunne ikke åbnes. Kontrollér din konto i Sharedrive.'
+    : 'Forbind til internettet for at åbne Mail og bekræfte din Sharedrive-session.'
 })

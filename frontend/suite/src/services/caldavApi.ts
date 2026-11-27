@@ -171,6 +171,7 @@ export async function apiCreateShare(params: {
   calendarUrls: string[];
   calendarNames: string[];
   hideDetails: boolean;
+  expiresAt?: string;
 }): Promise<PublicShareLink> {
   const res = await fetch('/api/v1/me/mailcow/suite/caldav/shares', {
     method: 'POST',

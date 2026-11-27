@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import { AtSign, Plus, Trash2, Check, X, Star, Pencil, RefreshCw } from 'lucide-vue-next';
 import { useMailStore } from '../../stores/mailStore';
 import type { SenderAlias } from '../../types/mail';
@@ -12,6 +12,16 @@ const displayName = ref('');
 const signature = ref('');
 const isDefault = ref(false);
 const isSaving = ref(false);
+const signatureField = ref<HTMLTextAreaElement | null>(null);
+
+watch(() => store.isAliasModalOpen, async (open) => {
+  if (!open) return;
+  const sender = store.defaultAlias;
+  if (sender) startEdit(sender);
+  else resetForm();
+  await nextTick();
+  signatureField.value?.focus();
+});
 
 function resetForm() {
   editingId.value = undefined;
@@ -41,7 +51,8 @@ async function handleSave() {
       isDefault: isDefault.value
     });
     if (ok) {
-      resetForm();
+      const saved = store.aliases.find((alias) => alias.email.toLowerCase() === email.value.trim().toLowerCase());
+      if (saved) startEdit(saved);
     }
   } finally {
     isSaving.value = false;
@@ -66,7 +77,10 @@ async function setAsDefault(alias: SenderAlias) {
       class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4"
       @click.self="store.isAliasModalOpen = false"
     >
-      <div class="w-full max-w-xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col max-h-[88vh] overflow-hidden">
+      <div class="w-full max-w-xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col max-h-[88vh] overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mail-signatures-title">
         <!-- Header -->
         <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
           <div class="flex items-center gap-2.5">
@@ -74,11 +88,11 @@ async function setAsDefault(alias: SenderAlias) {
               <AtSign class="w-4 h-4" />
             </div>
             <div>
-              <h3 class="text-sm font-bold text-slate-100">
-                Administrér Afsender-Aliaser
+              <h3 id="mail-signatures-title" class="text-sm font-bold text-slate-100">
+                Signaturer og afsenderadresser
               </h3>
               <p class="text-[11px] text-slate-400">
-                Tilføj og gem dine mail-aliaser, visningsnavne og signaturer
+                Sharedrive indsætter den gemte signatur i nye mails, svar og videresendelser.
               </p>
             </div>
           </div>
@@ -86,6 +100,7 @@ async function setAsDefault(alias: SenderAlias) {
           <button
             type="button"
             class="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200"
+            aria-label="Luk signaturer"
             @click="store.isAliasModalOpen = false"
           >
             <X class="w-4 h-4" />
@@ -99,14 +114,14 @@ async function setAsDefault(alias: SenderAlias) {
             @submit.prevent="handleSave"
           >
             <div class="font-bold text-slate-200 flex items-center justify-between">
-              <span>{{ editingId ? 'Redigér afsender-alias' : 'Tilføj nyt afsender-alias' }}</span>
+              <span>{{ editingId ? 'Redigér signatur og afsender' : 'Tilføj afsender' }}</span>
               <button
                 v-if="editingId"
                 type="button"
                 class="text-[11px] text-slate-400 hover:text-slate-200"
                 @click="resetForm"
               >
-                Annullér redigering
+                Tilføj afsender
               </button>
             </div>
 
@@ -133,13 +148,19 @@ async function setAsDefault(alias: SenderAlias) {
             </div>
 
             <div>
-              <label class="block text-slate-400 mb-1">Fast signatur for dette alias (valgfri)</label>
+              <label for="mail-signature-text" class="block text-slate-400 mb-1">Signatur for denne afsender</label>
               <textarea
+                id="mail-signature-text"
+                ref="signatureField"
                 v-model="signature"
-                rows="3"
+                aria-describedby="mail-signature-help"
+                rows="4"
                 placeholder="Med venlig hilsen..."
                 class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 focus:outline-none focus:border-blue-500"
               ></textarea>
+              <p id="mail-signature-help" class="mt-1 text-[11px] text-slate-400">
+                Gemmes i Sharedrive. Lad feltet være tomt, hvis afsenderen ikke skal have en signatur.
+              </p>
             </div>
 
             <div class="flex items-center justify-between pt-1">
@@ -159,7 +180,7 @@ async function setAsDefault(alias: SenderAlias) {
               >
                 <Check v-if="editingId" class="w-3.5 h-3.5" />
                 <Plus v-else class="w-3.5 h-3.5" />
-                <span>{{ editingId ? 'Gem ændringer' : 'Gem alias' }}</span>
+                <span>{{ editingId ? 'Gem ændringer' : 'Gem afsender' }}</span>
               </button>
             </div>
           </form>
@@ -228,7 +249,8 @@ async function setAsDefault(alias: SenderAlias) {
                 <button
                   type="button"
                   class="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-slate-100 transition"
-                  title="Redigér alias"
+                  title="Redigér signatur og afsender"
+                  :aria-label="`Redigér signaturen for ${alias.email}`"
                   @click="startEdit(alias)"
                 >
                   <Pencil class="w-3.5 h-3.5" />

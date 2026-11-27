@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ExternalLink, LogOut, Settings } from 'lucide-vue-next';
+import { Download, ExternalLink, LogOut, Settings } from 'lucide-vue-next';
 import { useSuiteStore } from '../../stores/suiteStore';
 import { useViewport } from '../../composables/useViewport';
 
 const suiteStore = useSuiteStore();
-const { isMobile } = useViewport();
+const { isMobile, canPromptPwaInstall, triggerPwaInstall } = useViewport();
 function backToSharedrive() {
   if (window.parent === window) window.location.assign('/files');
   else window.parent.postMessage({ type: 'sharedrive-mail-close' }, window.location.origin);
@@ -24,6 +24,12 @@ function backToSharedrive() {
       <ExternalLink class="w-3.5 h-3.5 text-sky-400" />
       <span class="hidden 2xl:inline">SOGo</span>
     </a>
+
+    <button v-if="canPromptPwaInstall && !isMobile" type="button" @click="triggerPwaInstall()"
+      title="Installér Sharedrive Mail" aria-label="Installér Sharedrive Mail"
+      class="p-2 rounded-lg border border-slate-700 bg-slate-800/85 hover:bg-slate-700 text-slate-300">
+      <Download class="w-3.5 h-3.5" />
+    </button>
 
     <a href="/mail?manage=true" title="Min Mailcow-konto" aria-label="Min Mailcow-konto"
       class="p-2 rounded-lg border border-slate-700 bg-slate-800/85 hover:bg-slate-700 text-slate-300">

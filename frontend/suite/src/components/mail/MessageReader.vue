@@ -11,6 +11,7 @@ import {
   MailOpen,
   Paperclip,
   Download,
+  ExternalLink,
   Calendar,
   CalendarPlus,
   Mail,
@@ -33,8 +34,10 @@ import { useSuiteStore } from '../../stores/suiteStore';
 import { useCalendarStore } from '../../stores/calendarStore';
 import { useContactsStore } from '../../stores/contactsStore';
 import { useTheme } from '../../composables/useTheme';
-import { getAttachmentDownloadUrl } from '../../services/mailApi';
-import type { MailAddress } from '../../types/mail';
+import { apiFetchContactPhoto } from '../../services/carddavApi';
+import { getAttachmentDownloadUrl, getEmlDownloadUrl } from '../../services/mailApi';
+import { openMailAttachment, sharedriveAttachmentEditor } from '../../services/mailAttachments';
+import type { MailAddress, MailAttachment } from '../../types/mail';
 
 const props = defineProps<{
   showMobileBack?: boolean;
@@ -51,10 +54,27 @@ const contactsStore = useContactsStore();
 const { currentTheme } = useTheme();
 
 const preferPlainText = ref(false);
-const allowRemoteImages = ref(true);
+const allowRemoteImages = ref(false);
+const remoteImages = ref(new Map<string, string>());
+const loadingRemoteImages = ref(false);
 const inviteCalendarId = ref('');
 const isAddingInvite = ref(false);
 const addedInviteToCalendar = ref(false);
+const openingAttachment = ref('');
+
+async function openAttachment(attachment: MailAttachment) {
+  const message = msg.value;
+  if (!message || openingAttachment.value) return;
+  openingAttachment.value = attachment.id;
+  try {
+    const target = await openMailAttachment(message, attachment);
+    window.location.assign(target);
+  } catch (error) {
+    suiteStore.notify('Kunne ikke åbne filen', error instanceof Error ? error.message : undefined, 'error');
+  } finally {
+    openingAttachment.value = '';
+  }
+}
 
 const msg = computed(() => store.activeMessageDetail);
 const isLightPaper = computed(() => store.readerThemeMode === 'LIGHT_PAPER');
@@ -63,6 +83,9 @@ watch(
   () => msg.value?.id,
   () => {
     preferPlainText.value = false;
+    allowRemoteImages.value = false;
+    remoteImages.value = new Map();
+    loadingRemoteImages.value = false;
     addedInviteToCalendar.value = false;
     if (!inviteCalendarId.value && calendarStore.defaultWritableCalendar) {
       inviteCalendarId.value = calendarStore.defaultWritableCalendar.id;
@@ -212,7 +235,13 @@ function getLuminance(rgb: { r: number; g: number; b: number }): number {
   return (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
 }
 
-function applySmartDarkModeContrastFix(cleanHtml: string, blockExternalImgs: boolean): string {
+function secureImageUrl(value: string) {
+  if (value.startsWith('//')) value = 'https:' + value;
+  if (!/^https:\/\//i.test(value)) return '';
+  return value;
+}
+
+function applySmartDarkModeContrastFix(cleanHtml: string): string {
   if (typeof DOMParser === 'undefined') return cleanHtml;
 
   const parser = new DOMParser();
@@ -239,11 +268,13 @@ function applySmartDarkModeContrastFix(cleanHtml: string, blockExternalImgs: boo
   allElements.forEach((node) => {
     const el = node as HTMLElement;
 
-    if (blockExternalImgs && el.tagName === 'IMG') {
+    if (el.tagName === 'IMG') {
+      el.removeAttribute('srcset');
       const src = el.getAttribute('src') || '';
-      if (/^https?:\/\//i.test(src)) {
-        el.removeAttribute('src');
-        el.setAttribute('alt', '[Eksternt billede blokeret]');
+      if (/^(?:https?:)?\/\//i.test(src)) {
+        const image = allowRemoteImages.value && remoteImages.value.get(secureImageUrl(src));
+        if (image) el.setAttribute('src', image);
+        else el.removeAttribute('src');
       }
     }
 
@@ -271,10 +302,34 @@ function applySmartDarkModeContrastFix(cleanHtml: string, blockExternalImgs: boo
   return root.innerHTML;
 }
 
-const hasRemoteImages = computed(() => {
-  if (!msg.value?.htmlBody) return false;
-  return /<img[^>]+src=["']https?:\/\//i.test(msg.value.htmlBody);
+const remoteImageUrls = computed(() => {
+  if (!msg.value?.htmlBody) return [];
+  const sanitized = DOMPurify.sanitize(msg.value.htmlBody, { RETURN_DOM: true });
+  return [...new Set(Array.from(sanitized.querySelectorAll('img[src]'), image =>
+    secureImageUrl(image.getAttribute('src') || '')).filter(Boolean))].slice(0, 16);
 });
+
+async function toggleRemoteImages() {
+  allowRemoteImages.value = !allowRemoteImages.value;
+  if (!allowRemoteImages.value || remoteImages.value.size) return;
+  const messageId = msg.value?.id;
+  loadingRemoteImages.value = true;
+  const images = await Promise.all(remoteImageUrls.value.map(async url => {
+    try {
+      const src = await apiFetchContactPhoto({ url });
+      return src && /^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(src) ? [url, src] as const : null;
+    } catch {
+      return null;
+    }
+  }));
+  if (msg.value?.id !== messageId) return;
+  remoteImages.value = new Map(images.filter(entry => entry !== null));
+  loadingRemoteImages.value = false;
+  if (!remoteImages.value.size) {
+    allowRemoteImages.value = false;
+    suiteStore.notify('De eksterne billeder kunne ikke hentes', undefined, 'warning');
+  }
+}
 
 const processedHtml = computed(() => {
   if (!msg.value?.htmlBody) return '';
@@ -283,7 +338,7 @@ const processedHtml = computed(() => {
     ADD_ATTR: ['target', 'rel'],
     FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form']
   });
-  return applySmartDarkModeContrastFix(clean, !allowRemoteImages.value);
+  return applySmartDarkModeContrastFix(clean);
 });
 
 const downloadableAttachments = computed(() => {
@@ -291,9 +346,13 @@ const downloadableAttachments = computed(() => {
   return msg.value.attachments.filter((a) => !a.isInline);
 });
 
+const hasSharedriveAttachments = computed(() =>
+  downloadableAttachments.value.some((attachment) => sharedriveAttachmentEditor(attachment.filename))
+);
+
 const imageAttachments = computed(() =>
   downloadableAttachments.value.filter((a) =>
-    a.contentType.toLowerCase().startsWith('image/')
+    /^image\/(?:jpeg|png|gif|webp|avif|bmp)$/i.test(a.contentType)
   )
 );
 
@@ -649,7 +708,7 @@ function downloadIcsInvite() {
 
         <!-- Eksterne billeder kontrolbjælke -->
         <div
-          v-if="hasRemoteImages && !preferPlainText"
+          v-if="remoteImageUrls.length && !preferPlainText"
           class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between gap-2 text-[11px]"
         >
           <span class="flex items-center gap-1.5 text-slate-400">
@@ -659,9 +718,10 @@ function downloadIcsInvite() {
           <button
             type="button"
             class="text-blue-400 hover:text-blue-300 font-semibold"
-            @click="allowRemoteImages = !allowRemoteImages"
+            @click="toggleRemoteImages()"
+            :disabled="loadingRemoteImages"
           >
-            {{ allowRemoteImages ? 'Skjul eksterne billeder' : 'Vis eksterne billeder' }}
+            {{ loadingRemoteImages ? 'Henter billeder…' : allowRemoteImages ? 'Skjul eksterne billeder' : 'Vis eksterne billeder' }}
           </button>
         </div>
 
@@ -755,6 +815,15 @@ function downloadIcsInvite() {
           </div>
         </div>
 
+        <a
+          :href="getEmlDownloadUrl(msg.folder, msg.uid)"
+          class="inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-blue-300"
+          download
+        >
+          <Download class="h-3.5 w-3.5" />
+          Eksportér mail (.eml)
+        </a>
+
         <!-- Vedhæftede filer -->
         <div
           v-if="downloadableAttachments.length > 0"
@@ -764,18 +833,40 @@ function downloadIcsInvite() {
             <Paperclip class="w-3.5 h-3.5 text-blue-400" />
             Vedhæftninger ({{ downloadableAttachments.length }}):
           </span>
-          <a
+          <p v-if="hasSharedriveAttachments" class="basis-full text-[11px] text-slate-400">
+            Filer, der åbnes i en Sharedrive-editor, gemmes som en kopi i Mine filer.
+          </p>
+          <div
             v-for="att in downloadableAttachments"
             :key="att.id"
-            :href="getAttachmentDownloadUrl(msg.folder, msg.uid, att.id)"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200 transition"
+            class="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200"
           >
-            <Download class="w-3 h-3 text-blue-400" />
-            <span class="truncate max-w-[180px]">{{ att.filename }}</span>
+            <button
+              v-if="sharedriveAttachmentEditor(att.filename)"
+              type="button"
+              :disabled="Boolean(openingAttachment)"
+              :title="`Gem en kopi af ${att.filename} i Mine filer og åbn den`"
+              class="flex min-w-0 items-center gap-1 hover:text-blue-300 disabled:opacity-60"
+              @click="openAttachment(att)"
+            >
+              <ExternalLink class="h-3 w-3 shrink-0 text-blue-400" />
+              <span class="max-w-[180px] truncate">{{ openingAttachment === att.id ? 'Åbner…' : att.filename }}</span>
+            </button>
+            <a
+              v-else
+              :href="getAttachmentDownloadUrl(msg.folder, msg.uid, att.id, true)"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="max-w-[180px] truncate hover:text-blue-300"
+            >{{ att.filename }}</a>
             <span class="text-[10px] text-slate-400">({{ formatBytes(att.size) }})</span>
-          </a>
+            <a
+              :href="getAttachmentDownloadUrl(msg.folder, msg.uid, att.id)"
+              :aria-label="`Download ${att.filename}`"
+              title="Download"
+              class="rounded p-1 text-blue-400 hover:bg-slate-700"
+            ><Download class="h-3 w-3" /></a>
+          </div>
         </div>
       </div>
 
@@ -817,7 +908,8 @@ function downloadIcsInvite() {
               class="p-2 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5"
             >
               <img
-                :src="getAttachmentDownloadUrl(msg.folder, msg.uid, imgAtt.id)"
+                :src="getAttachmentDownloadUrl(msg.folder, msg.uid, imgAtt.id, true)"
+                loading="lazy"
                 :alt="imgAtt.filename"
                 class="rounded-lg max-h-64 w-auto mx-auto object-contain"
               />

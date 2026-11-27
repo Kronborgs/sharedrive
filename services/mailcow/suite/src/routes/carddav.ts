@@ -106,15 +106,17 @@ carddavRouter.post('/sync', async (req: Request, res: Response) => {
   try {
     const creds = requireDavCredentials(req);
     const addressBooks = await fetchAddressBooks(creds);
-    const rawContacts = await fetchAllContacts(creds, addressBooks);
+    const failedAddressBookIds: string[] = [];
+    const rawContacts = await fetchAllContacts(creds, addressBooks, failedAddressBookIds);
     const contacts = applyFavoritePrefsToContacts(creds.username, rawContacts);
     const prefs = getUserContactPrefs(creds.username);
-    void maybeAutoSyncContactBirthdays(creds);
+    if (!failedAddressBookIds.length) void maybeAutoSyncContactBirthdays(creds);
 
     sendCompressedJson(req, res, {
       ok: true,
       addressBooks,
       contacts,
+      failedAddressBookIds,
       calendarColor: prefs.calendarColor || null,
       syncedAt: new Date().toISOString()
     });

@@ -24,6 +24,7 @@ import { useShareTarget } from '@/hooks/useShareTarget'
 import { useUploadDuplicateWorkflow } from '@/hooks/useUploadDuplicateWorkflow'
 import { useI18n } from '@/lib/i18n'
 import { ignorePromise } from '@/lib/ignore-promise'
+import { useMailcowNavigation } from '@/lib/mailcow'
 import { LayoutList, LayoutGrid, Upload, FolderPlus, FolderUp, ChevronRight, Home, Share2, Pencil, Trash2, Download, X, ListMusic, MoreVertical, MoveRight, HardDrive, FilePlus } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -86,11 +87,14 @@ function FilesPage() {
   const qc = useQueryClient()
   const { setPlaylist, addTracks, tracks: playlistTracks, activePlaylistId, playlistMaxTracks } = usePlaylist()
   const { t } = useI18n()
+  const mail = useMailcowNavigation(user)
+  const canCompose = mail.enabled && mail.ready && mail.connected
 
   const [view, setView] = useState<ViewMode>('list')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [shareItem, setShareItem] = useState<FileItem | null>(null)
+  const [emailShareItem, setEmailShareItem] = useState<FileItem | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
   const [previewItem, setPreviewItem] = useState<FileItem | null>(null)
@@ -142,6 +146,8 @@ function FilesPage() {
         ? api.get<FileItem[]>(`/api/v1/files/breadcrumbs?folder_id=${folderId}`, signal)
         : Promise.resolve<FileItem[]>([]),
   })
+
+  const ownsCurrentFolder = breadcrumbs?.some(folder => folder.id === folderId && folder.owner_id === user?.id)
 
   const { data: systemSettings } = useQuery({
     queryKey: ['system', 'settings'],
@@ -456,6 +462,9 @@ function FilesPage() {
       case 'share':
         setShareItem(item)
         return true
+      case 'addToEmail':
+        if (canCompose) setEmailShareItem(item)
+        return true
       case 'rename':
         setRenameId(item.id)
         setRenameName(item.name)
@@ -475,7 +484,7 @@ function FilesPage() {
       default:
         return false
     }
-  }, [handleOpen, handlePlayInPlayerContextAction, handleTrashContextAction])
+  }, [canCompose, handleOpen, handlePlayInPlayerContextAction, handleTrashContextAction])
 
   const handleContextMenuAction = useCallback((action: ContextAction, item: FileItem) => {
     if (handleBasicContextMenuAction(action, item)) {
@@ -978,8 +987,11 @@ function FilesPage() {
         </div>
       </div>
 
-      {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < playlistMaxTracks} canAddToPlayer={!!activePlaylistId} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
+      {contextMenu && <FileContextMenu item={contextMenu.item} x={contextMenu.x} y={contextMenu.y} canAddToQueue={!!activePlaylistId && playlistTracks.length < playlistMaxTracks} canAddToPlayer={!!activePlaylistId} canAddToEmail={canCompose && (contextMenu.item.owner_id === user?.id || ownsCurrentFolder)} onAction={handleContextMenuAction} onClose={() => setContextMenu(null)} />}
       {shareItem && <ShareDialog item={shareItem} onClose={() => setShareItem(null)} />}
+      {emailShareItem && canCompose && (
+        <ShareDialog item={emailShareItem} onClose={() => setEmailShareItem(null)} startWithMail />
+      )}
       {previewItem && (
         <PreviewModal
           item={previewItem}

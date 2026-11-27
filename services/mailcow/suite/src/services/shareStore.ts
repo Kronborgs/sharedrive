@@ -8,6 +8,7 @@ type ShareInput = {
   calendarUrls: string[]
   calendarNames: string[]
   hideDetails: boolean
+  expiresAt?: string
 }
 
 type ShareRecord = ShareInput & {
@@ -33,9 +34,13 @@ function readShare(token: string): ShareRecord | undefined {
   }
 }
 
+export function shareExpired(record: ShareRecord) {
+  return Boolean(record.expiresAt && !(Date.parse(record.expiresAt) > Date.now()))
+}
+
 export function shareOwner(token: string) {
   const record = readShare(token)
-  return record ? {owner: record.owner, scope: record.scope} : undefined
+  return record && !shareExpired(record) ? {owner: record.owner, scope: record.scope} : undefined
 }
 
 export function resolveShareToken(token: string) {
@@ -46,8 +51,8 @@ export function resolveShareToken(token: string) {
 }
 
 function publicInfo(record: ShareRecord) {
-  const { token, label, calendarUrls, calendarNames, hideDetails, createdAt } = record
-  return { token, label, calendarUrls, calendarNames, hideDetails, createdAt }
+  const { token, label, calendarUrls, calendarNames, hideDetails, createdAt, expiresAt } = record
+  return { token, label, calendarUrls, calendarNames, hideDetails, createdAt, expiresAt }
 }
 
 function accountLinks() {

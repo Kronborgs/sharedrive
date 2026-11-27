@@ -860,7 +860,7 @@ export const useCalendarStore = defineStore('calendar', () => {
   async function exportCalendarIcs(calendarIdOrAll: string): Promise<void> {
     const isAll = calendarIdOrAll === 'ALL';
     const targetEvents = isAll
-      ? clonePlain(visibleEvents.value)
+      ? clonePlain(events.value)
       : clonePlain(events.value.filter((e) => e.calendarId === calendarIdOrAll));
     const calName = isAll
       ? 'Alle-Kalendere'
@@ -1185,6 +1185,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     label: string;
     calendarIds: string[];
     hideDetails: boolean;
+    expiresAt?: string;
   }): Promise<PublicShareLink | null> {
     if (session.value?.mode !== 'CALDAV') return null;
     const selectedCals = calendars.value.filter((c) => params.calendarIds.includes(c.id));
@@ -1198,7 +1199,8 @@ export const useCalendarStore = defineStore('calendar', () => {
         label: params.label,
         calendarUrls: selectedCals.map((c) => c.url),
         calendarNames: selectedCals.map((c) => c.name),
-        hideDetails: params.hideDetails
+        hideDetails: params.hideDetails,
+        expiresAt: params.expiresAt
       });
       shares.value.unshift(created);
       notify(

@@ -36,7 +36,7 @@ async function handleVcfUpload(e: Event) {
   input.value = '';
   if (!file) return;
 
-  const targetBook = store.defaultWritableAddressBook;
+  const targetBook = store.addressBooks.find(book => book.id === store.selectedAddressBookId) ?? store.defaultWritableAddressBook;
   if (!targetBook || targetBook.readOnly) {
     suiteStore.notify(
       'Ingen skrivbar adressebog',
@@ -121,7 +121,7 @@ async function handleVcfUpload(e: Event) {
     <!-- Højre: vCard Import/Eksport, Tema, Sync & Ny kontakt -->
     <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
       <label
-        class="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium cursor-pointer transition"
+        class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium cursor-pointer focus-within:ring-2 focus-within:ring-blue-400 transition"
         title="Importér kontakter fra .vcf (vCard) fil"
       >
         <Upload class="w-3.5 h-3.5 text-emerald-400" />
@@ -129,14 +129,16 @@ async function handleVcfUpload(e: Event) {
         <input
           type="file"
           accept=".vcf,.vcard,text/vcard"
-          class="hidden"
+          class="sr-only"
+          aria-label="Importér kontakter (.vcf)"
           @change="handleVcfUpload"
         />
       </label>
 
       <button
         type="button"
-        class="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
+        class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
+        aria-label="Eksportér kontakter (.vcf)"
         :title="
           store.selectedContactIds.length > 0
             ? `Eksportér ${store.selectedContactIds.length} valgte kontakt(er) som .vcf`
@@ -160,6 +162,7 @@ async function handleVcfUpload(e: Event) {
         type="button"
         class="p-2 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 transition flex items-center gap-1.5 text-xs"
         :title="suiteStore.isOnline ? 'Synkronisér adressebøger fra Mailcow CardDAV' : 'Offline — Viser cachede kontakter'"
+        aria-label="Synkronisér kontakter fra SOGo"
         @click="store.syncWithServer(false)"
       >
         <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin text-blue-400': store.isSyncing }" />

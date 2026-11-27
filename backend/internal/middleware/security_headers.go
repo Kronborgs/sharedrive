@@ -96,17 +96,21 @@ func (config *securityHeadersConfig) middleware(next http.Handler) http.Handler 
 	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		headers := w.Header()
 		setBaseSecurityHeaders(headers, request)
-		headers.Set("Content-Security-Policy", config.contentSecurityPolicy())
+		headers.Set("Content-Security-Policy", config.contentSecurityPolicy(request.URL.Path))
 		next.ServeHTTP(w, request)
 	})
 }
 
-func (config *securityHeadersConfig) contentSecurityPolicy() string {
+func (config *securityHeadersConfig) contentSecurityPolicy(path string) string {
 	connectSrc := appendCSPSource("'self' https://cloudflareinsights.com https://cdn.jsdelivr.net", websocketOrigin(config.appBaseURL))
 	connectSrc = appendLiveKitConnectSources(connectSrc, config.liveKitURL)
 	connectSrc = appendCSPSource(connectSrc, config.connectCache.resolve(config.extraConnectSrc))
 	scriptSrc, frameSrc := config.scriptAndFrameSources()
-	return "default-src 'self'; script-src " + scriptSrc + "; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src " + connectSrc + "; worker-src 'self' blob:; frame-src " + frameSrc + "; frame-ancestors 'none';"
+	imgSrc := "'self' data: blob:"
+	if strings.HasPrefix(path, "/mail/suite-ui/") {
+		imgSrc += " https://www.gravatar.com"
+	}
+	return "default-src 'self'; script-src " + scriptSrc + "; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src " + imgSrc + "; font-src 'self' data:; connect-src " + connectSrc + "; worker-src 'self' blob:; frame-src " + frameSrc + "; frame-ancestors 'none';"
 }
 
 func (config *securityHeadersConfig) scriptAndFrameSources() (string, string) {

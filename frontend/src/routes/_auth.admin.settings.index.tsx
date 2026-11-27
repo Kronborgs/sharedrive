@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
+import { ThemeSettings } from '@/components/admin/ThemeSettings'
 import { MailcowModuleSettings } from '@/components/admin/MailcowModuleSettings'
 import { useForm, type UseFormRegister } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -76,7 +77,7 @@ const settingsSchema = z.object({
 
 type FormValues = z.infer<typeof settingsSchema>
 
-type Tab = 'general' | 'smtp' | 'mailcow' | 'onlyoffice' | 'texteditor' | 'player' | 'rooms'
+type Tab = 'general' | 'smtp' | 'themes' | 'mailcow' | 'onlyoffice' | 'texteditor' | 'player' | 'rooms'
 type SMTPProviderId = 'gmail' | 'microsoft365' | 'outlook' | 'yahoo' | 'zoho' | 'custom'
 
 const SMTP_PROVIDER_PRESETS: Record<Exclude<SMTPProviderId, 'custom'>, { host: string; port: number; tls: boolean }> = {
@@ -239,6 +240,7 @@ function SettingsPage() {
     { id: 'general',    label: t('settings.tabGeneral') },
     { id: 'smtp',       label: t('settings.tabSmtp') },
     { id: 'mailcow',    label: t('mailcowModule.tab') },
+    { id: 'themes',     label: t('themes.title') },
     { id: 'onlyoffice', label: t('settings.tabOnlyOffice') },
     { id: 'texteditor', label: t('settings.tabTextEditor') },
     { id: 'player',     label: t('settings.tabPlayer') },
@@ -536,6 +538,7 @@ function SettingsPage() {
         </form>
       )}
       {tab === 'mailcow' && <MailcowModuleSettings />}
+      {tab === 'themes' && <ThemeSettings />}
     </div>
   )
 }

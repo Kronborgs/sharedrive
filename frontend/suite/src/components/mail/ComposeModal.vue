@@ -43,11 +43,18 @@ const useRichHtml = ref(true);
 const richEditorRef = ref<HTMLDivElement | null>(null);
 const textBody = ref('');
 
+let signatureBlock = '';
+let quotedBody = '';
+
 const inReplyTo = ref<string | undefined>(undefined);
 const references = ref<string[]>([]);
 const replyFolder = ref<string | undefined>(undefined);
 const replyUid = ref<number | undefined>(undefined);
 const draftRef = ref<{ folder: string; uid: number } | undefined>(undefined);
+
+const maxAttachmentBytes = 18 * 1024 * 1024;
+const isReadingAttachments = ref(false);
+let composeSession = 0;
 
 const attachments = ref<
   Array<{
@@ -117,14 +124,62 @@ function plainTextToHtml(plain: string): string {
   return escapeHtml(plain).replace(/\n/g, '<br>');
 }
 
-function htmlToPlainText(html: string): string {
+function formatSignature(signature?: string) {
+  return signature?.trim() ? `\n\n-- \n${signature.trimEnd()}` : '';
+}
+
+function formatEditorText(text: string) {
+  const html = plainTextToHtml(text);
+  const fileUrl = store.composePrefill?.sharedFileUrl;
+  if (!fileUrl) return html;
+  const link = document.createElement('a');
+  link.href = fileUrl;
+  link.textContent = fileUrl;
+  return html.replace(escapeHtml(fileUrl), link.outerHTML);
+}
+
+function renderEditorBody() {
+  const suffix = signatureBlock + quotedBody;
+  if (draftRef.value || !textBody.value.endsWith(suffix)) return formatEditorText(textBody.value);
+  const body = textBody.value.slice(0, textBody.value.length - suffix.length);
+  return formatEditorText(body) +
+    `<span data-mail-signature>${plainTextToHtml(signatureBlock)}</span>` +
+    plainTextToHtml(quotedBody);
+}
+
+function replaceComposerSignature(signature?: string) {
+  if (draftRef.value) return;
+  const replacement = formatSignature(signature);
+  if (replacement === signatureBlock) return;
+
+  if (useRichHtml.value) {
+    const block = richEditorRef.value?.querySelector('span[data-mail-signature]');
+    if (!block || block.innerHTML !== plainTextToHtml(signatureBlock)) return;
+    block.innerHTML = plainTextToHtml(replacement);
+  } else {
+    const suffix = signatureBlock + quotedBody;
+    if (!textBody.value.endsWith(suffix)) return;
+    textBody.value = textBody.value.slice(0, textBody.value.length - suffix.length) + replacement + quotedBody;
+  }
+  signatureBlock = replacement;
+}
+
+watch(
+  () => customAliasMode.value ? undefined : activeAliasObj.value?.signature,
+  (signature) => {
+    if (store.isComposeModalOpen) replaceComposerSignature(signature);
+  }
+);
+
+function htmlToPlainText(html: string, trim = true): string {
   const tmp = document.createElement('div');
   tmp.innerHTML = html
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<\/div>/gi, '\n')
     .replace(/<\/li>/gi, '\n');
-  return (tmp.textContent || tmp.innerText || '').trim();
+  const text = tmp.textContent || tmp.innerText || '';
+  return trim ? text.trim() : text;
 }
 
 function extractEditableDraftHtml(rawHtml: string): string {
@@ -180,6 +235,8 @@ watch(
       store.composePrefill
     ] as const,
   async ([isOpen]) => {
+    composeSession++;
+    isReadingAttachments.value = false;
     if (!isOpen) return;
 
     customAliasMode.value = false;
@@ -198,7 +255,8 @@ watch(
     const src = store.composeSourceMessage;
     const mode = store.composeMode;
     const prefill = store.composePrefill;
-    const sig = aliasObj?.signature ? `\n\n-- \n${aliasObj.signature}` : '';
+    signatureBlock = formatSignature(aliasObj?.signature);
+    quotedBody = '';
     let initialRichHtml: string | null = null;
 
     if (src && mode === 'DRAFT') {
@@ -255,11 +313,8 @@ watch(
       bccInput.value = prefill?.bcc?.join(', ') || '';
       showCcBcc.value = ccInput.value.length > 0 || bccInput.value.length > 0;
       subject.value = prefill?.subject || '';
-      textBody.value = prefill?.textBody
-        ? `${prefill.textBody}\n${sig}`
-        : sig
-          ? `\n${sig}`
-          : '';
+      const initialBody = prefill?.textBody || '';
+      textBody.value = initialBody || signatureBlock ? `${initialBody}\n${signatureBlock}` : '';
       inReplyTo.value = undefined;
       references.value = [];
       replyFolder.value = undefined;
@@ -298,7 +353,8 @@ watch(
 
         bccInput.value = '';
         subject.value = /^re:/i.test(src.subject) ? src.subject : `Re: ${src.subject}`;
-        textBody.value = `\n${sig}\n\nDen ${quotedDate} skrev ${quotedSender}:\n${quotedText}`;
+        quotedBody = `\n\nDen ${quotedDate} skrev ${quotedSender}:\n${quotedText}`;
+        textBody.value = `\n${signatureBlock}${quotedBody}`;
         inReplyTo.value = src.messageId;
         references.value = Array.from(new Set([...(src.references || []), src.messageId]));
         replyFolder.value = src.folder;
@@ -309,7 +365,8 @@ watch(
         bccInput.value = '';
         showCcBcc.value = false;
         subject.value = /^fwd?:/i.test(src.subject) ? src.subject : `Fwd: ${src.subject}`;
-        textBody.value = `\n${sig}\n\n---------- Videresendt besked ----------\nFra: ${quotedSender}\nDato: ${quotedDate}\nEmne: ${src.subject}\nTil: ${(src.to || []).map((a) => a.address).join(', ')}\n\n${src.textBody || ''}`;
+        quotedBody = `\n\n---------- Videresendt besked ----------\nFra: ${quotedSender}\nDato: ${quotedDate}\nEmne: ${src.subject}\nTil: ${(src.to || []).map((a) => a.address).join(', ')}\n\n${src.textBody || ''}`;
+        textBody.value = `\n${signatureBlock}${quotedBody}`;
         inReplyTo.value = undefined;
         references.value = [];
         replyFolder.value = undefined;
@@ -320,7 +377,7 @@ watch(
     await nextTick();
     if (useRichHtml.value && richEditorRef.value) {
       richEditorRef.value.innerHTML =
-        initialRichHtml !== null ? initialRichHtml : plainTextToHtml(textBody.value);
+        initialRichHtml ?? renderEditorBody();
     }
   },
   { immediate: true }
@@ -341,13 +398,13 @@ function promptInsertLink() {
 
 async function toggleEditorMode() {
   if (useRichHtml.value && richEditorRef.value) {
-    textBody.value = htmlToPlainText(richEditorRef.value.innerHTML);
+    textBody.value = htmlToPlainText(richEditorRef.value.innerHTML, false);
     useRichHtml.value = false;
   } else {
     useRichHtml.value = true;
     await nextTick();
     if (richEditorRef.value) {
-      richEditorRef.value.innerHTML = plainTextToHtml(textBody.value);
+      richEditorRef.value.innerHTML = renderEditorBody();
     }
   }
 }
@@ -385,30 +442,42 @@ function parseEmailList(raw: string): string[] {
     .filter(Boolean);
 }
 
-async function handleFileUpload(e: Event) {
-  const input = e.target as HTMLInputElement;
-  if (!input.files) return;
-
-  for (const file of Array.from(input.files)) {
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const res = String(reader.result || '');
-        const commaIdx = res.indexOf(',');
-        resolve(commaIdx >= 0 ? res.slice(commaIdx + 1) : res);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
-    attachments.value.push({
+function encodeAttachment(file: File) {
+  return new Promise<(typeof attachments.value)[number]>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
       filename: file.name,
       contentType: file.type || 'application/octet-stream',
-      contentBase64: base64,
+      contentBase64: String(reader.result).split(',', 2)[1] || '',
       size: file.size
     });
-  }
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleFileUpload(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const files = Array.from(input.files || []);
   input.value = '';
+  if (!files.length || isReadingAttachments.value) return;
+
+  const total = [...attachments.value, ...files].reduce((sum, file) => sum + file.size, 0);
+  if (total > maxAttachmentBytes) {
+    store.notify('Vedhæftningerne er for store', 'Du kan vedhæfte op til 18 MiB i alt pr. mail.', 'warning');
+    return;
+  }
+
+  const session = composeSession;
+  isReadingAttachments.value = true;
+  try {
+    const loaded = await Promise.all(files.map(encodeAttachment));
+    if (session === composeSession) attachments.value.push(...loaded);
+  } catch {
+    if (session === composeSession) store.notify('Kunne ikke læse vedhæftningerne', undefined, 'error');
+  } finally {
+    if (session === composeSession) isReadingAttachments.value = false;
+  }
 }
 
 function removeAttachment(idx: number) {
@@ -417,7 +486,7 @@ function removeAttachment(idx: number) {
 
 function collectEditorContent(): { text: string; html?: string } {
   if (useRichHtml.value && richEditorRef.value) {
-    const rawHtml = richEditorRef.value.innerHTML;
+    const rawHtml = richEditorRef.value.innerHTML.replaceAll(' data-mail-signature=""', '');
     return {
       text: htmlToPlainText(rawHtml),
       html: `<div style="font-family: Inter, system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.5;">${rawHtml}</div>`
@@ -439,6 +508,7 @@ function handleComposeKeyDown(e: KeyboardEvent) {
 }
 
 async function handleSubmitSend() {
+  if (isReadingAttachments.value) return;
   const fromEmail = customAliasMode.value
     ? customFromEmail.value.trim()
     : selectedAliasEmail.value.trim() || store.username;
@@ -480,6 +550,7 @@ async function handleSubmitSend() {
 }
 
 async function handleSaveDraft() {
+  if (isReadingAttachments.value) return;
   const fromEmail = customAliasMode.value
     ? customFromEmail.value.trim() || store.username
     : selectedAliasEmail.value.trim() || store.username;
@@ -585,7 +656,7 @@ async function handleDiscardDraft() {
                   class="text-[11px] text-slate-400 hover:text-slate-200"
                   @click="store.isAliasModalOpen = true"
                 >
-                  Administrér alle ({{ store.aliases.length }})
+                  Signaturer og afsendere
                 </button>
               </div>
             </div>
@@ -594,6 +665,7 @@ async function handleDiscardDraft() {
               <div class="sm:col-span-7">
                 <select
                   v-model="selectedAliasEmail"
+                  aria-label="Afsenderadresse"
                   class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 focus:outline-none focus:border-blue-500"
                   @change="onAliasSelectChange"
                 >
@@ -775,6 +847,46 @@ async function handleDiscardDraft() {
             />
           </div>
 
+          <!-- Vedhæftede filer -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 cursor-pointer focus-within:ring-2 focus-within:ring-blue-400 transition">
+                <Paperclip class="w-3.5 h-3.5 text-blue-400" />
+                <span>{{ isReadingAttachments ? 'Læser filer…' : 'Vedhæft filer eller billeder' }}</span>
+                <input
+                  type="file"
+                  multiple
+                  aria-label="Vedhæft filer eller billeder"
+                  :disabled="isReadingAttachments"
+                  class="sr-only"
+                  @change="handleFileUpload"
+                />
+              </label>
+              <span v-if="attachments.length > 0" class="text-[11px] text-slate-400">
+                {{ attachments.length }} fil(er) vedhæftet
+              </span>
+            </div>
+
+            <div v-if="attachments.length > 0" class="flex flex-wrap gap-2">
+              <div
+                v-for="(att, idx) in attachments"
+                :key="idx"
+                class="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-slate-200"
+              >
+                <Paperclip class="w-3 h-3 text-blue-400" />
+                <span class="truncate max-w-[180px]">{{ att.filename }}</span>
+                <button
+                  type="button"
+                  class="text-slate-500 hover:text-rose-400"
+                  :aria-label="`Fjern ${att.filename}`"
+                  @click="removeAttachment(idx)"
+                >
+                  <Trash2 class="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Rich-Text Editor -->
           <div class="rounded-xl border border-slate-700 bg-slate-950 overflow-hidden">
             <div class="px-2.5 py-1.5 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
@@ -867,49 +979,12 @@ async function handleDiscardDraft() {
             ></textarea>
           </div>
 
-          <!-- Vedhæftede filer -->
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 cursor-pointer transition">
-                <Paperclip class="w-3.5 h-3.5 text-blue-400" />
-                <span>Vedhæft filer</span>
-                <input
-                  type="file"
-                  multiple
-                  class="hidden"
-                  @change="handleFileUpload"
-                />
-              </label>
-              <span v-if="attachments.length > 0" class="text-[11px] text-slate-400">
-                {{ attachments.length }} fil(er) vedhæftet
-              </span>
-            </div>
-
-            <div v-if="attachments.length > 0" class="flex flex-wrap gap-2">
-              <div
-                v-for="(att, idx) in attachments"
-                :key="idx"
-                class="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-slate-200"
-              >
-                <Paperclip class="w-3 h-3 text-blue-400" />
-                <span class="truncate max-w-[180px]">{{ att.filename }}</span>
-                <button
-                  type="button"
-                  class="text-slate-500 hover:text-rose-400"
-                  @click="removeAttachment(idx)"
-                >
-                  <Trash2 class="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          </div>
-
           <!-- Bundknapper -->
           <div class="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2">
               <button
                 type="button"
-                :disabled="store.isSendingMail"
+                :disabled="store.isSendingMail || isReadingAttachments"
                 class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-medium flex items-center gap-1.5 transition"
                 @click="handleSaveDraft"
               >
@@ -920,7 +995,7 @@ async function handleDiscardDraft() {
               <button
                 v-if="draftRef"
                 type="button"
-                :disabled="store.isSendingMail"
+                :disabled="store.isSendingMail || isReadingAttachments"
                 class="px-3 py-2 rounded-xl bg-slate-900 hover:bg-rose-500/20 border border-slate-800 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 font-medium flex items-center gap-1.5 transition"
                 title="Flyt kladden til papirkurven"
                 @click="handleDiscardDraft"
@@ -940,7 +1015,7 @@ async function handleDiscardDraft() {
               </button>
               <button
                 type="submit"
-                :disabled="store.isSendingMail"
+                :disabled="store.isSendingMail || isReadingAttachments"
                 title="Send e-mail (Ctrl+Enter)"
                 class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold flex items-center gap-1.5 shadow transition"
               >

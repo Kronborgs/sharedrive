@@ -193,17 +193,24 @@ export const useContactsStore = defineStore('contacts', () => {
     }
   }
 
+  const syncError = ref('');
+
   async function syncWithServer(silent = false) {
-    if (!suiteStore.isAuthenticated || suiteStore.isPublicShareMode) return;
+    if (!suiteStore.isAuthenticated || suiteStore.isPublicShareMode || isSyncing.value) return;
     isSyncing.value = true;
     try {
       const res = await apiSyncCardDav();
       const plainBooks = toPlainObject(res.addressBooks || []);
-      const plainContacts = toPlainObject(res.contacts || []);
+      const failed = new Set(res.failedAddressBookIds);
+      const previous = contacts.value.filter(contact => failed.has(contact.addressBookId));
+      const plainContacts = toPlainObject([...(res.contacts || []), ...previous]);
 
       addressBooks.value = plainBooks;
       contacts.value = plainContacts;
-      lastSyncedAt.value = res.syncedAt;
+      syncError.value = failed.size
+        ? 'Nogle adressebøger kunne ikke synkroniseres fra SOGo. Tidligere hentede kontakter vises fortsat.'
+        : '';
+      if (!failed.size) lastSyncedAt.value = res.syncedAt;
       if (res.calendarColor && /^#[0-9a-fA-F]{6}$/.test(res.calendarColor)) {
         contactCalendarColor.value = res.calendarColor.toLowerCase();
         suiteStorage.setItem(CONTACT_CAL_COLOR_STORAGE_KEY, contactCalendarColor.value);
@@ -228,7 +235,9 @@ export const useContactsStore = defineStore('contacts', () => {
         selectedContactId.value = plainContacts[0].id;
       }
 
-      if (!silent) {
+      if (!silent && syncError.value) {
+        suiteStore.notify('Delvis synkronisering', syncError.value, 'warning');
+      } else if (!silent) {
         suiteStore.notify(
           'Kontakter synkroniseret',
           `Hentede ${plainContacts.length} kontakt(er) fra CardDAV.`,
@@ -236,6 +245,7 @@ export const useContactsStore = defineStore('contacts', () => {
         );
       }
     } catch (err: any) {
+      syncError.value = 'Kontakter kunne ikke synkroniseres fra SOGo. Prøv at synkronisere igen.';
       if (!silent) {
         suiteStore.notify(
           'CardDAV synkroniseringsfejl',
@@ -1315,6 +1325,7 @@ export const useContactsStore = defineStore('contacts', () => {
   }
 
   function resetState() {
+    syncError.value = '';
     addressBooks.value = [];
     contacts.value = [];
     selectedAddressBookId.value = 'ALL';
@@ -1375,6 +1386,7 @@ export const useContactsStore = defineStore('contacts', () => {
     isAddressBookReadOnly,
     hydrateSession,
     syncWithServer,
+    syncError,
     openCreateContactModal,
     openEditContactModal,
     openMergeSenderIntoContact,

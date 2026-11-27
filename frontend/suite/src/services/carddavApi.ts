@@ -4,6 +4,7 @@ export interface CardDavSyncResponse {
   ok: boolean;
   addressBooks: AddressBook[];
   contacts: Contact[];
+  failedAddressBookIds?: string[];
   calendarColor?: string | null;
   syncedAt: string;
   error?: string;

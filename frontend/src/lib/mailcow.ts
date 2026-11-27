@@ -34,5 +34,5 @@ export function useMailcowNavigation(user?: User | null) {
   })
   const enabled = eligible && feature.data?.enabled === true
   const account = useMailcowAccount(user?.id, enabled)
-  return { enabled, connected: Boolean(account.data?.account), loading: eligible && (feature.isPending || (enabled && account.isPending)) }
+  return { enabled, connected: Boolean(account.data?.account), ready: account.data?.ready === true, loading: eligible && (feature.isPending || (enabled && account.isPending)) }
 }

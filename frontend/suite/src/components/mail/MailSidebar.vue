@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import {
   Inbox,
+  ChevronRight,
   Send,
   FileEdit,
   Trash2,
@@ -9,6 +10,7 @@ import {
   ShieldAlert,
   Folder,
   Plus,
+  Upload,
   AtSign,
   Pencil,
   Filter,
@@ -18,6 +20,7 @@ import {
 import { useMailStore } from '../../stores/mailStore';
 import { useTheme } from '../../composables/useTheme';
 import { useViewport } from '../../composables/useViewport';
+import { importEmlFile } from '../../services/mailApi';
 import type { MailFolder, MailHeader } from '../../types/mail';
 
 const props = defineProps<{
@@ -37,6 +40,83 @@ const showNewFolderForm = ref(false);
 const newFolderName = ref('');
 const isCreatingFolder = ref(false);
 const dragOverFolderPath = ref<string | null>(null);
+const isImportingMail = ref(false);
+
+async function handleEmlImport(event: Event) {
+  const input = event.currentTarget as HTMLInputElement;
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length || isImportingMail.value) return;
+  const folder = store.activeFolderPath;
+  const folderName = store.activeFolder?.name || folder;
+  isImportingMail.value = true;
+  let count = 0;
+  const errors: string[] = [];
+  try {
+    for (const file of files) {
+      try {
+        await importEmlFile(folder, file);
+        count++;
+      } catch (error) {
+        errors.push(`${file.name}: ${error instanceof Error ? error.message : 'Import fejlede.'}`);
+      }
+    }
+    if (count) await store.syncWithServer(true);
+    const summary = `${count} af ${files.length} mail(s) importeret til ${folderName}.`;
+    store.notify('Mailimport', errors.length ? `${summary} ${errors.join(' ')}` : summary, errors.length ? 'warning' : 'success');
+  } finally {
+    isImportingMail.value = false;
+  }
+}
+const collapsedFolders = ref(new Set<string>());
+
+type FolderRow = { folder: MailFolder; depth: number; hasChildren: boolean };
+
+function folderKey(path: string, delimiter: string) {
+  const separator = delimiter ? path.indexOf(delimiter) : -1;
+  const root = separator < 0 ? path : path.slice(0, separator);
+  return root.toUpperCase() === 'INBOX' ? 'INBOX' + path.slice(root.length) : path;
+}
+
+const visibleFolders = computed(() => {
+  const paths = new Map(store.folders.map((folder) => [folderKey(folder.path, folder.delimiter), folder.path]));
+  const children = new Map<string | null, MailFolder[]>();
+
+  for (const folder of store.folders) {
+    const delimiter = folder.delimiter;
+    let parent: string | undefined;
+    let path = folder.path;
+    while (delimiter && !parent) {
+      const separator = path.lastIndexOf(delimiter);
+      if (separator < 1) break;
+      path = path.slice(0, separator);
+      parent = paths.get(folderKey(path, delimiter));
+    }
+    const siblings = children.get(parent ?? null) ?? [];
+    siblings.push(folder);
+    children.set(parent ?? null, siblings);
+  }
+
+  const rows: FolderRow[] = [];
+  function append(parent: string | null, depth: number) {
+    for (const folder of children.get(parent) ?? []) {
+      const hasChildren = children.has(folder.path);
+      rows.push({ folder, depth, hasChildren });
+      if (hasChildren && !collapsedFolders.value.has(folder.path)) append(folder.path, depth + 1);
+    }
+  }
+  append(null, 0);
+  return rows;
+});
+
+function toggleFolder(path: string) {
+  if (!collapsedFolders.value.delete(path)) collapsedFolders.value.add(path);
+}
+
+function selectFolder(path: string) {
+  void store.selectFolder(path);
+  if (props.mobileDrawer) emit('close-drawer');
+}
 
 const selectedMessagesList = computed<MailHeader[]>(() => {
   if (store.selectedMessageIds.length === 0) return [];
@@ -213,22 +293,39 @@ async function handleDropOnFolder(e: DragEvent, targetFolder: MailFolder) {
         <!-- Liste af mapper (understøtter også træk-og-slip samt skjult Ctrl+C / Ctrl+X / Ctrl+V af e-mails) -->
         <div class="space-y-1">
           <div
-            v-for="folder in store.folders"
+            v-for="{ folder, depth, hasChildren } in visibleFolders"
             :key="folder.path"
-            class="group px-2.5 py-2 rounded-xl border transition flex items-center justify-between gap-2 cursor-pointer"
+            class="group flex items-center gap-1 rounded-xl border pr-2 transition"
+            :style="{ paddingInlineStart: `${4 + Math.min(depth, 6) * 14}px` }"
             :class="[
               store.activeFolderPath === folder.path
                 ? 'bg-blue-600/20 border-blue-500/50 text-white shadow-sm'
                 : 'bg-slate-800/50 hover:bg-slate-800 border-slate-800 text-slate-200',
               dragOverFolderPath === folder.path ? 'ring-2 ring-blue-400 bg-blue-600/30' : ''
             ]"
-            @click="store.selectFolder(folder.path); if (props.mobileDrawer) emit('close-drawer')"
             @contextmenu.prevent="store.openFolderContextMenu($event, folder)"
             @dragover="handleDragOver($event, folder.path)"
             @dragleave="handleDragLeave(folder.path)"
             @drop="handleDropOnFolder($event, folder)"
           >
-            <div class="flex items-center gap-2.5 min-w-0 flex-1">
+            <button
+              v-if="hasChildren"
+              type="button"
+              class="grid h-7 w-6 shrink-0 place-items-center rounded hover:bg-slate-700"
+              :aria-label="collapsedFolders.has(folder.path) ? `Vis undermapper under ${folder.name}` : `Skjul undermapper under ${folder.name}`"
+              :aria-expanded="!collapsedFolders.has(folder.path)"
+              @click="toggleFolder(folder.path)"
+            >
+              <ChevronRight class="h-3.5 w-3.5" :class="{ 'rotate-90': !collapsedFolders.has(folder.path) }" aria-hidden="true" />
+            </button>
+            <span v-else class="w-6 shrink-0" aria-hidden="true" />
+
+            <button
+              type="button"
+              class="flex min-w-0 flex-1 items-center gap-2 rounded py-2 text-left"
+              :aria-current="store.activeFolderPath === folder.path ? 'true' : undefined"
+              @click="selectFolder(folder.path)"
+            >
               <component
                 :is="getFolderIcon(folder.specialUse)"
                 class="w-4 h-4 shrink-0"
@@ -237,14 +334,14 @@ async function handleDropOnFolder(e: DragEvent, targetFolder: MailFolder) {
               <span class="text-xs font-medium truncate" :title="folder.path">
                 {{ folder.name }}
               </span>
-            </div>
+            </button>
 
             <div class="flex items-center gap-1 shrink-0">
               <!-- Omdøb / Slet på brugerdefinerede mapper ved hover -->
               <template v-if="folder.specialUse === 'custom'">
                 <button
                   type="button"
-                  class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition"
+                  class="hidden group-hover:block group-focus-within:block p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200"
                   title="Omdøb mappe"
                   @click.stop="promptRenameFolder(folder)"
                 >
@@ -252,7 +349,7 @@ async function handleDropOnFolder(e: DragEvent, targetFolder: MailFolder) {
                 </button>
                 <button
                   type="button"
-                  class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition"
+                  class="hidden group-hover:block group-focus-within:block p-1 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-400"
                   title="Slet mappe"
                   @click.stop="confirmDeleteFolder(folder)"
                 >
@@ -285,12 +382,12 @@ async function handleDropOnFolder(e: DragEvent, targetFolder: MailFolder) {
         <button
           type="button"
           class="flex items-center justify-between px-2 py-2 rounded-xl bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/30 text-xs text-blue-300 font-semibold transition"
-          title="Administrér dine afsender-aliaser"
+          title="Signaturer og afsenderadresser"
           @click="store.isAliasModalOpen = true; if (props.mobileDrawer) emit('close-drawer')"
         >
           <span class="flex items-center gap-1 truncate">
             <AtSign class="w-3.5 h-3.5 text-blue-400 shrink-0" />
-            <span class="truncate">Aliaser</span>
+            <span class="truncate">Signaturer</span>
           </span>
           <span class="px-1.5 py-0.5 rounded-full bg-slate-900 text-blue-300 text-[10px] font-bold shrink-0">
             {{ store.aliases.length }}
@@ -307,6 +404,17 @@ async function handleDropOnFolder(e: DragEvent, targetFolder: MailFolder) {
           <span class="truncate">Sieve Filtre</span>
         </button>
       </div>
+
+      <label
+        class="flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-2 py-2 text-xs text-slate-200 hover:bg-slate-700 focus-within:ring-2 focus-within:ring-blue-400"
+        :title="`Importér .eml-filer til ${store.activeFolder?.name || store.activeFolderPath}`"
+      >
+        <Upload class="h-3.5 w-3.5 text-emerald-400" />
+        {{ isImportingMail ? 'Importerer…' : 'Importér mail (.eml)' }}
+        <input class="sr-only" type="file" accept=".eml,message/rfc822" multiple
+          aria-label="Importér mail (.eml)" :disabled="isImportingMail || !store.activeFolder"
+          @change="handleEmlImport" />
+      </label>
 
       <div
         v-if="props.mobileDrawer"

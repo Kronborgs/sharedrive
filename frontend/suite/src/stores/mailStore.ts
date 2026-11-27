@@ -32,6 +32,7 @@ import {
   reportSpamStatusApi,
   sendMailApi,
   saveDraftApi,
+  fetchAliasesApi,
   syncMailcowAliasesApi,
   upsertAliasApi,
   deleteAliasApi,
@@ -62,7 +63,7 @@ export const useMailStore = defineStore('mail', () => {
   const isSendingMail = ref(false);
   const lastSyncedAt = ref<string | null>(null);
 
-  const savedInterval = Number(suiteStorage.getItem(AUTO_REFRESH_KEY));
+  const savedInterval = Number(suiteStorage.getItem(AUTO_REFRESH_KEY) ?? 2);
   const autoRefreshMinutes = ref<AutoRefreshMinutes>(
     savedInterval === 0 ||
       savedInterval === 1 ||
@@ -280,23 +281,22 @@ export const useMailStore = defineStore('mail', () => {
     }
   }
 
+  function autoRefreshMail() {
+    if (autoRefreshMinutes.value > 0 && isAuthenticated.value && isOnline.value &&
+        !isSyncing.value && !searchQuery.value.trim() && document.visibilityState === 'visible') {
+      void syncWithServer(true, true);
+    }
+  }
+
   function setupAutoRefreshTimer() {
+    window.removeEventListener('focus', autoRefreshMail);
     if (autoRefreshTimer) {
       clearInterval(autoRefreshTimer);
       autoRefreshTimer = null;
     }
-    if (autoRefreshMinutes.value > 0 && typeof window !== 'undefined') {
-      const intervalMs = autoRefreshMinutes.value * 60 * 1000;
-      autoRefreshTimer = setInterval(() => {
-        if (
-          isAuthenticated.value &&
-          isOnline.value &&
-          !isSyncing.value &&
-          !searchQuery.value.trim()
-        ) {
-          void syncWithServer(true, true);
-        }
-      }, intervalMs);
+    if (autoRefreshMinutes.value > 0) {
+      window.addEventListener('focus', autoRefreshMail);
+      autoRefreshTimer = setInterval(autoRefreshMail, autoRefreshMinutes.value * 60 * 1000);
     }
   }
 
@@ -318,6 +318,10 @@ export const useMailStore = defineStore('mail', () => {
   async function hydrateSession(user: string, serverAliases: SenderAlias[]) {
     setupAutoRefreshTimer();
     syncLocalAliasesCache(user, serverAliases);
+    const sessionAliases = aliases.value;
+    void fetchAliasesApi().then(discovered => {
+      if (username.value === user && aliases.value === sessionAliases) syncLocalAliasesCache(user, discovered);
+    }).catch(() => { /* Keep the saved identities when discovery is unavailable. */ });
 
     try {
       const cachedFolders = await db.mailFolders.toArray();
@@ -355,6 +359,7 @@ export const useMailStore = defineStore('mail', () => {
   }
 
   function resetState() {
+    window.removeEventListener('focus', autoRefreshMail);
     if (autoRefreshTimer) {
       clearInterval(autoRefreshTimer);
       autoRefreshTimer = null;
@@ -1284,7 +1289,7 @@ export const useMailStore = defineStore('mail', () => {
     try {
       const updated = await upsertAliasApi(params);
       syncLocalAliasesCache(username.value, updated);
-      notify('Afsender-alias gemt', `${params.email} er nu gemt i dine afsenderadresser.`, 'success');
+      notify('Afsenderindstillinger gemt', params.email, 'success');
       return true;
     } catch (err: any) {
       notify('Kunne ikke gemme alias', err?.message || 'Kontrollér e-mailadressen.', 'error');

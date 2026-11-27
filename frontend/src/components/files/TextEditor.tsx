@@ -48,13 +48,16 @@ export function TextEditor({ item, onClose }: Readonly<Props>) {
     queryKey: ['text-editor', item.id],
     queryFn: async ({ signal }) => {
       if (tooLargeToLoad) throw new Error(t('editor.tooLarge'))
-      const res = await fetch(`/api/v1/files/${item.id}/preview`, {
-        credentials: 'include',
-        signal,
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const text = await res.text()
-      return text
+      const options = { credentials: 'include' as const, signal }
+      const url = `/api/v1/files/${item.id}`
+      const preview = await fetch(`${url}/preview`, options)
+      if (!preview.ok) throw new Error(`HTTP ${preview.status}`)
+      if (preview.headers.get('X-Preview-Truncated') !== 'true') return preview.text()
+
+      await preview.body?.cancel()
+      const full = await fetch(`${url}/download`, { ...options, cache: 'no-store' })
+      if (!full.ok) throw new Error(`HTTP ${full.status}`)
+      return full.text()
     },
     staleTime: 0,
     refetchOnWindowFocus: false,

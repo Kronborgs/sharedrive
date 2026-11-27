@@ -33,7 +33,8 @@ import {
   listSharesForUser,
   createShareLink,
   deleteShareLink,
-  resolveShareToken
+  resolveShareToken,
+  shareExpired
 } from '../services/shareStore.js';
 import {
   type CalendarSharePermission,
@@ -860,6 +861,11 @@ caldavRouter.post('/shares', async (req: Request, res: Response) => {
       ? req.body.calendarNames.map(String)
       : [];
     const hideDetails = Boolean(req.body?.hideDetails);
+    const expiresAt = req.body?.expiresAt;
+    if (expiresAt != null && (typeof expiresAt !== 'string' || !(Date.parse(expiresAt) > Date.now()))) {
+      res.status(400).json({ ok: false, error: 'Vælg et udløbstidspunkt i fremtiden.' });
+      return;
+    }
 
     if (calendarUrls.length === 0) {
       res.status(400).json({ ok: false, error: 'Vælg mindst én kalender at dele.' });
@@ -870,7 +876,8 @@ caldavRouter.post('/shares', async (req: Request, res: Response) => {
       label,
       calendarUrls,
       calendarNames,
-      hideDetails
+      hideDetails,
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined
     });
 
     res.json({ ok: true, share });
@@ -911,7 +918,7 @@ caldavRouter.get('/public/:token', publicShareLimiter, async (req: Request, res:
     }
 
     const record = resolveShareToken(token);
-    if (!record) {
+    if (!record || shareExpired(record)) {
       res.status(404).json({
         ok: false,
         error: 'Dette delingslink findes ikke eller er blevet tilbagekaldt af ejeren.'

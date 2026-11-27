@@ -107,6 +107,19 @@
     --color-surface-border: #304662;
   }
 
+  .dark[data-theme]:not([data-theme="dark"]):not([data-theme="nordic-blue-hour"]) {
+    --app-bg: var(--shared-theme-bg);
+    --app-panel: color-mix(in srgb, var(--shared-theme-surface), #0a101d 30%);
+    --app-border: color-mix(in srgb, var(--shared-theme-border), #445065 55%);
+    --color-brand-400: color-mix(in srgb, var(--shared-theme-accent), white 30%);
+    --color-brand-500: var(--shared-theme-accent-hover);
+    --color-brand-600: var(--shared-theme-accent);
+    --color-brand-700: color-mix(in srgb, var(--shared-theme-accent), black 20%);
+    --color-surface: var(--app-panel);
+    --color-surface-raised: color-mix(in srgb, var(--app-panel), white 10%);
+    --color-surface-border: var(--app-border);
+  }
+
   * {
     border-color: rgb(var(--border));
   }
@@ -210,6 +223,19 @@
   .dark[data-theme="nordic-blue-hour"] .app-wallpaper {
     --app-wallpaper: linear-gradient(rgb(6 12 24 / 78%), rgb(6 12 24 / 84%)),
       url('/themes/nordic-blue-hour.jpg');
+  }
+
+  .dark[data-theme]:not([data-theme="dark"]):not([data-theme="nordic-blue-hour"]) .login-layout {
+    --app-wallpaper: var(--shared-login-wallpaper);
+  }
+
+  .dark[data-theme]:not([data-theme="dark"]):not([data-theme="nordic-blue-hour"]) .app-wallpaper {
+    --app-wallpaper: linear-gradient(rgb(6 12 24 / 55%), rgb(6 12 24 / 68%)), var(--shared-app-wallpaper);
+  }
+
+  .dark[data-theme]:not([data-theme="dark"]) .login-card,
+  .dark[data-theme]:not([data-theme="dark"]) .app-chrome {
+    backdrop-filter: blur(16px);
   }
 
   .login-card {

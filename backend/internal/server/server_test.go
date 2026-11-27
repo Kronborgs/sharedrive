@@ -2,8 +2,36 @@ package server
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"testing/fstest"
 )
+
+func TestFrontendServesNestedMailApp(t *testing.T) {
+	t.Parallel()
+
+	frontend := frontendHandler(fstest.MapFS{
+		"index.html":                {Data: []byte("Sharedrive")},
+		"mail/suite-ui/index.html":  {Data: []byte("Sharedrive Mail")},
+		"mail/suite-ui/assets/a.js": {Data: []byte("mail JavaScript")},
+	})
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"/mail/suite-ui/?view=mail", "Sharedrive Mail"},
+		{"/mail/suite-ui/assets/a.js", "mail JavaScript"},
+		{"/mail", "Sharedrive"},
+		{"/mail/", "Sharedrive"},
+	}
+	for _, tc := range tests {
+		response := httptest.NewRecorder()
+		frontend.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		if response.Code != http.StatusOK || response.Body.String() != tc.want {
+			t.Errorf("GET %s: got %d %q, want %d %q", tc.path, response.Code, response.Body.String(), http.StatusOK, tc.want)
+		}
+	}
+}
 
 func TestShouldApplyGlobalBodyLimit(t *testing.T) {
 	t.Parallel()

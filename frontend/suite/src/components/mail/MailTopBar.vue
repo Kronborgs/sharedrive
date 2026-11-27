@@ -263,10 +263,7 @@ function toggleLayout() {
         @click="store.isAliasModalOpen = true"
       >
         <AtSign class="w-3.5 h-3.5 text-blue-400" />
-        <span class="hidden 2xl:inline">Signaturer</span>
-        <span class="px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-semibold">
-          {{ store.aliases.length }}
-        </span>
+        <span>Signaturer</span>
       </button>
 
       <button

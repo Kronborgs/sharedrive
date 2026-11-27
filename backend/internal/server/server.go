@@ -846,15 +846,23 @@ func (s *Server) spaHandler() http.Handler {
 	if err != nil {
 		panic(fmt.Sprintf("embed: failed to sub dist: %v", err))
 	}
+	return frontendHandler(distFS)
+}
+
+func frontendHandler(distFS fs.FS) http.Handler {
 	fileServer := http.FileServer(http.FS(distFS))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Serve the actual file if it exists in the embedded FS
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		if f, err := distFS.Open(path); err == nil {
-			f.Close()
-			fileServer.ServeHTTP(w, r)
-			return
+		path := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/"), "/")
+		if info, err := fs.Stat(distFS, path); err == nil {
+			if info.IsDir() {
+				_, err = fs.Stat(distFS, path+"/index.html")
+			}
+			if err == nil {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
 		}
 		// Fall through to index.html for client-side routing
 		r.URL.Path = "/"

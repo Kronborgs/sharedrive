@@ -33,12 +33,14 @@ func (m memoryAccounts) remove(_ context.Context, owner uuid.UUID) error {
 	return nil
 }
 
+const accountTestPassword = "test-only-mailcow-password"
+
+type wireAccount struct {
+	credentials
+	Host string `json:"host"`
+}
+
 func TestAccountRequestsUseOnlyTheCurrentUsersSavedHostAndCredentials(t *testing.T) {
-	const password = "test-only-mailcow-password"
-	type wireAccount struct {
-		credentials
-		Host string `json:"host"`
-	}
 	requests := make(chan wireAccount, 2)
 	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var input wireAccount
@@ -54,49 +56,60 @@ func TestAccountRequestsUseOnlyTheCurrentUsersSavedHostAndCredentials(t *testing
 	handler := Accounts{store: store, probe: probe, aead: makeAccountCipher(strings.Repeat("12", 32))}
 	alice, bob := uuid.New(), uuid.New()
 
-	request := func(id uuid.UUID, method, body string, handle http.HandlerFunc, support bool) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(method, "/api/v1/me/mailcow", strings.NewReader(body))
-		r.Header.Set("Content-Type", "application/json")
-		ctx := mw.WithUser(r.Context(), &user.User{ID: id, Role: "user"})
-		if support {
-			ctx = mw.WithSupportMode(ctx)
-		}
-		w := httptest.NewRecorder()
-		handle(w, r.WithContext(ctx))
-		return w
-	}
-	for id, host := range map[uuid.UUID]string{alice: "mail-alice.example.test", bob: "mail-bob.example.test"} {
-		body := `{"host":"` + host + `","username":"mailbox@example.test","password":"` + password + `"}`
-		if got := request(id, http.MethodPut, body, handler.Save, false); got.Code != http.StatusOK ||
-			strings.Contains(got.Body.String(), password) ||
-			strings.Contains(string(store[id].encryptedPassword), password) {
-			t.Fatalf("account was not stored safely: %d", got.Code)
-		}
-		if got := request(id, http.MethodPost, `{}`, handler.Test, false); got.Code != http.StatusOK {
-			t.Fatalf("probe failed: %d %s", got.Code, got.Body)
-		}
-		if input := <-requests; input.Host != host || input.Password != password || input.Username != "mailbox@example.test" {
-			t.Fatal("probe did not use the owning user's saved connection")
-		}
-	}
-	if got := request(alice, http.MethodGet, "", handler.Get, true); got.Code != http.StatusForbidden {
+	assertSavedMailcowConnection(t, handler, store, requests, alice, "mail-alice.example.test")
+	assertSavedMailcowConnection(t, handler, store, requests, bob, "mail-bob.example.test")
+	if got := requestAccount(alice, http.MethodGet, "", handler.Get, true); got.Code != http.StatusForbidden {
 		t.Fatal("support session obtained account access")
 	}
 	originalBob := store[bob]
 	swapped := store[alice]
 	store[bob] = swapped
-	if got := request(bob, http.MethodPost, `{}`, handler.Test, false); got.Code != http.StatusInternalServerError {
+	if got := requestAccount(bob, http.MethodPost, `{}`, handler.Test, false); got.Code != http.StatusInternalServerError {
 		t.Fatal("a different user could decrypt the copied record")
 	}
 	store[bob] = originalBob
-	if got := request(alice, http.MethodDelete, "", handler.Remove, false); got.Code != http.StatusNoContent {
+	if got := requestAccount(alice, http.MethodDelete, "", handler.Remove, false); got.Code != http.StatusNoContent {
 		t.Fatal("account was not disconnected")
 	}
-	if got := request(alice, http.MethodGet, "", handler.Get, false); !strings.Contains(got.Body.String(), `"account":null`) {
+	if got := requestAccount(alice, http.MethodGet, "", handler.Get, false); !strings.Contains(got.Body.String(), `"account":null`) {
 		t.Fatal("disconnected account still appeared")
 	}
-	if got := request(bob, http.MethodGet, "", handler.Get, false); !strings.Contains(got.Body.String(), "mail-bob.example.test") ||
-		strings.Contains(got.Body.String(), password) {
+	if got := requestAccount(bob, http.MethodGet, "", handler.Get, false); !strings.Contains(got.Body.String(), "mail-bob.example.test") ||
+		strings.Contains(got.Body.String(), accountTestPassword) {
 		t.Fatal("disconnect affected the other user or returned its password")
+	}
+}
+
+func requestAccount(id uuid.UUID, method, body string, handle http.HandlerFunc, support bool) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, "/api/v1/me/mailcow", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	ctx := mw.WithUser(r.Context(), &user.User{ID: id, Role: "user"})
+	if support {
+		ctx = mw.WithSupportMode(ctx)
+	}
+	w := httptest.NewRecorder()
+	handle(w, r.WithContext(ctx))
+	return w
+}
+
+func assertSavedMailcowConnection(t *testing.T, handler Accounts, store memoryAccounts, requests <-chan wireAccount, id uuid.UUID, host string) {
+	t.Helper()
+
+	body := `{"host":"` + host + `","username":"mailbox@example.test","password":"` + accountTestPassword + `"}`
+	if got := requestAccount(id, http.MethodPut, body, handler.Save, false); got.Code != http.StatusOK ||
+		strings.Contains(got.Body.String(), accountTestPassword) ||
+		strings.Contains(string(store[id].encryptedPassword), accountTestPassword) {
+		t.Fatalf("account was not stored safely: %d", got.Code)
+	}
+	if got := requestAccount(id, http.MethodPost, `{}`, handler.Test, false); got.Code != http.StatusOK {
+		t.Fatalf("probe failed: %d %s", got.Code, got.Body)
+	}
+	select {
+	case input := <-requests:
+		if input.Host != host || input.Password != accountTestPassword || input.Username != "mailbox@example.test" {
+			t.Fatal("probe did not use the owning user's saved connection")
+		}
+	default:
+		t.Fatal("probe did not contact the test sidecar")
 	}
 }

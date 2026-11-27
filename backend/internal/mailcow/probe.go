@@ -16,7 +16,13 @@ import (
 	"github.com/yourname/privatedrive/internal/httputil"
 )
 
-const maxPayload = 4096
+const (
+	maxPayload            = 4096
+	cacheControlHeader    = "Cache-Control"
+	noStore               = "no-store"
+	errInvalidCredentials = "Invalid Mailcow credentials"
+	errProbeUnavailable   = "Mailcow connection test is unavailable"
+)
 
 var hostname = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 
@@ -69,7 +75,7 @@ type probeSettings struct {
 }
 
 func (p *Probe) Settings(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set(cacheControlHeader, noStore)
 	host, err := p.store.LoadHost(r.Context())
 	if err != nil {
 		httputil.RespondError(w, http.StatusInternalServerError, "Mailcow settings are unavailable")
@@ -79,7 +85,7 @@ func (p *Probe) Settings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Probe) UpdateHost(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set(cacheControlHeader, noStore)
 	if !isJSON(r) {
 		httputil.RespondError(w, http.StatusUnsupportedMediaType, "Mailcow requests must use application/json")
 		return
@@ -115,7 +121,7 @@ func isJSON(r *http.Request) bool {
 }
 
 func (p *Probe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set(cacheControlHeader, noStore)
 	if p.client == nil {
 		httputil.RespondError(w, http.StatusServiceUnavailable, "Mailcow connection test is not configured")
 		return
@@ -136,11 +142,11 @@ func (p *Probe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			httputil.RespondError(w, http.StatusRequestEntityTooLarge, "Mailcow request is too large")
 			return
 		}
-		httputil.RespondError(w, http.StatusBadRequest, "Invalid Mailcow credentials")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidCredentials)
 		return
 	}
 	if decoder.Decode(new(json.RawMessage)) != io.EOF || !account.valid() {
-		httputil.RespondError(w, http.StatusBadRequest, "Invalid Mailcow credentials")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidCredentials)
 		return
 	}
 
@@ -162,12 +168,12 @@ func (p *Probe) replyProbe(w http.ResponseWriter, r *http.Request, host string, 
 		Host string `json:"host"`
 	}{account, host})
 	if err != nil || len(data) > maxPayload {
-		httputil.RespondError(w, http.StatusBadRequest, "Invalid Mailcow credentials")
+		httputil.RespondError(w, http.StatusBadRequest, errInvalidCredentials)
 		return
 	}
 	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, p.target, bytes.NewReader(data))
 	if err != nil {
-		httputil.RespondError(w, http.StatusBadGateway, "Mailcow connection test is unavailable")
+		httputil.RespondError(w, http.StatusBadGateway, errProbeUnavailable)
 		return
 	}
 	request.Header.Set("Authorization", "Bearer "+p.token)
@@ -175,7 +181,7 @@ func (p *Probe) replyProbe(w http.ResponseWriter, r *http.Request, host string, 
 
 	response, err := p.client.Do(request)
 	if err != nil {
-		httputil.RespondError(w, http.StatusBadGateway, "Mailcow connection test is unavailable")
+		httputil.RespondError(w, http.StatusBadGateway, errProbeUnavailable)
 		return
 	}
 	defer response.Body.Close()
@@ -188,7 +194,7 @@ func (p *Probe) replyProbe(w http.ResponseWriter, r *http.Request, host string, 
 	if response.StatusCode != http.StatusOK ||
 		json.NewDecoder(io.LimitReader(response.Body, maxPayload)).Decode(&result) != nil ||
 		!result.valid() {
-		httputil.RespondError(w, http.StatusBadGateway, "Mailcow connection test is unavailable")
+		httputil.RespondError(w, http.StatusBadGateway, errProbeUnavailable)
 		return
 	}
 	httputil.Respond(w, http.StatusOK, result)

@@ -55,15 +55,20 @@ export function MailcowTestPanel() {
 
     const form = event.currentTarget
     const values = new FormData(form)
-    const username = String(values.get('username') ?? '').trim()
-    const password = String(values.get('password') ?? '')
+    const username = values.get('username')
+    const password = values.get('password')
     form.reset()
+    if (typeof username !== 'string' || typeof password !== 'string') {
+      setError(true)
+      return
+    }
+    const account = username.trim()
     setPending(true)
     setError(false)
     setResult(null)
     try {
-      const protocols = await api.post<ProbeResult>(endpoint, { username, password })
-      setResult({ username, protocols })
+      const protocols = await api.post<ProbeResult>(endpoint, { username: account, password })
+      setResult({ username: account, protocols })
     } catch {
       setError(true)
     } finally {

@@ -26,7 +26,8 @@ async function uploadCopy(file: Blob, filename: string) {
 function uniqueFilename(filename: string) {
   const dot = filename.lastIndexOf('.')
   const suffix = ' (' + crypto.randomUUID().slice(0, 8) + ')'
-  if (dot <= 0) return filename + suffix
+  if (dot === 0) return 'kopi' + suffix + filename
+  if (dot === -1) return filename + suffix + '.' + fileExtension(filename)
   return filename.slice(0, dot) + suffix + filename.slice(dot)
 }
 

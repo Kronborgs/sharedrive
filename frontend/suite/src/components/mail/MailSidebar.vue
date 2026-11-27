@@ -11,6 +11,7 @@ import {
   Folder,
   Plus,
   Upload,
+  Download,
   AtSign,
   Pencil,
   Filter,
@@ -20,7 +21,7 @@ import {
 import { useMailStore } from '../../stores/mailStore';
 import { useTheme } from '../../composables/useTheme';
 import { useViewport } from '../../composables/useViewport';
-import { importEmlFile } from '../../services/mailApi';
+import { downloadMboxFile, importEmlFile, importMboxFile } from '../../services/mailApi';
 import type { MailFolder, MailHeader } from '../../types/mail';
 
 const props = defineProps<{
@@ -41,6 +42,8 @@ const newFolderName = ref('');
 const isCreatingFolder = ref(false);
 const dragOverFolderPath = ref<string | null>(null);
 const isImportingMail = ref(false);
+const isTransferringMbox = ref(false);
+const transferDisabled = computed(() => isImportingMail.value || isTransferringMbox.value || !store.activeFolder);
 
 async function handleEmlImport(event: Event) {
   const input = event.currentTarget as HTMLInputElement;
@@ -68,6 +71,48 @@ async function handleEmlImport(event: Event) {
     isImportingMail.value = false;
   }
 }
+async function handleMboxImport(event: Event) {
+  const input = event.currentTarget as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file || transferDisabled.value) return;
+  const folder = store.activeFolderPath;
+  const folderName = store.activeFolder?.name || folder;
+  isTransferringMbox.value = true;
+  try {
+    const { imported, total } = await importMboxFile(folder, file);
+    const summary = `${imported} af ${total} mails importeret til ${folderName}.`;
+    const partial = imported < total;
+    store.notify('MBOX-import', partial ? summary + ' Importen stoppede. En ny import af hele arkivet kan give dubletter.' : summary,
+      partial ? 'warning' : 'success');
+    await store.syncWithServer(true);
+  } catch (error) {
+    store.notify('MBOX-import fejlede', error instanceof Error ? error.message : undefined, 'error');
+  } finally {
+    isTransferringMbox.value = false;
+  }
+}
+
+async function handleMboxExport() {
+  if (transferDisabled.value) return;
+  const folder = store.activeFolderPath;
+  const name = store.activeFolder?.name || folder;
+  isTransferringMbox.value = true;
+  try {
+    const archive = await downloadMboxFile(folder);
+    const url = URL.createObjectURL(archive);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name.replace(/[\\/<>:"|?*\u0000-\u001f]/g, '_') + '.mbox';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  } catch (error) {
+    store.notify('MBOX-eksport fejlede', error instanceof Error ? error.message : undefined, 'error');
+  } finally {
+    isTransferringMbox.value = false;
+  }
+}
+
 const collapsedFolders = ref(new Set<string>());
 
 type FolderRow = { folder: MailFolder; depth: number; hasChildren: boolean };
@@ -412,9 +457,27 @@ async function handleDropOnFolder(e: DragEvent, targetFolder: MailFolder) {
         <Upload class="h-3.5 w-3.5 text-emerald-400" />
         {{ isImportingMail ? 'Importerer…' : 'Importér mail (.eml)' }}
         <input class="sr-only" type="file" accept=".eml,message/rfc822" multiple
-          aria-label="Importér mail (.eml)" :disabled="isImportingMail || !store.activeFolder"
+          aria-label="Importér mail (.eml)" :disabled="transferDisabled"
           @change="handleEmlImport" />
       </label>
+
+      <div class="grid grid-cols-2 gap-1.5">
+        <label class="flex cursor-pointer items-center justify-center gap-1 rounded-xl border border-slate-700 bg-slate-800 px-2 py-2 text-xs text-slate-200 hover:bg-slate-700 focus-within:ring-2 focus-within:ring-blue-400 has-disabled:cursor-not-allowed has-disabled:opacity-50"
+          :title="`Importér MBOX til ${store.activeFolder?.name || store.activeFolderPath} (maks. 20 MiB)`">
+          <Upload class="h-3.5 w-3.5 shrink-0" />
+          Importér MBOX
+          <input class="sr-only" type="file" accept=".mbox,application/mbox"
+            aria-label="Importér MBOX" :disabled="transferDisabled" @change="handleMboxImport" />
+        </label>
+        <button type="button" :disabled="transferDisabled"
+          class="flex items-center justify-center gap-1 rounded-xl border border-slate-700 bg-slate-800 px-2 py-2 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+          :title="`Eksportér ${store.activeFolder?.name || store.activeFolderPath} til MBOX (maks. 20 MiB)`"
+          @click="handleMboxExport">
+          <Download class="h-3.5 w-3.5 shrink-0" />
+          Eksportér MBOX
+        </button>
+      </div>
+      <output v-if="isTransferringMbox" class="block text-center text-xs text-slate-300">Overfører MBOX…</output>
 
       <div
         v-if="props.mobileDrawer"

@@ -1,4 +1,6 @@
 import { raw, Router, type Request, type Response } from 'express';
+import { InvalidMboxError, mboxMaxBytes, mboxType, parseMbox } from '../../../src/mbox.ts';
+import { exportMbox, importMbox } from '../services/mboxTransfer.js';
 import {
   type SendMailPayload,
   fetchMailFolders,
@@ -41,6 +43,7 @@ import {
 export const mailRouter = Router();
 
 const emlType = 'message/rfc822';
+const contentDispositionHeader = 'Content-Disposition';
 
 mailRouter.get('/eml', async (req, res) => {
   const folder = String(req.query.folder || 'INBOX');
@@ -55,7 +58,7 @@ mailRouter.get('/eml', async (req, res) => {
       res.status(404).json({ ok: false, error: 'Beskeden findes ikke længere i mappen.' });
       return;
     }
-    res.setHeader('Content-Disposition', `attachment; filename="mail-${uid}.eml"`);
+    res.setHeader(contentDispositionHeader, `attachment; filename="mail-${uid}.eml"`);
     res.type(emlType).send(message);
   } catch {
     res.status(502).json({ ok: false, error: 'Kunne ikke eksportere mailen fra IMAP.' });
@@ -74,6 +77,56 @@ mailRouter.post('/eml', raw({ type: emlType, limit: '20mb' }), async (req, res) 
     res.status(201).json({ ok: true });
   } catch {
     res.status(502).json({ ok: false, error: 'IMAP kunne ikke gemme mailen i den valgte mappe.' });
+  }
+});
+
+mailRouter.get('/mbox', async (req, res) => {
+  const folder = typeof req.query.folder === 'string' ? req.query.folder : '';
+  if (!folder.trim()) {
+    res.status(400).json({ ok: false, error: 'Vælg en mailmappe.' });
+    return;
+  }
+  try {
+    const archive = await exportMbox(requireMailCredentials(req), folder);
+    if (!archive.length) {
+      res.status(404).json({ ok: false, error: 'Den valgte mailmappe er tom.' });
+      return;
+    }
+    res.setHeader(contentDispositionHeader, 'attachment; filename="mailarkiv.mbox"');
+    res.type(mboxType).send(archive);
+  } catch (error) {
+    if (error instanceof InvalidMboxError) {
+      res.status(413).json({ ok: false, error: error.message });
+      return;
+    }
+    res.status(502).json({ ok: false, error: 'Kunne ikke eksportere mailmappen fra IMAP. Prøv igen.' });
+  }
+});
+
+mailRouter.post('/mbox', raw({ type: mboxType, limit: mboxMaxBytes }), async (req, res) => {
+  const folder = typeof req.query.folder === 'string' ? req.query.folder : '';
+  if (!folder.trim() || !Buffer.isBuffer(req.body)) {
+    res.status(400).json({ ok: false, error: 'Vælg en mailmappe og en MBOX-fil.' });
+    return;
+  }
+
+  const controller = new AbortController();
+  res.once('close', () => controller.abort());
+  try {
+    const messages = parseMbox(req.body);
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]);
+    const imported = await importMbox(requireMailCredentials(req), folder, messages, signal);
+    if (!imported) {
+      res.status(502).json({ ok: false, error: 'IMAP kunne ikke gemme nogen mails i den valgte mappe.' });
+      return;
+    }
+    res.status(201).json({ ok: true, imported, total: messages.length });
+  } catch (error) {
+    if (error instanceof InvalidMboxError) {
+      res.status(400).json({ ok: false, error: error.message });
+      return;
+    }
+    res.status(502).json({ ok: false, error: 'Kunne ikke forbinde til IMAP for at importere mail.' });
   }
 });
 
@@ -236,7 +289,7 @@ mailRouter.get('/attachment', async (req: Request, res: Response) => {
     const file = await downloadMessageAttachment(creds, folder, uid, attachmentId);
     const safeFilename = encodeURIComponent(file.filename);
     res.setHeader('Content-Type', file.contentType);
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${safeFilename}`);
+    res.setHeader(contentDispositionHeader, `attachment; filename*=UTF-8''${safeFilename}`);
     res.setHeader('Content-Length', String(file.content.length));
     res.send(file.content);
   } catch (err: any) {

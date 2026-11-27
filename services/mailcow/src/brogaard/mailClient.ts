@@ -224,7 +224,7 @@ function createImapClient(creds: MailServerCredentials): ImapFlow {
   });
 }
 
-async function withImap<T>(creds: MailServerCredentials, fn: (client: ImapFlow) => Promise<T>): Promise<T> {
+export async function withImap<T>(creds: MailServerCredentials, fn: (client: ImapFlow) => Promise<T>): Promise<T> {
   const client = createImapClient(creds);
   client.on('error', () => client.close());
   try {

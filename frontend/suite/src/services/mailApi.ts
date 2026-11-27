@@ -112,6 +112,32 @@ export async function importEmlFile(folder: string, file: File): Promise<void> {
   if (!response.ok || !result.ok) throw new Error(typeof result.error === 'string' ? result.error : 'Kunne ikke importere mailen.');
 }
 
+function mboxUrl(folder: string): string {
+  return '/api/v1/me/mailcow/suite/mail/mbox?' + new URLSearchParams({ folder });
+}
+
+async function mboxRequest(folder: string, options?: RequestInit): Promise<Response> {
+  const response = await fetch(mboxUrl(folder), { ...options, credentials: 'same-origin' });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    const error = result.error?.message ?? result.error;
+    throw new Error(typeof error === 'string' ? error : `MBOX-overførslen mislykkedes (HTTP ${response.status}).`);
+  }
+  return response;
+}
+
+export async function importMboxFile(folder: string, file: File): Promise<{ imported: number; total: number }> {
+  if (file.size > 20 * 1024 * 1024) throw new Error('En MBOX-fil må højst fylde 20 MiB.');
+  const response = await mboxRequest(folder, {
+    method: 'POST', headers: { 'Content-Type': 'application/mbox' }, body: file
+  });
+  return response.json();
+}
+
+export async function downloadMboxFile(folder: string): Promise<Blob> {
+  return (await mboxRequest(folder)).blob();
+}
+
 export function getAttachmentDownloadUrl(folder: string, uid: number, attachmentId: string, inline = false): string {
   const q = new URLSearchParams({
     folder,

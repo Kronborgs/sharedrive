@@ -443,7 +443,7 @@ function SidebarUserPanel({
 }>) {
   const [showMailcow, setShowMailcow] = useState(false)
   return (
-    <div className="border-t border-zinc-200 dark:border-(--app-border) p-2 relative">
+    <div className="relative shrink-0 border-t border-zinc-200 dark:border-(--app-border) p-2">
       <button type="button"
         onClick={onToggleMenu}
         className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-(--app-border) transition-colors"
@@ -810,7 +810,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
       )}
 
       <aside className={[
-        'app-chrome flex flex-col w-60 shrink-0 bg-white dark:bg-(--app-chrome-bg) border-r border-zinc-200 dark:border-(--app-border) h-screen',
+        'app-chrome flex flex-col w-60 shrink-0 bg-white dark:bg-(--app-chrome-bg) border-r border-zinc-200 dark:border-(--app-border) h-dvh',
         'fixed inset-y-0 left-0 z-40 transition-transform duration-200',
         isOpen ? 'translate-x-0' : '-translate-x-full',
         'md:relative md:translate-x-0 md:z-auto',

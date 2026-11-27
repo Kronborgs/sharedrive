@@ -55,8 +55,7 @@ function useWrite(onSaved?: () => void) {
 function WriteResult({ status }: Readonly<{ status: ReturnType<typeof useWrite>['status'] }>) {
   const { t } = useI18n()
   if (status === 'error') return <p role="alert" className="text-sm text-red-400">{t('mailcowAccount.failed')}</p>
-  if (status === 'ok') return <p role="status" className="text-sm text-emerald-400">{t('mailcowWorkspace.done')}</p>
-  return null
+  return <output className="block text-sm text-emerald-400">{status === 'ok' ? t('mailcowWorkspace.done') : null}</output>
 }
 
 function ListState({ pending, error, empty }: Readonly<{ pending: boolean; error: boolean; empty: boolean }>) {

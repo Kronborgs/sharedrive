@@ -7,9 +7,15 @@ export function themeValue(id: ThemeId): Theme {
 }
 
 let activeTheme: Theme = 'nordic-blue-hour'
+const activeThemeListeners = new Set<() => void>()
 
 export function getActiveTheme(): Theme {
   return activeTheme
+}
+
+export function subscribeActiveTheme(listener: () => void): () => void {
+  activeThemeListeners.add(listener)
+  return () => { activeThemeListeners.delete(listener) }
 }
 
 function renderTheme(theme: AppTheme) {
@@ -27,6 +33,7 @@ function renderTheme(theme: AppTheme) {
     root.style.setProperty('--shared-theme-accent', theme.accent)
     root.style.setProperty('--shared-theme-accent-hover', theme.accentHover)
   }
+  activeThemeListeners.forEach(listener => listener())
 }
 
 export function applyTheme(value: string) {

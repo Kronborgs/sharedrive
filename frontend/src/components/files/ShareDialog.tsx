@@ -288,21 +288,9 @@ function ActiveShareRow({
   )
 }
 
-export function ShareDialog({ item, onClose, startWithMail = false }: Readonly<ShareDialogProps>) {
+function WebDavShareTab({ item, email, active }: Readonly<{ item: FileItem; email: string; active: boolean }>) {
   const qc = useQueryClient()
-  const { user } = useAuth()
   const { t } = useI18n()
-  const mail = useMailcowNavigation(user)
-  const canCompose = mail.enabled && mail.ready && mail.connected
-  const [tab, setTab] = useState<ShareTargetType>(startWithMail ? 'link' : 'user')
-  const tabs: ShareTargetType[] = startWithMail ? ['link'] : ['user', 'group', 'link', 'webdav']
-  const createLabel = startWithMail ? 'share.mailCreate' : 'share.title'
-  const [email, setEmail] = useState('')
-  const [groupId, setGroupId] = useState('')
-  const [perms, setPerms] = useState<SharePermissions>(DEFAULT_PERMS)
-  const [hasExpiry, setHasExpiry] = useState(false)
-  const [expiry, setExpiry] = useState(defaultExpiry())
-  const [copied, setCopied] = useState(false)
   const [davCopied, setDavCopied] = useState<string | null>(null)
   const [davPwdName, setDavPwdName] = useState('')
   const [davRevealed, setDavRevealed] = useState<CreatedAppPassword | null>(null)
@@ -320,7 +308,7 @@ export function ShareDialog({ item, onClose, startWithMail = false }: Readonly<S
     queryKey: ['breadcrumbs', item.parent_id],
     queryFn: ({ signal }) =>
       api.get<Array<{ id: string; name: string }>>(`/api/v1/files/breadcrumbs?folder_id=${item.parent_id}`, signal),
-    enabled: tab === 'webdav' && item.parent_id != null,
+    enabled: active && item.parent_id != null,
   })
 
   const davOwnerID = item.owner_id
@@ -333,23 +321,13 @@ export function ShareDialog({ item, onClose, startWithMail = false }: Readonly<S
     setTimeout(() => setDavCopied(null), 2000)
   }
 
-  const { data: shares } = useQuery({
-    queryKey: ['shares', item.id],
-    queryFn: ({ signal }) => api.get<Share[]>(`/api/v1/shares?resource_id=${item.id}`, signal),
-  })
-
-  const { data: groups } = useQuery({
-    queryKey: ['groups'],
-    queryFn: ({ signal }) => api.get<Group[]>('/api/v1/groups', signal),
-  })
-
   // App passwords scoped to this specific file/folder
   const { data: scopedPasswords } = useQuery({
     queryKey: ['app-passwords', 'resource', item.id],
     queryFn: ({ signal }) => api.get<AppPassword[]>('/api/v1/me/app-passwords', signal).then(
       list => list.filter(p => p.resource_id === item.id)
     ),
-    enabled: tab === 'webdav',
+    enabled: active,
   })
 
   const davCreatePwd = useMutation({
@@ -371,6 +349,163 @@ export function ShareDialog({ item, onClose, startWithMail = false }: Readonly<S
     mutationFn: (id: string) => api.delete(`/api/v1/me/app-passwords/${id}`),
     onSuccess: () => ignorePromise(qc.invalidateQueries({ queryKey: ['app-passwords', 'resource', item.id] })),
     onError: () => toast.error(t('share.appPwdDeleteFailed')),
+  })
+
+  if (!active) return null
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-zinc-600 dark:text-slate-400">
+        {t('share.davDesc', { type: item.is_folder ? t('share.folder') : t('share.file') })}
+      </p>
+
+      {/* File/folder URL */}
+      <div className="space-y-1">
+        <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">
+          {t(item.is_folder ? 'share.folderUrl' : 'share.fileUrl')}
+        </p>
+        <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
+          <span className="flex-1 text-xs font-mono text-zinc-900 dark:text-slate-100 break-all select-all">{davFileUrl}</span>
+          <button type="button"
+            onClick={() => copyDav(davFileUrl, 'file')}
+            className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+            title={t('share.webdavCopyUrl')}
+          >
+            {davCopied === 'file' ? <Check size={13} /> : <Copy size={13} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Username */}
+      <div className="space-y-1">
+        <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">{t('share.username')}</p>
+        <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
+          <span className="flex-1 text-xs font-mono text-zinc-900 dark:text-slate-100 select-all">{email}</span>
+          <button type="button"
+            onClick={() => copyDav(email, 'email')}
+            className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+            title={t('share.webdavCopyEmail')}
+          >
+            {davCopied === 'email' ? <Check size={13} /> : <Copy size={13} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Instructions */}
+      <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3 space-y-2">
+        <div className="flex items-center gap-1.5">
+          <HardDrive size={12} className="text-zinc-500" />
+          <p className="text-[11px] font-semibold text-zinc-700 dark:text-slate-300">KeePass — Open from URL</p>
+        </div>
+        <ol className="text-[11px] text-zinc-600 dark:text-slate-400 space-y-1 list-decimal list-inside">
+          <li>KeePass → <strong>File</strong> → <strong>Open</strong> → <strong>Open from URL…</strong></li>
+          <li>Indsæt URL'en ovenfor i feltet <strong>URL</strong></li>
+          <li>Indsæt din email og app password nedenfor som credentials</li>
+          <li>Vælg <strong>Do not remember</strong> (sikrere)</li>
+        </ol>
+      </div>
+
+      {/* Revealed password — show once */}
+      {davRevealed && (
+        <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 space-y-2">
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+            {t('share.copyPwdNow')}
+          </p>
+          <div className="flex items-center gap-2 rounded border border-amber-200 dark:border-amber-700 bg-white dark:bg-[#0f1117] px-3 py-1.5">
+            <span className="flex-1 text-sm font-mono text-zinc-900 dark:text-slate-100 break-all select-all">{davRevealed.password}</span>
+            <button type="button"
+              onClick={() => copyDav(davRevealed.password, 'newpwd')}
+              className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+            >
+              {davCopied === 'newpwd' ? <Check size={13} /> : <Copy size={13} />}
+            </button>
+          </div>
+          <button type="button"
+            onClick={() => setDavRevealed(null)}
+            className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
+          >
+            {t('share.savedClose')}
+          </button>
+        </div>
+      )}
+
+      {/* Create scoped app password */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">
+          {t('share.createPwdFor', { type: item.is_folder ? t('share.folder') : t('share.file') })}
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={davPwdName}
+            onChange={e => setDavPwdName(e.target.value)}
+            placeholder={t('share.webdavNamePlaceholder')}
+            className="flex-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            onKeyDown={e => { if (e.key === 'Enter' && davPwdName.trim()) davCreatePwd.mutate(davPwdName.trim()) }}
+          />
+          <button type="button"
+            onClick={() => { if (davPwdName.trim()) davCreatePwd.mutate(davPwdName.trim()) }}
+            disabled={!davPwdName.trim() || davCreatePwd.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+          >
+            <Plus size={14} />
+            {t('share.create')}
+          </button>
+        </div>
+      </div>
+
+      {/* Existing scoped passwords */}
+      {scopedPasswords && scopedPasswords.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">{t('share.activePwdsFor', { type: item.is_folder ? t('share.folder') : t('share.file') })}</p>
+          <ul className="space-y-1">
+            {scopedPasswords.map(p => (
+              <li key={p.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117]">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 truncate">{p.name}</p>
+                  <p className="text-[11px] text-muted">
+                    {p.last_used_at ? t('share.lastUsedOn', { when: formatDate(p.last_used_at) }) : t('share.neverUsed')}
+                  </p>
+                </div>
+                <button type="button"
+                  onClick={() => davRevokePwd.mutate(p.id)}
+                  className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  title={t('share.webdavDeleteTitle')}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function ShareDialog({ item, onClose, startWithMail = false }: Readonly<ShareDialogProps>) {
+  const qc = useQueryClient()
+  const { user } = useAuth()
+  const { t } = useI18n()
+  const mail = useMailcowNavigation(user)
+  const canCompose = mail.enabled && mail.ready && mail.connected
+  const [tab, setTab] = useState<ShareTargetType>(startWithMail ? 'link' : 'user')
+  const tabs: ShareTargetType[] = startWithMail ? ['link'] : ['user', 'group', 'link', 'webdav']
+  const createLabel = startWithMail ? 'share.mailCreate' : 'share.title'
+  const [email, setEmail] = useState('')
+  const [groupId, setGroupId] = useState('')
+  const [perms, setPerms] = useState<SharePermissions>(DEFAULT_PERMS)
+  const [hasExpiry, setHasExpiry] = useState(false)
+  const [expiry, setExpiry] = useState(defaultExpiry())
+  const [copied, setCopied] = useState(false)
+  const { data: shares } = useQuery({
+    queryKey: ['shares', item.id],
+    queryFn: ({ signal }) => api.get<Share[]>(`/api/v1/shares?resource_id=${item.id}`, signal),
+  })
+
+  const { data: groups } = useQuery({
+    queryKey: ['groups'],
+    queryFn: ({ signal }) => api.get<Group[]>('/api/v1/groups', signal),
   })
 
   async function verifyMailAccount() {
@@ -527,134 +662,7 @@ export function ShareDialog({ item, onClose, startWithMail = false }: Readonly<S
             </p>
           )}
 
-          {tab === 'webdav' && (
-            <div className="space-y-3">
-              <p className="text-xs text-zinc-600 dark:text-slate-400">
-                {t('share.davDesc', { type: item.is_folder ? t('share.folder') : t('share.file') })}
-              </p>
-
-              {/* File/folder URL */}
-              <div className="space-y-1">
-                <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">
-                  {t(item.is_folder ? 'share.folderUrl' : 'share.fileUrl')}
-                </p>
-                <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
-                  <span className="flex-1 text-xs font-mono text-zinc-900 dark:text-slate-100 break-all select-all">{davFileUrl}</span>
-                  <button type="button"
-                    onClick={() => copyDav(davFileUrl, 'file')}
-                    className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                    title={t('share.webdavCopyUrl')}
-                  >
-                    {davCopied === 'file' ? <Check size={13} /> : <Copy size={13} />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Username */}
-              <div className="space-y-1">
-                <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">{t('share.username')}</p>
-                <div className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-2">
-                  <span className="flex-1 text-xs font-mono text-zinc-900 dark:text-slate-100 select-all">{user?.email ?? ''}</span>
-                  <button type="button"
-                    onClick={() => copyDav(user?.email ?? '', 'email')}
-                    className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                    title={t('share.webdavCopyEmail')}
-                  >
-                    {davCopied === 'email' ? <Check size={13} /> : <Copy size={13} />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Instructions */}
-              <div className="rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] p-3 space-y-2">
-                <div className="flex items-center gap-1.5">
-                  <HardDrive size={12} className="text-zinc-500" />
-                  <p className="text-[11px] font-semibold text-zinc-700 dark:text-slate-300">KeePass — Open from URL</p>
-                </div>
-                <ol className="text-[11px] text-zinc-600 dark:text-slate-400 space-y-1 list-decimal list-inside">
-                  <li>KeePass → <strong>File</strong> → <strong>Open</strong> → <strong>Open from URL…</strong></li>
-                  <li>Indsæt URL'en ovenfor i feltet <strong>URL</strong></li>
-                  <li>Indsæt din email og app password nedenfor som credentials</li>
-                  <li>Vælg <strong>Do not remember</strong> (sikrere)</li>
-                </ol>
-              </div>
-
-              {/* Revealed password — show once */}
-              {davRevealed && (
-                <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 space-y-2">
-                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                    {t('share.copyPwdNow')}
-                  </p>
-                  <div className="flex items-center gap-2 rounded border border-amber-200 dark:border-amber-700 bg-white dark:bg-[#0f1117] px-3 py-1.5">
-                    <span className="flex-1 text-sm font-mono text-zinc-900 dark:text-slate-100 break-all select-all">{davRevealed.password}</span>
-                    <button type="button"
-                      onClick={() => copyDav(davRevealed.password, 'newpwd')}
-                      className="shrink-0 p-1 rounded text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                    >
-                      {davCopied === 'newpwd' ? <Check size={13} /> : <Copy size={13} />}
-                    </button>
-                  </div>
-                  <button type="button"
-                    onClick={() => setDavRevealed(null)}
-                    className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
-                  >
-                    {t('share.savedClose')}
-                  </button>
-                </div>
-              )}
-
-              {/* Create scoped app password */}
-              <div className="space-y-1.5">
-                <p className="text-xs font-medium text-zinc-600 dark:text-slate-400">
-                  {t('share.createPwdFor', { type: item.is_folder ? t('share.folder') : t('share.file') })}
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={davPwdName}
-                    onChange={e => setDavPwdName(e.target.value)}
-                    placeholder={t('share.webdavNamePlaceholder')}
-                    className="flex-1 rounded-lg border border-zinc-200 dark:border-[#2d3148] bg-zinc-50 dark:bg-[#0f1117] px-3 py-1.5 text-sm text-zinc-900 dark:text-slate-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    onKeyDown={e => { if (e.key === 'Enter' && davPwdName.trim()) davCreatePwd.mutate(davPwdName.trim()) }}
-                  />
-                  <button type="button"
-                    onClick={() => { if (davPwdName.trim()) davCreatePwd.mutate(davPwdName.trim()) }}
-                    disabled={!davPwdName.trim() || davCreatePwd.isPending}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
-                  >
-                    <Plus size={14} />
-                    {t('share.create')}
-                  </button>
-                </div>
-              </div>
-
-              {/* Existing scoped passwords */}
-              {scopedPasswords && scopedPasswords.length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-[11px] font-medium text-zinc-500 dark:text-slate-500">{t('share.activePwdsFor', { type: item.is_folder ? t('share.folder') : t('share.file') })}</p>
-                  <ul className="space-y-1">
-                    {scopedPasswords.map(p => (
-                      <li key={p.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-50 dark:bg-[#0f1117]">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 truncate">{p.name}</p>
-                          <p className="text-[11px] text-muted">
-                            {p.last_used_at ? t('share.lastUsedOn', { when: formatDate(p.last_used_at) }) : t('share.neverUsed')}
-                          </p>
-                        </div>
-                        <button type="button"
-                          onClick={() => davRevokePwd.mutate(p.id)}
-                          className="p-1 rounded text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                          title={t('share.webdavDeleteTitle')}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
+          <WebDavShareTab item={item} email={user?.email ?? ''} active={tab === 'webdav'} />
 
           {/* Permissions */}
           {tab !== 'webdav' && <>

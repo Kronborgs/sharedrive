@@ -248,7 +248,7 @@ function SettingsPage() {
   ]
 
   return (
-    <div className="space-y-5 max-w-2xl">
+    <div className="min-w-0 space-y-5">
       <h1 className="text-xl font-semibold text-zinc-900 dark:text-slate-100">{t('settings.title')}</h1>
 
       {/* Tab bar */}
@@ -259,7 +259,7 @@ function SettingsPage() {
             type="button"
             onClick={() => setTab(t.id)}
             className={[
-              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+              'shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
               tab === t.id
                 ? 'border-brand-500 text-brand-600 dark:text-brand-400'
                 : 'border-transparent text-zinc-500 dark:text-slate-400 hover:text-zinc-900 dark:hover:text-slate-100',
@@ -270,6 +270,7 @@ function SettingsPage() {
         ))}
       </div>
 
+      <div className="max-w-2xl">
       {tab === 'general' && (
         <form onSubmit={handleSubmit(values => save.mutate(values))} className="space-y-5">
           <section className="bg-white dark:bg-[#1a1d27] border border-zinc-200 dark:border-[#2d3148] rounded-xl p-4 space-y-4">
@@ -539,6 +540,7 @@ function SettingsPage() {
       )}
       {tab === 'mailcow' && <MailcowModuleSettings />}
       {tab === 'themes' && <ThemeSettings />}
+      </div>
     </div>
   )
 }

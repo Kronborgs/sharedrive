@@ -803,6 +803,7 @@ func (s *Server) buildRouter() *chi.Mux {
 func shouldApplyGlobalBodyLimit(path, method string) bool {
 	return !strings.HasPrefix(path, "/upload/") &&
 		!(path == filesUploadRoute && method == http.MethodPost) &&
+		!(path == "/api/v1/admin/themes" && method == http.MethodPost) &&
 		!(strings.HasPrefix(path, "/api/v1/guest/rooms/") && strings.HasSuffix(path, "/uploads") && method == http.MethodPost) &&
 		path != "/api/v1/backup/buddy/receive"
 }

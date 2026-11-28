@@ -433,7 +433,7 @@ const translations = {
   'theme.classicDark': { da: 'Klassisk mørk', en: 'Classic dark' },
   'themes.title': { da: 'Temaer', en: 'Themes' },
   'themes.upload': { da: 'Upload tema', en: 'Upload theme' },
-  'themes.uploadHelp': { da: 'Baggrunden vises også på login. Brug JPEG, PNG eller WebP på højst 8 MiB.', en: 'The background also appears on the login screen. Use JPEG, PNG or WebP up to 8 MiB.' },
+  'themes.uploadHelp': { da: 'Baggrunden vises også på login. Brug JPEG, PNG eller WebP på højst 8 MiB, 6000 × 6000 pixels og 16 megapixels.', en: 'The background also appears on the login screen. Use JPEG, PNG or WebP up to 8 MiB, 6000 × 6000 pixels and 16 megapixels.' },
   'themes.name': { da: 'Temanavn', en: 'Theme name' },
   'themes.accent': { da: 'Accentfarve', en: 'Accent colour' },
   'themes.background': { da: 'Baggrundsbillede', en: 'Background image' },

@@ -44,6 +44,8 @@ func TestShouldApplyGlobalBodyLimit(t *testing.T) {
 	}{
 		{name: "JSON API", path: "/api/v1/notes", method: http.MethodPost, want: true},
 		{name: "multipart upload", path: filesUploadRoute, method: http.MethodPost, want: false},
+		{name: "theme upload", path: "/api/v1/admin/themes", method: http.MethodPost, want: false},
+		{name: "theme other method", path: "/api/v1/admin/themes", method: http.MethodPut, want: true},
 		{name: "TUS upload", path: "/upload/123", method: http.MethodPatch, want: false},
 		{name: "buddy receive", path: "/api/v1/backup/buddy/receive", method: http.MethodPost, want: false},
 	}

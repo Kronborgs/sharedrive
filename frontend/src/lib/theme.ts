@@ -23,15 +23,16 @@ function renderTheme(theme: AppTheme) {
   const root = document.documentElement
   root.classList.add('dark')
   root.dataset.theme = activeTheme
+  root.toggleAttribute('data-custom-accent', !!theme.customAccent)
+  root.style.setProperty('--shared-theme-accent', theme.accent)
+  root.style.setProperty('--shared-theme-accent-hover', theme.accentHover)
+  root.style.setProperty('--shared-theme-bg', theme.gridBg)
+  root.style.setProperty('--shared-theme-surface', theme.surface)
   if (theme.wallpaper) {
     const wallpaper = `url("${theme.wallpaper}")`
     root.style.setProperty('--shared-login-wallpaper', `${theme.loginOverlay}, ${wallpaper}`)
     root.style.setProperty('--shared-app-wallpaper', `linear-gradient(${theme.appOverlay}, ${theme.appOverlay}), ${wallpaper}`)
-    root.style.setProperty('--shared-theme-bg', theme.gridBg)
-    root.style.setProperty('--shared-theme-surface', theme.surface)
     root.style.setProperty('--shared-theme-border', theme.border)
-    root.style.setProperty('--shared-theme-accent', theme.accent)
-    root.style.setProperty('--shared-theme-accent-hover', theme.accentHover)
   }
   activeThemeListeners.forEach(listener => listener())
 }

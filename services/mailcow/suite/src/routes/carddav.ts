@@ -144,7 +144,7 @@ carddavRouter.post('/contacts', async (req: Request, res: Response) => {
       return;
     }
 
-    const saved = await saveCardDavContact(creds, contact);
+    const saved = await saveCardDavContact(creds, contact, req.body?.requireUnchanged === true);
     if (typeof contact.starred === 'boolean') {
       setUserContactFavorite(creds.username, saved.id, contact.starred);
       if (saved.uid) {
@@ -203,7 +203,7 @@ carddavRouter.post('/contacts/bulk-update', async (req: Request, res: Response) 
     }
 
     const settled = await runWithConcurrency(validContacts, 6, async (contact) => {
-      const saved = await saveCardDavContact(creds, contact);
+      const saved = await saveCardDavContact(creds, contact, req.body?.requireUnchanged === true);
       if (typeof contact.starred === 'boolean') {
         setUserContactFavorite(creds.username, saved.id, contact.starred);
         if (saved.uid) {
@@ -460,7 +460,7 @@ carddavRouter.post('/contacts/bulk-delete', async (req: Request, res: Response) 
     const items = rawItems as Array<{ id?: string; vcardUrl?: string; etag?: string }>;
     const settled = await runWithConcurrency(items, 6, async (item) => {
       if (item.vcardUrl) {
-        await deleteCardDavContact(creds, item.vcardUrl, item.etag);
+        await deleteCardDavContact(creds, item.vcardUrl, item.etag, req.body?.requireUnchanged === true);
       }
       return item.id || null;
     });

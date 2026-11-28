@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"image"
 	"image/png"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -13,7 +16,10 @@ func TestValidateThemeImageRejectsActiveOrTruncatedUploads(t *testing.T) {
 		t.Fatal(err)
 	}
 	mime, err := validateThemeImage(valid.Bytes())
-	if err != nil || mime != "image/png" {
+	if err != nil || mime != "image/png"
+	"net/http"
+	"net/http/httptest"
+	"strings" {
 		t.Fatalf("valid PNG returned %q, %v", mime, err)
 	}
 	for name, data := range map[string][]byte{
@@ -25,5 +31,21 @@ func TestValidateThemeImageRejectsActiveOrTruncatedUploads(t *testing.T) {
 				t.Fatal("invalid upload was accepted")
 			}
 		})
+	}
+}
+
+func TestUpdateThemeColorsRejectsInvalidColors(t *testing.T) {
+	h := &Handler{}
+	for _, body := range []string{
+		`{"accent":"red","background":"#010203","panel":"#040506"}`,
+		`{"accent":"#010203","background":"#xyzxyz","panel":"#040506"}`,
+		`{"accent":"#010203","background":"#040506","panel":""}`,
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPut, "/", strings.NewReader(body))
+		h.UpdateThemeAccent(recorder, request)
+		if recorder.Code != http.StatusBadRequest {
+			t.Errorf("invalid colors %s: got %d, want 400", body, recorder.Code)
+		}
 	}
 }

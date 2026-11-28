@@ -25,12 +25,12 @@ export async function apiSyncCardDav(): Promise<CardDavSyncResponse> {
   return data as CardDavSyncResponse;
 }
 
-export async function apiSaveContact(contact: Contact): Promise<Contact> {
+export async function apiSaveContact(contact: Contact, requireUnchanged = false): Promise<Contact> {
   const res = await fetch('/api/v1/me/mailcow/suite/carddav/contacts', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ contact })
+    body: JSON.stringify({ contact, requireUnchanged })
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
@@ -94,13 +94,14 @@ export async function apiBulkUpdateContacts(
 }
 
 export async function apiBulkDeleteContacts(
-  items: Array<{ id: string; vcardUrl?: string; etag?: string }>
+  items: Array<{ id: string; vcardUrl?: string; etag?: string }>,
+  requireUnchanged = false
 ): Promise<{ deletedCount: number; failedCount: number; deletedIds: string[] }> {
   const res = await fetch('/api/v1/me/mailcow/suite/carddav/contacts/bulk-delete', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ items })
+    body: JSON.stringify({ items, requireUnchanged })
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {

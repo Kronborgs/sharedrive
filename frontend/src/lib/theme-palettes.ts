@@ -19,6 +19,7 @@ export interface AppTheme {
   wallpaper: string | null;
   swatch: string;
   accent: string;
+  customAccent?: boolean;
   accentHover: string;
   accentText: string;
   accentSoft: string;
@@ -222,8 +223,8 @@ export const THEMES: AppTheme[] = [
 
 export const themeStorageKey = 'sharedrive-theme'
 
-type ThemeCatalogue = { available: AppTheme[]; hidden: string[] }
-let catalogue: ThemeCatalogue = { available: THEMES, hidden: [] }
+type ThemeCatalogue = { available: AppTheme[]; all: AppTheme[]; hidden: string[] }
+let catalogue: ThemeCatalogue = { available: THEMES, all: THEMES, hidden: [] }
 const catalogueListeners = new Set<() => void>()
 let refreshVersion = 0
 
@@ -262,7 +263,13 @@ export async function refreshThemeCatalogue() {
     }]
   })
   if (version !== refreshVersion) return catalogue
-  catalogue = { available: [...THEMES.filter(theme => theme.id === 'classic-dark' || !hiddenIds.has(theme.id)), ...uploaded], hidden }
+  const colors: Record<string, { accent: string; background: string; panel: string }> = data.colors ?? {}
+  const all = [...THEMES, ...uploaded].map(theme => {
+    const color = colors[theme.id]
+    if (!color || ![color.accent, color.background, color.panel].every(value => typeof value === 'string' && /^#[a-f0-9]{6}$/i.test(value))) return theme
+    return { ...theme, swatch: color.accent, accent: color.accent, accentHover: color.accent, accentSoft: color.accent + '3d', gridBg: color.background, surface: color.panel, customAccent: true }
+  })
+  catalogue = { all, available: all.filter(theme => theme.id === 'classic-dark' || !hiddenIds.has(theme.id)), hidden }
   for (const listener of catalogueListeners) listener()
   return catalogue
 }

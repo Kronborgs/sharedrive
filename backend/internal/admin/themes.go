@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"image"
 	_ "image/jpeg"
@@ -35,9 +36,16 @@ type uploadedTheme struct {
 	Accent string `json:"accent"`
 }
 
+type themeColors struct {
+	Accent     string `json:"accent"`
+	Background string `json:"background"`
+	Panel      string `json:"panel"`
+}
+
 type availableThemes struct {
-	Uploaded []uploadedTheme `json:"uploaded"`
-	Hidden   []string        `json:"hidden"`
+	Uploaded []uploadedTheme        `json:"uploaded"`
+	Hidden   []string               `json:"hidden"`
+	Colors   map[string]themeColors `json:"colors"`
 }
 
 func (h *Handler) ListThemes(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +71,27 @@ func (h *Handler) ListThemes(w http.ResponseWriter, r *http.Request) {
 		themeServerError(w)
 		return
 	}
-	httputil.Respond(w, http.StatusOK, availableThemes{Uploaded: list, Hidden: hidden})
+	rows, err = h.db.Query(ctx, `SELECT theme_id, accent, background, panel FROM sharedrive_theme_accents`)
+	if err != nil {
+		themeServerError(w)
+		return
+	}
+	defer rows.Close()
+	colors := make(map[string]themeColors)
+	for rows.Next() {
+		var id string
+		var color themeColors
+		if err := rows.Scan(&id, &color.Accent, &color.Background, &color.Panel); err != nil {
+			themeServerError(w)
+			return
+		}
+		colors[id] = color
+	}
+	if rows.Err() != nil {
+		themeServerError(w)
+		return
+	}
+	httputil.Respond(w, http.StatusOK, availableThemes{Uploaded: list, Hidden: hidden, Colors: colors})
 }
 
 func customThemeID(value string) (uuid.UUID, bool) {
@@ -164,11 +192,38 @@ func (h *Handler) UploadTheme(w http.ResponseWriter, r *http.Request) {
 	httputil.Respond(w, http.StatusCreated, theme)
 }
 
+func (h *Handler) UpdateThemeAccent(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req themeColors
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || (!themeAccent.MatchString(req.Accent) || !themeAccent.MatchString(req.Background) || !themeAccent.MatchString(req.Panel)) {
+		httputil.RespondError(w, http.StatusBadRequest, "Enter valid theme colours")
+		return
+	}
+	if customID, ok := customThemeID(id); ok {
+		var exists bool
+		if err := h.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM sharedrive_themes WHERE id = $1)`, customID).Scan(&exists); err != nil {
+			themeServerError(w)
+			return
+		} else if !exists {
+			http.NotFound(w, r)
+			return
+		}
+	} else if id != "classic-dark" && !removableBuiltInThemes[id] {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := h.db.Exec(r.Context(), `INSERT INTO sharedrive_theme_accents (theme_id, accent, background, panel) VALUES ($1, $2, $3, $4) ON CONFLICT (theme_id) DO UPDATE SET accent = EXCLUDED.accent, background = EXCLUDED.background, panel = EXCLUDED.panel`, id, strings.ToLower(req.Accent), strings.ToLower(req.Background), strings.ToLower(req.Panel)); err != nil {
+		themeServerError(w)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) DeleteTheme(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "id")
 	var err error
 	if id, ok := customThemeID(name); ok {
-		_, err = h.db.Exec(r.Context(), `DELETE FROM sharedrive_themes WHERE id = $1`, id)
+		_, err = h.db.Exec(r.Context(), `WITH deleted AS (DELETE FROM sharedrive_themes WHERE id = $1 RETURNING id) DELETE FROM sharedrive_theme_accents WHERE theme_id = $2 AND EXISTS (SELECT 1 FROM deleted)`, id, name)
 	} else if removableBuiltInThemes[name] {
 		_, err = h.db.Exec(r.Context(), `INSERT INTO hidden_sharedrive_themes (id) VALUES ($1) ON CONFLICT DO NOTHING`, name)
 	} else {

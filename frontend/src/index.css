@@ -120,6 +120,16 @@
     --color-surface-border: var(--app-border);
   }
 
+  .dark[data-custom-accent] {
+    --app-bg: var(--shared-theme-bg);
+    --app-panel: var(--shared-theme-surface);
+    --color-surface: var(--app-panel);
+    --color-surface-raised: color-mix(in srgb, var(--app-panel), white 10%);
+    --color-brand-400: color-mix(in srgb, var(--shared-theme-accent), white 30%);
+    --color-brand-500: var(--shared-theme-accent-hover);
+    --color-brand-600: var(--shared-theme-accent);
+    --color-brand-700: color-mix(in srgb, var(--shared-theme-accent), black 20%);
+  }
   * {
     border-color: rgb(var(--border));
   }
@@ -249,6 +259,9 @@
     backdrop-filter: blur(16px);
   }
 
+  .dark[data-theme="nordic-blue-hour"][data-custom-accent] .login-card {
+    background-color: var(--app-panel);
+  }
   .app-chrome {
     --app-chrome-bg: var(--app-panel);
   }

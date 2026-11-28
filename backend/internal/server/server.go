@@ -760,6 +760,7 @@ func (s *Server) buildRouter() *chi.Mux {
 			r.Delete("/api/v1/admin/ip-whitelist/{id}", s.handleAdminRemoveWhitelist)
 
 			r.Post("/api/v1/admin/themes", s.adminHandler.UploadTheme)
+			r.Put("/api/v1/admin/themes/{id}/accent", s.adminHandler.UpdateThemeAccent)
 			r.Delete("/api/v1/admin/themes/{id}", s.adminHandler.DeleteTheme)
 			r.Put("/api/v1/admin/themes/{id}/restore", s.adminHandler.RestoreTheme)
 			r.Get("/api/v1/admin/settings", s.handleAdminGetSettings)

@@ -1007,7 +1007,8 @@ export async function fetchAllContacts(
  */
 export async function saveCardDavContact(
   creds: CalDavCredentials,
-  contactDto: ContactDTO
+  contactDto: ContactDTO,
+  requireUnchanged = false
 ): Promise<ContactDTO> {
   const uid = contactDto.uid || crypto.randomUUID();
   const normalizedDto: ContactDTO = {
@@ -1020,7 +1021,9 @@ export async function saveCardDavContact(
     ? (contactDto.vcardUrl as string)
     : `${ensureTrailingSlash(contactDto.addressBookId)}${encodeURIComponent(uid)}.vcf`;
 
+  if (requireUnchanged && (!isUpdate || !contactDto.etag)) throw new Error('Kontaktens version mangler. Genindlæs kontakterne og prøv igen.');
   const res = await carddavRequest(creds, 'PUT', objectUrl, vcardString, {
+    ...(requireUnchanged ? { 'If-Match': carddavEtag(contactDto.etag!) } : {}),
     'Content-Type': 'text/vcard; charset=utf-8'
   });
   const newEtag = res.headers.get('etag') || undefined;
@@ -1149,13 +1152,20 @@ export async function fetchExternalContactPhotoAsDataUrl(
 /**
  * Sletter en kontakt fra CardDAV-serveren via DELETE.
  */
+function carddavEtag(etag: string): string {
+  const value = etag.trim();
+  return value.startsWith('"') || value.startsWith('W/"') ? value : `"${value}"`;
+}
+
 export async function deleteCardDavContact(
   creds: CalDavCredentials,
   vcardUrl: string,
-  _etag?: string
+  etag?: string,
+  requireUnchanged = false
 ): Promise<void> {
   try {
-    await carddavRequest(creds, 'DELETE', vcardUrl);
+    if (requireUnchanged && !etag) throw new Error('Kontaktens version mangler. Genindlæs kontakterne og prøv igen.');
+    await carddavRequest(creds, 'DELETE', vcardUrl, undefined, requireUnchanged ? { 'If-Match': carddavEtag(etag!) } : undefined);
     invalidateUserContactsCache(creds);
   } catch (err: any) {
     if (String(err?.message || '').includes('HTTP 404')) return;

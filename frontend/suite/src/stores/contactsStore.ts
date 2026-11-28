@@ -713,6 +713,39 @@ export const useContactsStore = defineStore('contacts', () => {
       return null;
     }
 
+    // Do not remove originals when the editor cannot preserve their vCard data.
+    const supported = new Set(['BEGIN', 'END', 'VERSION', 'PRODID', 'UID', 'FN', 'N', 'NICKNAME', 'ORG', 'TITLE', 'EMAIL', 'TEL', 'BDAY', 'ANNIVERSARY', 'X-ANNIVERSARY', 'X-ANNIVERSARY-LABEL', 'ADR', 'URL', 'CATEGORIES', 'X-FAVORITE', 'NOTE', 'PHOTO', 'REV']);
+    const single = new Set(['FN', 'N', 'NICKNAME', 'ORG', 'TITLE', 'BDAY', 'ANNIVERSARY', 'X-ANNIVERSARY', 'X-ANNIVERSARY-LABEL', 'ADR', 'URL', 'PHOTO', 'NOTE', 'CATEGORIES']);
+    for (const contact of [primaryContact, ...secondaries]) {
+      if (!contact.etag || !contact.vcardUrl || !contact.rawVcard) {
+        suiteStore.notify('Kan ikke flette endnu', 'Genindlæs kontakterne: de originale kontaktdata og versionsnumre er nødvendige.', 'warning');
+        return null;
+      }
+      const lines = contact.rawVcard.replace(/\r?\n[ \t]/g, '').split(/\r?\n/).filter(Boolean);
+      const counts = new Map<string, number>();
+      for (const line of lines) {
+        const key = line.split(/[;:]/, 1)[0].toUpperCase();
+        counts.set(key, (counts.get(key) || 0) + 1);
+        const rawValue = line.slice(line.indexOf(':') + 1);
+        const parts = rawValue.split(';');
+        const unsupportedName = key === 'N' && parts.slice(2).some(part => part.trim());
+        const unsupportedAddress = key === 'ADR' && [parts[0], parts[1], parts[4]].some(part => part?.trim());
+        const unsupportedPhoto = key === 'PHOTO' && !contact.photoDataUrl;
+        if (unsupportedName || unsupportedAddress || unsupportedPhoto) {
+          suiteStore.notify('Kontakten kræver manuel gennemgang', `"${contact.fullName}" indeholder detaljer, som ikke kan flettes sikkert. Eksportér og gennemgå kontaktkortene først.`, 'warning');
+          return null;
+        }
+        if (!supported.has(key) || (single.has(key) && counts.get(key)! > 1)) {
+          suiteStore.notify('Kontakten kræver manuel gennemgang', `"${contact.fullName}" indeholder ekstra kontaktoplysninger, som ikke kan flettes sikkert. Eksportér og gennemgå kontaktkortene først.`, 'warning');
+          return null;
+        }
+      }
+    }
+    const photos = new Set([primaryContact, ...secondaries].map(c => c.photoDataUrl).filter(Boolean));
+    if (photos.size > 1) {
+      suiteStore.notify('Forskellige kontaktbilleder', 'Kontaktkortene har forskellige billeder. Vælg hvilket billede der skal beholdes, før du fletter.', 'warning');
+      return null;
+    }
     const merged = toPlainObject(primaryContact);
     const emailSeen = new Set<string>(
       (merged.emails || []).map((e) => e.value.trim().toLowerCase()).filter(Boolean)
@@ -725,6 +758,7 @@ export const useContactsStore = defineStore('contacts', () => {
     );
     const noteParts: string[] = [];
     if (merged.notes?.trim()) noteParts.push(merged.notes.trim());
+    const conflictNotes = new Set<string>();
 
     for (const sec of secondaries) {
       for (const em of sec.emails || []) {
@@ -758,6 +792,25 @@ export const useContactsStore = defineStore('contacts', () => {
         }
       }
 
+      for (const [label, mainValue, otherValue] of [
+        ['Navn', merged.fullName, sec.fullName], ['Fornavn', merged.firstName, sec.firstName],
+        ['Efternavn', merged.lastName, sec.lastName], ['Kaldenavn', merged.nickname, sec.nickname],
+        ['Firma', merged.organization, sec.organization], ['Titel', merged.title, sec.title],
+        ['Fødselsdag', merged.birthday, sec.birthday], ['Mærkedag', merged.anniversary, sec.anniversary],
+        ['Mærkedagens navn', merged.anniversaryLabel, sec.anniversaryLabel], ['Hjemmeside', merged.website, sec.website]
+      ]) {
+        if (mainValue?.trim() && otherValue?.trim() && mainValue.trim() !== otherValue.trim()) {
+          conflictNotes.add(`${label}: ${otherValue.trim()}`);
+        }
+      }
+      if (merged.address && sec.address) {
+        for (const key of ['street', 'city', 'postalCode', 'country'] as const) {
+          const other = sec.address[key]?.trim();
+          if (!other) continue;
+          if (!merged.address[key]?.trim()) merged.address[key] = other;
+          else if (merged.address[key].trim() !== other) conflictNotes.add(`Alternativ adresse (${key}): ${other}`);
+        }
+      }
       if (!merged.firstName?.trim() && sec.firstName?.trim()) merged.firstName = sec.firstName.trim();
       if (!merged.lastName?.trim() && sec.lastName?.trim()) merged.lastName = sec.lastName.trim();
       if (!merged.nickname?.trim() && sec.nickname?.trim()) merged.nickname = sec.nickname.trim();
@@ -786,12 +839,13 @@ export const useContactsStore = defineStore('contacts', () => {
       }
     }
 
+    if (conflictNotes.size) noteParts.push('Oplysninger fra sammenflettede kontakter:\n' + Array.from(conflictNotes).join('\n'));
     merged.notes = noteParts.length > 0 ? noteParts.join('\n\n') : undefined;
 
     isBulkUpdating.value = true;
     try {
       // Gem altid hovedkontakten først — slet aldrig dubletter hvis gem fejler!
-      const savedPrimary = toPlainObject(await apiSaveContact(merged));
+      const savedPrimary = toPlainObject(await apiSaveContact(merged, true));
       const pIdx = contacts.value.findIndex((c) => c.id === savedPrimary.id || c.id === primaryContact.id);
       if (pIdx !== -1) {
         contacts.value[pIdx] = savedPrimary;
@@ -805,7 +859,8 @@ export const useContactsStore = defineStore('contacts', () => {
           id: c.id,
           vcardUrl: c.vcardUrl,
           etag: c.etag
-        }))
+        })),
+        true
       );
       const removedSet = new Set(
         delRes.deletedIds.length > 0
@@ -826,6 +881,10 @@ export const useContactsStore = defineStore('contacts', () => {
       selectionFocusId.value = savedPrimary.id;
       contactsMutationCounter.value += 1;
 
+      if (delRes.failedCount > 0) {
+        suiteStore.notify('Fletning delvist gennemført', `${delRes.failedCount} kontaktkort kunne ikke slettes. Genindlæs og gennemgå dem, før du prøver igen.`, 'warning');
+        return savedPrimary;
+      }
       suiteStore.notify(
         'Kontakter flettet',
         `Flettede ${removedIds.length + 1} kontakter sammen til "${savedPrimary.fullName}".`,
@@ -1293,7 +1352,8 @@ export const useContactsStore = defineStore('contacts', () => {
           id: c.id,
           vcardUrl: c.vcardUrl,
           etag: c.etag
-        }))
+        })),
+        true
       );
       const removedSet = new Set(
         res.deletedIds.length > 0

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -8,6 +8,7 @@ import { api, ApiClientError } from '@/lib/api'
 import type { LoginResponse } from '@/types/api'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
+import { greetingKey } from '@/lib/login-greeting'
 
 export const Route = createFileRoute('/login/')({
   component: LoginPage,
@@ -24,6 +25,11 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const { refetch } = useAuth()
   const { t } = useI18n()
+  const [hour, setHour] = useState(() => new Date().getHours())
+  useEffect(() => {
+    const timer = window.setInterval(() => setHour(new Date().getHours()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -66,7 +72,7 @@ export default function LoginPage() {
   return (
     <>
       <h1 className="mb-6 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-        {t('login.sharedriveTitle')}
+        {t(greetingKey(hour))}
       </h1>
 
       <form
@@ -139,7 +145,7 @@ export default function LoginPage() {
           disabled={isSubmitting}
           className="min-h-11 w-full rounded-xl bg-brand-600 font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 disabled:opacity-60"
         >
-          {isSubmitting ? t('login.signingIn') : t('login.submit')}
+          {isSubmitting ? t('login.signingIn') : t('login.sharedriveTitle')}
         </button>
 
         <div className="text-center">

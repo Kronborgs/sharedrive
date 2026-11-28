@@ -1,9 +1,9 @@
-import { useSyncExternalStore, type FormEvent } from 'react'
+import { useState, useSyncExternalStore, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { ignorePromise } from '@/lib/ignore-promise'
-import { getThemeCatalogue, refreshThemeCatalogue, subscribeThemeCatalogue, THEMES, type AppTheme } from '@/lib/theme-palettes'
+import { getThemeCatalogue, refreshThemeCatalogue, subscribeThemeCatalogue, type AppTheme } from '@/lib/theme-palettes'
 
 const queryKey = ['theme-catalogue']
 const endpoint = '/api/v1/admin/themes'
@@ -15,6 +15,35 @@ function ThemePreview({ theme }: Readonly<{ theme: AppTheme }>) {
   return <div aria-hidden="true" className="h-12 w-20 shrink-0 rounded-md bg-slate-950" />
 }
 
+type ThemeColors = { accent: string; background: string; panel: string }
+
+function colorToHex(value: string): string {
+  if (/^#[a-f0-9]{6}$/i.test(value)) return value
+  const parts = value.match(/^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/i)
+  return parts ? '#' + parts.slice(1, 4).map(part => Number(part).toString(16).padStart(2, '0')).join('') : '#000000'
+}
+
+function ThemeColorEditor({ theme, disabled, onSave }: Readonly<{ theme: AppTheme; disabled: boolean; onSave: (id: string, colors: ThemeColors) => void }>) {
+  const { t } = useI18n()
+  const original = { accent: colorToHex(theme.accent), background: colorToHex(theme.gridBg), panel: colorToHex(theme.surface) }
+  const [colors, setColors] = useState(original)
+  const fields = [
+    { key: 'accent' as const, label: t('themes.accent') },
+    { key: 'background' as const, label: t('themes.backgroundColor') },
+    { key: 'panel' as const, label: t('themes.panelColor') },
+  ]
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      {fields.map(field => (
+        <label key={field.key} className="flex flex-col gap-1 text-xs text-muted">
+          {field.label}
+          <input type="color" value={colors[field.key]} onChange={event => setColors({ ...colors, [field.key]: event.target.value })} aria-label={t('themes.colorNamed', { color: field.label, name: theme.name })} disabled={disabled} />
+        </label>
+      ))}
+      <button type="button" disabled={disabled || fields.every(field => colors[field.key].toLowerCase() === original[field.key].toLowerCase())} onClick={() => onSave(theme.id, colors)} className="rounded-md border border-subtle px-2 py-1 text-xs disabled:opacity-50">{t('themes.saveColors')}</button>
+    </div>
+  )
+}
 export function ThemeSettings() {
   const { t } = useI18n()
   const qc = useQueryClient()
@@ -32,8 +61,12 @@ export function ThemeSettings() {
     },
     onSuccess: refresh,
   })
-  const busy = upload.isPending || changeAvailability.isPending || list.isFetching
-  const themes = [...THEMES, ...catalogue.available.filter(theme => theme.id.startsWith('custom-'))]
+  const changeAccent = useMutation({
+    mutationFn: ({ id, colors }: { id: string; colors: ThemeColors }) => api.put(endpoint + '/' + encodeURIComponent(id) + '/accent', colors),
+    onSuccess: refresh,
+  })
+  const busy = upload.isPending || changeAvailability.isPending || changeAccent.isPending || list.isFetching
+  const themes = catalogue.all
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -68,8 +101,8 @@ export function ThemeSettings() {
         </button>
       </form>
       {list.isError && <p role="alert" className="text-sm text-red-400">{t('themes.unavailable')}</p>}
-      {(upload.error || changeAvailability.error) && (
-        <p role="alert" className="text-sm text-red-400">{(upload.error || changeAvailability.error)?.message}</p>
+      {(upload.error || changeAvailability.error || changeAccent.error) && (
+        <p role="alert" className="text-sm text-red-400">{(upload.error || changeAvailability.error || changeAccent.error)?.message}</p>
       )}
       <section className="space-y-2 rounded-xl border border-subtle bg-surface p-4">
         <h2 className="font-semibold">{t('themes.title')}</h2>
@@ -78,9 +111,10 @@ export function ThemeSettings() {
           const builtIn = !theme.id.startsWith('custom-')
           const actionLabel = builtIn ? 'themes.remove' : 'action.delete'
           return (
-            <div key={theme.id} className="flex items-center gap-3 rounded-lg border border-subtle p-2">
+            <div key={theme.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-subtle p-2">
               <ThemePreview theme={theme} />
               <span className="min-w-0 flex-1 break-words text-sm">{theme.name}</span>
+              <ThemeColorEditor key={theme.id + theme.accent + theme.gridBg + theme.surface} theme={theme} disabled={busy || list.isError} onSave={(id, colors) => changeAccent.mutate({ id, colors })} />
               {theme.id === 'classic-dark' && <span className="text-xs text-muted">{t('themes.fallback')}</span>}
               {theme.id !== 'classic-dark' && (
                 <button type="button" disabled={busy || list.isError}

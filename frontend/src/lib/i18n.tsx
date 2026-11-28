@@ -88,7 +88,7 @@ const translations = {
   'rooms.pushDisable': { da: 'Slå chatnotifikationer fra', en: 'Disable chat notifications' },
   'rooms.pushEnabled': { da: 'Chatnotifikationer er slået til på denne enhed.', en: 'Chat notifications are enabled on this device.' },
   'rooms.pushDisabled': { da: 'Chatnotifikationer er slået fra på denne enhed.', en: 'Chat notifications are disabled on this device.' },
-  'rooms.pushPermissionDenied': { da: 'Tillad notifikationer i telefonens browser- eller appindstillinger.', en: 'Allow notifications in your phone browser or app settings.' },
+  'rooms.pushPermissionDenied': { da: 'Tillad notifikationer i browserens eller appens indstillinger.', en: 'Allow notifications in your browser or app settings.' },
   'rooms.pushUnavailable': { da: 'Pushnotifikationer er ikke konfigureret på serveren.', en: 'Push notifications are not configured on the server.' },
   'rooms.pushFailed': { da: 'Chatnotifikationer kunne ikke opdateres.', en: 'Could not update chat notifications.' },
   'rooms.pushTest': { da: 'Send testnotifikation', en: 'Send test notification' },

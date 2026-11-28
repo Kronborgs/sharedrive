@@ -55,3 +55,15 @@ export function useRoomSettings(active: () => boolean) {
 export function listRoomLinkOptions(signal: AbortSignal): Promise<RoomLinkOption[]> {
   return getSharedriveData('/api/v1/rooms', signal);
 }
+
+export async function createRoomLinkOption(name: string): Promise<RoomLinkOption> {
+  const response = await fetch('/api/v1/rooms', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) throw new Error('Rummet kunne ikke oprettes.');
+  const result = await response.json();
+  if (!result.data?.id || !result.data?.name) throw new Error('Rummet kunne ikke oprettes.');
+  return result.data;
+}

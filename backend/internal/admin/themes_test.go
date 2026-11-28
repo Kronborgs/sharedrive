@@ -16,10 +16,7 @@ func TestValidateThemeImageRejectsActiveOrTruncatedUploads(t *testing.T) {
 		t.Fatal(err)
 	}
 	mime, err := validateThemeImage(valid.Bytes())
-	if err != nil || mime != "image/png"
-	"net/http"
-	"net/http/httptest"
-	"strings" {
+	if err != nil || mime != "image/png" {
 		t.Fatalf("valid PNG returned %q, %v", mime, err)
 	}
 	for name, data := range map[string][]byte{

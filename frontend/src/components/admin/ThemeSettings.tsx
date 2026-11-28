@@ -19,7 +19,7 @@ type ThemeColors = { accent: string; background: string; panel: string }
 
 function colorToHex(value: string): string {
   if (/^#[a-f0-9]{6}$/i.test(value)) return value
-  const parts = value.match(/^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/i)
+  const parts = /^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/i.exec(value)
   return parts ? '#' + parts.slice(1, 4).map(part => Number(part).toString(16).padStart(2, '0')).join('') : '#000000'
 }
 

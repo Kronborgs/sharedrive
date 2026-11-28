@@ -6,6 +6,8 @@ export type Locale = 'da' | 'en'
 
 const translations = {
   // ── Navigation ────────────────────────────────────────────────────────────
+  'nav.collapse': { da: 'Fold menu ind', en: 'Collapse menu' },
+  'nav.expand': { da: 'Fold menu ud', en: 'Expand menu' },
   'nav.myFiles':       { da: 'Mine filer',       en: 'My Files' },
   'nav.shared':        { da: 'Delt',             en: 'Shared' },
   'nav.recent':        { da: 'Seneste',          en: 'Recent' },

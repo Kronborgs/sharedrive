@@ -11,7 +11,7 @@ import { formatBytes } from '@/lib/utils'
 import { shouldOpenInOnlyOffice, shouldOpenInTextEditor } from '@/lib/file-types'
 import { ignorePromise } from '@/lib/ignore-promise'
 
-export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuToggle?: () => void }>) {
+export function Header({ user, onMenuToggle, playerTargetRef }: Readonly<{ user?: User; onMenuToggle?: () => void; playerTargetRef?: (node: HTMLDivElement | null) => void }>) {
   const mailcow = useMailcowNavigation(user)
   const [showMailcow, setShowMailcow] = useState(false)
   const [query, setQuery] = useState('')
@@ -168,6 +168,8 @@ export function Header({ user, onMenuToggle }: Readonly<{ user?: User; onMenuTog
           </div>
         )}
       </div>
+
+      <div ref={playerTargetRef} className="hidden min-w-0 flex-1 md:block" />
 
       <div className="ml-auto flex min-w-0 items-center gap-2">
         {mailcow.enabled && !mailcow.connected && !mailcow.loading && (

@@ -882,6 +882,8 @@ async function handleDiscardDraft() {
             <input
               v-model="subject"
               type="text"
+              lang="da"
+              spellcheck="true"
               required
               placeholder="Indtast emne..."
               class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 focus:outline-none focus:border-blue-500"
@@ -1032,16 +1034,21 @@ async function handleDiscardDraft() {
               v-if="useRichHtml"
               ref="richEditorRef"
               contenteditable="true"
+              lang="da"
+              spellcheck="true"
               class="min-h-[220px] max-h-[340px] overflow-y-auto p-3.5 text-sm text-slate-100 leading-relaxed focus:outline-none"
             ></div>
 
             <textarea
               v-else
               v-model="textBody"
+              lang="da"
+              spellcheck="true"
               rows="10"
               placeholder="Skriv din besked her..."
               class="w-full p-3.5 bg-slate-950 text-slate-100 text-sm leading-relaxed focus:outline-none resize-y"
             ></textarea>
+            <p class="px-3.5 pb-2 text-[11px] text-slate-400">Dansk stavekontrol bruger browserens ordbog. Højreklik på et markeret ord for forslag.</p>
           </div>
 
           <!-- Bundknapper -->

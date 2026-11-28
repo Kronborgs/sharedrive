@@ -41,6 +41,12 @@ function AuthLayoutContent() {
   const { activePlaylistId } = usePlaylist()
   const isRoomsRoute = useRouterState({ select: state => state.location.pathname.startsWith('/rooms') })
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sharedrive.sidebarCollapsed') === 'true')
+  const [playerTarget, setPlayerTarget] = useState<HTMLDivElement | null>(null)
+  const toggleSidebar = () => setSidebarCollapsed(value => {
+    localStorage.setItem('sharedrive.sidebarCollapsed', String(!value))
+    return !value
+  })
 
   if (!user) {
     return null // beforeLoad handles redirect
@@ -57,11 +63,11 @@ function AuthLayoutContent() {
       <OfflineBanner />
 
       {/* Sidebar */}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebar} playerTarget={playerTarget} />
 
       {/* Main content */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <Header user={user} onMenuToggle={() => setSidebarOpen(v => !v)} />
+        <Header user={user} onMenuToggle={() => setSidebarOpen(v => !v)} playerTargetRef={setPlayerTarget} />
         <main className={cn('min-h-0 flex-1 overflow-y-auto', isRoomsRoute ? 'p-0 sm:p-2 md:p-6' : 'p-3 sm:p-4 md:p-6', activePlaylistId ? 'pt-20 md:pt-6' : '')}>
           <Outlet />
         </main>

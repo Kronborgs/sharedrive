@@ -26,8 +26,10 @@ import {
   Plus,
 	StickyNote,
   MessagesSquare,
+  PanelLeftClose, PanelLeftOpen, SkipBack, SkipForward, Play, Pause, Shuffle,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '@/lib/auth-context'
 import { useI18n } from '@/lib/i18n'
 import { api, createPlaylist } from '@/lib/api'
@@ -83,7 +85,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/settings',     labelKey: 'nav.settings',    icon: <Settings size={16} /> },
 ]
 
-function NavLink({ item, badge = 0 }: Readonly<{ item: NavItem; badge?: number }>) {
+function NavLink({ item, badge = 0, collapsed = false }: Readonly<{ item: NavItem; badge?: number; collapsed?: boolean }>) {
   const state = useRouterState()
   const { t } = useI18n()
   const active = item.exact
@@ -93,6 +95,8 @@ function NavLink({ item, badge = 0 }: Readonly<{ item: NavItem; badge?: number }
   return (
     <Link
       to={item.to}
+      title={t(item.labelKey as any)}
+      aria-label={t(item.labelKey as any)}
       className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
         active
           ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 font-medium'
@@ -100,9 +104,9 @@ function NavLink({ item, badge = 0 }: Readonly<{ item: NavItem; badge?: number }
       }`}
     >
       <span className={active ? 'text-brand-600 dark:text-brand-400' : ''}>{item.icon}</span>
-      <span className="flex-1">{t(item.labelKey as any)}</span>
+      <span className={cn("flex-1", collapsed && "md:hidden")}>{t(item.labelKey as any)}</span>
       {badge > 0 && (
-        <span className="min-w-5 rounded-full bg-brand-600 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white" aria-label={t('rooms.unreadMessages', { count: badge })}>
+        <span className={cn("min-w-5 rounded-full bg-brand-600 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white", collapsed && "md:absolute md:ml-5 md:-mt-5")} aria-label={t('rooms.unreadMessages', { count: badge })}>
           {badge > 99 ? '99+' : badge}
         </span>
       )}
@@ -112,7 +116,7 @@ function NavLink({ item, badge = 0 }: Readonly<{ item: NavItem; badge?: number }
 
 type AppUser = ReturnType<typeof useAuth>['user']
 
-function MailSidebarLinks({ user, close }: Readonly<{ user: AppUser; close?: () => void }>) {
+function MailSidebarLinks({ user, close, collapsed }: Readonly<{ user: AppUser; close?: () => void; collapsed?: boolean }>) {
   const { t } = useI18n()
   const mailcow = useMailcowNavigation(user)
   const currentView = useRouterState({ select: state => {
@@ -132,11 +136,13 @@ function MailSidebarLinks({ user, close }: Readonly<{ user: AppUser; close?: () 
         activeOptions={{ exact: true, includeSearch: true, explicitUndefined: true }}
         aria-current={currentView === tab ? 'page' : undefined}
         onClick={close}
+        title={t(tab === 'inbox' ? 'mailcowModule.tab' : `mailcowWorkspace.${tab}`)}
+        aria-label={t(tab === 'inbox' ? 'mailcowModule.tab' : `mailcowWorkspace.${tab}`)}
         className={cn('flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted hover:bg-(--app-border)',
           currentView === tab && 'bg-brand-900/30 text-brand-400')}
       >
         <Icon size={16} aria-hidden="true" />
-        {t(tab === 'inbox' ? 'mailcowModule.tab' : `mailcowWorkspace.${tab}`)}
+        <span className={cn(collapsed && 'md:hidden')}>{t(tab === 'inbox' ? 'mailcowModule.tab' : `mailcowWorkspace.${tab}`)}</span>
       </Link>
     )
   })
@@ -461,6 +467,7 @@ function SidebarBuildInfoModal({
 function SidebarUserPanel({
   user,
   showUserMenu,
+  collapsed,
   locale,
   onToggleMenu,
   onOpenTOTP,
@@ -471,6 +478,7 @@ function SidebarUserPanel({
 }: Readonly<{
   user: ReturnType<typeof useAuth>['user']
   showUserMenu: boolean
+  collapsed: boolean
   locale: ReturnType<typeof useI18n>['locale']
   onToggleMenu: () => void
   onOpenTOTP: () => void
@@ -488,15 +496,15 @@ function SidebarUserPanel({
         <div className="w-7 h-7 rounded-full bg-brand-600 dark:bg-brand-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
           {user?.display_name?.charAt(0).toUpperCase() ?? '?'}
         </div>
-        <div className="flex-1 min-w-0 text-left">
+        <div className={cn("flex-1 min-w-0 text-left", collapsed && "md:hidden")}>
           <p className="text-sm font-medium text-zinc-900 dark:text-slate-100 truncate">{user?.display_name}</p>
           <p className="text-xs text-muted truncate">{user?.email}</p>
         </div>
-        <ChevronDown size={14} className="text-zinc-400 shrink-0" />
+        <ChevronDown size={14} className={cn("text-zinc-400 shrink-0", collapsed && "md:hidden")} />
       </button>
 
       {showUserMenu && (
-        <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-(--app-panel) border border-zinc-200 dark:border-(--app-border) rounded-xl shadow-lg py-1 z-50">
+        <div className={cn("absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-(--app-panel) border border-zinc-200 dark:border-(--app-border) rounded-xl shadow-lg py-1 z-50", collapsed && "md:left-full md:right-auto md:ml-2 md:w-56")}>
           <button type="button"
             onClick={onOpenTOTP}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-700 dark:text-slate-300 hover:bg-zinc-50 dark:hover:bg-(--app-border) transition-colors"
@@ -709,7 +717,7 @@ function SidebarMobilePlayer({
   )
 }
 
-export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean; onClose?: () => void }>) {
+export function Sidebar({ isOpen = false, onClose, collapsed, onToggleCollapsed, playerTarget }: Readonly<{ isOpen?: boolean; onClose?: () => void; collapsed: boolean; onToggleCollapsed: () => void; playerTarget: HTMLDivElement | null }>) {
   const { user, logout } = useAuth()
   const qc = useQueryClient()
   const state = useRouterState()
@@ -721,6 +729,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
   const [showBuildInfo, setShowBuildInfo] = useState(false)
   const [playerExpanded, setPlayerExpanded] = useState(true)
   const [mobilePlayerOpen, setMobilePlayerOpen] = useState(false)
+  const [topPlayerOpen, setTopPlayerOpen] = useState(false)
   const [showAddMusic, setShowAddMusic] = useState(false)
   const previousUnreadChatMessages = useRef<number | null>(null)
 
@@ -835,9 +844,11 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
         'fixed inset-y-0 left-0 z-40 transition-transform duration-200',
         isOpen ? 'translate-x-0' : '-translate-x-full',
         'md:relative md:translate-x-0 md:z-auto',
+        collapsed ? 'md:w-14' : 'md:w-60',
       ].join(' ')}>
-        <div className="px-4 h-14 flex items-center border-b border-zinc-200 dark:border-(--app-border) shrink-0">
-          <div className="rounded-md bg-[#171b27] px-1.5 py-1 shadow-sm dark:bg-transparent dark:px-0 dark:py-0 dark:shadow-none">
+        <div className={cn("px-2 h-14 flex items-center gap-1 border-b border-zinc-200 dark:border-(--app-border) shrink-0", collapsed && "md:justify-center")}>
+          <button type="button" onClick={onToggleCollapsed} className="hidden md:flex p-2 rounded-lg text-muted hover:bg-(--app-border)" aria-label={t(collapsed ? 'nav.expand' : 'nav.collapse')} title={t(collapsed ? 'nav.expand' : 'nav.collapse')}>{collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button>
+          <div className={cn("rounded-md bg-[#171b27] px-1.5 py-1 shadow-sm dark:bg-transparent dark:px-0 dark:py-0 dark:shadow-none", collapsed && "md:hidden")}>
             <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
           </div>
         </div>
@@ -845,24 +856,26 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
         <div className="flex-1 overflow-y-auto min-h-0">
           <nav className="px-2 py-3 space-y-0.5">
             {(isGuest ? accountNav : visibleMainNav).map(item => (
-              <NavLink key={item.to} item={item} badge={item.to === '/rooms' ? unreadChatMessages : 0} />
+              <NavLink key={item.to} item={item} collapsed={collapsed} badge={item.to === '/rooms' ? unreadChatMessages : 0} />
             ))}
-            <MailSidebarLinks user={user} close={onClose} />
+            <MailSidebarLinks user={user} close={onClose} collapsed={collapsed} />
           </nav>
 
           {canUseMediaPlayer && !playlist.activePlaylistId && (
             <div className="px-2 pb-2">
               <button type="button"
                 onClick={() => setShowAddMusic(true)}
+                title={t('player.addMusic')}
+                aria-label={t('player.addMusic')}
                 className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-(--app-border) hover:text-zinc-900 dark:hover:text-slate-100"
               >
                 <Music size={16} />
-                {t('player.addMusic' as any)}
+                <span className={cn(collapsed && 'md:hidden')}>{t('player.addMusic' as any)}</span>
               </button>
             </div>
           )}
 
-          {canUseMediaPlayer && <SidebarDesktopPlayer
+          {canUseMediaPlayer && <div className={cn(collapsed && "md:hidden")}><SidebarDesktopPlayer
             playlist={playlist}
             currentTrack={currentTrack}
             playerExpanded={playerExpanded}
@@ -870,17 +883,17 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
             onShowAddMusic={() => setShowAddMusic(true)}
             onSeek={handleSeekClick}
             t={t}
-          />}
+          /></div>}
 
           {user?.is_admin && (
             <>
               <div className="mx-4 border-t border-zinc-200 dark:border-(--app-border) my-1" />
-              <div className="px-4 py-1">
+              <div className={cn("px-4 py-1", collapsed && "md:hidden")}>
                 <p className="text-[11px] uppercase tracking-widest text-zinc-400 dark:text-slate-500 font-medium">Admin</p>
               </div>
               <nav className="px-2 pb-3 space-y-0.5">
                 {adminNav.map(item => (
-                  <NavLink key={item.to} item={item} />
+                  <NavLink key={item.to} item={item} collapsed={collapsed} />
                 ))}
               </nav>
             </>
@@ -892,10 +905,12 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
               <nav className="px-2 pb-3 space-y-0.5">
                 <button type="button"
                   onClick={() => setShowWebDAV(true)}
+                  title="WebDAV"
+                  aria-label="WebDAV"
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-zinc-600 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-(--app-border) hover:text-zinc-900 dark:hover:text-slate-100"
                 >
                   <HardDrive size={16} />
-                  WebDAV
+                  <span className={cn(collapsed && "md:hidden")}>WebDAV</span>
                 </button>
               </nav>
             </>
@@ -903,7 +918,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
         </div>
 
         {quota > 0 && (
-          <div className="px-4 py-3 border-t border-zinc-100 dark:border-(--app-border)">
+          <div className={cn("px-4 py-3 border-t border-zinc-100 dark:border-(--app-border)", collapsed && "md:hidden")}>
             <div className="flex justify-between text-xs text-muted mb-1">
               <span>{formatBytes(used)} used</span>
               <span>{formatBytes(quota)}</span>
@@ -920,6 +935,7 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
         <SidebarUserPanel
           user={user}
           showUserMenu={showUserMenu}
+          collapsed={collapsed}
           locale={locale}
           onToggleMenu={() => setShowUserMenu(value => !value)}
           onOpenTOTP={() => {
@@ -959,6 +975,19 @@ export function Sidebar({ isOpen = false, onClose }: Readonly<{ isOpen?: boolean
           t={t}
         />
       </aside>
+
+      {canUseMediaPlayer && collapsed && playerTarget && playlist.activePlaylistId && createPortal(
+        <div className="relative flex min-w-0 items-center gap-1">
+          <button type="button" onClick={playlist.prev} disabled={playlist.currentIndex === 0} aria-label={t('player.previous')} title={t('player.previous')} className="rounded-lg p-2 text-muted hover:bg-(--app-border) disabled:opacity-40"><SkipBack size={16} /></button>
+          <button type="button" onClick={playlist.togglePlay} disabled={!currentTrack} aria-label={t(playlist.isPlaying ? 'player.pause' : 'player.play')} title={t(playlist.isPlaying ? 'player.pause' : 'player.play')} className="rounded-lg p-2 text-brand-400 hover:bg-(--app-border) disabled:opacity-40">{playlist.isPlaying ? <Pause size={17} /> : <Play size={17} />}</button>
+          <button type="button" onClick={playlist.next} disabled={!playlist.shuffle && playlist.currentIndex >= playlist.tracks.length - 1} aria-label={t('player.next')} title={t('player.next')} className="rounded-lg p-2 text-muted hover:bg-(--app-border) disabled:opacity-40"><SkipForward size={16} /></button>
+          <button type="button" onClick={playlist.toggleShuffle} aria-label={t(playlist.shuffle ? 'player.shuffleOn' : 'player.shuffleOff')} aria-pressed={playlist.shuffle} className={cn('rounded-lg p-2 hover:bg-(--app-border)', playlist.shuffle ? 'text-violet-400' : 'text-muted')}><Shuffle size={16} /></button>
+          <button type="button" onClick={() => setTopPlayerOpen(value => !value)} aria-expanded={topPlayerOpen} title={t('player.showList')} className="min-w-0 max-w-72 flex-1 truncate rounded-lg border border-subtle px-3 py-2 text-left text-xs text-amber-400">{getSidebarPlayerText(playlist.activePlaylistName, playlist.tracks, currentTrack, playlist.isLoadingTracks)}</button>
+          <span className="hidden shrink-0 text-xs tabular-nums text-muted xl:inline">{fmt(playlist.progress)} / {fmt(playlist.duration)}</span>
+          <SidebarProgressBar progress={playlist.progress} duration={playlist.duration} onSeek={handleSeekClick} className="hidden h-1 min-w-12 max-w-36 flex-1 cursor-pointer rounded-full bg-(--app-border) xl:block" fillClassName="block h-full rounded-full bg-brand-500" />
+          {topPlayerOpen && <div className="absolute left-0 top-full z-50 mt-2 w-64 rounded-xl bg-surface pt-2 shadow-xl"><SidebarDesktopPlayer playlist={playlist} currentTrack={currentTrack} playerExpanded={playerExpanded} onToggleExpanded={() => setPlayerExpanded(value => !value)} onShowAddMusic={() => setShowAddMusic(true)} onSeek={handleSeekClick} t={t} /></div>}
+        </div>, playerTarget
+      )}
 
       {canUseMediaPlayer && <SidebarMobilePlayer
         playlist={playlist}

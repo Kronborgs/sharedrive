@@ -232,7 +232,7 @@ func (handler *Handler) CreateDirectMessage(w http.ResponseWriter, request *http
 		handler.respondError(w, err)
 		return
 	}
-    handler.pushAfterDirectMessage(conversationID, user.ID, message.ID)
+	handler.pushAfterDirectMessage(conversationID, user.ID, message.ID)
 	httputil.Respond(w, http.StatusCreated, message)
 }
 
@@ -314,4 +314,31 @@ func (handler *Handler) AddDirectResource(w http.ResponseWriter, request *http.R
 		return
 	}
 	httputil.Respond(w, http.StatusCreated, resource)
+}
+func (handler *Handler) GroupConversationForMail(w http.ResponseWriter, request *http.Request) {
+	var input struct {
+		SourceConversationID uuid.UUID `json:"source_conversation_id"`
+		Emails               []string  `json:"emails"`
+	}
+	if !decodeRequest(w, request, &input) {
+		return
+	}
+	if input.SourceConversationID == uuid.Nil || len(input.Emails) == 0 || len(input.Emails) > 100 {
+		httputil.RespondError(w, http.StatusBadRequest, "invalid recipients")
+		return
+	}
+	user := middleware.UserFromContext(request.Context())
+	result, err := handler.service.GroupForMail(request.Context(), user.ID, input.SourceConversationID, input.Emails)
+	if err != nil {
+		handler.respondError(w, err)
+		return
+	}
+	failed := []string{}
+	for _, invitation := range result.Invitations {
+		inviteURL := strings.TrimRight(handler.appURL, "/") + "/accept-invite?token=" + url.QueryEscape(invitation.Token)
+		if !handler.sendRoomInvitation(request.Context(), invitation.Email, user.DisplayName, user.Email, Room{Name: result.Conversation.Name}, "direct", inviteURL) {
+			failed = append(failed, invitation.Email)
+		}
+	}
+	httputil.Respond(w, http.StatusOK, map[string]any{"conversation": result.Conversation, "failed_invitations": failed})
 }

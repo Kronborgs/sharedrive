@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { createRoomLinkOption, listRoomLinkOptions, sharedriveRoomLink } from '../../services/roomLinks';
+import { createRoomLinkOption, listConversationLinkOptions, listRoomLinkOptions, sharedriveRoomLink } from '../../services/roomLinks';
 
 const link = defineModel<string>({ required: true });
 const rooms = ref<Awaited<ReturnType<typeof listRoomLinkOptions>>>([]);
+const conversations = ref<Awaited<ReturnType<typeof listConversationLinkOptions>>>([]);
 const loading = ref(true);
 const failed = ref(false);
 const creating = ref(false);
@@ -20,7 +21,8 @@ function urlFor(roomId: string) {
 
 const selectedRoom = computed(() => {
   const current = sharedriveRoomLink(link.value, origin);
-  return rooms.value.find(room => urlFor(room.id) === current)?.id || '';
+  return rooms.value.find(room => urlFor(room.id) === current)?.id
+    || conversations.value.find(chat => sharedriveRoomLink('/rooms/direct/' + chat.id, origin) === current)?.id || '';
 });
 
 function selectRoom(event: Event) {
@@ -31,7 +33,9 @@ function selectRoom(event: Event) {
     return;
   }
   createOpen.value = false;
-  link.value = value ? urlFor(value) : '';
+  link.value = conversations.value.some(chat => chat.id === value)
+    ? sharedriveRoomLink('/rooms/direct/' + value, origin)
+    : value ? urlFor(value) : '';
 }
 
 async function createRoom() {
@@ -54,7 +58,12 @@ async function createRoom() {
 
 async function loadRooms() {
   try {
-    rooms.value = await listRoomLinkOptions(controller.signal);
+    const [roomResult, chatResult] = await Promise.allSettled([
+      listRoomLinkOptions(controller.signal), listConversationLinkOptions(controller.signal),
+    ]);
+    if (roomResult.status === 'fulfilled') rooms.value = roomResult.value;
+    if (chatResult.status === 'fulfilled') conversations.value = chatResult.value;
+    failed.value = roomResult.status === 'rejected' || chatResult.status === 'rejected';
   } catch {
     if (!controller.signal.aborted) failed.value = true;
   } finally {
@@ -76,10 +85,15 @@ onUnmounted(() => controller.abort());
       @change="selectRoom"
     >
       <option value="">{{ loading ? 'Henter dine rum…' : 'Vælg et rum…' }}</option>
-      <option v-for="room in rooms" :key="room.id" :value="room.id">{{ room.name }}</option>
+      <optgroup v-if="rooms.length" label="Rum">
+        <option v-for="room in rooms" :key="room.id" :value="room.id">{{ room.name }}</option>
+      </optgroup>
+      <optgroup v-if="conversations.length" label="Samtaler">
+        <option v-for="chat in conversations" :key="chat.id" :value="chat.id">{{ chat.name || chat.other_display_name || chat.other_email }}{{ chat.kind === 'group' ? ' (gruppe)' : ' (direkte)' }}</option>
+      </optgroup>
       <option value="__new__">+ Opret nyt rum…</option>
     </select>
-    <p v-if="failed" role="alert" class="text-slate-400">Dine rum kunne ikke hentes. Prøv at åbne vælgeren igen.</p>
+    <p v-if="failed" role="alert" class="text-slate-400">Nogle rum eller samtaler kunne ikke hentes. Prøv at åbne vælgeren igen.</p>
     <div v-if="createOpen" class="space-y-2">
       <input v-model="roomName" type="text" aria-label="Navn på nyt rum" placeholder="Navn på nyt rum" :class="fieldClass" :disabled="creating" @keydown.enter.prevent="createRoom" />
       <div class="flex gap-2">
@@ -92,6 +106,6 @@ onUnmounted(() => controller.abort());
       <summary class="cursor-pointer text-slate-400">Indsæt et Rooms-link manuelt</summary>
       <input v-model="link" type="text" inputmode="url" aria-label="Sharedrive Rooms-link" placeholder="Indsæt et Rooms-link" :class="[fieldClass, 'mt-2']" />
     </details>
-    <p class="text-[11px] text-slate-400">Et rumlink giver ikke automatisk adgang. Brug et gæstelink til modtagere, der ikke har adgang til rummet.</p>
+    <p class="text-[11px] text-slate-400">Et link giver ikke automatisk adgang. Direkte samtaler og gruppechats kan kun åbnes af deres deltagere. Brug et gæstelink til rum for andre modtagere.</p>
   </div>
 </template>

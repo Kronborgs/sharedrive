@@ -17,12 +17,21 @@ func canonicalDirectPair(first, second uuid.UUID) (uuid.UUID, uuid.UUID) {
 
 func acceptPendingDirectChatInvitation(ctx context.Context, tx pgx.Tx, tokenID string, userID uuid.UUID) error {
 	var inviterID uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT inviter_user_id FROM direct_chat_invitations
-		WHERE invitation_token_id=$1 AND accepted_at IS NULL AND expires_at > now()`, tokenID).Scan(&inviterID)
+	var groupID *uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT inviter_user_id, conversation_id FROM direct_chat_invitations
+		WHERE invitation_token_id=$1 AND accepted_at IS NULL AND expires_at > now()`, tokenID).Scan(&inviterID, &groupID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
+		return err
+	}
+	if groupID != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO direct_conversation_members(conversation_id,user_id,added_by)
+			SELECT id,$2,$3 FROM direct_conversations WHERE id=$1 AND kind='group' ON CONFLICT DO NOTHING`, *groupID, userID, inviterID); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `UPDATE direct_chat_invitations SET accepted_at=now() WHERE invitation_token_id=$1 AND accepted_at IS NULL`, tokenID)
 		return err
 	}
 	var conversationID uuid.UUID

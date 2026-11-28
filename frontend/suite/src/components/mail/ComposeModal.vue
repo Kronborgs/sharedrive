@@ -23,7 +23,7 @@ import {
 } from 'lucide-vue-next';
 import { useMailStore } from '../../stores/mailStore';
 import { useContactsStore } from '../../stores/contactsStore';
-import { sharedriveRoomLink, useRoomSettings } from '../../services/roomLinks';
+import { conversationForMail, sharedriveRoomLink, useRoomSettings } from '../../services/roomLinks';
 import RoomLinkPicker from '../shared/RoomLinkPicker.vue';
 
 const store = useMailStore();
@@ -33,6 +33,7 @@ const showRoomPicker = ref(false);
 const roomLinkInput = ref('');
 const roomLink = computed(() => sharedriveRoomLink(roomLinkInput.value, window.location.origin));
 const insertedRoomLinks = new Set<string>();
+const preparingChat = ref(false);
 
 const selectedAliasEmail = ref('');
 const customAliasMode = ref(false);
@@ -309,6 +310,14 @@ watch(
         }
       }
 
+      // Restore links inserted by this composer when reopening a saved draft.
+      const draftText = textBody.value || (initialRichHtml ? htmlToPlainText(initialRichHtml) : '');
+      for (const line of draftText.split('\n')) {
+        const match = line.match(/^Deltag i Sharedrive-chatten:\s*(\S+)/);
+        const url = match && sharedriveRoomLink(match[1], window.location.origin);
+        if (url) insertedRoomLinks.add(url);
+      }
+
       inReplyTo.value = src.inReplyTo;
       references.value = src.references || [];
       replyFolder.value = undefined;
@@ -411,9 +420,27 @@ function promptInsertLink() {
   }
 }
 
-function insertRoomLink() {
-  const url = roomLink.value;
-  if (!roomSettings.value?.rooms_enabled || !url) return;
+async function prepareConversationLink(url: string): Promise<string> {
+  const path = new URL(url).pathname;
+  const match = path.match(/^\/rooms\/direct\/([a-f0-9-]+)\/?$/i);
+  if (!match) return url;
+  const emails = [...parseEmailList(toInput.value), ...parseEmailList(ccInput.value)];
+  if (!emails.length) throw new Error('Angiv mindst én modtager i Til eller Cc først.');
+  const result = await conversationForMail(match[1], emails);
+  if (result.failed_invitations.length) {
+    store.notify('Invitation kunne ikke sendes', `Disse modtagere mangler en invitation: ${result.failed_invitations.join(', ')}.`, 'warning');
+  }
+  return sharedriveRoomLink('/rooms/direct/' + result.conversation.id, window.location.origin);
+}
+
+async function insertRoomLink() {
+  let url = roomLink.value;
+  if (!roomSettings.value?.rooms_enabled || !url || preparingChat.value) return;
+  preparingChat.value = true;
+  try { url = await prepareConversationLink(url); }
+  catch (error) { store.notify('Chatten kunne ikke klargøres', error instanceof Error ? error.message : 'Prøv igen.', 'error'); return; }
+  finally { preparingChat.value = false; }
+  if (!url) return;
   insertedRoomLinks.add(url);
 
   if (useRichHtml.value && richEditorRef.value) {
@@ -549,7 +576,7 @@ function handleComposeKeyDown(e: KeyboardEvent) {
 }
 
 async function handleSubmitSend() {
-  if (isReadingAttachments.value) return;
+  if (isReadingAttachments.value || preparingChat.value) return;
   const fromEmail = customAliasMode.value
     ? customFromEmail.value.trim()
     : selectedAliasEmail.value.trim() || store.username;
@@ -564,6 +591,31 @@ async function handleSubmitSend() {
     store.notify('Mangler modtager', 'Angiv mindst én modtager i feltet "Til".', 'warning');
     return;
   }
+
+  preparingChat.value = true;
+  try {
+    for (const oldUrl of [...insertedRoomLinks]) {
+      const currentContent = collectEditorContent();
+      if (!currentContent.text.includes(oldUrl) && !currentContent.html?.includes(oldUrl)) {
+        insertedRoomLinks.delete(oldUrl);
+        continue;
+      }
+      const newUrl = await prepareConversationLink(oldUrl);
+      if (newUrl && newUrl !== oldUrl) {
+        if (richEditorRef.value) {
+          richEditorRef.value.querySelectorAll('a').forEach(anchor => {
+            if (anchor.href === oldUrl) { anchor.href = newUrl; anchor.textContent = newUrl; }
+          });
+        }
+        textBody.value = textBody.value.split(oldUrl).join(newUrl);
+        insertedRoomLinks.delete(oldUrl);
+        insertedRoomLinks.add(newUrl);
+      }
+    }
+  } catch (error) {
+    store.notify('Chatten kunne ikke klargøres', error instanceof Error ? error.message : 'Prøv igen.', 'error');
+    return;
+  } finally { preparingChat.value = false; }
 
   const content = collectEditorContent();
 
@@ -946,7 +998,7 @@ async function handleDiscardDraft() {
               <button
                 type="button"
                 class="rounded-lg bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-500 disabled:opacity-50"
-                :disabled="!roomLink"
+                :disabled="!roomLink || preparingChat"
                 @click="insertRoomLink"
               >
                 Indsæt i mail

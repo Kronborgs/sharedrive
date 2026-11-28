@@ -622,6 +622,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/v1/rooms/direct-conversations", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateDirectConversation))
 		r.Post("/api/v1/rooms/direct-conversations/by-email", s.roomsHandler.RequireEnabled(s.roomsHandler.StartPrivateChat))
 		r.Post("/api/v1/rooms/group-conversations", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateGroupConversation))
+		r.Post("/api/v1/rooms/group-conversations/for-mail", s.roomsHandler.RequireEnabled(s.roomsHandler.GroupConversationForMail))
 		r.Get("/api/v1/rooms/direct-conversations/{conversationID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.ListDirectMessages))
 		r.Post("/api/v1/rooms/direct-conversations/{conversationID}/messages", s.roomsHandler.RequireEnabled(s.roomsHandler.CreateDirectMessage))
 		r.Post("/api/v1/rooms/direct-conversations/{conversationID}/read", s.roomsHandler.RequireEnabled(s.roomsHandler.MarkDirectConversationRead))

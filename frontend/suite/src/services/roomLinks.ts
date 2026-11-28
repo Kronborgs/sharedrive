@@ -20,7 +20,7 @@ interface RoomSettings {
   rooms_voice_enabled: boolean;
 }
 
-interface RoomLinkOption {
+export interface RoomLinkOption {
   id: string;
   name: string;
 }
@@ -65,5 +65,28 @@ export async function createRoomLinkOption(name: string): Promise<RoomLinkOption
   if (!response.ok) throw new Error('Rummet kunne ikke oprettes.');
   const result = await response.json();
   if (!result.data?.id || !result.data?.name) throw new Error('Rummet kunne ikke oprettes.');
+  return result.data;
+}
+
+export interface ConversationLinkOption {
+  id: string;
+  kind: 'direct' | 'group';
+  name?: string;
+  other_display_name: string;
+  other_email: string;
+}
+
+export function listConversationLinkOptions(signal: AbortSignal): Promise<ConversationLinkOption[]> {
+  return getSharedriveData('/api/v1/rooms/direct-conversations', signal);
+}
+
+export async function conversationForMail(conversationId: string, emails: string[]): Promise<{ conversation: ConversationLinkOption; failed_invitations: string[] }> {
+  const response = await fetch('/api/v1/rooms/group-conversations/for-mail', {
+    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_conversation_id: conversationId, emails }),
+  });
+  if (!response.ok) throw new Error('Deltagerne kunne ikke tilføjes. Kontrollér adresserne og deres adgang til Chat.');
+  const result = await response.json();
+  if (!result.data?.conversation?.id) throw new Error('Samtalen kunne ikke klargøres.');
   return result.data;
 }

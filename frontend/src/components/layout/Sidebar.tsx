@@ -116,6 +116,12 @@ function NavLink({ item, badge = 0, collapsed = false }: Readonly<{ item: NavIte
 
 type AppUser = ReturnType<typeof useAuth>['user']
 
+function getAccountNav(user: AppUser, roomsAvailable: boolean | undefined) {
+  return user?.rooms_only_account
+    ? roomsOnlyNav.filter(() => roomsAvailable)
+    : guestNav.filter(item => item.to !== '/rooms' || roomsAvailable)
+}
+
 function MailSidebarLinks({ user, close, collapsed }: Readonly<{ user: AppUser; close?: () => void; collapsed?: boolean }>) {
   const { t } = useI18n()
   const mailcow = useMailcowNavigation(user)
@@ -717,6 +723,67 @@ function SidebarMobilePlayer({
   )
 }
 
+function SidebarTopPlayer({ playlist, currentTrack, playerTarget, open, onToggleOpen, playerExpanded, onToggleExpanded, onShowAddMusic, onSeek, t }: Readonly<{
+  playlist: SidebarPlaylist
+  currentTrack: SidebarTrack
+  playerTarget: HTMLDivElement | null
+  open: boolean
+  onToggleOpen: () => void
+  playerExpanded: boolean
+  onToggleExpanded: () => void
+  onShowAddMusic: () => void
+  onSeek: (e: React.MouseEvent<HTMLElement>) => void
+  t: ReturnType<typeof useI18n>['t']
+}>) {
+  if (!playerTarget || !playlist.activePlaylistId) return null
+
+  return createPortal(
+        <div className="relative flex min-w-0 items-center gap-1">
+          <button type="button" onClick={playlist.prev} disabled={playlist.currentIndex === 0} aria-label={t('player.previous')} title={t('player.previous')} className="rounded-lg p-2 text-muted hover:bg-(--app-border) disabled:opacity-40"><SkipBack size={16} /></button>
+          <button type="button" onClick={playlist.togglePlay} disabled={!currentTrack} aria-label={t(playlist.isPlaying ? 'player.pause' : 'player.play')} title={t(playlist.isPlaying ? 'player.pause' : 'player.play')} className="rounded-lg p-2 text-brand-400 hover:bg-(--app-border) disabled:opacity-40">{playlist.isPlaying ? <Pause size={17} /> : <Play size={17} />}</button>
+          <button type="button" onClick={playlist.next} disabled={!playlist.shuffle && playlist.currentIndex >= playlist.tracks.length - 1} aria-label={t('player.next')} title={t('player.next')} className="rounded-lg p-2 text-muted hover:bg-(--app-border) disabled:opacity-40"><SkipForward size={16} /></button>
+          <button type="button" onClick={playlist.toggleShuffle} aria-label={t(playlist.shuffle ? 'player.shuffleOn' : 'player.shuffleOff')} aria-pressed={playlist.shuffle} className={cn('rounded-lg p-2 hover:bg-(--app-border)', playlist.shuffle ? 'text-violet-400' : 'text-muted')}><Shuffle size={16} /></button>
+          <button type="button" onClick={onToggleOpen} aria-expanded={open} title={t('player.showList')} className="min-w-0 max-w-72 flex-1 truncate rounded-lg border border-subtle px-3 py-2 text-left text-xs text-amber-400">{getSidebarPlayerText(playlist.activePlaylistName, playlist.tracks, currentTrack, playlist.isLoadingTracks)}</button>
+          <span className="hidden shrink-0 text-xs tabular-nums text-muted xl:inline">{fmt(playlist.progress)} / {fmt(playlist.duration)}</span>
+          <SidebarProgressBar progress={playlist.progress} duration={playlist.duration} onSeek={onSeek} className="hidden h-1 min-w-12 max-w-36 flex-1 cursor-pointer rounded-full bg-(--app-border) xl:block" fillClassName="block h-full rounded-full bg-brand-500" />
+          {open && <div className="absolute left-0 top-full z-50 mt-2 w-64 rounded-xl bg-surface pt-2 shadow-xl"><SidebarDesktopPlayer playlist={playlist} currentTrack={currentTrack} playerExpanded={playerExpanded} onToggleExpanded={onToggleExpanded} onShowAddMusic={onShowAddMusic} onSeek={onSeek} t={t} /></div>}
+        </div>, playerTarget
+      )
+}
+
+function SidebarHeader({ collapsed, onToggleCollapsed, t }: Readonly<{
+  collapsed: boolean
+  onToggleCollapsed: () => void
+  t: ReturnType<typeof useI18n>['t']
+}>) {
+  return (
+        <div className={cn("px-2 h-14 flex items-center gap-1 border-b border-zinc-200 dark:border-(--app-border) shrink-0", collapsed && "md:justify-center")}>
+          <button type="button" onClick={onToggleCollapsed} className="hidden md:flex p-2 rounded-lg text-muted hover:bg-(--app-border)" aria-label={t(collapsed ? 'nav.expand' : 'nav.collapse')} title={t(collapsed ? 'nav.expand' : 'nav.collapse')}>{collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button>
+          <div className={cn("rounded-md bg-[#171b27] px-1.5 py-1 shadow-sm dark:bg-transparent dark:px-0 dark:py-0 dark:shadow-none", collapsed && "md:hidden")}>
+            <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
+          </div>
+        </div>
+  )
+}
+
+function SidebarQuota({ quota, used, pct, collapsed }: Readonly<{ quota: number; used: number; pct: number; collapsed: boolean }>) {
+  if (quota <= 0) return null
+  return (
+          <div className={cn("px-4 py-3 border-t border-zinc-100 dark:border-(--app-border)", collapsed && "md:hidden")}>
+            <div className="flex justify-between text-xs text-muted mb-1">
+              <span>{formatBytes(used)} used</span>
+              <span>{formatBytes(quota)}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-(--app-border) overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${getQuotaBarClass(pct)}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        )
+}
+
 export function Sidebar({ isOpen = false, onClose, collapsed, onToggleCollapsed, playerTarget }: Readonly<{ isOpen?: boolean; onClose?: () => void; collapsed: boolean; onToggleCollapsed: () => void; playerTarget: HTMLDivElement | null }>) {
   const { user, logout } = useAuth()
   const qc = useQueryClient()
@@ -774,9 +841,7 @@ export function Sidebar({ isOpen = false, onClose, collapsed, onToggleCollapsed,
     if (['/files', '/shares', '/recent', '/activity', '/trash', '/backup'].includes(item.to)) return canUseFiles
     return true
   })
-  const accountNav = user?.rooms_only_account
-    ? roomsOnlyNav.filter(() => roomsAvailable)
-    : guestNav.filter(item => item.to !== '/rooms' || roomsAvailable)
+  const accountNav = getAccountNav(user, roomsAvailable)
   const quota = user?.quota_bytes ?? 0
   const used = user?.quota_used_bytes ?? 0
   const pct = quota > 0 ? Math.min(100, (used / quota) * 100) : 0
@@ -846,12 +911,7 @@ export function Sidebar({ isOpen = false, onClose, collapsed, onToggleCollapsed,
         'md:relative md:translate-x-0 md:z-auto',
         collapsed ? 'md:w-14' : 'md:w-60',
       ].join(' ')}>
-        <div className={cn("px-2 h-14 flex items-center gap-1 border-b border-zinc-200 dark:border-(--app-border) shrink-0", collapsed && "md:justify-center")}>
-          <button type="button" onClick={onToggleCollapsed} className="hidden md:flex p-2 rounded-lg text-muted hover:bg-(--app-border)" aria-label={t(collapsed ? 'nav.expand' : 'nav.collapse')} title={t(collapsed ? 'nav.expand' : 'nav.collapse')}>{collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button>
-          <div className={cn("rounded-md bg-[#171b27] px-1.5 py-1 shadow-sm dark:bg-transparent dark:px-0 dark:py-0 dark:shadow-none", collapsed && "md:hidden")}>
-            <img src="/logo_name.png" alt="Sharedrive" className="h-7 w-auto" />
-          </div>
-        </div>
+        <SidebarHeader collapsed={collapsed} onToggleCollapsed={onToggleCollapsed} t={t} />
 
         <div className="flex-1 overflow-y-auto min-h-0">
           <nav className="px-2 py-3 space-y-0.5">
@@ -917,20 +977,7 @@ export function Sidebar({ isOpen = false, onClose, collapsed, onToggleCollapsed,
           )}
         </div>
 
-        {quota > 0 && (
-          <div className={cn("px-4 py-3 border-t border-zinc-100 dark:border-(--app-border)", collapsed && "md:hidden")}>
-            <div className="flex justify-between text-xs text-muted mb-1">
-              <span>{formatBytes(used)} used</span>
-              <span>{formatBytes(quota)}</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-(--app-border) overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${getQuotaBarClass(pct)}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </div>
-        )}
+        <SidebarQuota quota={quota} used={used} pct={pct} collapsed={collapsed} />
 
         <SidebarUserPanel
           user={user}
@@ -976,18 +1023,18 @@ export function Sidebar({ isOpen = false, onClose, collapsed, onToggleCollapsed,
         />
       </aside>
 
-      {canUseMediaPlayer && collapsed && playerTarget && playlist.activePlaylistId && createPortal(
-        <div className="relative flex min-w-0 items-center gap-1">
-          <button type="button" onClick={playlist.prev} disabled={playlist.currentIndex === 0} aria-label={t('player.previous')} title={t('player.previous')} className="rounded-lg p-2 text-muted hover:bg-(--app-border) disabled:opacity-40"><SkipBack size={16} /></button>
-          <button type="button" onClick={playlist.togglePlay} disabled={!currentTrack} aria-label={t(playlist.isPlaying ? 'player.pause' : 'player.play')} title={t(playlist.isPlaying ? 'player.pause' : 'player.play')} className="rounded-lg p-2 text-brand-400 hover:bg-(--app-border) disabled:opacity-40">{playlist.isPlaying ? <Pause size={17} /> : <Play size={17} />}</button>
-          <button type="button" onClick={playlist.next} disabled={!playlist.shuffle && playlist.currentIndex >= playlist.tracks.length - 1} aria-label={t('player.next')} title={t('player.next')} className="rounded-lg p-2 text-muted hover:bg-(--app-border) disabled:opacity-40"><SkipForward size={16} /></button>
-          <button type="button" onClick={playlist.toggleShuffle} aria-label={t(playlist.shuffle ? 'player.shuffleOn' : 'player.shuffleOff')} aria-pressed={playlist.shuffle} className={cn('rounded-lg p-2 hover:bg-(--app-border)', playlist.shuffle ? 'text-violet-400' : 'text-muted')}><Shuffle size={16} /></button>
-          <button type="button" onClick={() => setTopPlayerOpen(value => !value)} aria-expanded={topPlayerOpen} title={t('player.showList')} className="min-w-0 max-w-72 flex-1 truncate rounded-lg border border-subtle px-3 py-2 text-left text-xs text-amber-400">{getSidebarPlayerText(playlist.activePlaylistName, playlist.tracks, currentTrack, playlist.isLoadingTracks)}</button>
-          <span className="hidden shrink-0 text-xs tabular-nums text-muted xl:inline">{fmt(playlist.progress)} / {fmt(playlist.duration)}</span>
-          <SidebarProgressBar progress={playlist.progress} duration={playlist.duration} onSeek={handleSeekClick} className="hidden h-1 min-w-12 max-w-36 flex-1 cursor-pointer rounded-full bg-(--app-border) xl:block" fillClassName="block h-full rounded-full bg-brand-500" />
-          {topPlayerOpen && <div className="absolute left-0 top-full z-50 mt-2 w-64 rounded-xl bg-surface pt-2 shadow-xl"><SidebarDesktopPlayer playlist={playlist} currentTrack={currentTrack} playerExpanded={playerExpanded} onToggleExpanded={() => setPlayerExpanded(value => !value)} onShowAddMusic={() => setShowAddMusic(true)} onSeek={handleSeekClick} t={t} /></div>}
-        </div>, playerTarget
-      )}
+      {canUseMediaPlayer && collapsed && <SidebarTopPlayer
+        playlist={playlist}
+        currentTrack={currentTrack}
+        playerTarget={playerTarget}
+        open={topPlayerOpen}
+        onToggleOpen={() => setTopPlayerOpen(value => !value)}
+        playerExpanded={playerExpanded}
+        onToggleExpanded={() => setPlayerExpanded(value => !value)}
+        onShowAddMusic={() => setShowAddMusic(true)}
+        onSeek={handleSeekClick}
+        t={t}
+      />}
 
       {canUseMediaPlayer && <SidebarMobilePlayer
         playlist={playlist}
